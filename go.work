@@ -1,0 +1,21 @@
+go 1.25.0
+
+use (
+	./component/codec/json
+	./component/codec/jsonv2
+	./component/codec/msgpack
+
+	./component/storage/redis
+	./component/storage/memory
+
+	./component/generator/dgenerator
+
+	./component/log/nop
+	./component/log/gf
+	./component/log/dlog
+
+	./component/pool/ants
+
+	./core
+	./stputil
+)
