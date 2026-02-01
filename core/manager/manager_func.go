@@ -409,6 +409,51 @@ func (m *Manager) GetTokenInfo(ctx context.Context, tokenValue string) (*TokenIn
 	return m.getTokenInfo(ctx, tokenValue)
 }
 
+// GetDevice retrieves the device type for a token.
+// GetDevice 获取 Token 的设备类型。
+func (m *Manager) GetDevice(ctx context.Context, tokenValue string) (string, error) {
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	if err != nil {
+		return "", err
+	}
+	return tokenInfo.Device, nil
+}
+
+// GetDeviceId retrieves the device ID for a token.
+// GetDeviceId 获取 Token 的设备 ID。
+func (m *Manager) GetDeviceId(ctx context.Context, tokenValue string) (string, error) {
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	if err != nil {
+		return "", err
+	}
+	return tokenInfo.DeviceId, nil
+}
+
+// GetTokenCreateTime retrieves the creation time for a token.
+// GetTokenCreateTime 获取 Token 的创建时间戳。
+func (m *Manager) GetTokenCreateTime(ctx context.Context, tokenValue string) (int64, error) {
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	if err != nil {
+		return 0, err
+	}
+	return tokenInfo.CreateTime, nil
+}
+
+// GetTokenTTL retrieves the remaining time-to-live for a token in seconds.
+// GetTokenTTL 获取 Token 的剩余有效时间（秒）。
+func (m *Manager) GetTokenTTL(ctx context.Context, tokenValue string) (int64, error) {
+	ttl, err := m.storage.TTL(ctx, m.getTokenKey(tokenValue))
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+
+	// 标准 Redis TTL 语义：
+	// -2: key 不存在
+	// -1: key 存在但无过期时间
+	// >0: 剩余秒数
+	return int64(ttl.Seconds()), nil
+}
+
 // ============================================================================
 // Account Disable Management - 账号封禁管理
 // ============================================================================
@@ -621,6 +666,26 @@ func (m *Manager) GetTokenValueListByDeviceAndDeviceId(ctx context.Context, logi
 
 	matched := sess.getTerminalsByDeviceAndDeviceId(device, deviceId)
 	return m.filterTokens(ctx, matched, len(checkAlive) > 0 && checkAlive[0])
+}
+
+// GetOnlineTerminalCount retrieves the count of online terminals for a user.
+// GetOnlineTerminalCount 获取用户的在线终端数量。
+func (m *Manager) GetOnlineTerminalCount(ctx context.Context, loginID string) (int, error) {
+	tokens, err := m.GetTokenValueListByLoginID(ctx, loginID, true)
+	if err != nil {
+		return 0, err
+	}
+	return len(tokens), nil
+}
+
+// GetOnlineTerminalCountByDevice retrieves the count of online terminals for a specific device type.
+// GetOnlineTerminalCountByDevice 获取用户在指定设备类型的在线终端数量。
+func (m *Manager) GetOnlineTerminalCountByDevice(ctx context.Context, loginID, device string) (int, error) {
+	tokens, err := m.GetTokenValueListByDevice(ctx, loginID, device, true)
+	if err != nil {
+		return 0, err
+	}
+	return len(tokens), nil
 }
 
 // ============================================================================

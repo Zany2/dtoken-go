@@ -224,6 +224,66 @@ func GetTokenInfo(ctx context.Context, tokenValue string, authType ...string) (*
 	return mgr.GetTokenInfo(ctx, tokenValue)
 }
 
+// GetDevice retrieves the device type from a token.
+// GetDevice 根据 Token 获取设备类型。
+func GetDevice(ctx context.Context, tokenValue string, authType ...string) (string, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return "", err
+	}
+	return mgr.GetDevice(ctx, tokenValue)
+}
+
+// GetDeviceId retrieves the device ID from a token.
+// GetDeviceId 根据 Token 获取设备 ID。
+func GetDeviceId(ctx context.Context, tokenValue string, authType ...string) (string, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return "", err
+	}
+	return mgr.GetDeviceId(ctx, tokenValue)
+}
+
+// GetTokenCreateTime retrieves the creation time of a token.
+// GetTokenCreateTime 根据 Token 获取创建时间。
+func GetTokenCreateTime(ctx context.Context, tokenValue string, authType ...string) (int64, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return 0, err
+	}
+	return mgr.GetTokenCreateTime(ctx, tokenValue)
+}
+
+// GetTokenTTL retrieves the remaining TTL (time to live) of a token in seconds.
+// GetTokenTTL 根据 Token 获取剩余有效时间（秒）。
+func GetTokenTTL(ctx context.Context, tokenValue string, authType ...string) (int64, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return 0, err
+	}
+	return mgr.GetTokenTTL(ctx, tokenValue)
+}
+
+// GetOnlineTerminalCount retrieves the total number of online terminals for a login ID.
+// GetOnlineTerminalCount 获取指定登录 ID 的在线终端总数。
+func GetOnlineTerminalCount(ctx context.Context, loginID string, authType ...string) (int, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return 0, err
+	}
+	return mgr.GetOnlineTerminalCount(ctx, loginID)
+}
+
+// GetOnlineTerminalCountByDevice retrieves the number of online terminals for a specific device type.
+// GetOnlineTerminalCountByDevice 获取指定登录 ID 和设备类型的在线终端数。
+func GetOnlineTerminalCountByDevice(ctx context.Context, loginID string, device string, authType ...string) (int, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return 0, err
+	}
+	return mgr.GetOnlineTerminalCountByDevice(ctx, loginID, device)
+}
+
 // ============================================================================
 // Account Disable Management - 账号封禁管理
 // ============================================================================
