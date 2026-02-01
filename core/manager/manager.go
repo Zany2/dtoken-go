@@ -29,14 +29,15 @@ type TokenInfo struct {
 	CreateTime int64  `json:"createTime"` // CreateTime 创建时间戳
 }
 
-// Session 会话对象，用于存储用户数据
+// Session 会话对象,用于存储用户数据
 type Session struct {
-	AuthType      string         `json:"authType"`      // AuthType 认证体系类型
-	LoginID       string         `json:"loginID"`       // LoginID 登录 ID
-	CreateTime    int64          `json:"createTime"`    // CreateTime 创建时间
-	TerminalInfos []TerminalInfo `json:"terminalInfos"` // TerminalInfos 终端信息列表
-	Permissions   []string       `json:"permissions"`   // Permissions 权限列表
-	Roles         []string       `json:"roles"`         // Roles 角色列表
+	AuthType             string         `json:"authType"`             // AuthType 认证体系类型
+	LoginID              string         `json:"loginId"`              // LoginID 登录 ID
+	CreateTime           int64          `json:"createTime"`           // CreateTime 创建时间
+	TerminalInfos        []TerminalInfo `json:"terminalInfos"`        // TerminalInfos 终端信息列表
+	Permissions          []string       `json:"permissions"`          // Permissions 权限列表
+	Roles                []string       `json:"roles"`                // Roles 角色列表
+	HistoryTerminalCount int64          `json:"historyTerminalCount"` // HistoryTerminalCount 历史总计登录设备数量
 }
 
 // TerminalInfo 终端信息
@@ -46,6 +47,7 @@ type TerminalInfo struct {
 	Device     string `json:"device"`     // Device 设备类型
 	DeviceId   string `json:"deviceId"`   // DeviceId 设备 ID
 	CreateTime int64  `json:"createTime"` // CreateTime Token 创建时间戳
+	Index      int64  `json:"index"`      // Index 历史登录顺序索引
 }
 
 // DisableInfo 账号封禁信息

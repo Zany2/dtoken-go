@@ -34,6 +34,9 @@ var (
 	// ErrAccountDisabled 账号已被禁用
 	ErrAccountDisabled = errors.New("account disabled: this account has been temporarily or permanently disabled")
 
+	// ErrAccountNotDisabled 账号未被封禁
+	ErrAccountNotDisabled = errors.New("account not disabled: this account is not currently disabled")
+
 	// ErrLoginLimitExceeded 超出最大登录数量限制
 	ErrLoginLimitExceeded = errors.New("account error: login count exceeds the maximum limit")
 )
