@@ -8,6 +8,7 @@ import (
 	"github.com/Zany2/dtoken-go/com/pool/ants"
 	"github.com/Zany2/dtoken-go/com/storage/memory"
 	"github.com/Zany2/dtoken-go/core/adapter"
+	"github.com/Zany2/dtoken-go/core/banner"
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/manager"
 	"strings"
@@ -93,9 +94,9 @@ func (b *Builder) AuthType(authType string) *Builder {
 // KeyPrefix 设置存储键的前缀（自动补全冒号）
 func (b *Builder) KeyPrefix(keyPrefix string) *Builder {
 	if keyPrefix == "" {
-		b.authType = config.DefaultAuthType
+		b.keyPrefix = config.DefaultKeyPrefix
 	} else if !strings.HasSuffix(keyPrefix, ":") {
-		b.authType = keyPrefix + ":"
+		b.keyPrefix = keyPrefix + ":"
 	} else {
 		b.keyPrefix = keyPrefix
 	}
@@ -630,7 +631,7 @@ func (b *Builder) Build() *manager.Manager {
 	}
 
 	if b.isPrintBanner {
-		// TODO 打印 Banner
+		banner.PrintBanner(cfg)
 	}
 
 	return manager.NewManager(cfg, b.generator, b.storage, b.codec, b.log, b.pool, b.customPermissionListFunc, b.customRoleListFunc)

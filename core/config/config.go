@@ -238,7 +238,7 @@ func (c *Config) SetAuthType(authType string) *Config {
 	return c
 }
 
-// SetKeyPrefix 存储键的前缀
+// SetKeyPrefix 设置存储键的前缀
 func (c *Config) SetKeyPrefix(keyPrefix string) *Config {
 	c.KeyPrefix = keyPrefix
 	return c
