@@ -29,32 +29,6 @@ import (
 
 // NewManager creates a new Manager instance with the provided components.
 // NewManager 创建一个新的 Manager 实例,使用提供的组件。
-//
-// Parameters:
-//   - cfg: Configuration for the manager (uses default if nil)
-//   - generator: Token generator (creates default if nil)
-//   - storage: Storage adapter (uses memory storage if nil)
-//   - serializer: Codec for serialization (uses JSON if nil)
-//   - logger: Logger adapter (uses nop logger if nil)
-//   - pool: Goroutine pool for async tasks (creates default if nil and AutoRenew is enabled)
-//   - customPermissionListFunc: Custom function to retrieve permission list
-//   - CustomRoleListFunc: Custom function to retrieve role list
-//
-// Returns:
-//   - *Manager: Initialized Manager instance
-//
-// 参数:
-//   - cfg: 管理器配置(如果为 nil 则使用默认配置)
-//   - generator: Token 生成器(如果为 nil 则创建默认生成器)
-//   - storage: 存储适配器(如果为 nil 则使用内存存储)
-//   - serializer: 序列化编解码器(如果为 nil 则使用 JSON)
-//   - logger: 日志适配器(如果为 nil 则使用空日志记录器)
-//   - pool: 异步任务协程池(如果为 nil 且启用自动续期则创建默认协程池)
-//   - customPermissionListFunc: 自定义权限列表获取函数
-//   - CustomRoleListFunc: 自定义角色列表获取函数
-//
-// 返回:
-//   - *Manager: 初始化完成的 Manager 实例
 func NewManager(
 	cfg *config.Config,
 	generator adapter.Generator,
@@ -139,24 +113,6 @@ func (m *Manager) CloseManager() {
 
 // Login performs user login and returns a token.
 // Login 执行用户登录并返回 token。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - deviceAndDeviceId: Optional device type and device ID
-//
-// Returns:
-//   - string: Generated token
-//   - error: Error if login fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - deviceAndDeviceId: 可选的设备类型和设备 ID
-//
-// 返回:
-//   - string: 生成的 token
-//   - error: 登录失败时的错误
 func (m *Manager) Login(ctx context.Context, loginID string, deviceAndDeviceId ...string) (string, error) {
 	if loginID == "" {
 		return "", derror.ErrIDIsEmpty
@@ -233,20 +189,6 @@ func (m *Manager) Login(ctx context.Context, loginID string, deviceAndDeviceId .
 
 // LoginByToken performs login renewal based on an existing token.
 // LoginByToken 根据 Token 续期登录。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value to renew
-//
-// Returns:
-//   - error: Error if renewal fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: 要续期的 Token 值
-//
-// 返回:
-//   - error: 续期失败时的错误
 func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 	if tokenValue == "" {
 		return derror.ErrInvalidToken
@@ -256,9 +198,21 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 	if err != nil {
 		return err
 	}
-	_, err = m.getSession(ctx, tokenInfo.LoginID)
+	sess, err := m.getSession(ctx, tokenInfo.LoginID)
 	if err != nil {
 		return err
+	}
+
+	// 验证 token 是否在 session 的 TerminalInfos 中
+	found := false
+	for _, ti := range sess.TerminalInfos {
+		if ti.Token == tokenValue {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return derror.ErrInvalidToken
 	}
 
 	sessionKey := m.getSessionKey(tokenInfo.LoginID)
@@ -276,20 +230,6 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 
 // Logout logs out a user by token.
 // Logout 根据 Token 登出用户。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value to logout
-//
-// Returns:
-//   - error: Error if logout fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: 要登出的 Token 值
-//
-// 返回:
-//   - error: 登出失败时的错误
 func (m *Manager) Logout(ctx context.Context, tokenValue string) error {
 	if tokenValue == "" {
 		return derror.ErrInvalidToken
@@ -310,22 +250,6 @@ func (m *Manager) Logout(ctx context.Context, tokenValue string) error {
 
 // LogoutByDeviceAndDeviceId logs out a user by device type and device ID.
 // LogoutByDeviceAndDeviceId 根据设备类型和设备ID登出用户。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - deviceAndDeviceId: Device type and optional device ID
-//
-// Returns:
-//   - error: Error if logout fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - deviceAndDeviceId: 设备类型和可选的设备 ID
-//
-// 返回:
-//   - error: 登出失败时的错误
 func (m *Manager) LogoutByDeviceAndDeviceId(ctx context.Context, loginID string, deviceAndDeviceId ...string) error {
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -339,22 +263,6 @@ func (m *Manager) LogoutByDeviceAndDeviceId(ctx context.Context, loginID string,
 
 // LogoutByDevice logs out all terminals of a specific device type.
 // LogoutByDevice 根据设备类型登出所有该设备的终端。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - device: Device type
-//
-// Returns:
-//   - error: Error if logout fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - device: 设备类型
-//
-// 返回:
-//   - error: 登出失败时的错误
 func (m *Manager) LogoutByDevice(ctx context.Context, loginID string, device string) error {
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -374,20 +282,6 @@ func (m *Manager) LogoutByDevice(ctx context.Context, loginID string, device str
 
 // Kickout kicks out a user by token.
 // Kickout 根据 Token 踢人下线。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value to kick out
-//
-// Returns:
-//   - error: Error if kickout fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: 要踢出的 Token 值
-//
-// 返回:
-//   - error: 踢出失败时的错误
 func (m *Manager) Kickout(ctx context.Context, tokenValue string) error {
 	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
 	if err != nil {
@@ -404,20 +298,6 @@ func (m *Manager) Kickout(ctx context.Context, tokenValue string) error {
 
 // Replace replaces a user session by token.
 // Replace 根据 Token 顶人下线。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value to replace
-//
-// Returns:
-//   - error: Error if replace fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: 要顶替的 Token 值
-//
-// 返回:
-//   - error: 顶替失败时的错误
 func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
 	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
 	if err != nil {
@@ -434,22 +314,6 @@ func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
 
 // KickoutByDeviceAndDeviceId kicks out a user by device type and device ID.
 // KickoutByDeviceAndDeviceId 根据设备类型和设备ID踢人下线。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - deviceAndDeviceId: Device type and optional device ID
-//
-// Returns:
-//   - error: Error if kickout fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - deviceAndDeviceId: 设备类型和可选的设备 ID
-//
-// 返回:
-//   - error: 踢出失败时的错误
 func (m *Manager) KickoutByDeviceAndDeviceId(ctx context.Context, loginID string, deviceAndDeviceId ...string) error {
 	device, deviceId := m.getDeviceAndDeviceId(deviceAndDeviceId...)
 	return m.processTerminals(ctx, loginID, func(sess *Session) []TerminalInfo {
@@ -459,22 +323,6 @@ func (m *Manager) KickoutByDeviceAndDeviceId(ctx context.Context, loginID string
 
 // KickoutByDevice kicks out all terminals of a specific device type.
 // KickoutByDevice 根据设备类型踢人下线（踢掉该设备类型的所有终端）。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - device: Device type
-//
-// Returns:
-//   - error: Error if kickout fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - device: 设备类型
-//
-// 返回:
-//   - error: 踢出失败时的错误
 func (m *Manager) KickoutByDevice(ctx context.Context, loginID string, device string) error {
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -490,22 +338,6 @@ func (m *Manager) KickoutByDevice(ctx context.Context, loginID string, device st
 
 // ReplaceByDeviceAndDeviceId replaces a user session by device type and device ID.
 // ReplaceByDeviceAndDeviceId 根据设备类型和设备ID顶人下线。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - deviceAndDeviceId: Device type and optional device ID
-//
-// Returns:
-//   - error: Error if replace fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - deviceAndDeviceId: 设备类型和可选的设备 ID
-//
-// 返回:
-//   - error: 顶替失败时的错误
 func (m *Manager) ReplaceByDeviceAndDeviceId(ctx context.Context, loginID string, deviceAndDeviceId ...string) error {
 	device, deviceId := m.getDeviceAndDeviceId(deviceAndDeviceId...)
 	return m.processTerminals(ctx, loginID, func(sess *Session) []TerminalInfo {
@@ -515,22 +347,6 @@ func (m *Manager) ReplaceByDeviceAndDeviceId(ctx context.Context, loginID string
 
 // ReplaceByDevice replaces all terminals of a specific device type.
 // ReplaceByDevice 根据设备类型顶人下线（顶掉该设备类型的所有终端）。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - device: Device type
-//
-// Returns:
-//   - error: Error if replace fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - device: 设备类型
-//
-// 返回:
-//   - error: 顶替失败时的错误
 func (m *Manager) ReplaceByDevice(ctx context.Context, loginID string, device string) error {
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -550,40 +366,12 @@ func (m *Manager) ReplaceByDevice(ctx context.Context, loginID string, device st
 
 // IsLogin checks if a user is logged in.
 // IsLogin 检查用户是否登录。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value to check
-//
-// Returns:
-//   - bool: True if logged in, false otherwise
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: 要检查的 Token 值
-//
-// 返回:
-//   - bool: 如果已登录返回 true，否则返回 false
 func (m *Manager) IsLogin(ctx context.Context, tokenValue string) bool {
 	return m.checkLoginInternal(ctx, tokenValue) == nil
 }
 
 // CheckLogin checks if a user is logged in and returns an error if not.
 // CheckLogin 检查用户是否登录，如果未登录则返回错误。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value to check
-//
-// Returns:
-//   - error: Error if not logged in or validation fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: 要检查的 Token 值
-//
-// 返回:
-//   - error: 如果未登录或验证失败则返回错误
 func (m *Manager) CheckLogin(ctx context.Context, tokenValue string) error {
 	return m.checkLoginInternal(ctx, tokenValue)
 }
@@ -594,22 +382,6 @@ func (m *Manager) CheckLogin(ctx context.Context, tokenValue string) error {
 
 // GetLoginID retrieves the login ID from a token.
 // GetLoginID 根据 Token 获取登录 ID。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value
-//
-// Returns:
-//   - string: Login ID
-//   - error: Error if retrieval fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: Token 值
-//
-// 返回:
-//   - string: 登录 ID
-//   - error: 获取失败时的错误
 func (m *Manager) GetLoginID(ctx context.Context, tokenValue string) (string, error) {
 	// 获取tokenInfo
 	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
@@ -622,22 +394,6 @@ func (m *Manager) GetLoginID(ctx context.Context, tokenValue string) (string, er
 
 // GetTokenInfo retrieves token information.
 // GetTokenInfo 根据 Token 获取 TokenInfo 信息。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value
-//
-// Returns:
-//   - *TokenInfo: Token information
-//   - error: Error if retrieval fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: Token 值
-//
-// 返回:
-//   - *TokenInfo: Token 信息
-//   - error: 获取失败时的错误
 func (m *Manager) GetTokenInfo(ctx context.Context, tokenValue string) (*TokenInfo, error) {
 	return m.getTokenInfo(ctx, tokenValue)
 }
@@ -648,24 +404,6 @@ func (m *Manager) GetTokenInfo(ctx context.Context, tokenValue string) (*TokenIn
 
 // Disable disables an account for a specified duration.
 // Disable 封禁账号指定时长。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - duration: Disable duration
-//   - reason: Optional disable reason
-//
-// Returns:
-//   - error: Error if disable fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - duration: 封禁时长
-//   - reason: 可选的封禁原因
-//
-// 返回:
-//   - error: 封禁失败时的错误
 func (m *Manager) Disable(ctx context.Context, loginID string, duration time.Duration, reason ...string) error {
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -723,20 +461,6 @@ func (m *Manager) Disable(ctx context.Context, loginID string, duration time.Dur
 
 // Untie removes the disable status from an account.
 // Untie 解封账号。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//
-// Returns:
-//   - error: Error if untie fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//
-// 返回:
-//   - error: 解封失败时的错误
 func (m *Manager) Untie(ctx context.Context, loginID string) error {
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -751,42 +475,12 @@ func (m *Manager) Untie(ctx context.Context, loginID string) error {
 
 // IsDisable checks if an account is disabled.
 // IsDisable 检查账号是否被封禁。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//
-// Returns:
-//   - bool: True if disabled, false otherwise
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//
-// 返回:
-//   - bool: 如果被封禁返回 true，否则返回 false
 func (m *Manager) IsDisable(ctx context.Context, loginID string) bool {
 	return m.isDisable(ctx, loginID)
 }
 
 // GetDisableInfo retrieves disable information for an account.
 // GetDisableInfo 获取账号的封禁信息。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//
-// Returns:
-//   - *DisableInfo: Disable information
-//   - error: Error if retrieval fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//
-// 返回:
-//   - *DisableInfo: 封禁信息
-//   - error: 获取失败时的错误
 func (m *Manager) GetDisableInfo(ctx context.Context, loginID string) (*DisableInfo, error) {
 	disableInfoData, err := m.storage.Get(ctx, m.getDisableKey(loginID))
 	if err != nil {
@@ -808,22 +502,6 @@ func (m *Manager) GetDisableInfo(ctx context.Context, loginID string) (*DisableI
 
 // GetDisableTTL retrieves the remaining disable time for an account in seconds.
 // GetDisableTTL 获取账号剩余封禁时间（秒）。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//
-// Returns:
-//   - int64: Remaining disable time in seconds (-2: not disabled, -1: permanent, >0: remaining seconds)
-//   - error: Error if retrieval fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//
-// 返回:
-//   - int64: 剩余封禁时间（秒）（-2: 未封禁，-1: 永久封禁，>0: 剩余秒数）
-//   - error: 获取失败时的错误
 func (m *Manager) GetDisableTTL(ctx context.Context, loginID string) (int64, error) {
 	ttl, err := m.storage.TTL(ctx, m.getDisableKey(loginID))
 	if err != nil {
@@ -852,44 +530,12 @@ func (m *Manager) GetDisableTTL(ctx context.Context, loginID string) (int64, err
 
 // GetSession retrieves session information for a login ID.
 // GetSession 获取指定登录 ID 的会话信息。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//
-// Returns:
-//   - *Session: Session information
-//   - error: Error if retrieval fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//
-// 返回:
-//   - *Session: 会话信息
-//   - error: 获取失败时的错误
 func (m *Manager) GetSession(ctx context.Context, loginID string) (*Session, error) {
 	return m.getSession(ctx, loginID)
 }
 
 // GetSessionByToken retrieves session information by token.
 // GetSessionByToken 通过 Token 值获取会话信息。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value
-//
-// Returns:
-//   - *Session: Session information
-//   - error: Error if retrieval fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: Token 值
-//
-// 返回:
-//   - *Session: 会话信息
-//   - error: 获取失败时的错误
 func (m *Manager) GetSessionByToken(ctx context.Context, tokenValue string) (*Session, error) {
 	// 获取tokenInfo
 	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
@@ -902,24 +548,6 @@ func (m *Manager) GetSessionByToken(ctx context.Context, tokenValue string) (*Se
 
 // GetTokenValueListByLoginID retrieves all tokens for a login ID.
 // GetTokenValueListByLoginID 获取指定登录 ID 的所有 Token。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - checkAlive: Optional flag to check if tokens are still valid
-//
-// Returns:
-//   - []string: List of token values
-//   - error: Error if retrieval fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - checkAlive: 可选标志，用于检查 Token 是否仍然有效
-//
-// 返回:
-//   - []string: Token 值列表
-//   - error: 获取失败时的错误
 func (m *Manager) GetTokenValueListByLoginID(ctx context.Context, loginID string, checkAlive ...bool) ([]string, error) {
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
@@ -938,28 +566,6 @@ func (m *Manager) GetTokenValueListByLoginID(ctx context.Context, loginID string
 
 // GetTokenValueListByDeviceAndDeviceId retrieves all tokens for a specific device type and device ID.
 // GetTokenValueListByDeviceAndDeviceId 获取指定设备类型和设备 ID 的所有 Token。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - device: Device type
-//   - deviceId: Device ID
-//   - checkAlive: Optional flag to check if tokens are still valid
-//
-// Returns:
-//   - []string: List of token values
-//   - error: Error if retrieval fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - device: 设备类型
-//   - deviceId: 设备 ID
-//   - checkAlive: 可选标志，用于检查 Token 是否仍然有效
-//
-// 返回:
-//   - []string: Token 值列表
-//   - error: 获取失败时的错误
 func (m *Manager) GetTokenValueListByDeviceAndDeviceId(ctx context.Context, loginID, device, deviceId string, checkAlive ...bool) ([]string, error) {
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
@@ -978,26 +584,6 @@ func (m *Manager) GetTokenValueListByDeviceAndDeviceId(ctx context.Context, logi
 
 // GetTokenValueListByDevice retrieves all tokens for a specific device type.
 // GetTokenValueListByDevice 获取指定设备类型的所有 Token。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - device: Device type
-//   - checkAlive: Optional flag to check if tokens are still valid
-//
-// Returns:
-//   - []string: List of token values
-//   - error: Error if retrieval fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - device: 设备类型
-//   - checkAlive: 可选标志，用于检查 Token 是否仍然有效
-//
-// 返回:
-//   - []string: Token 值列表
-//   - error: 获取失败时的错误
 func (m *Manager) GetTokenValueListByDevice(ctx context.Context, loginID, device string, checkAlive ...bool) ([]string, error) {
 	if loginID == "" {
 		return []string{}, derror.ErrIDIsEmpty
@@ -1027,22 +613,6 @@ func (m *Manager) GetTokenValueListByDevice(ctx context.Context, loginID, device
 
 // AddPermissions adds permissions to a user.
 // AddPermissions 为用户添加权限。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - permissions: List of permissions to add
-//
-// Returns:
-//   - error: Error if operation fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - permissions: 要添加的权限列表
-//
-// 返回:
-//   - error: 操作失败时的错误
 func (m *Manager) AddPermissions(ctx context.Context, loginID string, permissions []string) error {
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
@@ -1060,22 +630,6 @@ func (m *Manager) AddPermissions(ctx context.Context, loginID string, permission
 
 // AddPermissionsByToken adds permissions to a user by token.
 // AddPermissionsByToken 根据 Token 为用户添加权限。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value
-//   - permissions: List of permissions to add
-//
-// Returns:
-//   - error: Error if operation fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: Token 值
-//   - permissions: 要添加的权限列表
-//
-// 返回:
-//   - error: 操作失败时的错误
 func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, permissions []string) error {
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
@@ -1095,22 +649,6 @@ func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, 
 
 // RemovePermissions removes permissions from a user.
 // RemovePermissions 删除用户的指定权限。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - permissions: List of permissions to remove
-//
-// Returns:
-//   - error: Error if operation fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - permissions: 要删除的权限列表
-//
-// 返回:
-//   - error: 操作失败时的错误
 func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permissions []string) error {
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
@@ -1128,22 +666,6 @@ func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permiss
 
 // RemovePermissionsByToken removes permissions from a user by token.
 // RemovePermissionsByToken 根据 Token 删除用户的指定权限。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value
-//   - permissions: List of permissions to remove
-//
-// Returns:
-//   - error: Error if operation fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: Token 值
-//   - permissions: 要删除的权限列表
-//
-// 返回:
-//   - error: 操作失败时的错误
 func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue string, permissions []string) error {
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
@@ -1163,22 +685,6 @@ func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue strin
 
 // GetPermissions retrieves the permission list for a user.
 // GetPermissions 获取用户的权限列表。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//
-// Returns:
-//   - []string: List of permissions
-//   - error: Error if retrieval fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//
-// 返回:
-//   - []string: 权限列表
-//   - error: 获取失败时的错误
 func (m *Manager) GetPermissions(ctx context.Context, loginID string) ([]string, error) {
 	// 自定义权限列表获取函数
 	if m.CustomPermissionListFunc != nil {
@@ -1196,22 +702,6 @@ func (m *Manager) GetPermissions(ctx context.Context, loginID string) ([]string,
 
 // GetPermissionsByToken retrieves the permission list by token.
 // GetPermissionsByToken 根据 Token 获取权限列表。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value
-//
-// Returns:
-//   - []string: List of permissions
-//   - error: Error if retrieval fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: Token 值
-//
-// 返回:
-//   - []string: 权限列表
-//   - error: 获取失败时的错误
 func (m *Manager) GetPermissionsByToken(ctx context.Context, tokenValue string) ([]string, error) {
 	// 获取Session
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
@@ -1224,22 +714,6 @@ func (m *Manager) GetPermissionsByToken(ctx context.Context, tokenValue string) 
 
 // HasPermission checks if a user has a specific permission.
 // HasPermission 检查用户是否拥有指定权限。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - permission: Permission to check
-//
-// Returns:
-//   - bool: True if user has the permission, false otherwise
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - permission: 要检查的权限
-//
-// 返回:
-//   - bool: 如果用户拥有该权限返回 true，否则返回 false
 func (m *Manager) HasPermission(ctx context.Context, loginID string, permission string) bool {
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
@@ -1257,22 +731,6 @@ func (m *Manager) HasPermission(ctx context.Context, loginID string, permission 
 
 // HasPermissionByToken checks if a user has a specific permission by token.
 // HasPermissionByToken 根据 Token 检查用户是否拥有指定权限。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value
-//   - permission: Permission to check
-//
-// Returns:
-//   - bool: True if user has the permission, false otherwise
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: Token 值
-//   - permission: 要检查的权限
-//
-// 返回:
-//   - bool: 如果用户拥有该权限返回 true，否则返回 false
 func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, permission string) bool {
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
@@ -1290,22 +748,6 @@ func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, p
 
 // HasPermissionsAnd checks if a user has all specified permissions (AND logic).
 // HasPermissionsAnd 检查用户是否拥有所有指定权限（AND 逻辑）。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - permissions: List of permissions to check
-//
-// Returns:
-//   - bool: True if user has all permissions, false otherwise
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - permissions: 要检查的权限列表
-//
-// 返回:
-//   - bool: 如果用户拥有所有权限返回 true，否则返回 false
 func (m *Manager) HasPermissionsAnd(ctx context.Context, loginID string, permissions []string) bool {
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
@@ -1324,22 +766,6 @@ func (m *Manager) HasPermissionsAnd(ctx context.Context, loginID string, permiss
 
 // HasPermissionsAndByToken checks if a user has all specified permissions by token (AND logic).
 // HasPermissionsAndByToken 根据 Token 检查用户是否拥有所有指定权限（AND 逻辑）。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value
-//   - permissions: List of permissions to check
-//
-// Returns:
-//   - bool: True if user has all permissions, false otherwise
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: Token 值
-//   - permissions: 要检查的权限列表
-//
-// 返回:
-//   - bool: 如果用户拥有所有权限返回 true，否则返回 false
 func (m *Manager) HasPermissionsAndByToken(ctx context.Context, tokenValue string, permissions []string) bool {
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
@@ -1358,22 +784,6 @@ func (m *Manager) HasPermissionsAndByToken(ctx context.Context, tokenValue strin
 
 // HasPermissionsOr checks if a user has any of the specified permissions (OR logic).
 // HasPermissionsOr 检查用户是否拥有任一指定权限（OR 逻辑）。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - permissions: List of permissions to check
-//
-// Returns:
-//   - bool: True if user has any permission, false otherwise
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - permissions: 要检查的权限列表
-//
-// 返回:
-//   - bool: 如果用户拥有任一权限返回 true，否则返回 false
 func (m *Manager) HasPermissionsOr(ctx context.Context, loginID string, permissions []string) bool {
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
@@ -1392,22 +802,6 @@ func (m *Manager) HasPermissionsOr(ctx context.Context, loginID string, permissi
 
 // HasPermissionsOrByToken checks if a user has any of the specified permissions by token (OR logic).
 // HasPermissionsOrByToken 根据 Token 检查用户是否拥有任一指定权限（OR 逻辑）。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value
-//   - permissions: List of permissions to check
-//
-// Returns:
-//   - bool: True if user has any permission, false otherwise
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: Token 值
-//   - permissions: 要检查的权限列表
-//
-// 返回:
-//   - bool: 如果用户拥有任一权限返回 true，否则返回 false
 func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string, permissions []string) bool {
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
@@ -1430,22 +824,6 @@ func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string
 
 // AddRoles adds roles to a user.
 // AddRoles 为用户添加角色。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - roles: List of roles to add
-//
-// Returns:
-//   - error: Error if operation fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - roles: 要添加的角色列表
-//
-// 返回:
-//   - error: 操作失败时的错误
 func (m *Manager) AddRoles(ctx context.Context, loginID string, roles []string) error {
 	// 获取Session
 	sess, err := m.getSession(ctx, loginID)
@@ -1464,22 +842,6 @@ func (m *Manager) AddRoles(ctx context.Context, loginID string, roles []string) 
 
 // AddRolesByToken adds roles to a user by token.
 // AddRolesByToken 根据 Token 为用户添加角色。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value
-//   - roles: List of roles to add
-//
-// Returns:
-//   - error: Error if operation fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: Token 值
-//   - roles: 要添加的角色列表
-//
-// 返回:
-//   - error: 操作失败时的错误
 func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles []string) error {
 	// 获取Session
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
@@ -1500,22 +862,6 @@ func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles 
 
 // RemoveRoles removes roles from a user.
 // RemoveRoles 删除用户的指定角色。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - roles: List of roles to remove
-//
-// Returns:
-//   - error: Error if operation fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - roles: 要删除的角色列表
-//
-// 返回:
-//   - error: 操作失败时的错误
 func (m *Manager) RemoveRoles(ctx context.Context, loginID string, roles []string) error {
 	// 获取Session
 	sess, err := m.getSession(ctx, loginID)
@@ -1534,22 +880,6 @@ func (m *Manager) RemoveRoles(ctx context.Context, loginID string, roles []strin
 
 // RemoveRolesByToken removes roles from a user by token.
 // RemoveRolesByToken 根据 Token 删除用户的指定角色。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value
-//   - roles: List of roles to remove
-//
-// Returns:
-//   - error: Error if operation fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: Token 值
-//   - roles: 要删除的角色列表
-//
-// 返回:
-//   - error: 操作失败时的错误
 func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, roles []string) error {
 	// 获取Session
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
@@ -1570,22 +900,6 @@ func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, rol
 
 // GetRoles retrieves the role list for a user.
 // GetRoles 获取用户的角色列表。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//
-// Returns:
-//   - []string: List of roles
-//   - error: Error if retrieval fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//
-// 返回:
-//   - []string: 角色列表
-//   - error: 获取失败时的错误
 func (m *Manager) GetRoles(ctx context.Context, loginID string) ([]string, error) {
 	// 自定义角色列表获取函数
 	if m.CustomRoleListFunc != nil {
@@ -1603,22 +917,6 @@ func (m *Manager) GetRoles(ctx context.Context, loginID string) ([]string, error
 
 // GetRolesByToken retrieves the role list by token.
 // GetRolesByToken 根据 Token 获取角色列表。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value
-//
-// Returns:
-//   - []string: List of roles
-//   - error: Error if retrieval fails
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: Token 值
-//
-// 返回:
-//   - []string: 角色列表
-//   - error: 获取失败时的错误
 func (m *Manager) GetRolesByToken(ctx context.Context, tokenValue string) ([]string, error) {
 	// 获取Session
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
@@ -1631,22 +929,6 @@ func (m *Manager) GetRolesByToken(ctx context.Context, tokenValue string) ([]str
 
 // HasRole checks if a user has a specific role.
 // HasRole 检查用户是否拥有指定角色。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - role: Role to check
-//
-// Returns:
-//   - bool: True if user has the role, false otherwise
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - role: 要检查的角色
-//
-// 返回:
-//   - bool: 如果用户拥有该角色返回 true，否则返回 false
 func (m *Manager) HasRole(ctx context.Context, loginID string, role string) bool {
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
@@ -1664,22 +946,6 @@ func (m *Manager) HasRole(ctx context.Context, loginID string, role string) bool
 
 // HasRoleByToken checks if a user has a specific role by token.
 // HasRoleByToken 根据 Token 检查用户是否拥有指定角色。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value
-//   - role: Role to check
-//
-// Returns:
-//   - bool: True if user has the role, false otherwise
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: Token 值
-//   - role: 要检查的角色
-//
-// 返回:
-//   - bool: 如果用户拥有该角色返回 true，否则返回 false
 func (m *Manager) HasRoleByToken(ctx context.Context, tokenValue string, role string) bool {
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
@@ -1697,22 +963,6 @@ func (m *Manager) HasRoleByToken(ctx context.Context, tokenValue string, role st
 
 // HasRolesAnd checks if a user has all specified roles (AND logic).
 // HasRolesAnd 检查用户是否拥有所有指定角色（AND 逻辑）。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - roles: List of roles to check
-//
-// Returns:
-//   - bool: True if user has all roles, false otherwise
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - roles: 要检查的角色列表
-//
-// 返回:
-//   - bool: 如果用户拥有所有角色返回 true，否则返回 false
 func (m *Manager) HasRolesAnd(ctx context.Context, loginID string, roles []string) bool {
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
@@ -1738,22 +988,6 @@ func (m *Manager) HasRolesAnd(ctx context.Context, loginID string, roles []strin
 
 // HasRolesAndByToken checks if a user has all specified roles by token (AND logic).
 // HasRolesAndByToken 根据 Token 检查用户是否拥有所有指定角色（AND 逻辑）。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value
-//   - roles: List of roles to check
-//
-// Returns:
-//   - bool: True if user has all roles, false otherwise
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: Token 值
-//   - roles: 要检查的角色列表
-//
-// 返回:
-//   - bool: 如果用户拥有所有角色返回 true，否则返回 false
 func (m *Manager) HasRolesAndByToken(ctx context.Context, tokenValue string, roles []string) bool {
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
@@ -1779,22 +1013,6 @@ func (m *Manager) HasRolesAndByToken(ctx context.Context, tokenValue string, rol
 
 // HasRolesOr checks if a user has any of the specified roles (OR logic).
 // HasRolesOr 检查用户是否拥有任一指定角色（OR 逻辑）。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - loginID: User's login ID
-//   - roles: List of roles to check
-//
-// Returns:
-//   - bool: True if user has any role, false otherwise
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - loginID: 用户登录 ID
-//   - roles: 要检查的角色列表
-//
-// 返回:
-//   - bool: 如果用户拥有任一角色返回 true，否则返回 false
 func (m *Manager) HasRolesOr(ctx context.Context, loginID string, roles []string) bool {
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
@@ -1815,22 +1033,6 @@ func (m *Manager) HasRolesOr(ctx context.Context, loginID string, roles []string
 
 // HasRolesOrByToken checks if a user has any of the specified roles by token (OR logic).
 // HasRolesOrByToken 根据 Token 检查用户是否拥有任一指定角色（OR 逻辑）。
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - tokenValue: Token value
-//   - roles: List of roles to check
-//
-// Returns:
-//   - bool: True if user has any role, false otherwise
-//
-// 参数:
-//   - ctx: 操作上下文
-//   - tokenValue: Token 值
-//   - roles: 要检查的角色列表
-//
-// 返回:
-//   - bool: 如果用户拥有任一角色返回 true，否则返回 false
 func (m *Manager) HasRolesOrByToken(ctx context.Context, tokenValue string, roles []string) bool {
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
@@ -1855,96 +1057,48 @@ func (m *Manager) HasRolesOrByToken(ctx context.Context, tokenValue string, role
 
 // GetConfig retrieves the manager configuration.
 // GetConfig 获取管理器配置。
-//
-// Returns:
-//   - *config.Config: Manager configuration
-//
-// 返回:
-//   - *config.Config: 管理器配置
 func (m *Manager) GetConfig() *config.Config {
 	return m.config
 }
 
 // GetGenerator retrieves the token generator.
 // GetGenerator 获取 Token 生成器。
-//
-// Returns:
-//   - adapter.Generator: Token generator
-//
-// 返回:
-//   - adapter.Generator: Token 生成器
 func (m *Manager) GetGenerator() adapter.Generator {
 	return m.generator
 }
 
 // GetStorage retrieves the storage adapter.
 // GetStorage 获取存储适配器。
-//
-// Returns:
-//   - adapter.Storage: Storage adapter
-//
-// 返回:
-//   - adapter.Storage: 存储适配器
 func (m *Manager) GetStorage() adapter.Storage {
 	return m.storage
 }
 
 // GetSerializer retrieves the serializer adapter.
 // GetSerializer 获取序列化器适配器。
-//
-// Returns:
-//   - adapter.Codec: Serializer adapter
-//
-// 返回:
-//   - adapter.Codec: 序列化器适配器
 func (m *Manager) GetSerializer() adapter.Codec {
 	return m.serializer
 }
 
 // GetLogger retrieves the logger adapter.
 // GetLogger 获取日志适配器。
-//
-// Returns:
-//   - adapter.Log: Logger adapter
-//
-// 返回:
-//   - adapter.Log: 日志适配器
 func (m *Manager) GetLogger() adapter.Log {
 	return m.logger
 }
 
 // GetPool retrieves the goroutine pool.
 // GetPool 获取协程池。
-//
-// Returns:
-//   - adapter.Pool: Goroutine pool
-//
-// 返回:
-//   - adapter.Pool: 协程池
 func (m *Manager) GetPool() adapter.Pool {
 	return m.pool
 }
 
 // GetCustomPermissionListFunc retrieves the custom permission list function.
 // GetCustomPermissionListFunc 获取自定义权限列表获取函数。
-//
-// Returns:
-//   - func(loginID, authType string) ([]string, error): Custom permission list function
-//
-// 返回:
-//   - func(loginID, authType string) ([]string, error): 自定义权限列表获取函数
 func (m *Manager) GetCustomPermissionListFunc() func(loginID, authType string) ([]string, error) {
 	return m.CustomPermissionListFunc
 }
 
 // GetCustomRoleListFunc retrieves the custom role list function.
 // GetCustomRoleListFunc 获取自定义角色列表获取函数。
-//
-// Returns:
-//   - func(loginID, authType string) ([]string, error): Custom role list function
-//
-// 返回:
-//   - func(loginID, authType string) ([]string, error): 自定义角色列表获取函数
 func (m *Manager) GetCustomRoleListFunc() func(loginID, authType string) ([]string, error) {
 	return m.CustomRoleListFunc
 }
@@ -2069,7 +1223,11 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 			if err != nil {
 				_ = m.storage.Delete(ctx, m.getActiveKey(tokenValue))
 			} else if time.Now().Unix()-timeStamp > m.config.ActiveTimeout {
-				_ = m.Kickout(ctx, tokenValue)
+				// Token 已超过最大不活跃时长，执行踢出操作
+				if kickErr := m.Kickout(ctx, tokenValue); kickErr != nil {
+					// 踢出失败时记录日志，但仍返回超时错误
+					m.logger.Error("Failed to kickout inactive token", "token", tokenValue, "error", kickErr)
+				}
 				return derror.ErrTokenKickout
 			}
 		}
@@ -2163,34 +1321,49 @@ func (m *Manager) handleConcurrency(
 // getTokenAndShare 获取 Token 并共享（内部方法）。
 func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device ...string) string {
 	if len(sess.TerminalInfos) > 0 {
+		var terminalInfo TerminalInfo
+		var found bool
+
 		if len(device) > 0 {
-			terminalInfo, ok := sess.getLatestTerminalByDevice(device[0])
-			if ok {
-				// 续期session
-				_ = m.storage.Expire(ctx, m.getSessionKey(terminalInfo.LoginID), m.getExpiration())
-
-				// 存储Token 这里重新Set 防止Token为非正常登录状态，保持原始 CreateTime
-				_ = m.saveToStorage(ctx, m.getTokenKey(terminalInfo.Token), TokenInfo{
-					AuthType:   m.config.AuthType,
-					LoginID:    terminalInfo.LoginID,
-					Device:     terminalInfo.Device,
-					DeviceId:   terminalInfo.DeviceId,
-					CreateTime: terminalInfo.CreateTime, // 保持原始创建时间
-				})
-
-				return terminalInfo.Token
+			terminalInfo, found = sess.getLatestTerminalByDevice(device[0])
+			if !found {
+				return ""
 			}
+		} else {
+			// 如果存在设备列表信息 那么取最后一个
+			terminalInfo = sess.TerminalInfos[len(sess.TerminalInfos)-1]
+			found = true
+		}
 
+		if !found {
 			return ""
 		}
 
-		// 如果存在设备列表信息 那么取最后一个
-		terminalInfo := sess.TerminalInfos[len(sess.TerminalInfos)-1]
+		// 检查 token 是否还在 storage 中且状态正常
+		tokenData, err := m.storage.Get(ctx, m.getTokenKey(terminalInfo.Token))
+		if err != nil || tokenData == nil {
+			// Token 已过期或不存在，不应该复用
+			return ""
+		}
 
-		// 续期session
+		// 检查 token 状态
+		tokenInfoBytes, err := utils.ToBytes(tokenData)
+		if err != nil {
+			return ""
+		}
+
+		// 如果 token 处于异常状态，不复用
+		switch string(tokenInfoBytes) {
+		case string(TokenStateLogout), string(TokenStateKickOut), string(TokenStateReplaced):
+			// Token 处于异常状态，需要重新登录
+			return ""
+		}
+
+		// Token 状态正常，可以复用
+		// 续期 session
 		_ = m.storage.Expire(ctx, m.getSessionKey(terminalInfo.LoginID), m.getExpiration())
 
-		// 存储Token 这里重新Set 防止Token为非正常登录状态，保持原始 CreateTime
+		// 续期 Token（保持原始 CreateTime）
 		_ = m.saveToStorage(ctx, m.getTokenKey(terminalInfo.Token), TokenInfo{
 			AuthType:   m.config.AuthType,
 			LoginID:    terminalInfo.LoginID,
@@ -2371,10 +1544,18 @@ func (m *Manager) processTerminals(
 	// 执行移除策略
 	removedTerminals := removalFunc(sess)
 
-	// 如果有移除项，保存更新后的 session
+	// 如果有移除项，更新 session
 	if len(removedTerminals) > 0 {
-		if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
-			return err
+		// 如果 session 中没有剩余终端，删除整个 session
+		if len(sess.TerminalInfos) == 0 {
+			if err = m.storage.Delete(ctx, m.getSessionKey(loginID)); err != nil {
+				return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+			}
+		} else {
+			// 否则保存更新后的 session
+			if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
+				return err
+			}
 		}
 	}
 
