@@ -1,11 +1,15 @@
 package builder
 
 import (
-	"github.com/Zany2/dtoken-go/component/generator/dgenerator"
-	"github.com/Zany2/dtoken-go/component/log/dlog"
-	"github.com/Zany2/dtoken-go/component/pool/ants"
+	djson "github.com/Zany2/dtoken-go/com/codec/json"
+	"github.com/Zany2/dtoken-go/com/generator/dgenerator"
+	"github.com/Zany2/dtoken-go/com/log/dlog"
+	"github.com/Zany2/dtoken-go/com/log/nop"
+	"github.com/Zany2/dtoken-go/com/pool/ants"
+	"github.com/Zany2/dtoken-go/com/storage/memory"
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
+	"github.com/Zany2/dtoken-go/core/manager"
 	"strings"
 	"time"
 )
@@ -535,100 +539,99 @@ func (b *Builder) Clone() *Builder {
 }
 
 // Build 构建 Manager 实例并打印启动 Banner
-//func (b *Builder) Build() *manager.Manager {
-//	if b.cookieConfig == nil {
-//		b.cookieConfig = config.DefaultCookieConfig()
-//	}
-//
-//	cfg := &config.Config{
-//		TokenName:              b.tokenName,
-//		Timeout:                b.timeout,
-//		RenewMaxRefresh:        b.maxRefresh, // 注意：此处应为 RenewMaxRefresh
-//		RenewInterval:          b.renewInterval,
-//		ActiveTimeout:          b.activeTimeout,
-//		ConcurrencyScope:       config.ConcurrencyScopeAccount, // ⚠️ 重要：Builder 目前未暴露此配置！
-//		IsConcurrent:           b.isConcurrent,
-//		IsShare:                b.isShare,
-//		MaxLoginCount:          b.maxLoginCount,
-//		IsReadBody:             b.isReadBody,
-//		IsReadHeader:           b.isReadHeader,
-//		IsReadCookie:           b.isReadCookie,
-//		TokenStyle:             b.tokenStyle,
-//		TokenSessionCheckLogin: b.tokenSessionCheckLogin,
-//		AutoRenew:              b.autoRenew,
-//		JwtSecretKey:           b.jwtSecretKey,
-//		IsLog:                  b.isLog,
-//		IsPrintBanner:          b.isPrintBanner,
-//		KeyPrefix:              b.keyPrefix,
-//		CookieConfig:           b.cookieConfig,
-//		AuthType:               b.authType,
-//	}
-//
-//	err := cfg.Validate()
-//	if err != nil {
-//		panic("Invalid config: " + err.Error())
-//	}
-//
-//	if b.generator == nil {
-//		b.generator = sgenerator.NewGenerator(b.timeout, b.tokenStyle, b.jwtSecretKey)
-//	}
-//	if b.storage == nil {
-//		b.storage = memory.NewStorage()
-//	}
-//	if b.codec == nil {
-//		b.codec = codec_json.NewJSONSerializer()
-//	}
-//
-//	if b.isLog {
-//		if b.log == nil {
-//			if b.logConfig == nil {
-//				b.logConfig = dlog.DefaultLoggerConfig()
-//			}
-//			b.log, err = dlog.NewLoggerWithConfig(b.logConfig)
-//			if err != nil {
-//				panic("Invalid LoggerConfig: " + err.Error())
-//			}
-//		}
-//	} else {
-//		b.log = nop.NewNopLogger()
-//	}
-//
-//	if b.autoRenew {
-//		if b.pool == nil {
-//			if b.renewPoolConfig == nil {
-//				b.renewPoolConfig = ants.DefaultRenewPoolConfig()
-//			}
-//			err = b.renewPoolConfig.Validate()
-//			if err != nil {
-//				panic("Invalid RenewPoolConfig: " + err.Error())
-//			}
-//			b.pool, err = ants.NewRenewPoolManagerWithConfig(b.renewPoolConfig)
-//			if err != nil {
-//				panic(err)
-//			}
-//		}
-//
-//		if b.renewPoolConfig.PrintStatusInterval > 0 {
-//			ticker := time.NewTicker(b.renewPoolConfig.PrintStatusInterval)
-//			go func() {
-//				defer ticker.Stop()
-//				for {
-//					select {
-//					case <-ticker.C:
-//						running, capacity, usage := b.pool.Stats()
-//						b.log.Infof(
-//							"RenewPool Status: Capacity=%d, Running=%d, Usage=%.2f%%",
-//							capacity, running, usage*100,
-//						)
-//					}
-//				}
-//			}()
-//		}
-//	}
-//
-//	if b.isPrintBanner {
-//		banner.PrintWithConfig(cfg)
-//	}
-//
-//	return manager.NewManager(cfg, b.generator, b.storage, b.codec, b.log, b.pool, b.customPermissionListFunc, b.customRoleListFunc)
-//}
+func (b *Builder) Build() *manager.Manager {
+	if b.cookieConfig == nil {
+		b.cookieConfig = config.DefaultCookieConfig()
+	}
+
+	cfg := &config.Config{
+		AuthType:         b.authType,
+		KeyPrefix:        b.keyPrefix,
+		TokenName:        b.tokenName,
+		Timeout:          b.timeout,
+		AutoRenew:        b.autoRenew,
+		RenewMaxRefresh:  b.renewMaxRefresh,
+		RenewInterval:    b.renewInterval,
+		ActiveTimeout:    b.activeTimeout,
+		ConcurrencyScope: b.concurrencyScope,
+		IsConcurrent:     b.isConcurrent,
+		IsShare:          b.isShare,
+		MaxLoginCount:    b.maxLoginCount,
+		IsReadBody:       b.isReadBody,
+		IsReadHeader:     b.isReadHeader,
+		IsReadCookie:     b.isReadCookie,
+		TokenStyle:       b.tokenStyle,
+		JwtSecretKey:     b.jwtSecretKey,
+		IsLog:            b.isLog,
+		IsPrintBanner:    b.isPrintBanner,
+		CookieConfig:     b.cookieConfig,
+	}
+
+	err := cfg.Validate()
+	if err != nil {
+		panic("Build Manager Invalid config err: " + err.Error())
+	}
+
+	if b.generator == nil {
+		b.generator = dgenerator.NewGenerator(b.timeout, b.jwtSecretKey, b.tokenStyle)
+	}
+	if b.storage == nil {
+		b.storage = memory.NewStorage()
+	}
+	if b.codec == nil {
+		b.codec = djson.NewJSONSerializer()
+	}
+
+	if b.isLog {
+		if b.log == nil {
+			if b.logConfig == nil {
+				b.logConfig = dlog.DefaultLoggerConfig()
+			}
+			b.log, err = dlog.NewLoggerWithConfig(b.logConfig)
+			if err != nil {
+				panic("Build Manager Invalid LoggerConfig err: " + err.Error())
+			}
+		}
+	} else {
+		b.log = nop.NewNopLogger()
+	}
+
+	if b.autoRenew {
+		if b.pool == nil {
+			if b.renewPoolConfig == nil {
+				b.renewPoolConfig = ants.DefaultRenewPoolConfig()
+			}
+			err = b.renewPoolConfig.Validate()
+			if err != nil {
+				panic("Build Manager Invalid RenewPoolConfig err: " + err.Error())
+			}
+			b.pool, err = ants.NewRenewPoolManagerWithConfig(b.renewPoolConfig)
+			if err != nil {
+				panic("Build Manager NewRenewPoolManagerWithConfig err: " + err.Error())
+			}
+		}
+
+		if b.renewPoolConfig.PrintStatusInterval > 0 {
+			ticker := time.NewTicker(b.renewPoolConfig.PrintStatusInterval)
+			go func() {
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ticker.C:
+						running, capacity, usage := b.pool.Stats()
+						b.log.Infof(
+							"RenewPool Status: Capacity=%d, Running=%d, Usage=%.2f%%",
+							capacity, running, usage*100,
+						)
+					}
+				}
+			}()
+		}
+	}
+
+	if b.isPrintBanner {
+		// TODO 打印 Banner
+	}
+
+	return manager.NewManager(cfg, b.generator, b.storage, b.codec, b.log, b.pool, b.customPermissionListFunc, b.customRoleListFunc)
+}

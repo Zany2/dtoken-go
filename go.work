@@ -1,21 +1,22 @@
 go 1.25.0
 
 use (
-	./component/codec/json
-	./component/codec/jsonv2
-	./component/codec/msgpack
+	./com/codec/json
+	./com/codec/jsonv2
+	./com/codec/msgpack
+	./com/codec/base64
 
-	./component/storage/redis
-	./component/storage/memory
+	./com/storage/redis
+	./com/storage/memory
 
-	./component/generator/dgenerator
+	./com/generator/dgenerator
 
-	./component/log/nop
-	./component/log/gf
-	./component/log/dlog
+	./com/log/nop
+	./com/log/gf
+	./com/log/dlog
 
-	./component/pool/ants
+	./com/pool/ants
 
 	./core
-	./stputil
+	./dtoken
 )

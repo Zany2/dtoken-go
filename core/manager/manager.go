@@ -41,10 +41,11 @@ type Session struct {
 
 // TerminalInfo 终端信息
 type TerminalInfo struct {
-	Token    string `json:"token"`    // Token 令牌值
-	LoginID  string `json:"loginId"`  // LoginID 登录 ID
-	Device   string `json:"device"`   // Device 设备类型
-	DeviceId string `json:"deviceId"` // DeviceId 设备 ID
+	Token      string `json:"token"`      // Token 令牌值
+	LoginID    string `json:"loginId"`    // LoginID 登录 ID
+	Device     string `json:"device"`     // Device 设备类型
+	DeviceId   string `json:"deviceId"`   // DeviceId 设备 ID
+	CreateTime int64  `json:"createTime"` // CreateTime Token 创建时间戳
 }
 
 // DisableInfo 账号封禁信息
