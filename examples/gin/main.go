@@ -185,8 +185,8 @@ func handleLogin(c *gin.Context) {
 
 	// Add roles and permissions for admin user
 	// 为管理员用户添加角色和权限
-	//_ = gindt.AddRoles(c.Request.Context(), req.Username, []string{"admin", "super-admin"})
-	//_ = gindt.AddPermissions(c.Request.Context(), req.Username, []string{"resource:read", "resource:write", "data:read", "all:access"})
+	_ = gindt.AddRoles(c.Request.Context(), req.Username, []string{"admin", "super-admin"})
+	_ = gindt.AddPermissions(c.Request.Context(), req.Username, []string{"resource:read", "resource:write", "data:read", "all:access"})
 
 	c.JSON(200, gin.H{
 		"code":    gindt.CodeSuccess,
@@ -222,11 +222,9 @@ func handleUserInfo(c *gin.Context) {
 		})
 		return
 	}
-	tokenValue := dCtx.GetTokenValue()
 
-	// Get login ID
-	// 获取登录 ID
-	loginID, err := gindt.GetLoginID(c.Request.Context(), tokenValue)
+	// Use convenience methods - 使用便捷方法
+	loginID, err := dCtx.GetLoginID(c.Request.Context())
 	if err != nil {
 		c.JSON(200, gin.H{
 			"code":    gindt.CodeNotLogin,
@@ -238,7 +236,7 @@ func handleUserInfo(c *gin.Context) {
 
 	// Get token info
 	// 获取 token 信息
-	tokenInfo, err := gindt.GetTokenInfo(c.Request.Context(), tokenValue)
+	tokenInfo, err := dCtx.GetTokenInfo(c.Request.Context())
 	if err != nil {
 		c.JSON(200, gin.H{
 			"code":    gindt.CodeServerError,
@@ -248,17 +246,17 @@ func handleUserInfo(c *gin.Context) {
 		return
 	}
 
-	// Get roles and permissions
-	// 获取角色和权限
-	roles, _ := gindt.GetRoles(c.Request.Context(), loginID)
-	permissions, _ := gindt.GetPermissions(c.Request.Context(), loginID)
+	// Get roles and permissions using convenience methods
+	// 使用便捷方法获取角色和权限
+	roles, _ := dCtx.GetRoles(c.Request.Context())
+	permissions, _ := dCtx.GetPermissions(c.Request.Context())
 
 	c.JSON(200, gin.H{
 		"code":    gindt.CodeSuccess,
 		"message": "User info retrieved successfully",
 		"data": gin.H{
 			"loginID":     loginID,
-			"tokenValue":  tokenValue,
+			"tokenValue":  dCtx.GetTokenValue(),
 			"device":      tokenInfo.Device,
 			"createTime":  time.Unix(tokenInfo.CreateTime, 0).Format("2006-01-02 15:04:05"),
 			"roles":       roles,
@@ -270,8 +268,8 @@ func handleUserInfo(c *gin.Context) {
 // handleLogout handles user logout
 // handleLogout 处理用户登出
 func handleLogout(c *gin.Context) {
-	// Get token value from context
-	// 从上下文获取 token 值
+	// Get DToken context
+	// 获取 DToken 上下文
 	dCtx, ok := gindt.GetDTokenContext(c)
 	if !ok {
 		c.JSON(200, gin.H{
@@ -281,9 +279,9 @@ func handleLogout(c *gin.Context) {
 		})
 		return
 	}
-	tokenValue := dCtx.GetTokenValue()
 
-	err := gindt.Logout(c.Request.Context(), tokenValue)
+	// Use convenience method - 使用便捷方法
+	err := dCtx.Logout(c.Request.Context())
 	if err != nil {
 		c.JSON(200, gin.H{
 			"code":    gindt.CodeServerError,
@@ -398,8 +396,8 @@ func handleResourceList(c *gin.Context) {
 // handleProfile 处理个人资料请求
 func handleProfile(c *gin.Context) {
 	dCtx, _ := gindt.GetDTokenContext(c)
-	tokenValue := dCtx.GetTokenValue()
-	loginID, _ := gindt.GetLoginID(c.Request.Context(), tokenValue)
+	// Use convenience method - 使用便捷方法
+	loginID, _ := dCtx.GetLoginID(c.Request.Context())
 
 	c.JSON(200, gin.H{
 		"code":    gindt.CodeSuccess,

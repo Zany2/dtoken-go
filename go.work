@@ -13,8 +13,8 @@ use (
 	./com/log/nop
 
 	./com/pool/ants
-	./com/storage/memory
 
+	./com/storage/memory
 	./com/storage/redis
 
 	./core
@@ -22,8 +22,8 @@ use (
 
 	./examples/gf
 	./examples/gin
-	./examples/zero
 	./examples/quick_start
+	./examples/zero
 
 	./integrations/fiber
 	./integrations/gf
