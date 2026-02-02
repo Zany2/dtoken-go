@@ -72,8 +72,8 @@ func initDToken() {
 
 	// 构建 manager（使用链式调用设置配置）
 	mgr := builder.NewBuilder().
-		Timeout(300).
-		AutoRenew(true).
+		Timeout(60).
+		IsShare(true).
 		IsPrintBanner(true).
 		SetStorage(storage).
 		Build()

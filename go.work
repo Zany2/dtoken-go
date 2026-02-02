@@ -19,12 +19,14 @@ use (
 
 	./core
 	./dtoken
+
 	./examples/gf
 	./examples/gin
-
+	./examples/zero
 	./examples/quick_start
 
 	./integrations/fiber
 	./integrations/gf
 	./integrations/gin
+	./integrations/zero
 )
