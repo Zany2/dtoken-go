@@ -142,8 +142,6 @@ func Replace(ctx context.Context, tokenValue string, authType ...string) error {
 
 // KickoutByDeviceAndDeviceId kicks out a user by device type and device ID.
 // KickoutByDeviceAndDeviceId 根据设备类型和设备ID踢人下线。
-// KickoutByDeviceAndDeviceId kicks out a user by device type and device ID.
-// KickoutByDeviceAndDeviceId 根据设备类型和设备ID踢人下线。
 // params: [0]=device, [1]=deviceId, [2]=authType (all optional)
 func KickoutByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error {
 	device, deviceId, authType := parseDeviceAndAuthType(params...)
@@ -164,8 +162,6 @@ func KickoutByDevice(ctx context.Context, loginID string, device string, authTyp
 	return mgr.KickoutByDevice(ctx, loginID, device)
 }
 
-// ReplaceByDeviceAndDeviceId replaces a user session by device type and device ID.
-// ReplaceByDeviceAndDeviceId 根据设备类型和设备ID顶人下线。
 // ReplaceByDeviceAndDeviceId replaces a user session by device type and device ID.
 // ReplaceByDeviceAndDeviceId 根据设备类型和设备ID顶人下线。
 // params: [0]=device, [1]=deviceId, [2]=authType (all optional)
