@@ -64,12 +64,14 @@ func DeleteAllManager() {
 
 // Login performs user login and returns a token.
 // Login 执行用户登录并返回 token。
-func Login(ctx context.Context, loginID string, authType string, deviceAndDeviceId ...string) (string, error) {
+// params: [0]=device, [1]=deviceId, [2]=authType (all optional)
+func Login(ctx context.Context, loginID string, params ...string) (string, error) {
+	device, deviceId, authType := parseDeviceAndAuthType(params...)
 	mgr, err := GetManager(authType)
 	if err != nil {
 		return "", err
 	}
-	return mgr.Login(ctx, loginID, deviceAndDeviceId...)
+	return mgr.Login(ctx, loginID, device, deviceId)
 }
 
 // LoginByToken performs login renewal based on an existing token.
@@ -94,12 +96,14 @@ func Logout(ctx context.Context, tokenValue string, authType ...string) error {
 
 // LogoutByDeviceAndDeviceId logs out a user by device type and device ID.
 // LogoutByDeviceAndDeviceId 根据设备类型和设备ID登出用户。
-func LogoutByDeviceAndDeviceId(ctx context.Context, loginID string, authType string, deviceAndDeviceId ...string) error {
+// params: [0]=device, [1]=deviceId, [2]=authType (all optional)
+func LogoutByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error {
+	device, deviceId, authType := parseDeviceAndAuthType(params...)
 	mgr, err := GetManager(authType)
 	if err != nil {
 		return err
 	}
-	return mgr.LogoutByDeviceAndDeviceId(ctx, loginID, deviceAndDeviceId...)
+	return mgr.LogoutByDeviceAndDeviceId(ctx, loginID, device, deviceId)
 }
 
 // LogoutByDevice logs out all terminals of a specific device type.
@@ -138,12 +142,16 @@ func Replace(ctx context.Context, tokenValue string, authType ...string) error {
 
 // KickoutByDeviceAndDeviceId kicks out a user by device type and device ID.
 // KickoutByDeviceAndDeviceId 根据设备类型和设备ID踢人下线。
-func KickoutByDeviceAndDeviceId(ctx context.Context, loginID string, authType string, deviceAndDeviceId ...string) error {
+// KickoutByDeviceAndDeviceId kicks out a user by device type and device ID.
+// KickoutByDeviceAndDeviceId 根据设备类型和设备ID踢人下线。
+// params: [0]=device, [1]=deviceId, [2]=authType (all optional)
+func KickoutByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error {
+	device, deviceId, authType := parseDeviceAndAuthType(params...)
 	mgr, err := GetManager(authType)
 	if err != nil {
 		return err
 	}
-	return mgr.KickoutByDeviceAndDeviceId(ctx, loginID, deviceAndDeviceId...)
+	return mgr.KickoutByDeviceAndDeviceId(ctx, loginID, device, deviceId)
 }
 
 // KickoutByDevice kicks out all terminals of a specific device type.
@@ -158,12 +166,16 @@ func KickoutByDevice(ctx context.Context, loginID string, device string, authTyp
 
 // ReplaceByDeviceAndDeviceId replaces a user session by device type and device ID.
 // ReplaceByDeviceAndDeviceId 根据设备类型和设备ID顶人下线。
-func ReplaceByDeviceAndDeviceId(ctx context.Context, loginID string, authType string, deviceAndDeviceId ...string) error {
+// ReplaceByDeviceAndDeviceId replaces a user session by device type and device ID.
+// ReplaceByDeviceAndDeviceId 根据设备类型和设备ID顶人下线。
+// params: [0]=device, [1]=deviceId, [2]=authType (all optional)
+func ReplaceByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error {
+	device, deviceId, authType := parseDeviceAndAuthType(params...)
 	mgr, err := GetManager(authType)
 	if err != nil {
 		return err
 	}
-	return mgr.ReplaceByDeviceAndDeviceId(ctx, loginID, deviceAndDeviceId...)
+	return mgr.ReplaceByDeviceAndDeviceId(ctx, loginID, device, deviceId)
 }
 
 // ReplaceByDevice replaces all terminals of a specific device type.
@@ -290,12 +302,12 @@ func GetOnlineTerminalCountByDevice(ctx context.Context, loginID string, device 
 
 // Disable disables an account for a specified duration.
 // Disable 封禁账号指定时长。
-func Disable(ctx context.Context, loginID string, duration time.Duration, authType string, reason ...string) error {
-	mgr, err := GetManager(authType)
+func Disable(ctx context.Context, loginID string, duration time.Duration, reason string, authType ...string) error {
+	mgr, err := GetManager(authType...)
 	if err != nil {
 		return err
 	}
-	return mgr.Disable(ctx, loginID, duration, reason...)
+	return mgr.Disable(ctx, loginID, duration, reason)
 }
 
 // Untie removes the disable status from an account.
@@ -364,32 +376,32 @@ func GetSessionByToken(ctx context.Context, tokenValue string, authType ...strin
 
 // GetTokenValueListByLoginID retrieves all tokens for a login ID.
 // GetTokenValueListByLoginID 获取指定登录 ID 的所有 Token。
-func GetTokenValueListByLoginID(ctx context.Context, loginID string, authType string, checkAlive ...bool) ([]string, error) {
-	mgr, err := GetManager(authType)
+func GetTokenValueListByLoginID(ctx context.Context, loginID string, checkAlive bool, authType ...string) ([]string, error) {
+	mgr, err := GetManager(authType...)
 	if err != nil {
 		return nil, err
 	}
-	return mgr.GetTokenValueListByLoginID(ctx, loginID, checkAlive...)
+	return mgr.GetTokenValueListByLoginID(ctx, loginID, checkAlive)
 }
 
 // GetTokenValueListByDeviceAndDeviceId retrieves all tokens for a specific device type and device ID.
 // GetTokenValueListByDeviceAndDeviceId 获取指定设备类型和设备 ID 的所有 Token。
-func GetTokenValueListByDeviceAndDeviceId(ctx context.Context, loginID string, device string, deviceId string, authType string, checkAlive ...bool) ([]string, error) {
-	mgr, err := GetManager(authType)
+func GetTokenValueListByDeviceAndDeviceId(ctx context.Context, loginID string, device string, deviceId string, checkAlive bool, authType ...string) ([]string, error) {
+	mgr, err := GetManager(authType...)
 	if err != nil {
 		return nil, err
 	}
-	return mgr.GetTokenValueListByDeviceAndDeviceId(ctx, loginID, device, deviceId, checkAlive...)
+	return mgr.GetTokenValueListByDeviceAndDeviceId(ctx, loginID, device, deviceId, checkAlive)
 }
 
 // GetTokenValueListByDevice retrieves all tokens for a specific device type.
 // GetTokenValueListByDevice 获取指定设备类型的所有 Token。
-func GetTokenValueListByDevice(ctx context.Context, loginID string, device string, authType string, checkAlive ...bool) ([]string, error) {
-	mgr, err := GetManager(authType)
+func GetTokenValueListByDevice(ctx context.Context, loginID string, device string, checkAlive bool, authType ...string) ([]string, error) {
+	mgr, err := GetManager(authType...)
 	if err != nil {
 		return nil, err
 	}
-	return mgr.GetTokenValueListByDevice(ctx, loginID, device, checkAlive...)
+	return mgr.GetTokenValueListByDevice(ctx, loginID, device, checkAlive)
 }
 
 // ============================================================================
@@ -669,4 +681,19 @@ func loadManager(authType string) (*manager.Manager, error) {
 		return nil, derror.ErrManagerInvalidType
 	}
 	return mgr, nil
+}
+
+// parseDeviceAndAuthType parses optional parameters: [0]=device, [1]=deviceId, [2]=authType
+// parseDeviceAndAuthType 解析可选参数：[0]=device, [1]=deviceId, [2]=authType
+func parseDeviceAndAuthType(params ...string) (device, deviceId, authType string) {
+	if len(params) > 0 {
+		device = params[0]
+	}
+	if len(params) > 1 {
+		deviceId = params[1]
+	}
+	if len(params) > 2 {
+		authType = params[2]
+	}
+	return
 }

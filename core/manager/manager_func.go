@@ -201,6 +201,12 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 	if err != nil {
 		return err
 	}
+
+	// 检查账号是否被封禁
+	if m.isDisable(ctx, tokenInfo.LoginID) {
+		return derror.ErrAccountDisabled
+	}
+
 	sess, err := m.getSession(ctx, tokenInfo.LoginID)
 	if err != nil {
 		return err
@@ -1421,38 +1427,34 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device ..
 		return ""
 	}
 
-	// 从最新的开始遍历（从后往前），找到第一个有效的 token
-	for i := len(candidates) - 1; i >= 0; i-- {
-		terminalInfo := candidates[i]
+	// 获取最后一个（最新的）token 并直接复活
+	// 注意：如果 token 还在 session 中，说明它没有被踢出或顶替
+	// 即使过期了，我们也可以通过重置 TTL 来复活它
+	terminalInfo := candidates[len(candidates)-1]
 
-		// 使用 getTokenInfo 检查 token 是否有效
-		_, err := m.getTokenInfo(ctx, terminalInfo.Token)
-		if err != nil {
-			// Token 无效、已过期、被踢出或被顶替，尝试下一个
-			continue
-		}
+	// 续期 session
+	_ = m.storage.Expire(ctx, m.getSessionKey(terminalInfo.LoginID), m.getExpiration())
 
-		// 找到有效的 token,可以复用
-		// 续期 session
-		_ = m.storage.Expire(ctx, m.getSessionKey(terminalInfo.LoginID), m.getExpiration())
+	// 续期 Token（如果已过期，这会复活它）
+	tokenInfo := TokenInfo{
+		AuthType:   m.config.AuthType,
+		LoginID:    terminalInfo.LoginID,
+		Device:     terminalInfo.Device,
+		DeviceId:   terminalInfo.DeviceId,
+		CreateTime: terminalInfo.CreateTime,
+	}
+	_ = m.storage.Set(ctx, m.getTokenKey(terminalInfo.Token), tokenInfo, m.getExpiration())
 
-		// 续期 Token
-		_ = m.storage.Expire(ctx, m.getTokenKey(terminalInfo.Token), m.getExpiration())
-
-		// 续期或重新设置 metadata
-		if m.config.RenewInterval > 0 {
-			_ = m.storage.Set(ctx, m.getRenewKey(terminalInfo.Token), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second)
-		}
-		// 设置最大不活跃时长
-		if m.config.ActiveTimeout > 0 {
-			_ = m.storage.Set(ctx, m.getActiveKey(terminalInfo.Token), time.Now().Unix(), m.getExpiration())
-		}
-
-		return terminalInfo.Token
+	// 续期或重新设置 metadata
+	if m.config.RenewInterval > 0 {
+		_ = m.storage.Set(ctx, m.getRenewKey(terminalInfo.Token), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second)
+	}
+	// 设置最大不活跃时长
+	if m.config.ActiveTimeout > 0 {
+		_ = m.storage.Set(ctx, m.getActiveKey(terminalInfo.Token), time.Now().Unix(), m.getExpiration())
 	}
 
-	// 所有 token 都不可用
-	return ""
+	return terminalInfo.Token
 }
 
 // removeOldestTerminalInfoAndToken removes the oldest terminal and its token (internal method).
@@ -1466,7 +1468,7 @@ func (m *Manager) removeOldestTerminalInfoAndToken(ctx context.Context, sess *Se
 				return err
 			}
 			// 设置token状态为踢出
-			if err := m.storage.Set(ctx, m.getTokenKey(terminalInfo.Token), TokenStateKickOut, m.getExpiration()); err != nil {
+			if err := m.storage.Set(ctx, m.getTokenKey(terminalInfo.Token), string(TokenStateKickOut), m.getExpiration()); err != nil {
 				return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 			}
 			// 清理 metadata
@@ -1487,7 +1489,7 @@ func (m *Manager) removeOldestTerminalInfoAndToken(ctx context.Context, sess *Se
 			return err
 		}
 		// 设置token状态为踢出
-		if err := m.storage.Set(ctx, m.getTokenKey(terminalInfo.Token), TokenStateKickOut, m.getExpiration()); err != nil {
+		if err := m.storage.Set(ctx, m.getTokenKey(terminalInfo.Token), string(TokenStateKickOut), m.getExpiration()); err != nil {
 			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
 		// 清理 metadata
@@ -1522,7 +1524,7 @@ func (m *Manager) removeTerminalInfosAndTokens(ctx context.Context, sess *Sessio
 
 		// 将所有的Token设置为踢出
 		for _, info := range terminalInfos {
-			err := m.storage.Set(ctx, m.getTokenKey(info.Token), TokenStateKickOut, m.getExpiration())
+			err := m.storage.Set(ctx, m.getTokenKey(info.Token), string(TokenStateKickOut), m.getExpiration())
 			if err != nil {
 				return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 			}
@@ -1553,7 +1555,7 @@ func (m *Manager) removeTerminalInfosAndTokens(ctx context.Context, sess *Sessio
 
 	// 将所有的Token设置为踢出
 	for _, terminalInfo := range oldTerminalInfos {
-		err := m.storage.Set(ctx, m.getTokenKey(terminalInfo.Token), TokenStateKickOut, m.getExpiration())
+		err := m.storage.Set(ctx, m.getTokenKey(terminalInfo.Token), string(TokenStateKickOut), m.getExpiration())
 		if err != nil {
 			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
@@ -1688,7 +1690,7 @@ func (m *Manager) processTerminals(
 		token := info.Token
 
 		// 设置 token 状态
-		if err = m.storage.Set(ctx, m.getTokenKey(token), state, m.getExpiration()); err != nil {
+		if err = m.storage.Set(ctx, m.getTokenKey(token), string(state), m.getExpiration()); err != nil {
 			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
 

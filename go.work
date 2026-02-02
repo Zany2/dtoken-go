@@ -1,22 +1,30 @@
 go 1.25.0
 
 use (
+	./com/codec/base64
 	./com/codec/json
 	./com/codec/jsonv2
 	./com/codec/msgpack
-	./com/codec/base64
-
-	./com/storage/redis
-	./com/storage/memory
 
 	./com/generator/dgenerator
+	./com/log/dlog
+	./com/log/gf
 
 	./com/log/nop
-	./com/log/gf
-	./com/log/dlog
 
 	./com/pool/ants
+	./com/storage/memory
+
+	./com/storage/redis
 
 	./core
 	./dtoken
+	./examples/gf
+	./examples/gin
+
+	./examples/quick_start
+
+	./integrations/fiber
+	./integrations/gf
+	./integrations/gin
 )

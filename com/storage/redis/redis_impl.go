@@ -14,7 +14,7 @@ var ErrKeyNotFound = errors.New("key not found")
 
 // Config Redis配置
 type Config struct {
-	// Host Redis 服务器主机地址，例如 "127.0.0.1" 或 "redis.example.com"
+	// Host Redis 服务器主机地址，例如 "127.0.0.1" 或 "redis.examples.com"
 	Host string
 	// Port Redis 服务器端口号，默认通常为 6379
 	Port int
@@ -103,6 +103,10 @@ func (s *Storage) Set(ctx context.Context, key string, value any, expiration tim
 func (s *Storage) Get(ctx context.Context, key string) (any, error) {
 	val, err := s.client.Get(ctx, key).Result()
 	if err != nil {
+		// 键不存在时返回 nil, nil（这是正常情况，不是错误）
+		if err == redis.Nil {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return val, nil
@@ -110,7 +114,15 @@ func (s *Storage) Get(ctx context.Context, key string) (any, error) {
 
 // GetAndDelete 原子获取并删除键
 func (s *Storage) GetAndDelete(ctx context.Context, key string) (any, error) {
-	return s.client.GetDel(ctx, key).Result()
+	val, err := s.client.GetDel(ctx, key).Result()
+	if err != nil {
+		// 键不存在时返回 nil, nil（这是正常情况，不是错误）
+		if err == redis.Nil {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return val, nil
 }
 
 // Delete 删除键

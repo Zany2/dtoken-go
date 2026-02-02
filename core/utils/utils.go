@@ -1,7 +1,10 @@
 // @Author daixk 2026/1/22 13:46:00
 package utils
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // ToBytes 将任意类型转换为字节切片
 func ToBytes(value any) ([]byte, error) {
@@ -41,7 +44,7 @@ func ToInt64(value any) (int64, error) {
 	case uint32:
 		return int64(v), nil
 	case uint64:
-		if v > uint64(^int64(0)) {
+		if v > math.MaxInt64 {
 			return 0, fmt.Errorf("uint64 value %d overflows int64", v)
 		}
 		return int64(v), nil

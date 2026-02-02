@@ -31,13 +31,13 @@ type TokenInfo struct {
 
 // Session 会话对象,用于存储用户数据
 type Session struct {
-	AuthType             string         `json:"authType"`             // AuthType 认证体系类型
-	LoginID              string         `json:"loginId"`              // LoginID 登录 ID
-	CreateTime           int64          `json:"createTime"`           // CreateTime 创建时间
-	TerminalInfos        []TerminalInfo `json:"terminalInfos"`        // TerminalInfos 终端信息列表
-	Permissions          []string       `json:"permissions"`          // Permissions 权限列表
-	Roles                []string       `json:"roles"`                // Roles 角色列表
-	HistoryTerminalCount int64          `json:"historyTerminalCount"` // HistoryTerminalCount 历史总计登录设备数量
+	AuthType             string         `json:"authType"`                       // AuthType 认证体系类型
+	LoginID              string         `json:"loginId"`                        // LoginID 登录 ID
+	CreateTime           int64          `json:"createTime"`                     // CreateTime 创建时间
+	TerminalInfos        []TerminalInfo `json:"terminalInfos,omitempty"`        // TerminalInfos 终端信息列表
+	Permissions          []string       `json:"permissions,omitempty"`          // Permissions 权限列表
+	Roles                []string       `json:"roles,omitempty"`                // Roles 角色列表
+	HistoryTerminalCount int64          `json:"historyTerminalCount,omitempty"` // HistoryTerminalCount 历史总计登录设备数量
 }
 
 // TerminalInfo 终端信息

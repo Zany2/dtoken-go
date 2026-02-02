@@ -46,7 +46,8 @@ func (s *Storage) Get(_ context.Context, key string) (any, error) {
 	if val, found := s.c.Get(key); found {
 		return val, nil
 	}
-	return nil, ErrKeyNotFound
+	// 键不存在时返回 nil, nil（这是正常情况，不是错误）
+	return nil, nil
 }
 
 // GetAndDelete 原子地获取并删除指定键
@@ -56,7 +57,8 @@ func (s *Storage) GetAndDelete(_ context.Context, key string) (any, error) {
 
 	val, found := s.c.Get(key)
 	if !found {
-		return nil, ErrKeyNotFound
+		// 键不存在时返回 nil, nil（这是正常情况，不是错误）
+		return nil, nil
 	}
 
 	s.c.Delete(key)
