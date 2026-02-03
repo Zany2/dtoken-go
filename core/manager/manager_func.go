@@ -271,9 +271,6 @@ func (m *Manager) LogoutByDevice(ctx context.Context, loginID string, device str
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
-	if device == "" {
-		return derror.ErrInvalidToken
-	}
 
 	return m.logoutTerminals(ctx, loginID, func(sess *Session) []TerminalInfo {
 		return sess.removeTerminalByDevice(device)
@@ -319,9 +316,6 @@ func (m *Manager) KickoutByDevice(ctx context.Context, loginID string, device st
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
-	if device == "" {
-		return derror.ErrInvalidToken
-	}
 
 	return m.processTerminals(ctx, loginID, func(sess *Session) []TerminalInfo {
 		return sess.removeTerminalByDevice(device)
@@ -358,9 +352,6 @@ func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
 func (m *Manager) ReplaceByDevice(ctx context.Context, loginID string, device string) error {
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
-	}
-	if device == "" {
-		return derror.ErrInvalidToken
 	}
 
 	return m.processTerminals(ctx, loginID, func(sess *Session) []TerminalInfo {
@@ -1367,6 +1358,37 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 // Internal Login Logic - 内部登录逻辑
 // ============================================================================
 
+// cleanExpiredTerminals removes expired tokens from session (internal method).
+// cleanExpiredTerminals 清理会话中已过期的 token（内部方法）。
+func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) error {
+	if sess == nil || len(sess.TerminalInfos) == 0 {
+		return nil
+	}
+
+	var validTerminals []TerminalInfo
+	hasExpired := false
+
+	for _, ti := range sess.TerminalInfos {
+		// 尝试获取 token 信息，如果成功则说明 token 有效
+		_, err := m.getTokenInfo(ctx, ti.Token)
+		if err == nil {
+			validTerminals = append(validTerminals, ti)
+		} else {
+			hasExpired = true
+		}
+	}
+
+	// 如果有过期的 token，更新 session
+	if hasExpired {
+		sess.TerminalInfos = validTerminals
+		if err := m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // handleConcurrency handles login concurrency strategy (internal method).
 // handleConcurrency 处理登录并发策略（内部方法）。
 func (m *Manager) handleConcurrency(
@@ -1374,6 +1396,11 @@ func (m *Manager) handleConcurrency(
 	sess *Session,
 	loginID, device string,
 ) (reuseToken string, handled bool, err error) {
+	// 清理已过期的 token
+	if err = m.cleanExpiredTerminals(ctx, sess); err != nil {
+		return "", false, err
+	}
+
 	if !m.config.IsConcurrent {
 		// 不允许并发：踢掉旧会话
 		if m.config.ConcurrencyScope == config.ConcurrencyScopeAccount {
@@ -1876,15 +1903,15 @@ func (m *Manager) getExpiration() time.Duration {
 
 // getDeviceAndDeviceId extracts device type and device ID from parameters.
 // getDeviceAndDeviceId 获取设备类型和设备 ID。
+// 规则：device 和 deviceId 是两个独立的过滤维度，互不影响
 func (m *Manager) getDeviceAndDeviceId(deviceAndDeviceId ...string) (string, string) {
 	device := ""
 	deviceId := ""
 
 	if len(deviceAndDeviceId) > 0 {
-		if val := strings.TrimSpace(deviceAndDeviceId[0]); val != "" {
-			device = val
-		}
+		device = strings.TrimSpace(deviceAndDeviceId[0])
 	}
+
 	if len(deviceAndDeviceId) > 1 {
 		deviceId = strings.TrimSpace(deviceAndDeviceId[1])
 	}

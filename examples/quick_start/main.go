@@ -157,7 +157,7 @@ func initDToken() error {
 	// 设置全局管理器
 	dtoken.SetManager(mgr)
 
-	fmt.Println("✅ DToken 框架初始化成功")
+	fmt.Println("DToken 框架初始化成功")
 	return nil
 }
 
@@ -429,6 +429,28 @@ func handleGetOnlineTerminalCountByDevice(c *gin.Context) {
 	}
 
 	count, err := dtoken.GetOnlineTerminalCountByDevice(c.Request.Context(), loginID, device)
+	if err != nil {
+		fail(c, "获取在线终端数失败: "+err.Error())
+		return
+	}
+
+	success(c, gin.H{
+		"count": count,
+	})
+}
+
+// handleGetOnlineTerminalCountByDeviceAndDeviceId 获取指定设备和设备ID的在线终端数
+// GET /api/auth/online-count/:loginId/:device/:deviceId
+func handleGetOnlineTerminalCountByDeviceAndDeviceId(c *gin.Context) {
+	loginID := c.Param("loginId")
+	device := c.Param("device")
+	deviceId := c.Param("deviceId")
+	if loginID == "" || device == "" || deviceId == "" {
+		fail(c, "loginId、device 和 deviceId 不能为空")
+		return
+	}
+
+	count, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(c.Request.Context(), loginID, device, deviceId)
 	if err != nil {
 		fail(c, "获取在线终端数失败: "+err.Error())
 		return
@@ -1220,19 +1242,20 @@ func setupRoutes(r *gin.Engine) {
 		auth.POST("/login-by-token", handleLoginByToken) // Token 续期登录
 
 		// 需要验证的接口
-		auth.POST("/logout", authMiddleware(), handleLogout)                                               // 用户登出
-		auth.POST("/logout-by-device", authMiddleware(), handleLogoutByDevice)                             // 根据设备类型登出
-		auth.POST("/logout-by-device-id", authMiddleware(), handleLogoutByDeviceAndDeviceId)               // 根据设备和设备ID登出
-		auth.POST("/is-login", authMiddleware(), handleIsLogin)                                            // 检查是否登录
-		auth.POST("/check-login", authMiddleware(), handleCheckLogin)                                      // 验证登录状态
-		auth.POST("/get-login-id", authMiddleware(), handleGetLoginID)                                     // 获取登录ID
-		auth.POST("/get-token-info", authMiddleware(), handleGetTokenInfo)                                 // 获取Token信息
-		auth.POST("/get-device", authMiddleware(), handleGetDevice)                                        // 获取设备类型
-		auth.POST("/get-device-id", authMiddleware(), handleGetDeviceId)                                   // 获取设备ID
-		auth.POST("/get-token-create-time", authMiddleware(), handleGetTokenCreateTime)                    // 获取Token创建时间
-		auth.POST("/get-token-ttl", authMiddleware(), handleGetTokenTTL)                                   // 获取Token TTL
-		auth.GET("/online-count/:loginId", authMiddleware(), handleGetOnlineTerminalCount)                 // 获取在线终端总数
-		auth.GET("/online-count/:loginId/:device", authMiddleware(), handleGetOnlineTerminalCountByDevice) // 获取指定设备在线终端数
+		auth.POST("/logout", authMiddleware(), handleLogout)                                                                    // 用户登出
+		auth.POST("/logout-by-device", authMiddleware(), handleLogoutByDevice)                                                  // 根据设备类型登出
+		auth.POST("/logout-by-device-id", authMiddleware(), handleLogoutByDeviceAndDeviceId)                                    // 根据设备和设备ID登出
+		auth.POST("/is-login", authMiddleware(), handleIsLogin)                                                                 // 检查是否登录
+		auth.POST("/check-login", authMiddleware(), handleCheckLogin)                                                           // 验证登录状态
+		auth.POST("/get-login-id", authMiddleware(), handleGetLoginID)                                                          // 获取登录ID
+		auth.POST("/get-token-info", authMiddleware(), handleGetTokenInfo)                                                      // 获取Token信息
+		auth.POST("/get-device", authMiddleware(), handleGetDevice)                                                             // 获取设备类型
+		auth.POST("/get-device-id", authMiddleware(), handleGetDeviceId)                                                        // 获取设备ID
+		auth.POST("/get-token-create-time", authMiddleware(), handleGetTokenCreateTime)                                         // 获取Token创建时间
+		auth.POST("/get-token-ttl", authMiddleware(), handleGetTokenTTL)                                                        // 获取Token TTL
+		auth.GET("/online-count/:loginId", authMiddleware(), handleGetOnlineTerminalCount)                                      // 获取在线终端总数
+		auth.GET("/online-count/:loginId/:device", authMiddleware(), handleGetOnlineTerminalCountByDevice)                      // 获取指定设备在线终端数
+		auth.GET("/online-count/:loginId/:device/:deviceId", authMiddleware(), handleGetOnlineTerminalCountByDeviceAndDeviceId) // 获取指定设备和设备ID在线终端数
 	}
 
 	// ========== 在线状态管理接口 ==========
@@ -1299,7 +1322,7 @@ func setupRoutes(r *gin.Engine) {
 		disable.GET("/ttl/:loginId", handleGetDisableTTL)     // 获取封禁TTL
 	}
 
-	fmt.Println("✅ 所有路由注册完成")
+	fmt.Println("所有路由注册完成")
 }
 
 // ============================================================================
@@ -1313,7 +1336,7 @@ func main() {
 
 	// 初始化 DToken 框架
 	if err := initDToken(); err != nil {
-		fmt.Printf("❌ 初始化失败: %v\n", err)
+		fmt.Printf("初始化失败: %v\n", err)
 		return
 	}
 
@@ -1326,9 +1349,9 @@ func main() {
 
 	// 启动服务器
 	port := ":8080"
-	fmt.Printf("\n🚀 服务器启动成功，监听端口: %s\n", port)
+	fmt.Printf("\n服务器启动成功，监听端口: %s\n", port)
 	fmt.Println("========================================")
-	fmt.Println("📖 API 接口分类:")
+	fmt.Println("API 接口分类:")
 	fmt.Println("  - 认证接口: http://localhost:8080/api/auth/*")
 	fmt.Println("  - 在线管理: http://localhost:8080/api/online/*")
 	fmt.Println("  - 权限管理: http://localhost:8080/api/permission/*")
@@ -1338,6 +1361,6 @@ func main() {
 	fmt.Println("========================================")
 
 	if err := r.Run(port); err != nil {
-		fmt.Printf("❌ 服务器启动失败: %v\n", err)
+		fmt.Printf("服务器启动失败: %v\n", err)
 	}
 }
