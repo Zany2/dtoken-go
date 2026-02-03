@@ -370,13 +370,20 @@ func (m *Manager) Trigger(data *EventData) {
 	m.mu.RUnlock()
 
 	// 日志
+	extraInfo := ""
+	if len(data.Extra) > 0 {
+		extraInfo = fmt.Sprintf(", extra=%+v", data.Extra)
+	}
 	m.logger.Infof(
-		"Listener auth event triggered: event=%s, authType=%s, loginID=%s, device=%s,deviceId=%s listeners=%d",
+		"Listener event triggered: event=%s, authType=%s, token=%s, loginID=%s, device=%s, deviceId=%s, timestamp=%d%s, listeners=%d",
 		data.Event,
 		data.AuthType,
+		data.Token,
 		data.LoginID,
 		data.Device,
 		data.DeviceId,
+		data.Timestamp,
+		extraInfo,
 		len(listenersToCall),
 	)
 

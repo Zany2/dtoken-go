@@ -510,6 +510,9 @@ func (m *Manager) Disable(ctx context.Context, loginID string, duration time.Dur
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
+	// 触发销毁 Session 事件
+	m.triggerEvent(listener.EventDestroySession, loginID, "", "", "", nil)
+
 	// 4. 如果有终端信息，清理所有相关 token 数据
 	if sess != nil && len(sess.TerminalInfos) > 0 {
 		tokens := make([]string, len(sess.TerminalInfos))
@@ -865,13 +868,21 @@ func (m *Manager) HasPermission(ctx context.Context, loginID string, permission 
 		return false
 	}
 
+	hasPermission := false
 	for _, p := range sess.Permissions {
 		if m.matchPermission(p, permission) {
-			return true
+			hasPermission = true
+			break
 		}
 	}
 
-	return false
+	// 触发权限检查事件
+	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
+		"permission": permission,
+		"result":     hasPermission,
+	})
+
+	return hasPermission
 }
 
 // HasPermissionByToken checks if a user has a specific permission by token.
@@ -882,13 +893,27 @@ func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, p
 		return false
 	}
 
+	hasPermission := false
 	for _, p := range sess.Permissions {
 		if m.matchPermission(p, permission) {
-			return true
+			hasPermission = true
+			break
 		}
 	}
 
-	return false
+	// 触发权限检查事件
+	tokenInfo, _ := m.getTokenInfo(ctx, tokenValue)
+	device, deviceId := "", ""
+	if tokenInfo != nil {
+		device = tokenInfo.Device
+		deviceId = tokenInfo.DeviceId
+	}
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+		"permission": permission,
+		"result":     hasPermission,
+	})
+
+	return hasPermission
 }
 
 // HasPermissionsAnd checks if a user has all specified permissions (AND logic).
@@ -904,13 +929,22 @@ func (m *Manager) HasPermissionsAnd(ctx context.Context, loginID string, permiss
 	}
 
 	// 校验每一个必需权限
+	hasAll := true
 	for _, need := range permissions {
 		if !m.hasPermissionInList(sess.Permissions, need) {
-			return false
+			hasAll = false
+			break
 		}
 	}
 
-	return true
+	// 触发权限检查事件
+	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
+		"permissions": permissions,
+		"logic":       "AND",
+		"result":      hasAll,
+	})
+
+	return hasAll
 }
 
 // HasPermissionsAndByToken checks if a user has all specified permissions by token (AND logic).
@@ -922,13 +956,28 @@ func (m *Manager) HasPermissionsAndByToken(ctx context.Context, tokenValue strin
 	}
 
 	// 校验每一个必需权限
+	hasAll := true
 	for _, need := range permissions {
 		if !m.hasPermissionInList(sess.Permissions, need) {
-			return false
+			hasAll = false
+			break
 		}
 	}
 
-	return true
+	// 触发权限检查事件
+	tokenInfo, _ := m.getTokenInfo(ctx, tokenValue)
+	device, deviceId := "", ""
+	if tokenInfo != nil {
+		device = tokenInfo.Device
+		deviceId = tokenInfo.DeviceId
+	}
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+		"permissions": permissions,
+		"logic":       "AND",
+		"result":      hasAll,
+	})
+
+	return hasAll
 }
 
 // HasPermissionsOr checks if a user has any of the specified permissions (OR logic).
@@ -944,13 +993,22 @@ func (m *Manager) HasPermissionsOr(ctx context.Context, loginID string, permissi
 	}
 
 	// 任一权限匹配即通过
+	hasAny := false
 	for _, need := range permissions {
 		if m.hasPermissionInList(sess.Permissions, need) {
-			return true
+			hasAny = true
+			break
 		}
 	}
 
-	return false
+	// 触发权限检查事件
+	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
+		"permissions": permissions,
+		"logic":       "OR",
+		"result":      hasAny,
+	})
+
+	return hasAny
 }
 
 // HasPermissionsOrByToken checks if a user has any of the specified permissions by token (OR logic).
@@ -962,13 +1020,28 @@ func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string
 	}
 
 	// 任一权限匹配即通过
+	hasAny := false
 	for _, need := range permissions {
 		if m.hasPermissionInList(sess.Permissions, need) {
-			return true
+			hasAny = true
+			break
 		}
 	}
 
-	return false
+	// 触发权限检查事件
+	tokenInfo, _ := m.getTokenInfo(ctx, tokenValue)
+	device, deviceId := "", ""
+	if tokenInfo != nil {
+		device = tokenInfo.Device
+		deviceId = tokenInfo.DeviceId
+	}
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+		"permissions": permissions,
+		"logic":       "OR",
+		"result":      hasAny,
+	})
+
+	return hasAny
 }
 
 // ============================================================================
@@ -1104,13 +1177,21 @@ func (m *Manager) HasRole(ctx context.Context, loginID string, role string) bool
 		return false
 	}
 
+	hasRole := false
 	for _, r := range sess.Roles {
 		if r == role {
-			return true
+			hasRole = true
+			break
 		}
 	}
 
-	return false
+	// 触发角色检查事件
+	m.triggerEvent(listener.EventRoleCheck, loginID, "", "", "", map[string]any{
+		"role":   role,
+		"result": hasRole,
+	})
+
+	return hasRole
 }
 
 // HasRoleByToken checks if a user has a specific role by token.
@@ -1121,13 +1202,27 @@ func (m *Manager) HasRoleByToken(ctx context.Context, tokenValue string, role st
 		return false
 	}
 
+	hasRole := false
 	for _, r := range sess.Roles {
 		if r == role {
-			return true
+			hasRole = true
+			break
 		}
 	}
 
-	return false
+	// 触发角色检查事件
+	tokenInfo, _ := m.getTokenInfo(ctx, tokenValue)
+	device, deviceId := "", ""
+	if tokenInfo != nil {
+		device = tokenInfo.Device
+		deviceId = tokenInfo.DeviceId
+	}
+	m.triggerEvent(listener.EventRoleCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+		"role":   role,
+		"result": hasRole,
+	})
+
+	return hasRole
 }
 
 // HasRolesAnd checks if a user has all specified roles (AND logic).
@@ -1143,6 +1238,7 @@ func (m *Manager) HasRolesAnd(ctx context.Context, loginID string, roles []strin
 	}
 
 	// 校验每一个必需角色
+	hasAll := true
 	for _, need := range roles {
 		found := false
 		for _, r := range sess.Roles {
@@ -1152,11 +1248,19 @@ func (m *Manager) HasRolesAnd(ctx context.Context, loginID string, roles []strin
 			}
 		}
 		if !found {
-			return false
+			hasAll = false
+			break
 		}
 	}
 
-	return true
+	// 触发角色检查事件
+	m.triggerEvent(listener.EventRoleCheck, loginID, "", "", "", map[string]any{
+		"roles":  roles,
+		"logic":  "AND",
+		"result": hasAll,
+	})
+
+	return hasAll
 }
 
 // HasRolesAndByToken checks if a user has all specified roles by token (AND logic).
@@ -1168,6 +1272,7 @@ func (m *Manager) HasRolesAndByToken(ctx context.Context, tokenValue string, rol
 	}
 
 	// 校验每一个必需角色
+	hasAll := true
 	for _, need := range roles {
 		found := false
 		for _, r := range sess.Roles {
@@ -1177,11 +1282,25 @@ func (m *Manager) HasRolesAndByToken(ctx context.Context, tokenValue string, rol
 			}
 		}
 		if !found {
-			return false
+			hasAll = false
+			break
 		}
 	}
 
-	return true
+	// 触发角色检查事件
+	tokenInfo, _ := m.getTokenInfo(ctx, tokenValue)
+	device, deviceId := "", ""
+	if tokenInfo != nil {
+		device = tokenInfo.Device
+		deviceId = tokenInfo.DeviceId
+	}
+	m.triggerEvent(listener.EventRoleCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+		"roles":  roles,
+		"logic":  "AND",
+		"result": hasAll,
+	})
+
+	return hasAll
 }
 
 // HasRolesOr checks if a user has any of the specified roles (OR logic).
@@ -1197,15 +1316,27 @@ func (m *Manager) HasRolesOr(ctx context.Context, loginID string, roles []string
 	}
 
 	// 任一角色匹配即通过
+	hasAny := false
 	for _, need := range roles {
 		for _, r := range sess.Roles {
 			if r == need {
-				return true
+				hasAny = true
+				break
 			}
+		}
+		if hasAny {
+			break
 		}
 	}
 
-	return false
+	// 触发角色检查事件
+	m.triggerEvent(listener.EventRoleCheck, loginID, "", "", "", map[string]any{
+		"roles":  roles,
+		"logic":  "OR",
+		"result": hasAny,
+	})
+
+	return hasAny
 }
 
 // HasRolesOrByToken checks if a user has any of the specified roles by token (OR logic).
@@ -1217,15 +1348,33 @@ func (m *Manager) HasRolesOrByToken(ctx context.Context, tokenValue string, role
 	}
 
 	// 任一角色匹配即通过
+	hasAny := false
 	for _, need := range roles {
 		for _, r := range sess.Roles {
 			if r == need {
-				return true
+				hasAny = true
+				break
 			}
+		}
+		if hasAny {
+			break
 		}
 	}
 
-	return false
+	// 触发角色检查事件
+	tokenInfo, _ := m.getTokenInfo(ctx, tokenValue)
+	device, deviceId := "", ""
+	if tokenInfo != nil {
+		device = tokenInfo.Device
+		deviceId = tokenInfo.DeviceId
+	}
+	m.triggerEvent(listener.EventRoleCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+		"roles":  roles,
+		"logic":  "OR",
+		"result": hasAny,
+	})
+
+	return hasAny
 }
 
 // ============================================================================
@@ -1309,14 +1458,17 @@ func (m *Manager) getSession(ctx context.Context, loginID string, autoCreate ...
 	}
 	if sessData == nil {
 		if len(autoCreate) > 0 && autoCreate[0] {
-			return &Session{
+			newSession := &Session{
 				AuthType:      m.config.AuthType,
 				LoginID:       loginID,
 				CreateTime:    time.Now().Unix(),
 				TerminalInfos: make([]TerminalInfo, 0),
 				Permissions:   make([]string, 0),
 				Roles:         make([]string, 0),
-			}, nil
+			}
+			// 触发创建 Session 事件
+			m.triggerEvent(listener.EventCreateSession, loginID, "", "", "", nil)
+			return newSession, nil
 		}
 
 		return nil, derror.ErrSessionNotFound
@@ -1653,6 +1805,8 @@ func (m *Manager) removeTerminalInfosAndTokens(ctx context.Context, sess *Sessio
 			if err := m.storage.Delete(ctx, m.getSessionKey(sess.LoginID)); err != nil {
 				return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 			}
+			// 触发销毁 Session 事件
+			m.triggerEvent(listener.EventDestroySession, sess.LoginID, "", "", "", nil)
 		} else {
 			// 否则保存更新后的 session
 			if err := m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
@@ -1690,6 +1844,9 @@ func (m *Manager) removeTerminalInfosAndTokens(ctx context.Context, sess *Sessio
 	if err := m.storage.Delete(ctx, m.getSessionKey(sess.LoginID)); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
+
+	// 触发销毁 Session 事件
+	m.triggerEvent(listener.EventDestroySession, sess.LoginID, "", "", "", nil)
 
 	// 将所有的Token设置为踢出
 	for _, terminalInfo := range oldTerminalInfos {
@@ -1740,6 +1897,8 @@ func (m *Manager) logoutTerminals(
 		if err = m.storage.Delete(ctx, m.getSessionKey(loginID)); err != nil {
 			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
+		// 触发销毁 Session 事件
+		m.triggerEvent(listener.EventDestroySession, loginID, "", "", "", nil)
 	} else {
 		// 否则保存更新后的 session
 		if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
@@ -1824,6 +1983,8 @@ func (m *Manager) processTerminals(
 			if err = m.storage.Delete(ctx, m.getSessionKey(loginID)); err != nil {
 				return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 			}
+			// 触发销毁 Session 事件
+			m.triggerEvent(listener.EventDestroySession, loginID, "", "", "", nil)
 		} else {
 			// 否则保存更新后的 session
 			if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
@@ -1980,6 +2141,12 @@ func (m *Manager) renewFunc(ctx context.Context, tokenValue, loginID string) {
 	// 设置最小续期间隔标记
 	if m.config.RenewInterval > 0 {
 		_ = m.storage.Set(ctx, m.getRenewKey(tokenValue), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second)
+	}
+
+	// 触发续期事件
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	if err == nil {
+		m.triggerEvent(listener.EventRenew, loginID, tokenInfo.Device, tokenInfo.DeviceId, tokenValue, nil)
 	}
 }
 
