@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Zany2/dtoken-go/core/nonce"
+	"github.com/Zany2/dtoken-go/core/oauth2"
 	"strings"
 	"time"
 
@@ -84,6 +86,8 @@ func NewManager(
 		serializer:               serializer,
 		logger:                   logger,
 		pool:                     pool,
+		nonceManager:             nonce.NewNonceManager(cfg.AuthType, cfg.KeyPrefix, storage, nonce.DefaultNonceTTL),
+		oauth2Manager:            oauth2.NewOAuth2Server(cfg.AuthType, cfg.KeyPrefix, storage, serializer),
 		CustomPermissionListFunc: customPermissionListFunc,
 		CustomRoleListFunc:       CustomRoleListFunc,
 	}
@@ -1189,6 +1193,18 @@ func (m *Manager) GetCustomPermissionListFunc() func(loginID, authType string) (
 // GetCustomRoleListFunc 获取自定义角色列表获取函数。
 func (m *Manager) GetCustomRoleListFunc() func(loginID, authType string) ([]string, error) {
 	return m.CustomRoleListFunc
+}
+
+// GetNonceManager retrieves the nonce manager.
+// GetNonceManager 获取 Nonce 管理器。
+func (m *Manager) GetNonceManager() *nonce.NonceManager {
+	return m.nonceManager
+}
+
+// GetOAuth2Manager retrieves the OAuth2 manager.
+// GetOAuth2Manager 获取 OAuth2 管理器。
+func (m *Manager) GetOAuth2Manager() *oauth2.OAuth2Server {
+	return m.oauth2Manager
 }
 
 // ============================================================================
