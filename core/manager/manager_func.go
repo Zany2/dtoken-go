@@ -313,22 +313,6 @@ func (m *Manager) Kickout(ctx context.Context, tokenValue string) error {
 	}, TokenStateKickOut)
 }
 
-// Replace replaces a user session by token.
-// Replace 根据 Token 顶人下线。
-func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
-	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
-	if err != nil {
-		return err
-	}
-
-	return m.processTerminals(ctx, tokenInfo.LoginID, func(sess *Session) []TerminalInfo {
-		if info, ok := sess.removeTerminalByToken(tokenValue); ok {
-			return []TerminalInfo{info}
-		}
-		return nil
-	}, TokenStateReplaced)
-}
-
 // KickoutByDevice kicks out all terminals of a specific device type.
 // KickoutByDevice 根据设备类型踢人下线（踢掉该设备类型的所有终端）。
 func (m *Manager) KickoutByDevice(ctx context.Context, loginID string, device string) error {
@@ -351,6 +335,22 @@ func (m *Manager) KickoutByDeviceAndDeviceId(ctx context.Context, loginID string
 	return m.processTerminals(ctx, loginID, func(sess *Session) []TerminalInfo {
 		return sess.removeTerminalByDeviceAndDeviceId(device, deviceId)
 	}, TokenStateKickOut)
+}
+
+// Replace replaces a user session by token.
+// Replace 根据 Token 顶人下线。
+func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	if err != nil {
+		return err
+	}
+
+	return m.processTerminals(ctx, tokenInfo.LoginID, func(sess *Session) []TerminalInfo {
+		if info, ok := sess.removeTerminalByToken(tokenValue); ok {
+			return []TerminalInfo{info}
+		}
+		return nil
+	}, TokenStateReplaced)
 }
 
 // ReplaceByDevice replaces all terminals of a specific device type.
@@ -688,6 +688,16 @@ func (m *Manager) GetOnlineTerminalCount(ctx context.Context, loginID string) (i
 // GetOnlineTerminalCountByDevice 获取用户在指定设备类型的在线终端数量。
 func (m *Manager) GetOnlineTerminalCountByDevice(ctx context.Context, loginID, device string) (int, error) {
 	tokens, err := m.GetTokenValueListByDevice(ctx, loginID, device, true)
+	if err != nil {
+		return 0, err
+	}
+	return len(tokens), nil
+}
+
+// GetOnlineTerminalCountByDeviceAndDeviceId retrieves the count of online terminals for a specific device type and device ID.
+// GetOnlineTerminalCountByDeviceAndDeviceId 获取用户在指定设备类型和设备ID的在线终端数量。
+func (m *Manager) GetOnlineTerminalCountByDeviceAndDeviceId(ctx context.Context, loginID, device, deviceId string) (int, error) {
+	tokens, err := m.GetTokenValueListByDeviceAndDeviceId(ctx, loginID, device, deviceId, true)
 	if err != nil {
 		return 0, err
 	}

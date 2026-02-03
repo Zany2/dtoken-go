@@ -292,6 +292,16 @@ func GetOnlineTerminalCountByDevice(ctx context.Context, loginID string, device 
 	return mgr.GetOnlineTerminalCountByDevice(ctx, loginID, device)
 }
 
+// GetOnlineTerminalCountByDeviceAndDeviceId retrieves the number of online terminals for a specific device type and device ID.
+// GetOnlineTerminalCountByDeviceAndDeviceId 获取指定登录 ID、设备类型和设备ID的在线终端数。
+func GetOnlineTerminalCountByDeviceAndDeviceId(ctx context.Context, loginID string, device string, deviceId string, authType ...string) (int, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return 0, err
+	}
+	return mgr.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, loginID, device, deviceId)
+}
+
 // ============================================================================
 // Account Disable Management - 账号封禁管理
 // ============================================================================
