@@ -1,8 +1,6 @@
 // @Author daixk 2026/1/22 17:32:00
 package manager
 
-import "fmt"
-
 // ============================================================================
 // Terminal Management - 终端管理
 // ============================================================================
@@ -44,8 +42,6 @@ func (s *Session) removeTerminalByDevice(device string) []TerminalInfo {
 		}
 	}
 
-	fmt.Println(kept)
-	fmt.Println(removed)
 	s.TerminalInfos = kept
 	return removed
 }
