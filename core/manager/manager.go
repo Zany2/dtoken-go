@@ -4,6 +4,7 @@ package manager
 import (
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
+	"github.com/Zany2/dtoken-go/core/listener"
 	"github.com/Zany2/dtoken-go/core/nonce"
 	"github.com/Zany2/dtoken-go/core/oauth2"
 )
@@ -20,6 +21,7 @@ type Manager struct {
 
 	nonceManager  *nonce.NonceManager  // nonceManager Nonce管理器
 	oauth2Manager *oauth2.OAuth2Server // oauth2Manager OAuth2管理器
+	eventManager  *listener.Manager    // eventManager 事件管理器
 
 	CustomPermissionListFunc func(loginID, authType string) ([]string, error) // CustomPermissionListFunc 自定义权限列表获取函数
 	CustomRoleListFunc       func(loginID, authType string) ([]string, error) // CustomRoleListFunc 自定义角色列表获取函数

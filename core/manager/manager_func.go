@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Zany2/dtoken-go/core/listener"
 	"github.com/Zany2/dtoken-go/core/nonce"
 	"github.com/Zany2/dtoken-go/core/oauth2"
 	"strings"
@@ -88,6 +89,7 @@ func NewManager(
 		pool:                     pool,
 		nonceManager:             nonce.NewNonceManager(cfg.AuthType, cfg.KeyPrefix, storage, nonce.DefaultNonceTTL),
 		oauth2Manager:            oauth2.NewOAuth2Server(cfg.AuthType, cfg.KeyPrefix, storage, serializer),
+		eventManager:             listener.NewManager(logger),
 		CustomPermissionListFunc: customPermissionListFunc,
 		CustomRoleListFunc:       CustomRoleListFunc,
 	}
@@ -191,6 +193,9 @@ func (m *Manager) Login(ctx context.Context, loginID string, deviceAndDeviceId .
 		return "", err
 	}
 
+	// 触发登录事件
+	m.triggerEvent(listener.EventLogin, loginID, device, deviceId, token, nil)
+
 	return token, nil
 }
 
@@ -245,6 +250,9 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 	if m.config.ActiveTimeout > 0 {
 		_ = m.storage.Set(ctx, m.getActiveKey(tokenValue), time.Now().Unix(), m.getExpiration())
 	}
+
+	// 触发续期事件
+	m.triggerEvent(listener.EventRenew, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceId, tokenValue, nil)
 
 	return nil
 }
@@ -329,7 +337,12 @@ func (m *Manager) KickoutByDevice(ctx context.Context, loginID string, device st
 // KickoutByDeviceAndDeviceId kicks out a user by device type and device ID.
 // KickoutByDeviceAndDeviceId 根据设备类型和设备ID踢人下线。
 func (m *Manager) KickoutByDeviceAndDeviceId(ctx context.Context, loginID string, deviceAndDeviceId ...string) error {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+
 	device, deviceId := m.getDeviceAndDeviceId(deviceAndDeviceId...)
+
 	return m.processTerminals(ctx, loginID, func(sess *Session) []TerminalInfo {
 		return sess.removeTerminalByDeviceAndDeviceId(device, deviceId)
 	}, TokenStateKickOut)
@@ -366,6 +379,10 @@ func (m *Manager) ReplaceByDevice(ctx context.Context, loginID string, device st
 // ReplaceByDeviceAndDeviceId replaces a user session by device type and device ID.
 // ReplaceByDeviceAndDeviceId 根据设备类型和设备ID顶人下线。
 func (m *Manager) ReplaceByDeviceAndDeviceId(ctx context.Context, loginID string, deviceAndDeviceId ...string) error {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+
 	device, deviceId := m.getDeviceAndDeviceId(deviceAndDeviceId...)
 	return m.processTerminals(ctx, loginID, func(sess *Session) []TerminalInfo {
 		return sess.removeTerminalByDeviceAndDeviceId(device, deviceId)
@@ -513,6 +530,12 @@ func (m *Manager) Disable(ctx context.Context, loginID string, duration time.Dur
 		}
 	}
 
+	// 触发封禁事件
+	m.triggerEvent(listener.EventDisable, loginID, "", "", "", map[string]any{
+		"reason":   disableInfo.DisableReason,
+		"duration": duration.Seconds(),
+	})
+
 	return nil
 }
 
@@ -526,6 +549,9 @@ func (m *Manager) Untie(ctx context.Context, loginID string) error {
 	if err := m.storage.Delete(ctx, m.getDisableKey(loginID)); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
+
+	// 触发解禁事件
+	m.triggerEvent(listener.EventUntie, loginID, "", "", "", nil)
 
 	return nil
 }
@@ -593,6 +619,9 @@ func (m *Manager) GetDisableTTL(ctx context.Context, loginID string) (int64, err
 // GetSession retrieves session information for a login ID.
 // GetSession 获取指定登录 ID 的会话信息。
 func (m *Manager) GetSession(ctx context.Context, loginID string) (*Session, error) {
+	if loginID == "" {
+		return nil, derror.ErrIDIsEmpty
+	}
 	return m.getSession(ctx, loginID)
 }
 
@@ -611,6 +640,10 @@ func (m *Manager) GetSessionByToken(ctx context.Context, tokenValue string) (*Se
 // GetTokenValueListByLoginID retrieves all tokens for a login ID.
 // GetTokenValueListByLoginID 获取指定登录 ID 的所有 Token。
 func (m *Manager) GetTokenValueListByLoginID(ctx context.Context, loginID string, checkAlive ...bool) ([]string, error) {
+	if loginID == "" {
+		return nil, derror.ErrIDIsEmpty
+	}
+
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
 		// 仅当存储层真正出错时才返回 error；session 不存在视为 nil
@@ -672,6 +705,10 @@ func (m *Manager) GetTokenValueListByDeviceAndDeviceId(ctx context.Context, logi
 // GetOnlineTerminalCount retrieves the count of online terminals for a user.
 // GetOnlineTerminalCount 获取用户的在线终端数量。
 func (m *Manager) GetOnlineTerminalCount(ctx context.Context, loginID string) (int, error) {
+	if loginID == "" {
+		return 0, derror.ErrIDIsEmpty
+	}
+
 	tokens, err := m.GetTokenValueListByLoginID(ctx, loginID, true)
 	if err != nil {
 		return 0, err
@@ -706,6 +743,10 @@ func (m *Manager) GetOnlineTerminalCountByDeviceAndDeviceId(ctx context.Context,
 // AddPermissions adds permissions to a user.
 // AddPermissions 为用户添加权限。
 func (m *Manager) AddPermissions(ctx context.Context, loginID string, permissions []string) error {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
 		return err
@@ -742,6 +783,10 @@ func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, 
 // RemovePermissions removes permissions from a user.
 // RemovePermissions 删除用户的指定权限。
 func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permissions []string) error {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
 		return err
@@ -778,6 +823,10 @@ func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue strin
 // GetPermissions retrieves the permission list for a user.
 // GetPermissions 获取用户的权限列表。
 func (m *Manager) GetPermissions(ctx context.Context, loginID string) ([]string, error) {
+	if loginID == "" {
+		return nil, derror.ErrIDIsEmpty
+	}
+
 	// 自定义权限列表获取函数
 	if m.CustomPermissionListFunc != nil {
 		return m.CustomPermissionListFunc(loginID, m.config.AuthType)
@@ -807,6 +856,10 @@ func (m *Manager) GetPermissionsByToken(ctx context.Context, tokenValue string) 
 // HasPermission checks if a user has a specific permission.
 // HasPermission 检查用户是否拥有指定权限。
 func (m *Manager) HasPermission(ctx context.Context, loginID string, permission string) bool {
+	if loginID == "" {
+		return false
+	}
+
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
 		return false
@@ -841,6 +894,10 @@ func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, p
 // HasPermissionsAnd checks if a user has all specified permissions (AND logic).
 // HasPermissionsAnd 检查用户是否拥有所有指定权限（AND 逻辑）。
 func (m *Manager) HasPermissionsAnd(ctx context.Context, loginID string, permissions []string) bool {
+	if loginID == "" {
+		return false
+	}
+
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
 		return false
@@ -877,6 +934,10 @@ func (m *Manager) HasPermissionsAndByToken(ctx context.Context, tokenValue strin
 // HasPermissionsOr checks if a user has any of the specified permissions (OR logic).
 // HasPermissionsOr 检查用户是否拥有任一指定权限（OR 逻辑）。
 func (m *Manager) HasPermissionsOr(ctx context.Context, loginID string, permissions []string) bool {
+	if loginID == "" {
+		return false
+	}
+
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
 		return false
@@ -917,6 +978,10 @@ func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string
 // AddRoles adds roles to a user.
 // AddRoles 为用户添加角色。
 func (m *Manager) AddRoles(ctx context.Context, loginID string, roles []string) error {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+
 	// 获取Session
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
@@ -955,6 +1020,10 @@ func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles 
 // RemoveRoles removes roles from a user.
 // RemoveRoles 删除用户的指定角色。
 func (m *Manager) RemoveRoles(ctx context.Context, loginID string, roles []string) error {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+
 	// 获取Session
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
@@ -993,6 +1062,10 @@ func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, rol
 // GetRoles retrieves the role list for a user.
 // GetRoles 获取用户的角色列表。
 func (m *Manager) GetRoles(ctx context.Context, loginID string) ([]string, error) {
+	if loginID == "" {
+		return nil, derror.ErrIDIsEmpty
+	}
+
 	// 自定义角色列表获取函数
 	if m.CustomRoleListFunc != nil {
 		return m.CustomRoleListFunc(loginID, m.config.AuthType)
@@ -1022,6 +1095,10 @@ func (m *Manager) GetRolesByToken(ctx context.Context, tokenValue string) ([]str
 // HasRole checks if a user has a specific role.
 // HasRole 检查用户是否拥有指定角色。
 func (m *Manager) HasRole(ctx context.Context, loginID string, role string) bool {
+	if loginID == "" {
+		return false
+	}
+
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
 		return false
@@ -1056,6 +1133,10 @@ func (m *Manager) HasRoleByToken(ctx context.Context, tokenValue string, role st
 // HasRolesAnd checks if a user has all specified roles (AND logic).
 // HasRolesAnd 检查用户是否拥有所有指定角色（AND 逻辑）。
 func (m *Manager) HasRolesAnd(ctx context.Context, loginID string, roles []string) bool {
+	if loginID == "" {
+		return false
+	}
+
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
 		return false
@@ -1106,6 +1187,10 @@ func (m *Manager) HasRolesAndByToken(ctx context.Context, tokenValue string, rol
 // HasRolesOr checks if a user has any of the specified roles (OR logic).
 // HasRolesOr 检查用户是否拥有任一指定角色（OR 逻辑）。
 func (m *Manager) HasRolesOr(ctx context.Context, loginID string, roles []string) bool {
+	if loginID == "" {
+		return false
+	}
+
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
 		return false
@@ -1676,7 +1761,16 @@ func (m *Manager) logoutTerminals(
 	}
 
 	// 清理附属 metadata
-	return m.cleanTokenMetadata(ctx, tokens)
+	if err = m.cleanTokenMetadata(ctx, tokens); err != nil {
+		return err
+	}
+
+	// 触发登出事件
+	for _, info := range removed {
+		m.triggerEvent(listener.EventLogout, loginID, info.Device, info.DeviceId, info.Token, nil)
+	}
+
+	return nil
 }
 
 // cleanTokenMetadata cleans token metadata in batch (internal method).
@@ -1755,6 +1849,21 @@ func (m *Manager) processTerminals(
 		// 删除活跃时间 key
 		if err = m.storage.Delete(ctx, m.getActiveKey(token)); err != nil {
 			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
+	}
+
+	// 触发对应事件
+	var event listener.Event
+	switch state {
+	case TokenStateKickOut:
+		event = listener.EventKickout
+	case TokenStateReplaced:
+		event = listener.EventReplace
+	}
+
+	if event != "" {
+		for _, info := range removedTerminals {
+			m.triggerEvent(event, loginID, info.Device, info.DeviceId, info.Token, nil)
 		}
 	}
 
@@ -1906,6 +2015,25 @@ func (m *Manager) getActiveKey(tokenValue string) string {
 // getDisableKey 获取账号禁用状态存储键。
 func (m *Manager) getDisableKey(loginID string) string {
 	return m.config.KeyPrefix + m.config.AuthType + DisableKeyPrefix + loginID
+}
+
+// triggerEvent triggers an event through the event manager.
+// triggerEvent 通过事件管理器触发事件。
+func (m *Manager) triggerEvent(event listener.Event, loginID, device, deviceId, token string, extra map[string]any) {
+	if m.eventManager == nil {
+		return
+	}
+
+	m.eventManager.Trigger(&listener.EventData{
+		Event:     event,
+		AuthType:  m.config.AuthType,
+		LoginID:   loginID,
+		Device:    device,
+		DeviceId:  deviceId,
+		Token:     token,
+		Extra:     extra,
+		Timestamp: time.Now().Unix(),
+	})
 }
 
 // getExpiration calculates token expiration duration from configuration.

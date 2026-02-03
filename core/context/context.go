@@ -7,6 +7,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/manager"
+	"github.com/Zany2/dtoken-go/core/oauth2"
 )
 
 const (
@@ -530,4 +531,54 @@ func (c *DTokenContext) GetSessionByToken(ctx context.Context) (*manager.Session
 		return nil, derror.ErrNotLogin
 	}
 	return c.manager.GetSessionByToken(ctx, token)
+}
+
+// ============================================================================
+// 11. Nonce Management Methods - Nonce 管理方法
+// ============================================================================
+
+// GenerateNonce generates a new nonce
+// GenerateNonce 生成新的 nonce
+func (c *DTokenContext) GenerateNonce(ctx context.Context) (string, error) {
+	return c.manager.GenerateNonce(ctx)
+}
+
+// VerifyNonce verifies and consumes a nonce (one-time use)
+// VerifyNonce 验证并消费 nonce（一次性使用）
+func (c *DTokenContext) VerifyNonce(ctx context.Context, nonce string) bool {
+	return c.manager.VerifyNonce(ctx, nonce)
+}
+
+// VerifyAndConsumeNonce verifies and consumes a nonce, returns error if invalid
+// VerifyAndConsumeNonce 验证并消费 nonce，无效时返回错误
+func (c *DTokenContext) VerifyAndConsumeNonce(ctx context.Context, nonce string) error {
+	return c.manager.VerifyAndConsumeNonce(ctx, nonce)
+}
+
+// IsNonceValid checks if a nonce is valid without consuming it
+// IsNonceValid 检查 nonce 是否有效（不消费）
+func (c *DTokenContext) IsNonceValid(ctx context.Context, nonce string) bool {
+	return c.manager.IsNonceValid(ctx, nonce)
+}
+
+// ============================================================================
+// 12. OAuth2 Management Methods - OAuth2 管理方法
+// ============================================================================
+
+// ValidateOAuth2AccessToken validates an OAuth2 access token
+// ValidateOAuth2AccessToken 验证 OAuth2 访问令牌
+func (c *DTokenContext) ValidateOAuth2AccessToken(ctx context.Context, accessToken string) bool {
+	return c.manager.ValidateOAuth2AccessToken(ctx, accessToken)
+}
+
+// ValidateOAuth2AccessTokenAndGetInfo validates OAuth2 access token and gets info
+// ValidateOAuth2AccessTokenAndGetInfo 验证 OAuth2 访问令牌并获取信息
+func (c *DTokenContext) ValidateOAuth2AccessTokenAndGetInfo(ctx context.Context, accessToken string) (*oauth2.AccessToken, error) {
+	return c.manager.ValidateOAuth2AccessTokenAndGetInfo(ctx, accessToken)
+}
+
+// RevokeOAuth2Token revokes an OAuth2 access token and its refresh token
+// RevokeOAuth2Token 撤销 OAuth2 访问令牌及其刷新令牌
+func (c *DTokenContext) RevokeOAuth2Token(ctx context.Context, accessToken string) error {
+	return c.manager.RevokeOAuth2Token(ctx, accessToken)
 }
