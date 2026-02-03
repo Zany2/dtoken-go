@@ -2079,34 +2079,49 @@ func (m *Manager) filterTokens(ctx context.Context, terminals []TerminalInfo, ch
 // matchPermission matches permission with wildcard support (internal method).
 // matchPermission 权限匹配（支持通配符）（内部方法）。
 func (m *Manager) matchPermission(pattern, permission string) bool {
-	// 精确匹配或通配符
-	if pattern == PermissionWildcard || pattern == permission {
+	// 全通配符匹配所有权限
+	if pattern == PermissionWildcard {
 		return true
 	}
 
-	// 支持通配符，例如 user:* 匹配 user:add, user:delete等
-	wildcardSuffix := PermissionSeparator + PermissionWildcard
-	if strings.HasSuffix(pattern, wildcardSuffix) {
-		prefix := strings.TrimSuffix(pattern, PermissionWildcard)
-		return strings.HasPrefix(permission, prefix)
+	// 精确匹配
+	if pattern == permission {
+		return true
 	}
 
-	// 支持 user:*:view 这样的模式
-	if strings.Contains(pattern, PermissionWildcard) {
-		parts := strings.Split(pattern, PermissionSeparator)
-		permParts := strings.Split(permission, PermissionSeparator)
-		if len(parts) != len(permParts) {
+	// 如果 pattern 不包含通配符，则不匹配
+	if !strings.Contains(pattern, PermissionWildcard) {
+		return false
+	}
+
+	// 自动检测分隔符：优先使用 pattern 中的分隔符
+	separator := PermissionSeparator // 默认使用 ":"
+	if strings.Contains(pattern, "/") {
+		separator = "/" // 如果包含 "/"，则使用 URL 路径格式
+	}
+
+	// 通配符匹配：按段分割并逐段比较
+	patternParts := strings.Split(pattern, separator)
+	permParts := strings.Split(permission, separator)
+
+	// 段数必须一致（避免意外越权）
+	if len(patternParts) != len(permParts) {
+		return false
+	}
+
+	// 逐段匹配
+	for i := range patternParts {
+		// 如果 pattern 的当前段是通配符，则该段匹配
+		if patternParts[i] == PermissionWildcard {
+			continue
+		}
+		// 如果 pattern 的当前段不是通配符，则必须精确匹配
+		if patternParts[i] != permParts[i] {
 			return false
 		}
-		for i, part := range parts {
-			if part != PermissionWildcard && part != permParts[i] {
-				return false
-			}
-		}
-		return true
 	}
 
-	return false
+	return true
 }
 
 // hasPermissionInList checks if permission exists in permission list (internal method).
