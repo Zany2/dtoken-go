@@ -93,6 +93,15 @@ func (s *Session) removeOldestTerminal(device ...string) (TerminalInfo, bool) {
 	return TerminalInfo{}, false
 }
 
+// removeAllTerminals removes all terminals from TerminalInfos.
+// removeAllTerminals 移除所有终端。
+func (s *Session) removeAllTerminals() []TerminalInfo {
+	removed := make([]TerminalInfo, len(s.TerminalInfos))
+	copy(removed, s.TerminalInfos)
+	s.TerminalInfos = []TerminalInfo{}
+	return removed
+}
+
 // ----------------------------------------------------------------------------
 // Terminal Query Methods - 终端查询方法
 // ----------------------------------------------------------------------------

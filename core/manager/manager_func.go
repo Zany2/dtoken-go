@@ -302,6 +302,18 @@ func (m *Manager) LogoutByDeviceAndDeviceId(ctx context.Context, loginID string,
 	})
 }
 
+// LogoutByLoginID logs out all terminals for the specified loginID.
+// LogoutByLoginID 登出指定 loginID 的所有终端。
+func (m *Manager) LogoutByLoginID(ctx context.Context, loginID string) error {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+
+	return m.logoutTerminals(ctx, loginID, func(sess *Session) []TerminalInfo {
+		return sess.removeAllTerminals()
+	})
+}
+
 // ============================================================================
 // Online Status Management - 在线状态管理
 // ============================================================================
@@ -348,6 +360,18 @@ func (m *Manager) KickoutByDeviceAndDeviceId(ctx context.Context, loginID string
 	}, TokenStateKickOut)
 }
 
+// KickoutByLoginID kicks out all terminals for the specified loginID.
+// KickoutByLoginID 踢出指定 loginID 的所有终端。
+func (m *Manager) KickoutByLoginID(ctx context.Context, loginID string) error {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+
+	return m.processTerminals(ctx, loginID, func(sess *Session) []TerminalInfo {
+		return sess.removeAllTerminals()
+	}, TokenStateKickOut)
+}
+
 // Replace replaces a user session by token.
 // Replace 根据 Token 顶人下线。
 func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
@@ -386,6 +410,18 @@ func (m *Manager) ReplaceByDeviceAndDeviceId(ctx context.Context, loginID string
 	device, deviceId := m.getDeviceAndDeviceId(deviceAndDeviceId...)
 	return m.processTerminals(ctx, loginID, func(sess *Session) []TerminalInfo {
 		return sess.removeTerminalByDeviceAndDeviceId(device, deviceId)
+	}, TokenStateReplaced)
+}
+
+// ReplaceByLoginID replaces all terminals for the specified loginID.
+// ReplaceByLoginID 顶替指定 loginID 的所有终端。
+func (m *Manager) ReplaceByLoginID(ctx context.Context, loginID string) error {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+
+	return m.processTerminals(ctx, loginID, func(sess *Session) []TerminalInfo {
+		return sess.removeAllTerminals()
 	}, TokenStateReplaced)
 }
 
@@ -593,22 +629,30 @@ func (m *Manager) GetDisableInfo(ctx context.Context, loginID string) (*DisableI
 
 // GetDisableTTL retrieves the remaining disable time for an account in seconds.
 // GetDisableTTL 获取账号剩余封禁时间（秒）。
+// Returns:
+//
+//	-2: account is not disabled (未封禁)
+//	-1: account is permanently disabled (永久封禁)
+//	>0: remaining seconds until unban (剩余封禁秒数)
 func (m *Manager) GetDisableTTL(ctx context.Context, loginID string) (int64, error) {
 	ttl, err := m.storage.TTL(ctx, m.getDisableKey(loginID))
 	if err != nil {
 		return 0, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
+	// 存储适配器返回 time.Duration 类型，直接转换为 int64 即可
 	// 标准 Redis TTL 语义：
 	// -2: key 不存在（未封禁或已解封）
-	// -1: key 存在但无过期时间（理论上不应出现）
+	// -1: key 存在但无过期时间（永久封禁）
 	// >0: 剩余秒数
+	seconds := int64(ttl)
+
 	switch {
-	case ttl == -2*time.Second:
+	case seconds == -2:
 		return -2, nil // 未封禁
-	case ttl == -1*time.Second:
-		return -1, nil // 永久封禁（无 TTL）
-	case ttl > 0:
+	case seconds == -1:
+		return -1, nil // 永久封禁
+	case seconds > 0:
 		return int64(ttl.Seconds()), nil
 	default:
 		return 0, nil

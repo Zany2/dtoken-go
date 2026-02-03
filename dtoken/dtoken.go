@@ -117,6 +117,16 @@ func LogoutByDevice(ctx context.Context, loginID string, device string, authType
 	return mgr.LogoutByDevice(ctx, loginID, device)
 }
 
+// LogoutByLoginID logs out all terminals for the specified loginID.
+// LogoutByLoginID 登出指定 loginID 的所有终端。
+func LogoutByLoginID(ctx context.Context, loginID string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.LogoutByLoginID(ctx, loginID)
+}
+
 // ============================================================================
 // Online Status Management - 在线状态管理
 // ============================================================================
@@ -163,6 +173,16 @@ func KickoutByDevice(ctx context.Context, loginID string, device string, authTyp
 	return mgr.KickoutByDevice(ctx, loginID, device)
 }
 
+// KickoutByLoginID kicks out all terminals for the specified loginID.
+// KickoutByLoginID 踢出指定 loginID 的所有终端。
+func KickoutByLoginID(ctx context.Context, loginID string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.KickoutByLoginID(ctx, loginID)
+}
+
 // ReplaceByDeviceAndDeviceId replaces a user session by device type and device ID.
 // ReplaceByDeviceAndDeviceId 根据设备类型和设备ID顶人下线。
 // params: [0]=device, [1]=deviceId, [2]=authType (all optional)
@@ -183,6 +203,16 @@ func ReplaceByDevice(ctx context.Context, loginID string, device string, authTyp
 		return err
 	}
 	return mgr.ReplaceByDevice(ctx, loginID, device)
+}
+
+// ReplaceByLoginID replaces all terminals for the specified loginID.
+// ReplaceByLoginID 顶替指定 loginID 的所有终端。
+func ReplaceByLoginID(ctx context.Context, loginID string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.ReplaceByLoginID(ctx, loginID)
 }
 
 // ============================================================================

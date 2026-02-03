@@ -263,6 +263,25 @@ func handleLogoutByDeviceAndDeviceId(c *gin.Context) {
 	success(c, "登出成功")
 }
 
+// handleLogoutByLoginID 根据 LoginID 登出所有终端
+// POST /api/auth/logout-by-login-id
+func handleLogoutByLoginID(c *gin.Context) {
+	var req struct {
+		LoginID string `json:"loginId" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, "参数错误: "+err.Error())
+		return
+	}
+
+	if err := dtoken.LogoutByLoginID(c.Request.Context(), req.LoginID); err != nil {
+		fail(c, "登出失败: "+err.Error())
+		return
+	}
+
+	success(c, "登出成功")
+}
+
 // handleIsLogin 检查用户是否登录
 // POST /api/auth/is-login
 func handleIsLogin(c *gin.Context) {
@@ -423,6 +442,7 @@ func handleGetOnlineTerminalCount(c *gin.Context) {
 func handleGetOnlineTerminalCountByDevice(c *gin.Context) {
 	loginID := c.Param("loginId")
 	device := c.Param("device")
+	fmt.Println("loginID: %s, device: %s", loginID, device)
 	if loginID == "" || device == "" {
 		fail(c, "loginId 和 device 不能为空")
 		return
@@ -468,11 +488,13 @@ func handleGetOnlineTerminalCountByDeviceAndDeviceId(c *gin.Context) {
 // handleKickout 根据 Token 踢人下线
 // POST /api/online/kickout
 func handleKickout(c *gin.Context) {
-	// 从上下文获取token
-	token, _ := c.Get("token")
-	tokenStr := token.(string)
+	var req TokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, "参数错误: "+err.Error())
+		return
+	}
 
-	if err := dtoken.Kickout(c.Request.Context(), tokenStr); err != nil {
+	if err := dtoken.Kickout(c.Request.Context(), req.Token); err != nil {
 		fail(c, "踢人下线失败: "+err.Error())
 		return
 	}
@@ -507,6 +529,25 @@ func handleKickoutByDeviceAndDeviceId(c *gin.Context) {
 	}
 
 	if err := dtoken.KickoutByDeviceAndDeviceId(c.Request.Context(), req.LoginID, req.Device, req.DeviceId); err != nil {
+		fail(c, "踢人下线失败: "+err.Error())
+		return
+	}
+
+	success(c, "踢人下线成功")
+}
+
+// handleKickoutByLoginID 根据 LoginID 踢出所有终端
+// POST /api/online/kickout-by-login-id
+func handleKickoutByLoginID(c *gin.Context) {
+	var req struct {
+		LoginID string `json:"loginId" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, "参数错误: "+err.Error())
+		return
+	}
+
+	if err := dtoken.KickoutByLoginID(c.Request.Context(), req.LoginID); err != nil {
 		fail(c, "踢人下线失败: "+err.Error())
 		return
 	}
@@ -556,6 +597,25 @@ func handleReplaceByDeviceAndDeviceId(c *gin.Context) {
 	}
 
 	if err := dtoken.ReplaceByDeviceAndDeviceId(c.Request.Context(), req.LoginID, req.Device, req.DeviceId); err != nil {
+		fail(c, "顶人下线失败: "+err.Error())
+		return
+	}
+
+	success(c, "顶人下线成功")
+}
+
+// handleReplaceByLoginID 根据 LoginID 顶替所有终端
+// POST /api/online/replace-by-login-id
+func handleReplaceByLoginID(c *gin.Context) {
+	var req struct {
+		LoginID string `json:"loginId" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, "参数错误: "+err.Error())
+		return
+	}
+
+	if err := dtoken.ReplaceByLoginID(c.Request.Context(), req.LoginID); err != nil {
 		fail(c, "顶人下线失败: "+err.Error())
 		return
 	}
@@ -1245,6 +1305,7 @@ func setupRoutes(r *gin.Engine) {
 		auth.POST("/logout", authMiddleware(), handleLogout)                                                                    // 用户登出
 		auth.POST("/logout-by-device", authMiddleware(), handleLogoutByDevice)                                                  // 根据设备类型登出
 		auth.POST("/logout-by-device-id", authMiddleware(), handleLogoutByDeviceAndDeviceId)                                    // 根据设备和设备ID登出
+		auth.POST("/logout-by-login-id", authMiddleware(), handleLogoutByLoginID)                                               // 根据LoginID登出所有终端
 		auth.POST("/is-login", authMiddleware(), handleIsLogin)                                                                 // 检查是否登录
 		auth.POST("/check-login", authMiddleware(), handleCheckLogin)                                                           // 验证登录状态
 		auth.POST("/get-login-id", authMiddleware(), handleGetLoginID)                                                          // 获取登录ID
@@ -1264,9 +1325,11 @@ func setupRoutes(r *gin.Engine) {
 		online.POST("/kickout", handleKickout)                                 // 根据Token踢人下线
 		online.POST("/kickout-by-device", handleKickoutByDevice)               // 根据设备类型踢人下线
 		online.POST("/kickout-by-device-id", handleKickoutByDeviceAndDeviceId) // 根据设备和设备ID踢人下线
+		online.POST("/kickout-by-login-id", handleKickoutByLoginID)            // 根据LoginID踢出所有终端
 		online.POST("/replace", handleReplace)                                 // 根据Token顶人下线
 		online.POST("/replace-by-device", handleReplaceByDevice)               // 根据设备类型顶人下线
 		online.POST("/replace-by-device-id", handleReplaceByDeviceAndDeviceId) // 根据设备和设备ID顶人下线
+		online.POST("/replace-by-login-id", handleReplaceByLoginID)            // 根据LoginID顶替所有终端
 	}
 
 	// ========== 权限管理接口 ==========
