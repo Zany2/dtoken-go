@@ -9,6 +9,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/manager"
+	"github.com/Zany2/dtoken-go/core/oauth2"
 	"github.com/Zany2/dtoken-go/dtoken"
 )
 
@@ -218,10 +219,22 @@ func Logout(ctx context.Context, tokenValue string, authType ...string) error {
 	return dtoken.Logout(ctx, tokenValue, authType...)
 }
 
+// LogoutByDeviceAndDeviceId logs out by device type and device ID.
+// LogoutByDeviceAndDeviceId 根据设备类型和设备ID登出。
+func LogoutByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error {
+	return dtoken.LogoutByDeviceAndDeviceId(ctx, loginID, params...)
+}
+
 // LogoutByDevice logs out by device.
 // LogoutByDevice 根据设备类型登出。
 func LogoutByDevice(ctx context.Context, loginID string, device string, authType ...string) error {
 	return dtoken.LogoutByDevice(ctx, loginID, device, authType...)
+}
+
+// LogoutByLoginID logs out all terminals for the specified loginID.
+// LogoutByLoginID 登出指定 loginID 的所有终端。
+func LogoutByLoginID(ctx context.Context, loginID string, authType ...string) error {
+	return dtoken.LogoutByLoginID(ctx, loginID, authType...)
 }
 
 // Kickout kicks out a user session.
@@ -230,10 +243,46 @@ func Kickout(ctx context.Context, tokenValue string, authType ...string) error {
 	return dtoken.Kickout(ctx, tokenValue, authType...)
 }
 
+// KickoutByDeviceAndDeviceId kicks out by device type and device ID.
+// KickoutByDeviceAndDeviceId 根据设备类型和设备ID踢人下线。
+func KickoutByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error {
+	return dtoken.KickoutByDeviceAndDeviceId(ctx, loginID, params...)
+}
+
+// KickoutByDevice kicks out all terminals of a specific device type.
+// KickoutByDevice 根据设备类型踢人下线。
+func KickoutByDevice(ctx context.Context, loginID string, device string, authType ...string) error {
+	return dtoken.KickoutByDevice(ctx, loginID, device, authType...)
+}
+
+// KickoutByLoginID kicks out all terminals for the specified loginID.
+// KickoutByLoginID 踢出指定 loginID 的所有终端。
+func KickoutByLoginID(ctx context.Context, loginID string, authType ...string) error {
+	return dtoken.KickoutByLoginID(ctx, loginID, authType...)
+}
+
 // Replace replaces user offline.
 // Replace 顶人下线。
 func Replace(ctx context.Context, tokenValue string, authType ...string) error {
 	return dtoken.Replace(ctx, tokenValue, authType...)
+}
+
+// ReplaceByDeviceAndDeviceId replaces by device type and device ID.
+// ReplaceByDeviceAndDeviceId 根据设备类型和设备ID顶人下线。
+func ReplaceByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error {
+	return dtoken.ReplaceByDeviceAndDeviceId(ctx, loginID, params...)
+}
+
+// ReplaceByDevice replaces all terminals of a specific device type.
+// ReplaceByDevice 根据设备类型顶人下线。
+func ReplaceByDevice(ctx context.Context, loginID string, device string, authType ...string) error {
+	return dtoken.ReplaceByDevice(ctx, loginID, device, authType...)
+}
+
+// ReplaceByLoginID replaces all terminals for the specified loginID.
+// ReplaceByLoginID 顶替指定 loginID 的所有终端。
+func ReplaceByLoginID(ctx context.Context, loginID string, authType ...string) error {
+	return dtoken.ReplaceByLoginID(ctx, loginID, authType...)
 }
 
 // ============================================================================
@@ -270,10 +319,40 @@ func GetDevice(ctx context.Context, tokenValue string, authType ...string) (stri
 	return dtoken.GetDevice(ctx, tokenValue, authType...)
 }
 
+// GetDeviceId gets device ID from token.
+// GetDeviceId 从 Token 获取设备 ID。
+func GetDeviceId(ctx context.Context, tokenValue string, authType ...string) (string, error) {
+	return dtoken.GetDeviceId(ctx, tokenValue, authType...)
+}
+
+// GetTokenCreateTime gets token creation time.
+// GetTokenCreateTime 获取 Token 创建时间。
+func GetTokenCreateTime(ctx context.Context, tokenValue string, authType ...string) (int64, error) {
+	return dtoken.GetTokenCreateTime(ctx, tokenValue, authType...)
+}
+
 // GetTokenTTL gets token TTL.
 // GetTokenTTL 获取 Token 剩余时间。
 func GetTokenTTL(ctx context.Context, tokenValue string, authType ...string) (int64, error) {
 	return dtoken.GetTokenTTL(ctx, tokenValue, authType...)
+}
+
+// GetOnlineTerminalCount gets total number of online terminals.
+// GetOnlineTerminalCount 获取在线终端总数。
+func GetOnlineTerminalCount(ctx context.Context, loginID string, authType ...string) (int, error) {
+	return dtoken.GetOnlineTerminalCount(ctx, loginID, authType...)
+}
+
+// GetOnlineTerminalCountByDevice gets online terminal count by device.
+// GetOnlineTerminalCountByDevice 获取指定设备类型的在线终端数。
+func GetOnlineTerminalCountByDevice(ctx context.Context, loginID string, device string, authType ...string) (int, error) {
+	return dtoken.GetOnlineTerminalCountByDevice(ctx, loginID, device, authType...)
+}
+
+// GetOnlineTerminalCountByDeviceAndDeviceId gets online terminal count by device and device ID.
+// GetOnlineTerminalCountByDeviceAndDeviceId 获取指定设备类型和设备ID的在线终端数。
+func GetOnlineTerminalCountByDeviceAndDeviceId(ctx context.Context, loginID string, device string, deviceId string, authType ...string) (int, error) {
+	return dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, loginID, device, deviceId, authType...)
 }
 
 // ============================================================================
@@ -304,6 +383,12 @@ func GetDisableInfo(ctx context.Context, loginID string, authType ...string) (*m
 	return dtoken.GetDisableInfo(ctx, loginID, authType...)
 }
 
+// GetDisableTTL gets remaining disable time in seconds.
+// GetDisableTTL 获取账号剩余封禁时间（秒）。
+func GetDisableTTL(ctx context.Context, loginID string, authType ...string) (int64, error) {
+	return dtoken.GetDisableTTL(ctx, loginID, authType...)
+}
+
 // ============================================================================
 // Session Management - Session 管理
 // ============================================================================
@@ -326,6 +411,18 @@ func GetTokenValueListByLoginID(ctx context.Context, loginID string, checkAlive 
 	return dtoken.GetTokenValueListByLoginID(ctx, loginID, checkAlive, authType...)
 }
 
+// GetTokenValueListByDevice gets all tokens for a specific device type.
+// GetTokenValueListByDevice 获取指定设备类型的所有 Token。
+func GetTokenValueListByDevice(ctx context.Context, loginID string, device string, checkAlive bool, authType ...string) ([]string, error) {
+	return dtoken.GetTokenValueListByDevice(ctx, loginID, device, checkAlive, authType...)
+}
+
+// GetTokenValueListByDeviceAndDeviceId gets all tokens for a specific device type and device ID.
+// GetTokenValueListByDeviceAndDeviceId 获取指定设备类型和设备 ID 的所有 Token。
+func GetTokenValueListByDeviceAndDeviceId(ctx context.Context, loginID string, device string, deviceId string, checkAlive bool, authType ...string) ([]string, error) {
+	return dtoken.GetTokenValueListByDeviceAndDeviceId(ctx, loginID, device, deviceId, checkAlive, authType...)
+}
+
 // ============================================================================
 // Permission Verification - 权限验证
 // ============================================================================
@@ -336,10 +433,22 @@ func AddPermissions(ctx context.Context, loginID string, permissions []string, a
 	return dtoken.AddPermissions(ctx, loginID, permissions, authType...)
 }
 
+// AddPermissionsByToken adds permissions by token.
+// AddPermissionsByToken 根据 Token 添加权限。
+func AddPermissionsByToken(ctx context.Context, tokenValue string, permissions []string, authType ...string) error {
+	return dtoken.AddPermissionsByToken(ctx, tokenValue, permissions, authType...)
+}
+
 // RemovePermissions removes permissions.
 // RemovePermissions 删除权限。
 func RemovePermissions(ctx context.Context, loginID string, permissions []string, authType ...string) error {
 	return dtoken.RemovePermissions(ctx, loginID, permissions, authType...)
+}
+
+// RemovePermissionsByToken removes permissions by token.
+// RemovePermissionsByToken 根据 Token 删除权限。
+func RemovePermissionsByToken(ctx context.Context, tokenValue string, permissions []string, authType ...string) error {
+	return dtoken.RemovePermissionsByToken(ctx, tokenValue, permissions, authType...)
 }
 
 // GetPermissions gets permission list.
@@ -348,10 +457,22 @@ func GetPermissions(ctx context.Context, loginID string, authType ...string) ([]
 	return dtoken.GetPermissions(ctx, loginID, authType...)
 }
 
+// GetPermissionsByToken gets permission list by token.
+// GetPermissionsByToken 根据 Token 获取权限列表。
+func GetPermissionsByToken(ctx context.Context, tokenValue string, authType ...string) ([]string, error) {
+	return dtoken.GetPermissionsByToken(ctx, tokenValue, authType...)
+}
+
 // HasPermission checks if has specified permission.
 // HasPermission 检查是否拥有指定权限。
 func HasPermission(ctx context.Context, loginID string, permission string, authType ...string) bool {
 	return dtoken.HasPermission(ctx, loginID, permission, authType...)
+}
+
+// HasPermissionByToken checks if has specified permission by token.
+// HasPermissionByToken 根据 Token 检查是否拥有指定权限。
+func HasPermissionByToken(ctx context.Context, tokenValue string, permission string, authType ...string) bool {
+	return dtoken.HasPermissionByToken(ctx, tokenValue, permission, authType...)
 }
 
 // HasPermissionsAnd checks if has all permissions (AND logic).
@@ -360,10 +481,22 @@ func HasPermissionsAnd(ctx context.Context, loginID string, permissions []string
 	return dtoken.HasPermissionsAnd(ctx, loginID, permissions, authType...)
 }
 
+// HasPermissionsAndByToken checks if has all permissions by token (AND logic).
+// HasPermissionsAndByToken 根据 Token 检查是否拥有所有权限（AND 逻辑）。
+func HasPermissionsAndByToken(ctx context.Context, tokenValue string, permissions []string, authType ...string) bool {
+	return dtoken.HasPermissionsAndByToken(ctx, tokenValue, permissions, authType...)
+}
+
 // HasPermissionsOr checks if has any permission (OR logic).
 // HasPermissionsOr 检查是否拥有任一权限（OR 逻辑）。
 func HasPermissionsOr(ctx context.Context, loginID string, permissions []string, authType ...string) bool {
 	return dtoken.HasPermissionsOr(ctx, loginID, permissions, authType...)
+}
+
+// HasPermissionsOrByToken checks if has any permission by token (OR logic).
+// HasPermissionsOrByToken 根据 Token 检查是否拥有任一权限（OR 逻辑）。
+func HasPermissionsOrByToken(ctx context.Context, tokenValue string, permissions []string, authType ...string) bool {
+	return dtoken.HasPermissionsOrByToken(ctx, tokenValue, permissions, authType...)
 }
 
 // ============================================================================
@@ -376,10 +509,22 @@ func AddRoles(ctx context.Context, loginID string, roles []string, authType ...s
 	return dtoken.AddRoles(ctx, loginID, roles, authType...)
 }
 
+// AddRolesByToken adds roles by token.
+// AddRolesByToken 根据 Token 添加角色。
+func AddRolesByToken(ctx context.Context, tokenValue string, roles []string, authType ...string) error {
+	return dtoken.AddRolesByToken(ctx, tokenValue, roles, authType...)
+}
+
 // RemoveRoles removes roles.
 // RemoveRoles 删除角色。
 func RemoveRoles(ctx context.Context, loginID string, roles []string, authType ...string) error {
 	return dtoken.RemoveRoles(ctx, loginID, roles, authType...)
+}
+
+// RemoveRolesByToken removes roles by token.
+// RemoveRolesByToken 根据 Token 删除角色。
+func RemoveRolesByToken(ctx context.Context, tokenValue string, roles []string, authType ...string) error {
+	return dtoken.RemoveRolesByToken(ctx, tokenValue, roles, authType...)
 }
 
 // GetRoles gets role list.
@@ -388,10 +533,22 @@ func GetRoles(ctx context.Context, loginID string, authType ...string) ([]string
 	return dtoken.GetRoles(ctx, loginID, authType...)
 }
 
+// GetRolesByToken gets role list by token.
+// GetRolesByToken 根据 Token 获取角色列表。
+func GetRolesByToken(ctx context.Context, tokenValue string, authType ...string) ([]string, error) {
+	return dtoken.GetRolesByToken(ctx, tokenValue, authType...)
+}
+
 // HasRole checks if has specified role.
 // HasRole 检查是否拥有指定角色。
 func HasRole(ctx context.Context, loginID string, role string, authType ...string) bool {
 	return dtoken.HasRole(ctx, loginID, role, authType...)
+}
+
+// HasRoleByToken checks if has specified role by token.
+// HasRoleByToken 根据 Token 检查是否拥有指定角色。
+func HasRoleByToken(ctx context.Context, tokenValue string, role string, authType ...string) bool {
+	return dtoken.HasRoleByToken(ctx, tokenValue, role, authType...)
 }
 
 // HasRolesAnd checks if has all roles (AND logic).
@@ -400,8 +557,124 @@ func HasRolesAnd(ctx context.Context, loginID string, roles []string, authType .
 	return dtoken.HasRolesAnd(ctx, loginID, roles, authType...)
 }
 
+// HasRolesAndByToken checks if has all roles by token (AND logic).
+// HasRolesAndByToken 根据 Token 检查是否拥有所有角色（AND 逻辑）。
+func HasRolesAndByToken(ctx context.Context, tokenValue string, roles []string, authType ...string) bool {
+	return dtoken.HasRolesAndByToken(ctx, tokenValue, roles, authType...)
+}
+
 // HasRolesOr checks if has any role (OR logic).
 // HasRolesOr 检查是否拥有任一角色（OR 逻辑）。
 func HasRolesOr(ctx context.Context, loginID string, roles []string, authType ...string) bool {
 	return dtoken.HasRolesOr(ctx, loginID, roles, authType...)
+}
+
+// HasRolesOrByToken checks if has any role by token (OR logic).
+// HasRolesOrByToken 根据 Token 检查是否拥有任一角色（OR 逻辑）。
+func HasRolesOrByToken(ctx context.Context, tokenValue string, roles []string, authType ...string) bool {
+	return dtoken.HasRolesOrByToken(ctx, tokenValue, roles, authType...)
+}
+
+// ============================================================================
+// Nonce Management - Nonce 管理
+// ============================================================================
+
+// GenerateNonce generates a new nonce.
+// GenerateNonce 生成新的 nonce。
+func GenerateNonce(ctx context.Context, authType ...string) (string, error) {
+	return dtoken.GenerateNonce(ctx, authType...)
+}
+
+// VerifyNonce verifies and consumes a nonce (one-time use).
+// VerifyNonce 验证并消费 nonce（一次性使用）。
+func VerifyNonce(ctx context.Context, nonce string, authType ...string) bool {
+	return dtoken.VerifyNonce(ctx, nonce, authType...)
+}
+
+// VerifyAndConsumeNonce verifies and consumes a nonce, returns error if invalid.
+// VerifyAndConsumeNonce 验证并消费 nonce，无效时返回错误。
+func VerifyAndConsumeNonce(ctx context.Context, nonce string, authType ...string) error {
+	return dtoken.VerifyAndConsumeNonce(ctx, nonce, authType...)
+}
+
+// IsNonceValid checks if a nonce is valid without consuming it.
+// IsNonceValid 检查 nonce 是否有效（不消费）。
+func IsNonceValid(ctx context.Context, nonce string, authType ...string) bool {
+	return dtoken.IsNonceValid(ctx, nonce, authType...)
+}
+
+// ============================================================================
+// OAuth2 Management - OAuth2 管理
+// ============================================================================
+
+// RegisterOAuth2Client registers an OAuth2 client.
+// RegisterOAuth2Client 注册 OAuth2 客户端。
+func RegisterOAuth2Client(client *oauth2.Client, authType ...string) error {
+	return dtoken.RegisterOAuth2Client(client, authType...)
+}
+
+// UnregisterOAuth2Client unregisters an OAuth2 client.
+// UnregisterOAuth2Client 注销 OAuth2 客户端。
+func UnregisterOAuth2Client(clientID string, authType ...string) error {
+	return dtoken.UnregisterOAuth2Client(clientID, authType...)
+}
+
+// GetOAuth2Client gets an OAuth2 client by ID.
+// GetOAuth2Client 根据 ID 获取 OAuth2 客户端。
+func GetOAuth2Client(clientID string, authType ...string) (*oauth2.Client, error) {
+	return dtoken.GetOAuth2Client(clientID, authType...)
+}
+
+// OAuth2Token unified token endpoint that dispatches to appropriate handler based on grant type.
+// OAuth2Token 统一的令牌端点，根据授权类型分发到相应的处理逻辑。
+func OAuth2Token(ctx context.Context, req *oauth2.TokenRequest, validateUser oauth2.UserValidator, authType ...string) (*oauth2.AccessToken, error) {
+	return dtoken.OAuth2Token(ctx, req, validateUser, authType...)
+}
+
+// GenerateOAuth2AuthorizationCode generates an authorization code.
+// GenerateOAuth2AuthorizationCode 生成授权码。
+func GenerateOAuth2AuthorizationCode(ctx context.Context, clientID, userID, redirectURI string, scopes []string, authType ...string) (*oauth2.AuthorizationCode, error) {
+	return dtoken.GenerateOAuth2AuthorizationCode(ctx, clientID, userID, redirectURI, scopes, authType...)
+}
+
+// ExchangeOAuth2CodeForToken exchanges authorization code for access token.
+// ExchangeOAuth2CodeForToken 用授权码换取访问令牌。
+func ExchangeOAuth2CodeForToken(ctx context.Context, code, clientID, clientSecret, redirectURI string, authType ...string) (*oauth2.AccessToken, error) {
+	return dtoken.ExchangeOAuth2CodeForToken(ctx, code, clientID, clientSecret, redirectURI, authType...)
+}
+
+// OAuth2ClientCredentialsToken gets access token using client credentials grant.
+// OAuth2ClientCredentialsToken 使用客户端凭证模式获取访问令牌。
+func OAuth2ClientCredentialsToken(ctx context.Context, clientID, clientSecret string, scopes []string, authType ...string) (*oauth2.AccessToken, error) {
+	return dtoken.OAuth2ClientCredentialsToken(ctx, clientID, clientSecret, scopes, authType...)
+}
+
+// OAuth2PasswordGrantToken gets access token using resource owner password credentials grant.
+// OAuth2PasswordGrantToken 使用密码模式获取访问令牌。
+func OAuth2PasswordGrantToken(ctx context.Context, clientID, clientSecret, username, password string, scopes []string, validateUser oauth2.UserValidator, authType ...string) (*oauth2.AccessToken, error) {
+	return dtoken.OAuth2PasswordGrantToken(ctx, clientID, clientSecret, username, password, scopes, validateUser, authType...)
+}
+
+// RefreshOAuth2AccessToken refreshes access token using refresh token.
+// RefreshOAuth2AccessToken 使用刷新令牌刷新访问令牌。
+func RefreshOAuth2AccessToken(ctx context.Context, clientID, refreshToken, clientSecret string, authType ...string) (*oauth2.AccessToken, error) {
+	return dtoken.RefreshOAuth2AccessToken(ctx, clientID, refreshToken, clientSecret, authType...)
+}
+
+// ValidateOAuth2AccessToken validates an access token.
+// ValidateOAuth2AccessToken 验证访问令牌。
+func ValidateOAuth2AccessToken(ctx context.Context, accessToken string, authType ...string) bool {
+	return dtoken.ValidateOAuth2AccessToken(ctx, accessToken, authType...)
+}
+
+// ValidateOAuth2AccessTokenAndGetInfo validates access token and gets info.
+// ValidateOAuth2AccessTokenAndGetInfo 验证访问令牌并获取信息。
+func ValidateOAuth2AccessTokenAndGetInfo(ctx context.Context, accessToken string, authType ...string) (*oauth2.AccessToken, error) {
+	return dtoken.ValidateOAuth2AccessTokenAndGetInfo(ctx, accessToken, authType...)
+}
+
+// RevokeOAuth2Token revokes an access token and its refresh token.
+// RevokeOAuth2Token 撤销访问令牌及其刷新令牌。
+func RevokeOAuth2Token(ctx context.Context, accessToken string, authType ...string) error {
+	return dtoken.RevokeOAuth2Token(ctx, accessToken, authType...)
 }

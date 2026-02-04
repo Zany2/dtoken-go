@@ -21,6 +21,7 @@ use (
 	./dtoken
 
 	./examples/gf
+	./examples/gf_v2
 	./examples/gin
 	./examples/quick_start
 	./examples/zero

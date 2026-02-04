@@ -3,6 +3,7 @@ package context
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/derror"
@@ -289,6 +290,36 @@ func (c *DTokenContext) ReplaceByDeviceAndDeviceId(ctx context.Context, deviceAn
 	return c.manager.ReplaceByDeviceAndDeviceId(ctx, loginID, deviceAndDeviceId...)
 }
 
+// LogoutByLoginID logs out all terminals for the current user
+// LogoutByLoginID 登出当前用户的所有终端
+func (c *DTokenContext) LogoutByLoginID(ctx context.Context) error {
+	loginID, err := c.GetLoginID(ctx)
+	if err != nil {
+		return err
+	}
+	return c.manager.LogoutByLoginID(ctx, loginID)
+}
+
+// KickoutByLoginID kicks out all terminals for the current user
+// KickoutByLoginID 踢出当前用户的所有终端
+func (c *DTokenContext) KickoutByLoginID(ctx context.Context) error {
+	loginID, err := c.GetLoginID(ctx)
+	if err != nil {
+		return err
+	}
+	return c.manager.KickoutByLoginID(ctx, loginID)
+}
+
+// ReplaceByLoginID replaces all terminals for the current user
+// ReplaceByLoginID 顶替当前用户的所有终端
+func (c *DTokenContext) ReplaceByLoginID(ctx context.Context) error {
+	loginID, err := c.GetLoginID(ctx)
+	if err != nil {
+		return err
+	}
+	return c.manager.ReplaceByLoginID(ctx, loginID)
+}
+
 // ============================================================================
 // 5. Token List Methods - Token列表方法
 // ============================================================================
@@ -347,6 +378,16 @@ func (c *DTokenContext) GetOnlineTerminalCountByDevice(ctx context.Context, devi
 	return c.manager.GetOnlineTerminalCountByDevice(ctx, loginID, device)
 }
 
+// GetOnlineTerminalCountByDeviceAndDeviceId gets online terminal count by device and device ID for the current user
+// GetOnlineTerminalCountByDeviceAndDeviceId 按设备和设备ID获取当前用户的在线终端数量
+func (c *DTokenContext) GetOnlineTerminalCountByDeviceAndDeviceId(ctx context.Context, device, deviceId string) (int, error) {
+	loginID, err := c.GetLoginID(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return c.manager.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, loginID, device, deviceId)
+}
+
 // ============================================================================
 // 7. Role Methods - 角色方法
 // ============================================================================
@@ -359,6 +400,16 @@ func (c *DTokenContext) GetRoles(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return c.manager.GetRoles(ctx, loginID)
+}
+
+// GetRolesByToken gets the roles using the current token
+// GetRolesByToken 使用当前 token 获取角色列表
+func (c *DTokenContext) GetRolesByToken(ctx context.Context) ([]string, error) {
+	token := c.GetTokenValue()
+	if token == "" {
+		return nil, derror.ErrNotLogin
+	}
+	return c.manager.GetRolesByToken(ctx, token)
 }
 
 // HasRole checks if the current user has the specified role
@@ -423,6 +474,16 @@ func (c *DTokenContext) GetPermissions(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return c.manager.GetPermissions(ctx, loginID)
+}
+
+// GetPermissionsByToken gets the permissions using the current token
+// GetPermissionsByToken 使用当前 token 获取权限列表
+func (c *DTokenContext) GetPermissionsByToken(ctx context.Context) ([]string, error) {
+	token := c.GetTokenValue()
+	if token == "" {
+		return nil, derror.ErrNotLogin
+	}
+	return c.manager.GetPermissionsByToken(ctx, token)
 }
 
 // HasPermission checks if the current user has the specified permission
@@ -507,6 +568,26 @@ func (c *DTokenContext) GetDisableTTL(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	return c.manager.GetDisableTTL(ctx, loginID)
+}
+
+// Disable disables the current user's account for a specified duration
+// Disable 封禁当前用户账号指定时长
+func (c *DTokenContext) Disable(ctx context.Context, duration time.Duration, reason ...string) error {
+	loginID, err := c.GetLoginID(ctx)
+	if err != nil {
+		return err
+	}
+	return c.manager.Disable(ctx, loginID, duration, reason...)
+}
+
+// Untie removes the disable status from the current user's account
+// Untie 解封当前用户账号
+func (c *DTokenContext) Untie(ctx context.Context) error {
+	loginID, err := c.GetLoginID(ctx)
+	if err != nil {
+		return err
+	}
+	return c.manager.Untie(ctx, loginID)
 }
 
 // ============================================================================
