@@ -5,7 +5,7 @@ import "time"
 
 // Default configuration constants | 默认配置常量
 const (
-	DefaultMinSize       = 100              // Minimum pool size | 最小协程数
+	DefaultMinSize       = 200              // Minimum pool size | 最小协程数
 	DefaultMaxSize       = 2000             // Maximum pool size | 最大协程数
 	DefaultScaleUpRate   = 0.8              // Scale-up threshold | 扩容阈值
 	DefaultScaleDownRate = 0.3              // Scale-down threshold | 缩容阈值
