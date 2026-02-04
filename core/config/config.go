@@ -65,6 +65,9 @@ type Config struct {
 	// IsPrintBanner 是否打印启动 Banner
 	IsPrintBanner bool
 
+	// AsyncEvent 是否异步触发事件（true=异步，false=同步）
+	AsyncEvent bool
+
 	// CookieConfig Cookie 配置
 	CookieConfig *CookieConfig
 }
@@ -112,6 +115,7 @@ func DefaultConfig() *Config {
 		JwtSecretKey:     "",
 		IsLog:            false,
 		IsPrintBanner:    true,
+		AsyncEvent:       true,
 		CookieConfig:     DefaultCookieConfig(),
 	}
 }
@@ -337,6 +341,12 @@ func (c *Config) SetIsLog(isLog bool) *Config {
 // SetIsPrintBanner 设置是否打印启动 Banner
 func (c *Config) SetIsPrintBanner(isPrint bool) *Config {
 	c.IsPrintBanner = isPrint
+	return c
+}
+
+// SetAsyncEvent 设置是否异步触发事件
+func (c *Config) SetAsyncEvent(asyncEvent bool) *Config {
+	c.AsyncEvent = asyncEvent
 	return c
 }
 

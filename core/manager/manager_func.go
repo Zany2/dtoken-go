@@ -98,6 +98,12 @@ func NewManager(
 // CloseManager closes the manager and releases all resources.
 // CloseManager 关闭管理器并释放所有资源。
 func (m *Manager) CloseManager() {
+	// Wait for all async events to complete
+	// 等待所有异步事件完成
+	if m.eventManager != nil {
+		m.eventManager.Wait()
+	}
+
 	// Flush and close logger if it implements LogControl interface
 	// 若日志记录器实现了 LogControl 接口则执行 Flush 和 Close
 	if logControl, ok := m.logger.(adapter.LogControl); ok {
@@ -233,26 +239,33 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 		return derror.ErrInvalidToken
 	}
 
-	sessionKey := m.getSessionKey(tokenInfo.LoginID)
-	tokenKey := m.getTokenKey(tokenValue)
+	// 异步续期 Token 和 Session
+	renewFunc := func() {
+		sessionKey := m.getSessionKey(tokenInfo.LoginID)
+		tokenKey := m.getTokenKey(tokenValue)
 
-	if err = m.storage.Expire(ctx, sessionKey, m.getExpiration()); err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-	}
-	if err = m.storage.Expire(ctx, tokenKey, m.getExpiration()); err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		// 续期 Session
+		_ = m.storage.Expire(context.Background(), sessionKey, m.getExpiration())
+		// 续期 Token
+		_ = m.storage.Expire(context.Background(), tokenKey, m.getExpiration())
+
+		// 更新 metadata
+		if m.config.RenewInterval > 0 {
+			_ = m.storage.Set(context.Background(), m.getRenewKey(tokenValue), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second)
+		}
+		if m.config.ActiveTimeout > 0 {
+			_ = m.storage.Set(context.Background(), m.getActiveKey(tokenValue), time.Now().Unix(), m.getExpiration())
+		}
+
+		// 触发续期事件
+		m.triggerEvent(listener.EventRenew, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceId, tokenValue, nil)
 	}
 
-	// 更新 metadata
-	if m.config.RenewInterval > 0 {
-		_ = m.storage.Set(ctx, m.getRenewKey(tokenValue), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second)
+	if m.pool != nil {
+		_ = m.pool.Submit(renewFunc)
+	} else {
+		go renewFunc()
 	}
-	if m.config.ActiveTimeout > 0 {
-		_ = m.storage.Set(ctx, m.getActiveKey(tokenValue), time.Now().Unix(), m.getExpiration())
-	}
-
-	// 触发续期事件
-	m.triggerEvent(listener.EventRenew, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceId, tokenValue, nil)
 
 	return nil
 }
@@ -2244,13 +2257,13 @@ func (m *Manager) getDisableKey(loginID string) string {
 }
 
 // triggerEvent triggers an event through the event manager.
-// triggerEvent 通过事件管理器触发事件。
+// triggerEvent 通过事件管理器触发事件（根据配置决定同步或异步）。
 func (m *Manager) triggerEvent(event listener.Event, loginID, device, deviceId, token string, extra map[string]any) {
 	if m.eventManager == nil {
 		return
 	}
 
-	m.eventManager.Trigger(&listener.EventData{
+	eventData := &listener.EventData{
 		Event:     event,
 		AuthType:  m.config.AuthType,
 		LoginID:   loginID,
@@ -2259,7 +2272,24 @@ func (m *Manager) triggerEvent(event listener.Event, loginID, device, deviceId, 
 		Token:     token,
 		Extra:     extra,
 		Timestamp: time.Now().Unix(),
-	})
+	}
+
+	// 根据配置决定同步或异步触发
+	if m.config.AsyncEvent {
+		// 异步触发
+		eventFunc := func() {
+			m.eventManager.Trigger(eventData)
+		}
+
+		if m.pool != nil {
+			_ = m.pool.Submit(eventFunc)
+		} else {
+			go eventFunc()
+		}
+	} else {
+		// 同步触发
+		m.eventManager.Trigger(eventData)
+	}
 }
 
 // getExpiration calculates token expiration duration from configuration.

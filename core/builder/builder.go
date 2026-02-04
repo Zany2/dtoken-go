@@ -36,6 +36,7 @@ type Builder struct {
 	jwtSecretKey     string                  // jwtSecretKey JWT 密钥
 	isLog            bool                    // isLog 是否开启日志输出
 	isPrintBanner    bool                    // isPrintBanner 是否打印启动 Banner
+	asyncEvent       bool                    // asyncEvent 是否异步触发事件
 
 	cookieConfig    *config.CookieConfig  // cookieConfig Cookie 配置
 	renewPoolConfig *ants.RenewPoolConfig // renewPoolConfig 续期协程池配置
@@ -73,6 +74,7 @@ func NewBuilder() *Builder {
 		jwtSecretKey:     dgenerator.DefaultJWTSecret,
 		isLog:            false,
 		isPrintBanner:    true,
+		asyncEvent:       true,
 
 		cookieConfig:    config.DefaultCookieConfig(),
 		renewPoolConfig: ants.DefaultRenewPoolConfig(),
@@ -208,6 +210,12 @@ func (b *Builder) IsLog(isLog bool) *Builder {
 // IsPrintBanner 设置是否打印启动 Banner
 func (b *Builder) IsPrintBanner(isPrint bool) *Builder {
 	b.isPrintBanner = isPrint
+	return b
+}
+
+// AsyncEvent 设置是否异步触发事件
+func (b *Builder) AsyncEvent(asyncEvent bool) *Builder {
+	b.asyncEvent = asyncEvent
 	return b
 }
 
@@ -565,6 +573,7 @@ func (b *Builder) Build() *manager.Manager {
 		JwtSecretKey:     b.jwtSecretKey,
 		IsLog:            b.isLog,
 		IsPrintBanner:    b.isPrintBanner,
+		AsyncEvent:       b.asyncEvent,
 		CookieConfig:     b.cookieConfig,
 	}
 
