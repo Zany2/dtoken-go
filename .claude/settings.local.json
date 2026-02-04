@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go build:*)",
+      "Bash(go fmt:*)",
+      "Bash(go vet:*)",
+      "Bash(gofmt:*)",
+      "Bash(go test:*)",
+      "Bash(go clean:*)",
+      "Bash(go run:*)",
+      "Bash(.banner_test.exe:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(grep:*)",
+      "Bash(ping:*)",
+      "Bash(timeout:*)",
+      "Bash(test_redis.exe:*)",
+      "Bash(.test_redis.exe:*)",
+      "Bash(go work sync:*)",
+      "Bash(go doc:*)",
+      "Bash(test:*)",
+      "Bash(swag init:*)",
+      "Bash(go install:*)",
+      "Bash(go env:*)",
+      "Bash(\"D:\\\\Go\\\\bin\\\\swag.exe\" init:*)",
+      "Bash(/d/Go/bin/swag.exe init:*)",
+      "Bash(find:*)"
+    ]
+  }
+}
