@@ -39,7 +39,8 @@ func NewManager(
 	serializer adapter.Codec,
 	logger adapter.Log,
 	pool adapter.Pool,
-	customPermissionListFunc, CustomRoleListFunc func(loginID, authType string) ([]string, error),
+	CustomPermissionListFunc, CustomRoleListFunc func(loginID, authType string) ([]string, error),
+	CustomPermissionListExtFunc, CustomRoleListExtFunc func(loginID, device, deviceId, authType string) ([]string, error),
 ) *Manager {
 
 	// Use default config if cfg is nil
@@ -81,17 +82,19 @@ func NewManager(
 	// Return initialized Manager instance
 	// 返回初始化完成的 Manager 实例
 	return &Manager{
-		config:                   cfg,
-		generator:                generator,
-		storage:                  storage,
-		serializer:               serializer,
-		logger:                   logger,
-		pool:                     pool,
-		nonceManager:             nonce.NewNonceManager(cfg.AuthType, cfg.KeyPrefix, storage, nonce.DefaultNonceTTL),
-		oauth2Manager:            oauth2.NewOAuth2Server(cfg.AuthType, cfg.KeyPrefix, storage, serializer),
-		eventManager:             listener.NewManager(logger),
-		CustomPermissionListFunc: customPermissionListFunc,
-		CustomRoleListFunc:       CustomRoleListFunc,
+		config:                      cfg,
+		generator:                   generator,
+		storage:                     storage,
+		serializer:                  serializer,
+		logger:                      logger,
+		pool:                        pool,
+		nonceManager:                nonce.NewNonceManager(cfg.AuthType, cfg.KeyPrefix, storage, nonce.DefaultNonceTTL),
+		oauth2Manager:               oauth2.NewOAuth2Server(cfg.AuthType, cfg.KeyPrefix, storage, serializer),
+		eventManager:                listener.NewManager(logger),
+		CustomPermissionListFunc:    CustomPermissionListFunc,
+		CustomRoleListFunc:          CustomRoleListFunc,
+		CustomPermissionListExtFunc: CustomPermissionListExtFunc,
+		CustomRoleListExtFunc:       CustomRoleListExtFunc,
 	}
 }
 
@@ -245,16 +248,24 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 		tokenKey := m.getTokenKey(tokenValue)
 
 		// 续期 Session
-		_ = m.storage.Expire(context.Background(), sessionKey, m.getExpiration())
+		if err := m.storage.Expire(context.Background(), sessionKey, m.getExpiration()); err != nil {
+			m.logger.Errorf("LoginByToken: failed to expire session for loginID=%s, error=%v", tokenInfo.LoginID, err)
+		}
 		// 续期 Token
-		_ = m.storage.Expire(context.Background(), tokenKey, m.getExpiration())
+		if err := m.storage.Expire(context.Background(), tokenKey, m.getExpiration()); err != nil {
+			m.logger.Errorf("LoginByToken: failed to expire token for token=%s, error=%v", tokenValue, err)
+		}
 
 		// 更新 metadata
 		if m.config.RenewInterval > 0 {
-			_ = m.storage.Set(context.Background(), m.getRenewKey(tokenValue), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second)
+			if err := m.storage.Set(context.Background(), m.getRenewKey(tokenValue), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {
+				m.logger.Errorf("LoginByToken: failed to set renew key for token=%s, error=%v", tokenValue, err)
+			}
 		}
 		if m.config.ActiveTimeout > 0 {
-			_ = m.storage.Set(context.Background(), m.getActiveKey(tokenValue), time.Now().Unix(), m.getExpiration())
+			if err := m.storage.Set(context.Background(), m.getActiveKey(tokenValue), time.Now().Unix(), m.getExpiration()); err != nil {
+				m.logger.Errorf("LoginByToken: failed to set active key for token=%s, error=%v", tokenValue, err)
+			}
 		}
 
 		// 触发续期事件
@@ -922,11 +933,21 @@ func (m *Manager) HasPermission(ctx context.Context, loginID string, permission 
 
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
+		m.logger.Errorf("HasPermission: failed to get session for loginID=%s, error=%v", loginID, err)
 		return false
 	}
 
+	// 获取权限列表（两级优先级：Func > Session）
+	permissions := sess.Permissions
+	if m.CustomPermissionListFunc != nil {
+		customPerms, err := m.CustomPermissionListFunc(loginID, m.config.AuthType)
+		if err == nil && customPerms != nil {
+			permissions = customPerms
+		}
+	}
+
 	hasPermission := false
-	for _, p := range sess.Permissions {
+	for _, p := range permissions {
 		if m.matchPermission(p, permission) {
 			hasPermission = true
 			break
@@ -935,8 +956,8 @@ func (m *Manager) HasPermission(ctx context.Context, loginID string, permission 
 
 	// 触发权限检查事件
 	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
-		"permission": permission,
-		"result":     hasPermission,
+		listener.ExtraKeyPermission: permission,
+		listener.ExtraKeyResult:     hasPermission,
 	})
 
 	return hasPermission
@@ -950,8 +971,30 @@ func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, p
 		return false
 	}
 
+	// 获取 device/deviceId
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	if err != nil {
+		m.logger.Errorf("HasPermissionByToken: failed to get token info for token=%s, error=%v", tokenValue, err)
+		return false
+	}
+	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
+
+	// 获取权限列表（三级优先级：Ext > Func > Session）
+	permissions := sess.Permissions
+	if m.CustomPermissionListExtFunc != nil {
+		customPerms, err := m.CustomPermissionListExtFunc(sess.LoginID, device, deviceId, m.config.AuthType)
+		if err == nil && customPerms != nil {
+			permissions = customPerms
+		}
+	} else if m.CustomPermissionListFunc != nil {
+		customPerms, err := m.CustomPermissionListFunc(sess.LoginID, m.config.AuthType)
+		if err == nil && customPerms != nil {
+			permissions = customPerms
+		}
+	}
+
 	hasPermission := false
-	for _, p := range sess.Permissions {
+	for _, p := range permissions {
 		if m.matchPermission(p, permission) {
 			hasPermission = true
 			break
@@ -959,15 +1002,9 @@ func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, p
 	}
 
 	// 触发权限检查事件
-	tokenInfo, _ := m.getTokenInfo(ctx, tokenValue)
-	device, deviceId := "", ""
-	if tokenInfo != nil {
-		device = tokenInfo.Device
-		deviceId = tokenInfo.DeviceId
-	}
 	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
-		"permission": permission,
-		"result":     hasPermission,
+		listener.ExtraKeyPermission: permission,
+		listener.ExtraKeyResult:     hasPermission,
 	})
 
 	return hasPermission
@@ -982,13 +1019,23 @@ func (m *Manager) HasPermissionsAnd(ctx context.Context, loginID string, permiss
 
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
+		m.logger.Errorf("HasPermissionsAnd: failed to get session for loginID=%s, error=%v", loginID, err)
 		return false
+	}
+
+	// 获取权限列表（两级优先级：Func > Session）
+	permList := sess.Permissions
+	if m.CustomPermissionListFunc != nil {
+		customPerms, err := m.CustomPermissionListFunc(loginID, m.config.AuthType)
+		if err == nil && customPerms != nil {
+			permList = customPerms
+		}
 	}
 
 	// 校验每一个必需权限
 	hasAll := true
 	for _, need := range permissions {
-		if !m.hasPermissionInList(sess.Permissions, need) {
+		if !m.hasPermissionInList(permList, need) {
 			hasAll = false
 			break
 		}
@@ -996,9 +1043,9 @@ func (m *Manager) HasPermissionsAnd(ctx context.Context, loginID string, permiss
 
 	// 触发权限检查事件
 	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
-		"permissions": permissions,
-		"logic":       "AND",
-		"result":      hasAll,
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyLogic:       listener.LogicAnd,
+		listener.ExtraKeyResult:      hasAll,
 	})
 
 	return hasAll
@@ -1012,26 +1059,42 @@ func (m *Manager) HasPermissionsAndByToken(ctx context.Context, tokenValue strin
 		return false
 	}
 
+	// 获取 device/deviceId
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	if err != nil {
+		m.logger.Errorf("HasPermissionsAndByToken: failed to get token info for token=%s, error=%v", tokenValue, err)
+		return false
+	}
+	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
+
+	// 获取权限列表（三级优先级：Ext > Func > Session）
+	permList := sess.Permissions
+	if m.CustomPermissionListExtFunc != nil {
+		customPerms, err := m.CustomPermissionListExtFunc(sess.LoginID, device, deviceId, m.config.AuthType)
+		if err == nil && customPerms != nil {
+			permList = customPerms
+		}
+	} else if m.CustomPermissionListFunc != nil {
+		customPerms, err := m.CustomPermissionListFunc(sess.LoginID, m.config.AuthType)
+		if err == nil && customPerms != nil {
+			permList = customPerms
+		}
+	}
+
 	// 校验每一个必需权限
 	hasAll := true
 	for _, need := range permissions {
-		if !m.hasPermissionInList(sess.Permissions, need) {
+		if !m.hasPermissionInList(permList, need) {
 			hasAll = false
 			break
 		}
 	}
 
 	// 触发权限检查事件
-	tokenInfo, _ := m.getTokenInfo(ctx, tokenValue)
-	device, deviceId := "", ""
-	if tokenInfo != nil {
-		device = tokenInfo.Device
-		deviceId = tokenInfo.DeviceId
-	}
 	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
-		"permissions": permissions,
-		"logic":       "AND",
-		"result":      hasAll,
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyLogic:       listener.LogicAnd,
+		listener.ExtraKeyResult:      hasAll,
 	})
 
 	return hasAll
@@ -1046,13 +1109,23 @@ func (m *Manager) HasPermissionsOr(ctx context.Context, loginID string, permissi
 
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
+		m.logger.Errorf("HasPermissionsOr: failed to get session for loginID=%s, error=%v", loginID, err)
 		return false
+	}
+
+	// 获取权限列表（两级优先级：Func > Session）
+	permList := sess.Permissions
+	if m.CustomPermissionListFunc != nil {
+		customPerms, err := m.CustomPermissionListFunc(loginID, m.config.AuthType)
+		if err == nil && customPerms != nil {
+			permList = customPerms
+		}
 	}
 
 	// 任一权限匹配即通过
 	hasAny := false
 	for _, need := range permissions {
-		if m.hasPermissionInList(sess.Permissions, need) {
+		if m.hasPermissionInList(permList, need) {
 			hasAny = true
 			break
 		}
@@ -1060,9 +1133,9 @@ func (m *Manager) HasPermissionsOr(ctx context.Context, loginID string, permissi
 
 	// 触发权限检查事件
 	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
-		"permissions": permissions,
-		"logic":       "OR",
-		"result":      hasAny,
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyLogic:       listener.LogicOr,
+		listener.ExtraKeyResult:      hasAny,
 	})
 
 	return hasAny
@@ -1076,26 +1149,42 @@ func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string
 		return false
 	}
 
+	// 获取 device/deviceId
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	if err != nil {
+		m.logger.Errorf("HasPermissionsOrByToken: failed to get token info for token=%s, error=%v", tokenValue, err)
+		return false
+	}
+	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
+
+	// 获取权限列表（三级优先级：Ext > Func > Session）
+	permList := sess.Permissions
+	if m.CustomPermissionListExtFunc != nil {
+		customPerms, err := m.CustomPermissionListExtFunc(sess.LoginID, device, deviceId, m.config.AuthType)
+		if err == nil && customPerms != nil {
+			permList = customPerms
+		}
+	} else if m.CustomPermissionListFunc != nil {
+		customPerms, err := m.CustomPermissionListFunc(sess.LoginID, m.config.AuthType)
+		if err == nil && customPerms != nil {
+			permList = customPerms
+		}
+	}
+
 	// 任一权限匹配即通过
 	hasAny := false
 	for _, need := range permissions {
-		if m.hasPermissionInList(sess.Permissions, need) {
+		if m.hasPermissionInList(permList, need) {
 			hasAny = true
 			break
 		}
 	}
 
 	// 触发权限检查事件
-	tokenInfo, _ := m.getTokenInfo(ctx, tokenValue)
-	device, deviceId := "", ""
-	if tokenInfo != nil {
-		device = tokenInfo.Device
-		deviceId = tokenInfo.DeviceId
-	}
 	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
-		"permissions": permissions,
-		"logic":       "OR",
-		"result":      hasAny,
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyLogic:       listener.LogicOr,
+		listener.ExtraKeyResult:      hasAny,
 	})
 
 	return hasAny
@@ -1231,11 +1320,21 @@ func (m *Manager) HasRole(ctx context.Context, loginID string, role string) bool
 
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
+		m.logger.Errorf("HasRole: failed to get session for loginID=%s, error=%v", loginID, err)
 		return false
 	}
 
+	// 获取角色列表（两级优先级：Func > Session）
+	roles := sess.Roles
+	if m.CustomRoleListFunc != nil {
+		customRoles, err := m.CustomRoleListFunc(loginID, m.config.AuthType)
+		if err == nil && customRoles != nil {
+			roles = customRoles
+		}
+	}
+
 	hasRole := false
-	for _, r := range sess.Roles {
+	for _, r := range roles {
 		if r == role {
 			hasRole = true
 			break
@@ -1244,8 +1343,8 @@ func (m *Manager) HasRole(ctx context.Context, loginID string, role string) bool
 
 	// 触发角色检查事件
 	m.triggerEvent(listener.EventRoleCheck, loginID, "", "", "", map[string]any{
-		"role":   role,
-		"result": hasRole,
+		listener.ExtraKeyRole:   role,
+		listener.ExtraKeyResult: hasRole,
 	})
 
 	return hasRole
@@ -1259,8 +1358,30 @@ func (m *Manager) HasRoleByToken(ctx context.Context, tokenValue string, role st
 		return false
 	}
 
+	// 获取 device/deviceId
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	if err != nil {
+		m.logger.Errorf("HasRoleByToken: failed to get token info for token=%s, error=%v", tokenValue, err)
+		return false
+	}
+	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
+
+	// 获取角色列表（三级优先级：Ext > Func > Session）
+	roles := sess.Roles
+	if m.CustomRoleListExtFunc != nil {
+		customRoles, err := m.CustomRoleListExtFunc(sess.LoginID, device, deviceId, m.config.AuthType)
+		if err == nil && customRoles != nil {
+			roles = customRoles
+		}
+	} else if m.CustomRoleListFunc != nil {
+		customRoles, err := m.CustomRoleListFunc(sess.LoginID, m.config.AuthType)
+		if err == nil && customRoles != nil {
+			roles = customRoles
+		}
+	}
+
 	hasRole := false
-	for _, r := range sess.Roles {
+	for _, r := range roles {
 		if r == role {
 			hasRole = true
 			break
@@ -1268,15 +1389,9 @@ func (m *Manager) HasRoleByToken(ctx context.Context, tokenValue string, role st
 	}
 
 	// 触发角色检查事件
-	tokenInfo, _ := m.getTokenInfo(ctx, tokenValue)
-	device, deviceId := "", ""
-	if tokenInfo != nil {
-		device = tokenInfo.Device
-		deviceId = tokenInfo.DeviceId
-	}
 	m.triggerEvent(listener.EventRoleCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
-		"role":   role,
-		"result": hasRole,
+		listener.ExtraKeyRole:   role,
+		listener.ExtraKeyResult: hasRole,
 	})
 
 	return hasRole
@@ -1291,14 +1406,24 @@ func (m *Manager) HasRolesAnd(ctx context.Context, loginID string, roles []strin
 
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
+		m.logger.Errorf("HasRolesAnd: failed to get session for loginID=%s, error=%v", loginID, err)
 		return false
+	}
+
+	// 获取角色列表（两级优先级：Func > Session）
+	roleList := sess.Roles
+	if m.CustomRoleListFunc != nil {
+		customRoles, err := m.CustomRoleListFunc(loginID, m.config.AuthType)
+		if err == nil && customRoles != nil {
+			roleList = customRoles
+		}
 	}
 
 	// 校验每一个必需角色
 	hasAll := true
 	for _, need := range roles {
 		found := false
-		for _, r := range sess.Roles {
+		for _, r := range roleList {
 			if r == need {
 				found = true
 				break
@@ -1312,9 +1437,9 @@ func (m *Manager) HasRolesAnd(ctx context.Context, loginID string, roles []strin
 
 	// 触发角色检查事件
 	m.triggerEvent(listener.EventRoleCheck, loginID, "", "", "", map[string]any{
-		"roles":  roles,
-		"logic":  "AND",
-		"result": hasAll,
+		listener.ExtraKeyRoles:  roles,
+		listener.ExtraKeyLogic:  listener.LogicAnd,
+		listener.ExtraKeyResult: hasAll,
 	})
 
 	return hasAll
@@ -1328,11 +1453,33 @@ func (m *Manager) HasRolesAndByToken(ctx context.Context, tokenValue string, rol
 		return false
 	}
 
+	// 获取 device/deviceId
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	if err != nil {
+		m.logger.Errorf("HasRolesAndByToken: failed to get token info for token=%s, error=%v", tokenValue, err)
+		return false
+	}
+	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
+
+	// 获取角色列表（三级优先级：Ext > Func > Session）
+	roleList := sess.Roles
+	if m.CustomRoleListExtFunc != nil {
+		customRoles, err := m.CustomRoleListExtFunc(sess.LoginID, device, deviceId, m.config.AuthType)
+		if err == nil && customRoles != nil {
+			roleList = customRoles
+		}
+	} else if m.CustomRoleListFunc != nil {
+		customRoles, err := m.CustomRoleListFunc(sess.LoginID, m.config.AuthType)
+		if err == nil && customRoles != nil {
+			roleList = customRoles
+		}
+	}
+
 	// 校验每一个必需角色
 	hasAll := true
 	for _, need := range roles {
 		found := false
-		for _, r := range sess.Roles {
+		for _, r := range roleList {
 			if r == need {
 				found = true
 				break
@@ -1345,16 +1492,10 @@ func (m *Manager) HasRolesAndByToken(ctx context.Context, tokenValue string, rol
 	}
 
 	// 触发角色检查事件
-	tokenInfo, _ := m.getTokenInfo(ctx, tokenValue)
-	device, deviceId := "", ""
-	if tokenInfo != nil {
-		device = tokenInfo.Device
-		deviceId = tokenInfo.DeviceId
-	}
 	m.triggerEvent(listener.EventRoleCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
-		"roles":  roles,
-		"logic":  "AND",
-		"result": hasAll,
+		listener.ExtraKeyRoles:  roles,
+		listener.ExtraKeyLogic:  listener.LogicAnd,
+		listener.ExtraKeyResult: hasAll,
 	})
 
 	return hasAll
@@ -1369,13 +1510,23 @@ func (m *Manager) HasRolesOr(ctx context.Context, loginID string, roles []string
 
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
+		m.logger.Errorf("HasRolesOr: failed to get session for loginID=%s, error=%v", loginID, err)
 		return false
+	}
+
+	// 获取角色列表（两级优先级：Func > Session）
+	roleList := sess.Roles
+	if m.CustomRoleListFunc != nil {
+		customRoles, err := m.CustomRoleListFunc(loginID, m.config.AuthType)
+		if err == nil && customRoles != nil {
+			roleList = customRoles
+		}
 	}
 
 	// 任一角色匹配即通过
 	hasAny := false
 	for _, need := range roles {
-		for _, r := range sess.Roles {
+		for _, r := range roleList {
 			if r == need {
 				hasAny = true
 				break
@@ -1388,9 +1539,9 @@ func (m *Manager) HasRolesOr(ctx context.Context, loginID string, roles []string
 
 	// 触发角色检查事件
 	m.triggerEvent(listener.EventRoleCheck, loginID, "", "", "", map[string]any{
-		"roles":  roles,
-		"logic":  "OR",
-		"result": hasAny,
+		listener.ExtraKeyRoles:  roles,
+		listener.ExtraKeyLogic:  listener.LogicOr,
+		listener.ExtraKeyResult: hasAny,
 	})
 
 	return hasAny
@@ -1404,10 +1555,32 @@ func (m *Manager) HasRolesOrByToken(ctx context.Context, tokenValue string, role
 		return false
 	}
 
+	// 获取 device/deviceId
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	if err != nil {
+		m.logger.Errorf("HasRolesOrByToken: failed to get token info for token=%s, error=%v", tokenValue, err)
+		return false
+	}
+	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
+
+	// 获取角色列表（三级优先级：Ext > Func > Session）
+	roleList := sess.Roles
+	if m.CustomRoleListExtFunc != nil {
+		customRoles, err := m.CustomRoleListExtFunc(sess.LoginID, device, deviceId, m.config.AuthType)
+		if err == nil && customRoles != nil {
+			roleList = customRoles
+		}
+	} else if m.CustomRoleListFunc != nil {
+		customRoles, err := m.CustomRoleListFunc(sess.LoginID, m.config.AuthType)
+		if err == nil && customRoles != nil {
+			roleList = customRoles
+		}
+	}
+
 	// 任一角色匹配即通过
 	hasAny := false
 	for _, need := range roles {
-		for _, r := range sess.Roles {
+		for _, r := range roleList {
 			if r == need {
 				hasAny = true
 				break
@@ -1419,16 +1592,10 @@ func (m *Manager) HasRolesOrByToken(ctx context.Context, tokenValue string, role
 	}
 
 	// 触发角色检查事件
-	tokenInfo, _ := m.getTokenInfo(ctx, tokenValue)
-	device, deviceId := "", ""
-	if tokenInfo != nil {
-		device = tokenInfo.Device
-		deviceId = tokenInfo.DeviceId
-	}
 	m.triggerEvent(listener.EventRoleCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
-		"roles":  roles,
-		"logic":  "OR",
-		"result": hasAny,
+		listener.ExtraKeyRoles:  roles,
+		listener.ExtraKeyLogic:  listener.LogicOr,
+		listener.ExtraKeyResult: hasAny,
 	})
 
 	return hasAny
@@ -1652,7 +1819,9 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 	// 异步活跃时长
 	if m.config.ActiveTimeout > 0 {
 		activeFunc := func() {
-			_ = m.storage.Set(ctx, m.getActiveKey(tokenValue), time.Now().Unix(), m.getExpiration())
+			if err := m.storage.Set(ctx, m.getActiveKey(tokenValue), time.Now().Unix(), m.getExpiration()); err != nil {
+				m.logger.Errorf("checkLoginInternal: failed to set active key for token=%s, error=%v", tokenValue, err)
+			}
 		}
 		if m.pool != nil {
 			_ = m.pool.Submit(activeFunc)
@@ -1780,7 +1949,9 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device ..
 	terminalInfo := candidates[len(candidates)-1]
 
 	// 续期 session
-	_ = m.storage.Expire(ctx, m.getSessionKey(terminalInfo.LoginID), m.getExpiration())
+	if err := m.storage.Expire(ctx, m.getSessionKey(terminalInfo.LoginID), m.getExpiration()); err != nil {
+		m.logger.Errorf("getTokenAndShare: failed to expire session for loginID=%s, error=%v", terminalInfo.LoginID, err)
+	}
 
 	// 续期 Token（如果已过期，这会复活它）
 	tokenInfo := TokenInfo{
@@ -1790,15 +1961,21 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device ..
 		DeviceId:   terminalInfo.DeviceId,
 		CreateTime: terminalInfo.CreateTime,
 	}
-	_ = m.storage.Set(ctx, m.getTokenKey(terminalInfo.Token), tokenInfo, m.getExpiration())
+	if err := m.storage.Set(ctx, m.getTokenKey(terminalInfo.Token), tokenInfo, m.getExpiration()); err != nil {
+		m.logger.Errorf("getTokenAndShare: failed to set token info for token=%s, error=%v", terminalInfo.Token, err)
+	}
 
 	// 续期或重新设置 metadata
 	if m.config.RenewInterval > 0 {
-		_ = m.storage.Set(ctx, m.getRenewKey(terminalInfo.Token), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second)
+		if err := m.storage.Set(ctx, m.getRenewKey(terminalInfo.Token), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {
+			m.logger.Errorf("getTokenAndShare: failed to set renew key for token=%s, error=%v", terminalInfo.Token, err)
+		}
 	}
 	// 设置最大不活跃时长
 	if m.config.ActiveTimeout > 0 {
-		_ = m.storage.Set(ctx, m.getActiveKey(terminalInfo.Token), time.Now().Unix(), m.getExpiration())
+		if err := m.storage.Set(ctx, m.getActiveKey(terminalInfo.Token), time.Now().Unix(), m.getExpiration()); err != nil {
+			m.logger.Errorf("getTokenAndShare: failed to set active key for token=%s, error=%v", terminalInfo.Token, err)
+		}
 	}
 
 	return terminalInfo.Token
@@ -2205,20 +2382,28 @@ func (m *Manager) renewFunc(ctx context.Context, tokenValue, loginID string) {
 	}
 
 	// 续期Token
-	_ = m.storage.Expire(ctx, m.getTokenKey(tokenValue), m.getExpiration())
+	if err := m.storage.Expire(ctx, m.getTokenKey(tokenValue), m.getExpiration()); err != nil {
+		m.logger.Errorf("renewFunc: failed to expire token for token=%s, error=%v", tokenValue, err)
+	}
 
 	// 续期Session
-	_ = m.storage.Expire(ctx, m.getSessionKey(loginID), m.getExpiration())
+	if err := m.storage.Expire(ctx, m.getSessionKey(loginID), m.getExpiration()); err != nil {
+		m.logger.Errorf("renewFunc: failed to expire session for loginID=%s, error=%v", loginID, err)
+	}
 
 	// 设置最小续期间隔标记
 	if m.config.RenewInterval > 0 {
-		_ = m.storage.Set(ctx, m.getRenewKey(tokenValue), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second)
+		if err := m.storage.Set(ctx, m.getRenewKey(tokenValue), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {
+			m.logger.Errorf("renewFunc: failed to set renew key for token=%s, error=%v", tokenValue, err)
+		}
 	}
 
 	// 触发续期事件
 	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
 	if err == nil {
 		m.triggerEvent(listener.EventRenew, loginID, tokenInfo.Device, tokenInfo.DeviceId, tokenValue, nil)
+	} else {
+		m.logger.Errorf("renewFunc: failed to get token info for token=%s, error=%v", tokenValue, err)
 	}
 }
 

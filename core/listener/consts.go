@@ -54,3 +54,35 @@ const (
 	// EventAll 通配符事件（匹配所有事件）。
 	EventAll Event = "*"
 )
+
+// Extra field keys for event data
+// 事件数据 Extra 字段的键名常量
+const (
+	// ExtraKeyPermission 单个权限字段
+	ExtraKeyPermission = "permission"
+
+	// ExtraKeyPermissions 多个权限字段
+	ExtraKeyPermissions = "permissions"
+
+	// ExtraKeyRole 单个角色字段
+	ExtraKeyRole = "role"
+
+	// ExtraKeyRoles 多个角色字段
+	ExtraKeyRoles = "roles"
+
+	// ExtraKeyLogic 逻辑类型字段（AND/OR）
+	ExtraKeyLogic = "logic"
+
+	// ExtraKeyResult 检查结果字段
+	ExtraKeyResult = "result"
+)
+
+// Logic types for permission/role checks
+// 权限/角色检查的逻辑类型常量
+const (
+	// LogicAnd AND 逻辑（需要满足所有条件）
+	LogicAnd = "AND"
+
+	// LogicOr OR 逻辑（满足任一条件即可）
+	LogicOr = "OR"
+)

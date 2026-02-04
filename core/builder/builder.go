@@ -48,8 +48,10 @@ type Builder struct {
 	log       adapter.Log       // log 日志适配器
 	pool      adapter.Pool      // pool 异步任务协程池组件
 
-	customPermissionListFunc func(loginID, authType string) ([]string, error) // customPermissionListFunc 自定义权限列表获取函数
-	customRoleListFunc       func(loginID, authType string) ([]string, error) // customRoleListFunc 自定义角色列表获取函数
+	customPermissionListFunc    func(loginID, authType string) ([]string, error)                   // customPermissionListFunc 自定义权限列表获取函数
+	customRoleListFunc          func(loginID, authType string) ([]string, error)                   // customRoleListFunc 自定义角色列表获取函数
+	customPermissionListExtFunc func(loginID, device, deviceId, authType string) ([]string, error) // customPermissionListExtFunc 自定义权限列表获取函数（扩展版本，支持设备信息）
+	customRoleListExtFunc       func(loginID, device, deviceId, authType string) ([]string, error) // customRoleListExtFunc 自定义角色列表获取函数（扩展版本，支持设备信息）
 }
 
 // NewBuilder 创建新的构建器（使用默认配置）
@@ -522,6 +524,18 @@ func (b *Builder) SetCustomRoleListFunc(f func(loginID, authType string) ([]stri
 	return b
 }
 
+// SetCustomPermissionListExtFunc 设置自定义权限列表获取函数（扩展版本，支持设备信息）
+func (b *Builder) SetCustomPermissionListExtFunc(f func(loginID, device, deviceId, authType string) ([]string, error)) *Builder {
+	b.customPermissionListExtFunc = f
+	return b
+}
+
+// SetCustomRoleListExtFunc 设置自定义角色列表获取函数（扩展版本，支持设备信息）
+func (b *Builder) SetCustomRoleListExtFunc(f func(loginID, device, deviceId, authType string) ([]string, error)) *Builder {
+	b.customRoleListExtFunc = f
+	return b
+}
+
 // JwtSecret 设置为 JWT 模式并指定密钥
 func (b *Builder) JwtSecret(secret string) *Builder {
 	b.tokenStyle = adapter.TokenStyleJWT
@@ -643,5 +657,5 @@ func (b *Builder) Build() *manager.Manager {
 		banner.PrintBanner(cfg)
 	}
 
-	return manager.NewManager(cfg, b.generator, b.storage, b.codec, b.log, b.pool, b.customPermissionListFunc, b.customRoleListFunc)
+	return manager.NewManager(cfg, b.generator, b.storage, b.codec, b.log, b.pool, b.customPermissionListFunc, b.customRoleListFunc, b.customPermissionListExtFunc, b.customRoleListExtFunc)
 }
