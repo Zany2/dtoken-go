@@ -196,7 +196,7 @@ func (m *Manager) EnableEvent(events ...Event) {
 	defer m.mu.Unlock()
 
 	if len(events) == 0 {
-		m.enabledEvents = nil // Enable all | 启用所有
+		m.enabledEvents = nil
 		return
 	}
 

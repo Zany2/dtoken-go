@@ -23,7 +23,7 @@ const (
 	ConcurrencyScopeDevice ConcurrencyScope = "device"
 )
 
-// Default configuration constants | 默认配置常量
+// Default configuration constants 默认配置常量
 const (
 	// DefaultTokenName 默认 Token 名称
 	DefaultTokenName = "dtoken"

@@ -464,8 +464,7 @@ func (l *Logger) cleanup(cfg LoggerConfig) {
 		}{f, info.ModTime()})
 	}
 
-	// 根据 RotateBackupLimit 限制保留的备份文件数量（不包含当前正在写的那个文件）|
-	// keep only the newest RotateBackupLimit backup files (current file is not included here)
+	// 根据 RotateBackupLimit 限制保留的备份文件数量（不包含当前正在写的那个文件）
 	if cfg.RotateBackupLimit > 0 && len(keep) > cfg.RotateBackupLimit {
 		// 按修改时间排序，最旧的在前 sort by time ascending
 		sort.Slice(keep, func(i, j int) bool { return keep[i].t.Before(keep[j].t) })
