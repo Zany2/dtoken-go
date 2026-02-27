@@ -3,10 +3,11 @@ package manager
 
 // 存储键和默认值常量
 const (
-	DisableKeyPrefix = "disable:" // DisableKeyPrefix 禁用状态存储前缀
-	SessionKeyPrefix = "session:" // SessionKeyPrefix 会话存储前缀
-	RenewKeyPrefix   = "renew:"   // RenewKeyPrefix Token 续期存储前缀
-	ActivePrefix     = "active:"  // ActivePrefix 活跃时间存储前缀
+	DisableKeyPrefix        = "disable:"         // DisableKeyPrefix 禁用状态存储前缀
+	DisableServiceKeyPrefix = "disable:service:" // DisableServiceKeyPrefix 分类禁用状态存储前缀
+	SessionKeyPrefix        = "session:"         // SessionKeyPrefix 会话存储前缀
+	RenewKeyPrefix          = "renew:"           // RenewKeyPrefix Token 续期存储前缀
+	ActivePrefix            = "active:"          // ActivePrefix 活跃时间存储前缀
 
 	SessionKeyLoginID     = "loginId"     // SessionKeyLoginID 登录 ID
 	SessionKeyDevice      = "device"      // SessionKeyDevice 设备类型

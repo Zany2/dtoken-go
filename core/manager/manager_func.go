@@ -129,6 +129,12 @@ func (m *Manager) CloseManager() {
 // Login performs user login and returns a token.
 // Login 执行用户登录并返回 token。
 func (m *Manager) Login(ctx context.Context, loginID string, deviceAndDeviceId ...string) (string, error) {
+	return m.LoginWithTimeout(ctx, loginID, 0, deviceAndDeviceId...)
+}
+
+// LoginWithTimeout performs user login with a custom token timeout and returns a token.
+// LoginWithTimeout 执行用户登录并返回 token，使用指定的过期时间（0 或负数则使用全局配置）。
+func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, deviceAndDeviceId ...string) (string, error) {
 	if loginID == "" {
 		return "", derror.ErrIDIsEmpty
 	}
@@ -186,8 +192,14 @@ func (m *Manager) Login(ctx context.Context, loginID string, deviceAndDeviceId .
 		Index:      sess.HistoryTerminalCount, // 设置历史登录顺序索引
 	})
 
+	// 计算过期时长
+	expiration := m.getExpiration()
+	if timeout > 0 {
+		expiration = timeout
+	}
+
 	// 保存 session
-	if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
+	if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess, expiration); err != nil {
 		return "", err
 	}
 
@@ -198,7 +210,7 @@ func (m *Manager) Login(ctx context.Context, loginID string, deviceAndDeviceId .
 		Device:     device,
 		DeviceId:   deviceId,
 		CreateTime: createTime,
-	}); err != nil {
+	}, expiration); err != nil {
 		return "", err
 	}
 
@@ -684,6 +696,191 @@ func (m *Manager) GetDisableTTL(ctx context.Context, loginID string) (int64, err
 }
 
 // ============================================================================
+// Service Disable Management - 分类封禁管理
+// ============================================================================
+
+// DisableService disables a specific service for an account.
+// DisableService 封禁账号的指定服务。
+func (m *Manager) DisableService(ctx context.Context, loginID, service string, duration time.Duration, reason ...string) error {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+	if service == "" {
+		return derror.ErrInvalidParam
+	}
+
+	info := ServiceDisableInfo{
+		Service:     service,
+		Level:       0,
+		DisableTime: time.Now().Unix(),
+	}
+	if len(reason) > 0 && reason[0] != "" {
+		info.DisableReason = reason[0]
+	}
+
+	if err := m.saveToStorage(ctx, m.getDisableServiceKey(loginID, service), info, duration); err != nil {
+		return err
+	}
+
+	m.triggerEvent(listener.EventDisableService, loginID, "", "", "", map[string]any{
+		listener.ExtraKeyService: service,
+		"reason":                 info.DisableReason,
+		"duration":               duration.Seconds(),
+	})
+
+	return nil
+}
+
+// DisableServiceLevel disables a specific service for an account with a level.
+// DisableServiceLevel 封禁账号的指定服务并设置封禁等级。
+func (m *Manager) DisableServiceLevel(ctx context.Context, loginID, service string, level int, duration time.Duration, reason ...string) error {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+	if service == "" {
+		return derror.ErrInvalidParam
+	}
+
+	info := ServiceDisableInfo{
+		Service:     service,
+		Level:       level,
+		DisableTime: time.Now().Unix(),
+	}
+	if len(reason) > 0 && reason[0] != "" {
+		info.DisableReason = reason[0]
+	}
+
+	if err := m.saveToStorage(ctx, m.getDisableServiceKey(loginID, service), info, duration); err != nil {
+		return err
+	}
+
+	m.triggerEvent(listener.EventDisableService, loginID, "", "", "", map[string]any{
+		listener.ExtraKeyService: service,
+		listener.ExtraKeyLevel:   level,
+		"reason":                 info.DisableReason,
+		"duration":               duration.Seconds(),
+	})
+
+	return nil
+}
+
+// UntieService removes the disable status of a specific service for an account.
+// UntieService 解封账号的指定服务。
+func (m *Manager) UntieService(ctx context.Context, loginID, service string) error {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+	if service == "" {
+		return derror.ErrInvalidParam
+	}
+
+	if err := m.storage.Delete(ctx, m.getDisableServiceKey(loginID, service)); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+
+	m.triggerEvent(listener.EventUntieService, loginID, "", "", "", map[string]any{
+		listener.ExtraKeyService: service,
+	})
+
+	return nil
+}
+
+// IsDisableService checks if a specific service is disabled for an account.
+// IsDisableService 检查账号的指定服务是否被封禁。
+func (m *Manager) IsDisableService(ctx context.Context, loginID, service string) bool {
+	if loginID == "" || service == "" {
+		return false
+	}
+	return m.storage.Exists(ctx, m.getDisableServiceKey(loginID, service))
+}
+
+// IsDisableServiceLevel checks if a specific service is disabled at or above the given level.
+// IsDisableServiceLevel 检查账号的指定服务是否达到指定封禁等级。
+func (m *Manager) IsDisableServiceLevel(ctx context.Context, loginID, service string, level int) bool {
+	info, err := m.GetDisableServiceInfo(ctx, loginID, service)
+	if err != nil {
+		return false
+	}
+	return info.Level >= level
+}
+
+// CheckDisableService checks if any of the specified services are disabled, returns error if disabled.
+// CheckDisableService 校验账号的指定服务是否被封禁，被封禁则返回 error。
+func (m *Manager) CheckDisableService(ctx context.Context, loginID string, services ...string) error {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+	for _, service := range services {
+		if m.IsDisableService(ctx, loginID, service) {
+			return fmt.Errorf("%w: service=%s", derror.ErrServiceDisabled, service)
+		}
+	}
+	return nil
+}
+
+// CheckDisableServiceLevel checks if a service is disabled at or above the given level, returns error if so.
+// CheckDisableServiceLevel 校验账号的指定服务是否达到指定封禁等级，达到则返回 error。
+func (m *Manager) CheckDisableServiceLevel(ctx context.Context, loginID, service string, level int) error {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+	if m.IsDisableServiceLevel(ctx, loginID, service, level) {
+		return fmt.Errorf("%w: service=%s, level=%d", derror.ErrServiceDisabled, service, level)
+	}
+	return nil
+}
+
+// GetDisableServiceInfo retrieves the disable info for a specific service.
+// GetDisableServiceInfo 获取账号指定服务的封禁信息。
+func (m *Manager) GetDisableServiceInfo(ctx context.Context, loginID, service string) (*ServiceDisableInfo, error) {
+	if loginID == "" {
+		return nil, derror.ErrIDIsEmpty
+	}
+	if service == "" {
+		return nil, derror.ErrInvalidParam
+	}
+
+	data, err := m.storage.Get(ctx, m.getDisableServiceKey(loginID, service))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	if data == nil {
+		return nil, derror.ErrServiceNotDisabled
+	}
+
+	bytesData, err := utils.ToBytes(data)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
+	}
+
+	var info ServiceDisableInfo
+	if err = m.serializer.Decode(bytesData, &info); err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+	}
+
+	return &info, nil
+}
+
+// GetDisableServiceTTL retrieves the remaining disable time for a specific service in seconds.
+// GetDisableServiceTTL 获取账号指定服务的剩余封禁时间（秒）。
+func (m *Manager) GetDisableServiceTTL(ctx context.Context, loginID, service string) (int64, error) {
+	ttl, err := m.storage.TTL(ctx, m.getDisableServiceKey(loginID, service))
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+
+	seconds := int64(ttl)
+	switch {
+	case seconds == -2:
+		return -2, nil
+	case seconds == -1:
+		return -1, nil
+	default:
+		return int64(ttl.Seconds()), nil
+	}
+}
+
+// ============================================================================
 // Session Management - 会话管理
 // ============================================================================
 
@@ -805,6 +1002,198 @@ func (m *Manager) GetOnlineTerminalCountByDeviceAndDeviceId(ctx context.Context,
 		return 0, err
 	}
 	return len(tokens), nil
+}
+
+// ============================================================================
+// Terminal Query - 终端查询
+// ============================================================================
+
+// GetTerminalListByLoginID retrieves all terminal info for a login ID, optionally filtered by device.
+// GetTerminalListByLoginID 获取指定登录 ID 的所有终端信息列表，可选按设备类型过滤。
+func (m *Manager) GetTerminalListByLoginID(ctx context.Context, loginID string, device ...string) ([]TerminalInfo, error) {
+	if loginID == "" {
+		return nil, derror.ErrIDIsEmpty
+	}
+
+	sess, err := m.getSession(ctx, loginID)
+	if err != nil {
+		if errors.Is(err, derror.ErrSessionNotFound) {
+			return []TerminalInfo{}, nil
+		}
+		return nil, err
+	}
+	if sess == nil {
+		return []TerminalInfo{}, nil
+	}
+
+	if len(device) > 0 && device[0] != "" {
+		return sess.getTerminalsByDevice(device[0]), nil
+	}
+
+	// 返回副本，避免外部修改影响内部数据
+	result := make([]TerminalInfo, len(sess.TerminalInfos))
+	copy(result, sess.TerminalInfos)
+	return result, nil
+}
+
+// GetTerminalInfoByToken retrieves terminal info for a specific token.
+// GetTerminalInfoByToken 根据 Token 获取终端详情。
+func (m *Manager) GetTerminalInfoByToken(ctx context.Context, tokenValue string) (*TerminalInfo, error) {
+	if tokenValue == "" {
+		return nil, derror.ErrInvalidToken
+	}
+
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	if err != nil {
+		return nil, err
+	}
+
+	sess, err := m.getSession(ctx, tokenInfo.LoginID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, ti := range sess.TerminalInfos {
+		if ti.Token == tokenValue {
+			return &ti, nil
+		}
+	}
+
+	return nil, derror.ErrInvalidToken
+}
+
+// GetTokenValueByLoginID retrieves the latest token for a login ID, optionally filtered by device.
+// GetTokenValueByLoginID 获取指定登录 ID 的最新 Token，可选按设备类型过滤。
+func (m *Manager) GetTokenValueByLoginID(ctx context.Context, loginID string, device ...string) (string, error) {
+	if loginID == "" {
+		return "", derror.ErrIDIsEmpty
+	}
+
+	sess, err := m.getSession(ctx, loginID)
+	if err != nil {
+		return "", err
+	}
+
+	if len(device) > 0 && device[0] != "" {
+		if ti, ok := sess.getLatestTerminalByDevice(device[0]); ok {
+			return ti.Token, nil
+		}
+		return "", derror.ErrInvalidToken
+	}
+
+	// 返回最后一个（最新的）
+	if len(sess.TerminalInfos) == 0 {
+		return "", derror.ErrInvalidToken
+	}
+	return sess.TerminalInfos[len(sess.TerminalInfos)-1].Token, nil
+}
+
+// SearchTokenValue searches token keys by keyword with pagination.
+// SearchTokenValue 根据关键词搜索 Token，支持分页。
+// keyword: 搜索关键词（模糊匹配），start: 起始索引，size: 返回数量（-1 返回全部）
+func (m *Manager) SearchTokenValue(ctx context.Context, keyword string, start, size int) ([]string, error) {
+	pattern := m.config.KeyPrefix + m.config.AuthType + "*" + keyword + "*"
+	return m.searchKeys(ctx, pattern, start, size)
+}
+
+// SearchSessionId searches session keys by keyword with pagination.
+// SearchSessionId 根据关键词搜索 Session ID，支持分页。
+// keyword: 搜索关键词（模糊匹配），start: 起始索引，size: 返回数量（-1 返回全部）
+func (m *Manager) SearchSessionId(ctx context.Context, keyword string, start, size int) ([]string, error) {
+	pattern := m.config.KeyPrefix + m.config.AuthType + SessionKeyPrefix + "*" + keyword + "*"
+	return m.searchKeys(ctx, pattern, start, size)
+}
+
+// ============================================================================
+// Terminal Traversal - 终端遍历
+// ============================================================================
+
+// TerminalVisitor is a callback function for terminal traversal.
+// TerminalVisitor 终端遍历回调函数。
+// Return false to stop traversal.
+// 返回 false 停止遍历。
+type TerminalVisitor func(terminal TerminalInfo) bool
+
+// ForEachTerminal iterates over all terminals for a login ID and calls the visitor function.
+// ForEachTerminal 遍历指定登录 ID 的所有终端，对每个终端调用回调函数。
+func (m *Manager) ForEachTerminal(ctx context.Context, loginID string, visitor TerminalVisitor) error {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+
+	sess, err := m.getSession(ctx, loginID)
+	if err != nil {
+		if errors.Is(err, derror.ErrSessionNotFound) {
+			return nil
+		}
+		return err
+	}
+
+	for _, ti := range sess.TerminalInfos {
+		if !visitor(ti) {
+			break
+		}
+	}
+	return nil
+}
+
+// ForEachTerminalByDevice iterates over terminals filtered by device type.
+// ForEachTerminalByDevice 遍历指定设备类型的终端。
+func (m *Manager) ForEachTerminalByDevice(ctx context.Context, loginID, device string, visitor TerminalVisitor) error {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+
+	sess, err := m.getSession(ctx, loginID)
+	if err != nil {
+		if errors.Is(err, derror.ErrSessionNotFound) {
+			return nil
+		}
+		return err
+	}
+
+	for _, ti := range sess.TerminalInfos {
+		if ti.Device == device {
+			if !visitor(ti) {
+				break
+			}
+		}
+	}
+	return nil
+}
+
+// ============================================================================
+// Token Renewal - Token 续期
+// ============================================================================
+
+// RenewTimeout manually renews the timeout of a token.
+// RenewTimeout 手动续期指定 Token 的过期时间。
+func (m *Manager) RenewTimeout(ctx context.Context, tokenValue string, timeout time.Duration) error {
+	if tokenValue == "" {
+		return derror.ErrInvalidToken
+	}
+
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	if err != nil {
+		return err
+	}
+
+	// 续期 token key
+	if err = m.storage.Expire(ctx, m.getTokenKey(tokenValue), timeout); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+
+	// 续期 session key
+	if err = m.storage.Expire(ctx, m.getSessionKey(tokenInfo.LoginID), timeout); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+
+	// 触发续期事件
+	m.triggerEvent(listener.EventRenew, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceId, tokenValue, map[string]any{
+		"timeout": timeout.Seconds(),
+	})
+
+	return nil
 }
 
 // ============================================================================
@@ -1599,6 +1988,73 @@ func (m *Manager) HasRolesOrByToken(ctx context.Context, tokenValue string, role
 	})
 
 	return hasAny
+}
+
+// ============================================================================
+// Check Methods - 校验方法（不通过返回 error）
+// ============================================================================
+
+// CheckPermission checks if a user has a specific permission, returns error if not.
+// CheckPermission 校验用户是否拥有指定权限，无权限返回 error。
+func (m *Manager) CheckPermission(ctx context.Context, loginID string, permission string) error {
+	if !m.HasPermission(ctx, loginID, permission) {
+		return fmt.Errorf("%w: %s", derror.ErrPermissionDenied, permission)
+	}
+	return nil
+}
+
+// CheckPermissionAnd checks if a user has all specified permissions, returns error if not.
+// CheckPermissionAnd 校验用户是否拥有所有指定权限，缺少任一权限返回 error。
+func (m *Manager) CheckPermissionAnd(ctx context.Context, loginID string, permissions []string) error {
+	if !m.HasPermissionsAnd(ctx, loginID, permissions) {
+		return derror.ErrPermissionDenied
+	}
+	return nil
+}
+
+// CheckPermissionOr checks if a user has any of the specified permissions, returns error if none.
+// CheckPermissionOr 校验用户是否拥有任一指定权限，全部缺少返回 error。
+func (m *Manager) CheckPermissionOr(ctx context.Context, loginID string, permissions []string) error {
+	if !m.HasPermissionsOr(ctx, loginID, permissions) {
+		return derror.ErrPermissionDenied
+	}
+	return nil
+}
+
+// CheckRole checks if a user has a specific role, returns error if not.
+// CheckRole 校验用户是否拥有指定角色，无角色返回 error。
+func (m *Manager) CheckRole(ctx context.Context, loginID string, role string) error {
+	if !m.HasRole(ctx, loginID, role) {
+		return fmt.Errorf("%w: %s", derror.ErrRoleDenied, role)
+	}
+	return nil
+}
+
+// CheckRoleAnd checks if a user has all specified roles, returns error if not.
+// CheckRoleAnd 校验用户是否拥有所有指定角色，缺少任一角色返回 error。
+func (m *Manager) CheckRoleAnd(ctx context.Context, loginID string, roles []string) error {
+	if !m.HasRolesAnd(ctx, loginID, roles) {
+		return derror.ErrRoleDenied
+	}
+	return nil
+}
+
+// CheckRoleOr checks if a user has any of the specified roles, returns error if none.
+// CheckRoleOr 校验用户是否拥有任一指定角色，全部缺少返回 error。
+func (m *Manager) CheckRoleOr(ctx context.Context, loginID string, roles []string) error {
+	if !m.HasRolesOr(ctx, loginID, roles) {
+		return derror.ErrRoleDenied
+	}
+	return nil
+}
+
+// CheckDisable checks if an account is disabled, returns error if disabled.
+// CheckDisable 校验账号是否被封禁，被封禁返回 error。
+func (m *Manager) CheckDisable(ctx context.Context, loginID string) error {
+	if m.IsDisable(ctx, loginID) {
+		return derror.ErrAccountDisabled
+	}
+	return nil
 }
 
 // ============================================================================
@@ -2441,6 +2897,12 @@ func (m *Manager) getDisableKey(loginID string) string {
 	return m.config.KeyPrefix + m.config.AuthType + DisableKeyPrefix + loginID
 }
 
+// getDisableServiceKey generates the storage key for service disable status.
+// getDisableServiceKey 获取账号分类禁用状态存储键。
+func (m *Manager) getDisableServiceKey(loginID, service string) string {
+	return m.config.KeyPrefix + m.config.AuthType + DisableServiceKeyPrefix + loginID + ":" + service
+}
+
 // triggerEvent triggers an event through the event manager.
 // triggerEvent 通过事件管理器触发事件（根据配置决定同步或异步）。
 func (m *Manager) triggerEvent(event listener.Event, loginID, device, deviceId, token string, extra map[string]any) {
@@ -2531,4 +2993,32 @@ func (m *Manager) saveToStorage(
 	}
 
 	return nil
+}
+
+// searchKeys searches storage keys by pattern with pagination (internal method).
+// searchKeys 根据模式搜索存储键并分页（内部方法）。
+func (m *Manager) searchKeys(ctx context.Context, pattern string, start, size int) ([]string, error) {
+	keys, err := m.storage.Keys(ctx, pattern)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+
+	total := len(keys)
+	if start < 0 {
+		start = 0
+	}
+	if start >= total {
+		return []string{}, nil
+	}
+
+	// size == -1 表示返回全部
+	end := total
+	if size >= 0 {
+		end = start + size
+		if end > total {
+			end = total
+		}
+	}
+
+	return keys[start:end], nil
 }

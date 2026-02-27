@@ -75,6 +75,18 @@ func Login(ctx context.Context, loginID string, params ...string) (string, error
 	return mgr.Login(ctx, loginID, device, deviceId)
 }
 
+// LoginWithTimeout performs user login with a custom token timeout and returns a token.
+// LoginWithTimeout 执行用户登录并返回 token，使用指定的过期时间。
+// params: [0]=device, [1]=deviceId, [2]=authType (all optional)
+func LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, params ...string) (string, error) {
+	device, deviceId, authType := parseDeviceAndAuthType(params...)
+	mgr, err := GetManager(authType)
+	if err != nil {
+		return "", err
+	}
+	return mgr.LoginWithTimeout(ctx, loginID, timeout, device, deviceId)
+}
+
 // LoginByToken performs login renewal based on an existing token.
 // LoginByToken 根据 Token 续期登录。
 func LoginByToken(ctx context.Context, tokenValue string, authType ...string) error {
@@ -388,6 +400,232 @@ func GetDisableTTL(ctx context.Context, loginID string, authType ...string) (int
 }
 
 // ============================================================================
+// Service Disable Management - 分类封禁管理
+// ============================================================================
+
+// DisableService disables a specific service for an account.
+// DisableService 封禁账号的指定服务。
+func DisableService(ctx context.Context, loginID, service string, duration time.Duration, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.DisableService(ctx, loginID, service, duration)
+}
+
+// DisableServiceWithReason disables a specific service for an account with a reason.
+// DisableServiceWithReason 封禁账号的指定服务并附带原因。
+func DisableServiceWithReason(ctx context.Context, loginID, service string, duration time.Duration, reason string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.DisableService(ctx, loginID, service, duration, reason)
+}
+
+// DisableServiceLevel disables a specific service for an account with a level.
+// DisableServiceLevel 封禁账号的指定服务并设置封禁等级。
+func DisableServiceLevel(ctx context.Context, loginID, service string, level int, duration time.Duration, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.DisableServiceLevel(ctx, loginID, service, level, duration)
+}
+
+// DisableServiceLevelWithReason disables a specific service for an account with a level and reason.
+// DisableServiceLevelWithReason 封禁账号的指定服务并设置封禁等级和原因。
+func DisableServiceLevelWithReason(ctx context.Context, loginID, service string, level int, duration time.Duration, reason string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.DisableServiceLevel(ctx, loginID, service, level, duration, reason)
+}
+
+// UntieService removes the disable status of a specific service for an account.
+// UntieService 解封账号的指定服务。
+func UntieService(ctx context.Context, loginID, service string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.UntieService(ctx, loginID, service)
+}
+
+// IsDisableService checks if a specific service is disabled for an account.
+// IsDisableService 检查账号的指定服务是否被封禁。
+func IsDisableService(ctx context.Context, loginID, service string, authType ...string) bool {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return false
+	}
+	return mgr.IsDisableService(ctx, loginID, service)
+}
+
+// IsDisableServiceLevel checks if a specific service is disabled at or above the given level.
+// IsDisableServiceLevel 检查账号的指定服务是否达到指定封禁等级。
+func IsDisableServiceLevel(ctx context.Context, loginID, service string, level int, authType ...string) bool {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return false
+	}
+	return mgr.IsDisableServiceLevel(ctx, loginID, service, level)
+}
+
+// CheckDisableService checks if any of the specified services are disabled, returns error if disabled.
+// CheckDisableService 校验账号的指定服务是否被封禁，被封禁则返回 error。
+func CheckDisableService(ctx context.Context, loginID string, services []string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.CheckDisableService(ctx, loginID, services...)
+}
+
+// CheckDisableServiceLevel checks if a service is disabled at or above the given level.
+// CheckDisableServiceLevel 校验账号的指定服务是否达到指定封禁等级。
+func CheckDisableServiceLevel(ctx context.Context, loginID, service string, level int, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.CheckDisableServiceLevel(ctx, loginID, service, level)
+}
+
+// GetDisableServiceInfo retrieves the disable info for a specific service.
+// GetDisableServiceInfo 获取账号指定服务的封禁信息。
+func GetDisableServiceInfo(ctx context.Context, loginID, service string, authType ...string) (*manager.ServiceDisableInfo, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return nil, err
+	}
+	return mgr.GetDisableServiceInfo(ctx, loginID, service)
+}
+
+// GetDisableServiceTTL retrieves the remaining disable time for a specific service in seconds.
+// GetDisableServiceTTL 获取账号指定服务的剩余封禁时间（秒）。
+func GetDisableServiceTTL(ctx context.Context, loginID, service string, authType ...string) (int64, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return 0, err
+	}
+	return mgr.GetDisableServiceTTL(ctx, loginID, service)
+}
+
+// ============================================================================
+// Check Methods - 校验方法
+// ============================================================================
+
+// CheckPermission checks if a user has a specific permission, returns error if not.
+// CheckPermission 校验用户是否拥有指定权限，无权限返回 error。
+func CheckPermission(ctx context.Context, loginID string, permission string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.CheckPermission(ctx, loginID, permission)
+}
+
+// CheckPermissionAnd checks if a user has all specified permissions, returns error if not.
+// CheckPermissionAnd 校验用户是否拥有所有指定权限。
+func CheckPermissionAnd(ctx context.Context, loginID string, permissions []string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.CheckPermissionAnd(ctx, loginID, permissions)
+}
+
+// CheckPermissionOr checks if a user has any of the specified permissions, returns error if none.
+// CheckPermissionOr 校验用户是否拥有任一指定权限。
+func CheckPermissionOr(ctx context.Context, loginID string, permissions []string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.CheckPermissionOr(ctx, loginID, permissions)
+}
+
+// CheckRole checks if a user has a specific role, returns error if not.
+// CheckRole 校验用户是否拥有指定角色。
+func CheckRole(ctx context.Context, loginID string, role string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.CheckRole(ctx, loginID, role)
+}
+
+// CheckRoleAnd checks if a user has all specified roles, returns error if not.
+// CheckRoleAnd 校验用户是否拥有所有指定角色。
+func CheckRoleAnd(ctx context.Context, loginID string, roles []string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.CheckRoleAnd(ctx, loginID, roles)
+}
+
+// CheckRoleOr checks if a user has any of the specified roles, returns error if none.
+// CheckRoleOr 校验用户是否拥有任一指定角色。
+func CheckRoleOr(ctx context.Context, loginID string, roles []string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.CheckRoleOr(ctx, loginID, roles)
+}
+
+// CheckDisable checks if an account is disabled, returns error if disabled.
+// CheckDisable 校验账号是否被封禁。
+func CheckDisable(ctx context.Context, loginID string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.CheckDisable(ctx, loginID)
+}
+
+// ============================================================================
+// Token Renewal - Token 续期
+// ============================================================================
+
+// RenewTimeout manually renews the timeout of a token.
+// RenewTimeout 手动续期指定 Token 的过期时间。
+func RenewTimeout(ctx context.Context, tokenValue string, timeout time.Duration, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.RenewTimeout(ctx, tokenValue, timeout)
+}
+
+// ============================================================================
+// Terminal Traversal - 终端遍历
+// ============================================================================
+
+// ForEachTerminal iterates over all terminals for a login ID and calls the visitor function.
+// ForEachTerminal 遍历指定登录 ID 的所有终端。
+func ForEachTerminal(ctx context.Context, loginID string, visitor manager.TerminalVisitor, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.ForEachTerminal(ctx, loginID, visitor)
+}
+
+// ForEachTerminalByDevice iterates over terminals filtered by device type.
+// ForEachTerminalByDevice 遍历指定设备类型的终端。
+func ForEachTerminalByDevice(ctx context.Context, loginID, device string, visitor manager.TerminalVisitor, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.ForEachTerminalByDevice(ctx, loginID, device, visitor)
+}
+
+// ============================================================================
 // Session Management - 会话管理
 // ============================================================================
 
@@ -439,6 +677,76 @@ func GetTokenValueListByDevice(ctx context.Context, loginID string, device strin
 		return nil, err
 	}
 	return mgr.GetTokenValueListByDevice(ctx, loginID, device, checkAlive)
+}
+
+// GetTerminalListByLoginID retrieves all terminal info for a login ID, optionally filtered by device.
+// GetTerminalListByLoginID 获取指定登录 ID 的所有终端信息列表，可选按设备类型过滤。
+func GetTerminalListByLoginID(ctx context.Context, loginID string, authType ...string) ([]manager.TerminalInfo, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return nil, err
+	}
+	return mgr.GetTerminalListByLoginID(ctx, loginID)
+}
+
+// GetTerminalListByLoginIDAndDevice retrieves all terminal info for a login ID filtered by device.
+// GetTerminalListByLoginIDAndDevice 获取指定登录 ID 在指定设备类型下的所有终端信息列表。
+func GetTerminalListByLoginIDAndDevice(ctx context.Context, loginID string, device string, authType ...string) ([]manager.TerminalInfo, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return nil, err
+	}
+	return mgr.GetTerminalListByLoginID(ctx, loginID, device)
+}
+
+// GetTerminalInfoByToken retrieves terminal info for a specific token.
+// GetTerminalInfoByToken 根据 Token 获取终端详情。
+func GetTerminalInfoByToken(ctx context.Context, tokenValue string, authType ...string) (*manager.TerminalInfo, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return nil, err
+	}
+	return mgr.GetTerminalInfoByToken(ctx, tokenValue)
+}
+
+// GetTokenValueByLoginID retrieves the latest token for a login ID.
+// GetTokenValueByLoginID 获取指定登录 ID 的最新 Token。
+func GetTokenValueByLoginID(ctx context.Context, loginID string, authType ...string) (string, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return "", err
+	}
+	return mgr.GetTokenValueByLoginID(ctx, loginID)
+}
+
+// GetTokenValueByLoginIDAndDevice retrieves the latest token for a login ID filtered by device.
+// GetTokenValueByLoginIDAndDevice 获取指定登录 ID 在指定设备类型下的最新 Token。
+func GetTokenValueByLoginIDAndDevice(ctx context.Context, loginID string, device string, authType ...string) (string, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return "", err
+	}
+	return mgr.GetTokenValueByLoginID(ctx, loginID, device)
+}
+
+// SearchTokenValue searches token keys by keyword with pagination.
+// SearchTokenValue 根据关键词搜索 Token，支持分页。
+func SearchTokenValue(ctx context.Context, keyword string, start, size int, authType ...string) ([]string, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return nil, err
+	}
+	return mgr.SearchTokenValue(ctx, keyword, start, size)
+}
+
+// SearchSessionId searches session keys by keyword with pagination.
+// SearchSessionId 根据关键词搜索 Session ID，支持分页。
+func SearchSessionId(ctx context.Context, keyword string, start, size int, authType ...string) ([]string, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return nil, err
+	}
+	return mgr.SearchSessionId(ctx, keyword, start, size)
 }
 
 // ============================================================================
@@ -694,13 +1002,23 @@ func HasRolesOrByToken(ctx context.Context, tokenValue string, roles []string, a
 // ============================================================================
 
 // GenerateNonce generates a new nonce.
-// GenerateNonce 生成新的 nonce。
+// GenerateNonce 生成新的 nonce（使用默认有效期）。
 func GenerateNonce(ctx context.Context, authType ...string) (string, error) {
 	mgr, err := GetManager(authType...)
 	if err != nil {
 		return "", err
 	}
 	return mgr.GenerateNonce(ctx)
+}
+
+// GenerateNonceWithTimeout generates a new nonce with a custom timeout duration.
+// GenerateNonceWithTimeout 生成新的 nonce，使用指定的有效期。
+func GenerateNonceWithTimeout(ctx context.Context, timeout time.Duration, authType ...string) (string, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return "", err
+	}
+	return mgr.GenerateNonceWithTimeout(ctx, timeout)
 }
 
 // VerifyNonce verifies and consumes a nonce (one-time use).
@@ -731,6 +1049,16 @@ func IsNonceValid(ctx context.Context, nonce string, authType ...string) bool {
 		return false
 	}
 	return mgr.IsNonceValid(ctx, nonce)
+}
+
+// GetNonceTTL returns the remaining TTL of a nonce in seconds.
+// GetNonceTTL 获取 nonce 的剩余有效时间（秒）。
+func GetNonceTTL(ctx context.Context, nonce string, authType ...string) (int64, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return 0, err
+	}
+	return mgr.GetNonceTTL(ctx, nonce)
 }
 
 // ============================================================================

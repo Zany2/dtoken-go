@@ -3,6 +3,7 @@ package manager
 
 import (
 	"context"
+	"time"
 )
 
 // ============================================================================
@@ -10,9 +11,15 @@ import (
 // ============================================================================
 
 // GenerateNonce generates a new nonce.
-// GenerateNonce 生成新的 nonce。
+// GenerateNonce 生成新的 nonce（使用默认有效期）。
 func (m *Manager) GenerateNonce(ctx context.Context) (string, error) {
 	return m.nonceManager.Generate(ctx)
+}
+
+// GenerateNonceWithTimeout generates a new nonce with a custom timeout duration.
+// GenerateNonceWithTimeout 生成新的 nonce，使用指定的有效期。
+func (m *Manager) GenerateNonceWithTimeout(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.nonceManager.GenerateWithTimeout(ctx, timeout)
 }
 
 // VerifyNonce verifies and consumes a nonce (one-time use).
@@ -31,4 +38,10 @@ func (m *Manager) VerifyAndConsumeNonce(ctx context.Context, nonce string) error
 // IsNonceValid 检查 nonce 是否有效（不消费）。
 func (m *Manager) IsNonceValid(ctx context.Context, nonce string) bool {
 	return m.nonceManager.IsValid(ctx, nonce)
+}
+
+// GetNonceTTL returns the remaining TTL of a nonce in seconds.
+// GetNonceTTL 获取 nonce 的剩余有效时间（秒）。
+func (m *Manager) GetNonceTTL(ctx context.Context, nonce string) (int64, error) {
+	return m.nonceManager.GetTTL(ctx, nonce)
 }

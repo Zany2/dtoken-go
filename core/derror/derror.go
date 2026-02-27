@@ -129,6 +129,10 @@ var (
 	// ErrManagerInvalidType indicates manager has invalid type in global storage.
 	// ErrManagerInvalidType 表示全局存储中的管理器类型不正确。
 	ErrManagerInvalidType = errors.New("manager has invalid type")
+
+	// ErrInvalidParam indicates invalid parameter.
+	// ErrInvalidParam 表示参数无效。
+	ErrInvalidParam = errors.New("invalid parameter")
 )
 
 // ============================================================================
@@ -195,6 +199,24 @@ var (
 	// ErrRoleDenied indicates role denied.
 	// ErrRoleDenied 表示角色不足。
 	ErrRoleDenied = errors.New("role denied: user does not have the required role")
+)
+
+// ============================================================================
+// Service Disable Errors - 分类封禁错误
+// ============================================================================
+
+var (
+	// ErrServiceDisabled indicates a specific service is disabled for the account.
+	// ErrServiceDisabled 表示账号的指定服务已被封禁。
+	ErrServiceDisabled = errors.New("service disabled: the specified service is disabled for this account")
+
+	// ErrServiceNotDisabled indicates the service is not disabled.
+	// ErrServiceNotDisabled 表示该服务未被封禁。
+	ErrServiceNotDisabled = errors.New("service not disabled")
+
+	// ErrDisableLevelNotReached indicates the disable level is not reached.
+	// ErrDisableLevelNotReached 表示未达到指定封禁等级。
+	ErrDisableLevelNotReached = errors.New("disable level not reached")
 )
 
 // ============================================================================

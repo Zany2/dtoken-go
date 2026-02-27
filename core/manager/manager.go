@@ -64,3 +64,11 @@ type DisableInfo struct {
 	DisableTime   int64  `json:"disableTime"`   // DisableTime 封禁时间戳
 	DisableReason string `json:"disableReason"` // DisableReason 封禁原因
 }
+
+// ServiceDisableInfo 分类封禁信息（支持分级）
+type ServiceDisableInfo struct {
+	Service       string `json:"service"`       // Service 被封禁的服务/业务模块
+	Level         int    `json:"level"`         // Level 封禁等级（0 表示不分级）
+	DisableTime   int64  `json:"disableTime"`   // DisableTime 封禁时间戳
+	DisableReason string `json:"disableReason"` // DisableReason 封禁原因
+}

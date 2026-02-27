@@ -50,6 +50,14 @@ const (
 	// EventRoleCheck 角色检查事件。
 	EventRoleCheck Event = "roleCheck"
 
+	// EventDisableService fired when a service is disabled for an account.
+	// EventDisableService 账号服务被封禁事件。
+	EventDisableService Event = "disableService"
+
+	// EventUntieService fired when a service is re-enabled for an account.
+	// EventUntieService 账号服务解禁事件。
+	EventUntieService Event = "untieService"
+
 	// EventAll is a wildcard event that matches all events.
 	// EventAll 通配符事件（匹配所有事件）。
 	EventAll Event = "*"
@@ -75,6 +83,12 @@ const (
 
 	// ExtraKeyResult 检查结果字段
 	ExtraKeyResult = "result"
+
+	// ExtraKeyService 服务/业务模块字段
+	ExtraKeyService = "service"
+
+	// ExtraKeyLevel 封禁等级字段
+	ExtraKeyLevel = "level"
 )
 
 // Logic types for permission/role checks
