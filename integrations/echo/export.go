@@ -1,4 +1,4 @@
-package fiber
+package echo
 
 import (
 	"github.com/Zany2/dtoken-go/core/adapter"
@@ -10,7 +10,7 @@ import (
 	"github.com/Zany2/dtoken-go/dtoken"
 )
 
-// Type aliases Type aliases 类型别名。
+// Type aliases 类型别名
 type (
 	Config             = config.Config
 	Manager            = manager.Manager
@@ -28,7 +28,7 @@ type (
 	OAuth2AuthCode     = oauth2.AuthorizationCode
 )
 
-// Error code aliases Error code aliases 错误码别名。
+// Error code aliases 错误码别名
 const (
 	CodeSuccess          = derror.CodeSuccess
 	CodeBadRequest       = derror.CodeBadRequest
@@ -41,7 +41,7 @@ const (
 	CodeAccountDisabled  = derror.CodeAccountDisabled
 )
 
-// Token style aliases Token style aliases Token 风格别名。
+// Token style aliases Token 风格别名
 const (
 	TokenStyleUUID      = adapter.TokenStyleUUID
 	TokenStyleSimple    = adapter.TokenStyleSimple
@@ -51,7 +51,7 @@ const (
 	TokenStyleJWT       = adapter.TokenStyleJWT
 )
 
-// Exported shortcuts and API aliases Exported shortcuts and API aliases 对外快捷入口与 API 别名。
+// Exported shortcuts and API aliases 对外快捷入口和 API 别名
 var (
 	ErrNotLogin         = derror.ErrNotLogin
 	ErrInvalidToken     = derror.ErrInvalidToken

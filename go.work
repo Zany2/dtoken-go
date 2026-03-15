@@ -30,4 +30,5 @@ use (
 	./integrations/gf
 	./integrations/gin
 	./integrations/zero
+	./integrations/echo
 )

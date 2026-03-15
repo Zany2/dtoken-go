@@ -1,0 +1,231 @@
+package echo
+
+import (
+	"context"
+
+	"github.com/Zany2/dtoken-go/core/derror"
+	"github.com/Zany2/dtoken-go/dtoken"
+	echo4 "github.com/labstack/echo/v4"
+)
+
+// Annotation describes declarative auth requirements for handler 处理器声明式认证要求
+type Annotation struct {
+	AuthType        string
+	CheckLogin      bool
+	CheckRole       []string
+	CheckPermission []string
+	CheckDisable    bool
+	Ignore          bool
+	LogicType       LogicType
+}
+
+// GetHandler wraps Echo handler with annotation based checks 为 Echo 处理器包装注解式校验
+func GetHandler(ctx context.Context, handler echo4.HandlerFunc, failFunc func(c echo4.Context, err error) error, annotations ...*Annotation) echo4.HandlerFunc {
+	return func(c echo4.Context) error {
+		if len(annotations) > 0 && annotations[0].Ignore {
+			if handler != nil {
+				return handler(c)
+			}
+			return nil
+		}
+
+		ann := &Annotation{}
+		if len(annotations) > 0 {
+			ann = annotations[0]
+		}
+
+		needAuth := ann.CheckLogin || ann.CheckDisable || len(ann.CheckPermission) > 0 || len(ann.CheckRole) > 0
+		if !needAuth {
+			if handler != nil {
+				return handler(c)
+			}
+			return nil
+		}
+
+		mgr, err := dtoken.GetManager(ann.AuthType)
+		if err != nil {
+			if failFunc != nil {
+				return failFunc(c, err)
+			}
+			return writeErrorResponse(c, err)
+		}
+
+		dCtx := getDContext(c, mgr)
+		token := dCtx.GetTokenValue()
+		if !mgr.IsLogin(ctx, token) {
+			if failFunc != nil {
+				return failFunc(c, derror.ErrNotLogin)
+			}
+			return writeErrorResponse(c, derror.ErrNotLogin)
+		}
+
+		var loginID string
+		if ann.CheckDisable || len(ann.CheckPermission) > 0 || len(ann.CheckRole) > 0 {
+			loginID, err = mgr.GetLoginID(ctx, token)
+			if err != nil {
+				if failFunc != nil {
+					return failFunc(c, err)
+				}
+				return writeErrorResponse(c, err)
+			}
+		}
+
+		if ann.CheckDisable && mgr.IsDisable(ctx, loginID) {
+			if failFunc != nil {
+				return failFunc(c, derror.ErrAccountDisabled)
+			}
+			return writeErrorResponse(c, derror.ErrAccountDisabled)
+		}
+
+		if len(ann.CheckPermission) > 0 {
+			var ok bool
+			if ann.LogicType == LogicAnd {
+				ok = mgr.HasPermissionsAnd(ctx, loginID, ann.CheckPermission)
+			} else {
+				ok = mgr.HasPermissionsOr(ctx, loginID, ann.CheckPermission)
+			}
+			if !ok {
+				if failFunc != nil {
+					return failFunc(c, derror.ErrPermissionDenied)
+				}
+				return writeErrorResponse(c, derror.ErrPermissionDenied)
+			}
+		}
+
+		if len(ann.CheckRole) > 0 {
+			var ok bool
+			if ann.LogicType == LogicAnd {
+				ok = mgr.HasRolesAnd(ctx, loginID, ann.CheckRole)
+			} else {
+				ok = mgr.HasRolesOr(ctx, loginID, ann.CheckRole)
+			}
+			if !ok {
+				if failFunc != nil {
+					return failFunc(c, derror.ErrRoleDenied)
+				}
+				return writeErrorResponse(c, derror.ErrRoleDenied)
+			}
+		}
+
+		if handler != nil {
+			return handler(c)
+		}
+		return nil
+	}
+}
+
+// CheckLoginMiddleware decorates handler with login checks 为处理器增加登录校验
+func CheckLoginMiddleware(ctx context.Context, handler echo4.HandlerFunc, failFunc func(c echo4.Context, err error) error, authType ...string) echo4.HandlerFunc {
+	ann := &Annotation{CheckLogin: true}
+	if len(authType) > 0 {
+		ann.AuthType = authType[0]
+	}
+	return GetHandler(ctx, handler, failFunc, ann)
+}
+
+// CheckRoleMiddleware decorates handler with role checks 为处理器增加角色校验
+func CheckRoleMiddleware(ctx context.Context, roles []string, handler echo4.HandlerFunc, failFunc func(c echo4.Context, err error) error, authType ...string) echo4.HandlerFunc {
+	ann := &Annotation{CheckRole: roles}
+	if len(authType) > 0 {
+		ann.AuthType = authType[0]
+	}
+	return GetHandler(ctx, handler, failFunc, ann)
+}
+
+// CheckPermissionMiddleware decorates handler with permission checks 为处理器增加权限校验
+func CheckPermissionMiddleware(ctx context.Context, perms []string, handler echo4.HandlerFunc, failFunc func(c echo4.Context, err error) error, authType ...string) echo4.HandlerFunc {
+	ann := &Annotation{CheckPermission: perms}
+	if len(authType) > 0 {
+		ann.AuthType = authType[0]
+	}
+	return GetHandler(ctx, handler, failFunc, ann)
+}
+
+// CheckDisableMiddleware decorates handler with disable checks 为处理器增加封禁校验
+func CheckDisableMiddleware(ctx context.Context, handler echo4.HandlerFunc, failFunc func(c echo4.Context, err error) error, authType ...string) echo4.HandlerFunc {
+	ann := &Annotation{CheckDisable: true}
+	if len(authType) > 0 {
+		ann.AuthType = authType[0]
+	}
+	return GetHandler(ctx, handler, failFunc, ann)
+}
+
+// IgnoreMiddleware skips DToken checks for wrapped handler 为处理器跳过 DToken 校验
+func IgnoreMiddleware(ctx context.Context, handler echo4.HandlerFunc, failFunc func(c echo4.Context, err error) error) echo4.HandlerFunc {
+	return GetHandler(ctx, handler, failFunc, &Annotation{Ignore: true})
+}
+
+// Combined Middleware 组合中间件
+
+// CheckLoginAndRoleMiddleware decorates handler with login and role checks 为处理器增加登录与角色校验
+func CheckLoginAndRoleMiddleware(ctx context.Context, roles []string, handler echo4.HandlerFunc, failFunc func(c echo4.Context, err error) error, authType ...string) echo4.HandlerFunc {
+	ann := &Annotation{CheckLogin: true, CheckRole: roles}
+	if len(authType) > 0 {
+		ann.AuthType = authType[0]
+	}
+	return GetHandler(ctx, handler, failFunc, ann)
+}
+
+// CheckLoginAndPermissionMiddleware decorates handler with login and permission checks 为处理器增加登录与权限校验
+func CheckLoginAndPermissionMiddleware(ctx context.Context, perms []string, handler echo4.HandlerFunc, failFunc func(c echo4.Context, err error) error, authType ...string) echo4.HandlerFunc {
+	ann := &Annotation{CheckLogin: true, CheckPermission: perms}
+	if len(authType) > 0 {
+		ann.AuthType = authType[0]
+	}
+	return GetHandler(ctx, handler, failFunc, ann)
+}
+
+// CheckAllMiddleware decorates handler with login role and permission checks 为处理器增加登录角色权限校验
+func CheckAllMiddleware(ctx context.Context, roles []string, perms []string, handler echo4.HandlerFunc, failFunc func(c echo4.Context, err error) error, authType ...string) echo4.HandlerFunc {
+	ann := &Annotation{CheckLogin: true, CheckRole: roles, CheckPermission: perms}
+	if len(authType) > 0 {
+		ann.AuthType = authType[0]
+	}
+	return GetHandler(ctx, handler, failFunc, ann)
+}
+
+// Route Group Helper 路由组辅助函数
+
+// AuthGroup attaches login middleware to Echo group 为 Echo 路由组挂载登录校验
+func AuthGroup(ctx context.Context, group *echo4.Group, failFunc func(c echo4.Context, err error) error, authType ...string) *echo4.Group {
+	options := []AuthOption{WithFailFunc(failFunc)}
+	if len(authType) > 0 {
+		options = append(options, WithAuthType(authType[0]))
+	}
+	group.Use(AuthMiddleware(ctx, options...))
+	return group
+}
+
+// RoleGroup attaches login and role middleware to Echo group 为 Echo 路由组挂载登录和角色校验
+func RoleGroup(ctx context.Context, group *echo4.Group, roles []string, failFunc func(c echo4.Context, err error) error, authType ...string) *echo4.Group {
+	options := []AuthOption{WithFailFunc(failFunc)}
+	if len(authType) > 0 {
+		options = append(options, WithAuthType(authType[0]))
+	}
+	group.Use(AuthMiddleware(ctx, options...))
+	group.Use(RoleMiddleware(ctx, roles, options...))
+	return group
+}
+
+// PermissionGroup attaches login and permission middleware to Echo group 为 Echo 路由组挂载登录和权限校验
+func PermissionGroup(ctx context.Context, group *echo4.Group, perms []string, failFunc func(c echo4.Context, err error) error, authType ...string) *echo4.Group {
+	options := []AuthOption{WithFailFunc(failFunc)}
+	if len(authType) > 0 {
+		options = append(options, WithAuthType(authType[0]))
+	}
+	group.Use(AuthMiddleware(ctx, options...))
+	group.Use(PermissionMiddleware(ctx, perms, options...))
+	return group
+}
+
+// RoleAndPermissionGroup attaches login role and permission middleware to Echo group 为 Echo 路由组挂载登录角色权限校验
+func RoleAndPermissionGroup(ctx context.Context, group *echo4.Group, roles []string, perms []string, failFunc func(c echo4.Context, err error) error, authType ...string) *echo4.Group {
+	options := []AuthOption{WithFailFunc(failFunc)}
+	if len(authType) > 0 {
+		options = append(options, WithAuthType(authType[0]))
+	}
+	group.Use(AuthMiddleware(ctx, options...))
+	group.Use(RoleMiddleware(ctx, roles, options...))
+	group.Use(PermissionMiddleware(ctx, perms, options...))
+	return group
+}
