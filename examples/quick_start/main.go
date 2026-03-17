@@ -1,6 +1,5 @@
 // @Author daixk 2026/2/2
-// Quick Start Example - Comprehensive Test Suite for DToken Framework
-// 快速开始示例 - DToken 框架完整测试套件
+// Quick Start Example - Comprehensive Test Suite for DToken Framework 快速开始示例 - DToken 框架完整测试套件
 
 package main
 
@@ -14,65 +13,61 @@ import (
 	"time"
 )
 
-// ============================================================================
-// Data Structures - 数据结构
-// ============================================================================
+// -------------------------------------------------- Data Structures - 数据结构 --------------------------------------------------
 
-// Response 统一响应结构
+// Response defines unified response payload 统一响应结构
 type Response struct {
 	Code int         `json:"code"`
 	Msg  string      `json:"msg"`
 	Data interface{} `json:"data,omitempty"`
 }
 
-// LoginRequest 登录请求
+// LoginRequest defines login request payload 登录请求
 type LoginRequest struct {
 	LoginID  string `json:"loginId" binding:"required"`
 	Device   string `json:"device"`
 	DeviceId string `json:"deviceId"`
 }
 
-// LoginByTokenRequest 通过 Token 登录请求
+// LoginByTokenRequest defines token refresh request 通过 Token 登录请求
 type LoginByTokenRequest struct {
 	Token string `json:"token" binding:"required"`
 }
 
-// PermissionRequest 权限请求
+// PermissionRequest defines permission request payload 权限请求
 type PermissionRequest struct {
 	LoginID     string   `json:"loginId" binding:"required"`
 	Permissions []string `json:"permissions" binding:"required"`
 }
 
-// RoleRequest 角色请求
+// RoleRequest defines role request payload 角色请求
 type RoleRequest struct {
 	LoginID string   `json:"loginId" binding:"required"`
 	Roles   []string `json:"roles" binding:"required"`
 }
 
-// DisableRequest 封禁请求
+// DisableRequest defines disable request payload 封禁请求
 type DisableRequest struct {
 	LoginID  string `json:"loginId" binding:"required"`
 	Duration int64  `json:"duration" binding:"required"` // 封禁时长（秒）
 	Reason   string `json:"reason"`
 }
 
-// DeviceRequest 设备请求
+// DeviceRequest defines device request payload 设备请求
 type DeviceRequest struct {
 	LoginID  string `json:"loginId" binding:"required"`
 	Device   string `json:"device"`
 	DeviceId string `json:"deviceId"`
 }
 
-// TokenRequest Token 请求
+// TokenRequest defines token request payload Token 请求
 type TokenRequest struct {
 	Token string `json:"token" binding:"required"`
 }
 
-// ============================================================================
-// Helper Functions - 辅助函数
-// ============================================================================
+// -------------------------------------------------- Helper Functions - 辅助函数 --------------------------------------------------
 
-// success 成功响应
+// success writes success response 成功响应
 func success(c *gin.Context, data interface{}) {
 	c.JSON(http.StatusOK, Response{
 		Code: 200,
@@ -81,7 +76,7 @@ func success(c *gin.Context, data interface{}) {
 	})
 }
 
-// fail 失败响应
+// fail writes failure response 失败响应
 func fail(c *gin.Context, msg string) {
 	c.JSON(http.StatusOK, Response{
 		Code: 500,
@@ -89,8 +84,7 @@ func fail(c *gin.Context, msg string) {
 	})
 }
 
-// unauthorized 未授权响应
-// 返回401未授权响应
+// unauthorized writes 401 response 未授权响应 返回401未授权响应
 func unauthorized(c *gin.Context, msg string) {
 	c.JSON(http.StatusUnauthorized, Response{
 		Code: 401,
@@ -99,49 +93,43 @@ func unauthorized(c *gin.Context, msg string) {
 	c.Abort()
 }
 
-// ============================================================================
-// Middleware - 中间件
-// ============================================================================
+// -------------------------------------------------- Middleware - 中间件 --------------------------------------------------
 
-// authMiddleware 登录验证中间件
-// 验证用户是否已登录，并将token存入上下文
+// authMiddleware checks login state 登录验证中间件 验证用户是否已登录，并将token存入上下文
 func authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 从Header中获取token
+		// Get Token From Header 从Header中获取token
 		token := c.GetHeader("Authorization")
 		if token == "" {
 			unauthorized(c, "未提供认证token")
 			return
 		}
 
-		// 验证token是否有效
+		// Validate Token 验证token是否有效
 		if err := dtoken.CheckLogin(c.Request.Context(), token); err != nil {
 			unauthorized(c, "token无效或已过期: "+err.Error())
 			return
 		}
 
-		// 将token存入上下文
+		// Store Token In Context 将token存入上下文
 		c.Set("token", token)
 
-		// 继续处理请求
+		// Continue Request Handling 继续处理请求
 		c.Next()
 	}
 }
 
-// ============================================================================
-// Initialization - 初始化
-// ============================================================================
+// -------------------------------------------------- Initialization - 初始化 --------------------------------------------------
 
-// initDToken 初始化 DToken 框架
+// initDToken initializes the DToken framework 初始化 DToken 框架
 func initDToken() error {
-	// 使用 Redis 存储
-	// Redis URL 格式: redis://[username]:[password]@[host]:[port]/[database]
+	// Use Redis Storage And URL Format 使用 Redis 存储与 Redis URL 格式
 	storage, err := redis.NewStorage("redis://:root@192.168.19.104:6379/0?dial_timeout=3&read_timeout=10s&max_retries=2")
 	if err != nil {
 		panic("Failed to connect to Redis: " + err.Error())
 	}
 
-	// 使用 Builder 构建管理器
+	// Build Manager With Builder 使用 Builder 构建管理器
 	mgr := builder.NewBuilder().
 		TokenName("token").    // Token 名称
 		Timeout(7200).         // 超时时间 2 小时
@@ -154,19 +142,16 @@ func initDToken() error {
 		SetStorage(storage).   // 设置存储适配器
 		Build()
 
-	// 设置全局管理器
+	// Set Global Manager 设置全局管理器
 	dtoken.SetManager(mgr)
 
 	fmt.Println("DToken 框架初始化成功")
 	return nil
 }
 
-// ============================================================================
-// Authentication APIs - 认证相关接口
-// ============================================================================
+// -------------------------------------------------- Authentication APIs - 认证相关接口 --------------------------------------------------
 
-// handleLogin 用户登录
-// POST /api/auth/login
+// handleLogin handles login 用户登录
 func handleLogin(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -177,7 +162,7 @@ func handleLogin(c *gin.Context) {
 	var token string
 	var err error
 
-	// 根据是否提供设备信息选择登录方式
+	// Choose Login Method By Device Info 根据是否提供设备信息选择登录方式
 	if req.Device != "" && req.DeviceId != "" {
 		token, err = dtoken.Login(c.Request.Context(), req.LoginID, req.Device, req.DeviceId)
 	} else if req.Device != "" {
@@ -197,8 +182,7 @@ func handleLogin(c *gin.Context) {
 	})
 }
 
-// handleLoginByToken 通过 Token 续期登录
-// POST /api/auth/login-by-token
+// handleLoginByToken handles login by token 通过 Token 续期登录
 func handleLoginByToken(c *gin.Context) {
 	var req LoginByTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -214,10 +198,9 @@ func handleLoginByToken(c *gin.Context) {
 	success(c, "Token 续期成功")
 }
 
-// handleLogout 用户登出
-// POST /api/auth/logout
+// handleLogout handles logout 用户登出
 func handleLogout(c *gin.Context) {
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -229,8 +212,7 @@ func handleLogout(c *gin.Context) {
 	success(c, "登出成功")
 }
 
-// handleLogoutByDevice 根据设备类型登出
-// POST /api/auth/logout-by-device
+// handleLogoutByDevice handles logout by device 根据设备类型登出
 func handleLogoutByDevice(c *gin.Context) {
 	var req DeviceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -246,8 +228,7 @@ func handleLogoutByDevice(c *gin.Context) {
 	success(c, "登出成功")
 }
 
-// handleLogoutByDeviceAndDeviceId 根据设备类型和设备ID登出
-// POST /api/auth/logout-by-device-id
+// handleLogoutByDeviceAndDeviceId handles logout by device and device id 根据设备类型和设备ID登出
 func handleLogoutByDeviceAndDeviceId(c *gin.Context) {
 	var req DeviceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -263,8 +244,7 @@ func handleLogoutByDeviceAndDeviceId(c *gin.Context) {
 	success(c, "登出成功")
 }
 
-// handleLogoutByLoginID 根据 LoginID 登出所有终端
-// POST /api/auth/logout-by-login-id
+// handleLogoutByLoginID handles logout by login id 根据 LoginID 登出所有终端
 func handleLogoutByLoginID(c *gin.Context) {
 	var req struct {
 		LoginID string `json:"loginId" binding:"required"`
@@ -282,10 +262,9 @@ func handleLogoutByLoginID(c *gin.Context) {
 	success(c, "登出成功")
 }
 
-// handleIsLogin 检查用户是否登录
-// POST /api/auth/is-login
+// handleIsLogin handles is login 检查用户是否登录
 func handleIsLogin(c *gin.Context) {
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -296,10 +275,9 @@ func handleIsLogin(c *gin.Context) {
 	})
 }
 
-// handleCheckLogin 验证登录状态（未登录返回错误）
-// POST /api/auth/check-login
+// handleCheckLogin validates login status 验证登录状态（未登录返回错误）
 func handleCheckLogin(c *gin.Context) {
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -311,10 +289,9 @@ func handleCheckLogin(c *gin.Context) {
 	success(c, "已登录")
 }
 
-// handleGetLoginID 获取登录ID
-// POST /api/auth/get-login-id
+// handleGetLoginID handles get login id 获取登录ID
 func handleGetLoginID(c *gin.Context) {
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -329,10 +306,9 @@ func handleGetLoginID(c *gin.Context) {
 	})
 }
 
-// handleGetTokenInfo 获取 Token 信息
-// POST /api/auth/get-token-info
+// handleGetTokenInfo handles get token info 获取 Token 信息
 func handleGetTokenInfo(c *gin.Context) {
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -345,10 +321,9 @@ func handleGetTokenInfo(c *gin.Context) {
 	success(c, tokenInfo)
 }
 
-// handleGetDevice 获取设备类型
-// POST /api/auth/get-device
+// handleGetDevice handles get device 获取设备类型
 func handleGetDevice(c *gin.Context) {
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -363,10 +338,9 @@ func handleGetDevice(c *gin.Context) {
 	})
 }
 
-// handleGetDeviceId 获取设备ID
-// POST /api/auth/get-device-id
+// handleGetDeviceId handles get device id 获取设备ID
 func handleGetDeviceId(c *gin.Context) {
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -381,10 +355,9 @@ func handleGetDeviceId(c *gin.Context) {
 	})
 }
 
-// handleGetTokenCreateTime 获取 Token 创建时间
-// POST /api/auth/get-token-create-time
+// handleGetTokenCreateTime handles get token create time 获取 Token 创建时间
 func handleGetTokenCreateTime(c *gin.Context) {
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -399,10 +372,9 @@ func handleGetTokenCreateTime(c *gin.Context) {
 	})
 }
 
-// handleGetTokenTTL 获取 Token 剩余有效时间
-// POST /api/auth/get-token-ttl
+// handleGetTokenTTL handles get token ttl 获取 Token 剩余有效时间
 func handleGetTokenTTL(c *gin.Context) {
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -417,8 +389,7 @@ func handleGetTokenTTL(c *gin.Context) {
 	})
 }
 
-// handleGetOnlineTerminalCount 获取在线终端总数
-// GET /api/auth/online-count/:loginId
+// handleGetOnlineTerminalCount handles get online terminal count 获取在线终端总数
 func handleGetOnlineTerminalCount(c *gin.Context) {
 	loginID := c.Param("loginId")
 	if loginID == "" {
@@ -437,8 +408,7 @@ func handleGetOnlineTerminalCount(c *gin.Context) {
 	})
 }
 
-// handleGetOnlineTerminalCountByDevice 获取指定设备的在线终端数
-// GET /api/auth/online-count/:loginId/:device
+// handleGetOnlineTerminalCountByDevice handles get online terminal count by device 获取指定设备的在线终端数
 func handleGetOnlineTerminalCountByDevice(c *gin.Context) {
 	loginID := c.Param("loginId")
 	device := c.Param("device")
@@ -459,8 +429,7 @@ func handleGetOnlineTerminalCountByDevice(c *gin.Context) {
 	})
 }
 
-// handleGetOnlineTerminalCountByDeviceAndDeviceId 获取指定设备和设备ID的在线终端数
-// GET /api/auth/online-count/:loginId/:device/:deviceId
+// handleGetOnlineTerminalCountByDeviceAndDeviceId handles get online terminal count by device and device id 获取指定设备和设备ID的在线终端数
 func handleGetOnlineTerminalCountByDeviceAndDeviceId(c *gin.Context) {
 	loginID := c.Param("loginId")
 	device := c.Param("device")
@@ -481,12 +450,9 @@ func handleGetOnlineTerminalCountByDeviceAndDeviceId(c *gin.Context) {
 	})
 }
 
-// ============================================================================
-// Online Status Management APIs - 在线状态管理接口
-// ============================================================================
+// -------------------------------------------------- Online Status Management APIs - 在线状态管理接口 --------------------------------------------------
 
-// handleKickout 根据 Token 踢人下线
-// POST /api/online/kickout
+// handleKickout handles kickout 根据 Token 踢人下线
 func handleKickout(c *gin.Context) {
 	var req TokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -502,8 +468,7 @@ func handleKickout(c *gin.Context) {
 	success(c, "踢人下线成功")
 }
 
-// handleKickoutByDevice 根据设备类型踢人下线
-// POST /api/online/kickout-by-device
+// handleKickoutByDevice handles kickout by device 根据设备类型踢人下线
 func handleKickoutByDevice(c *gin.Context) {
 	var req DeviceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -519,8 +484,7 @@ func handleKickoutByDevice(c *gin.Context) {
 	success(c, "踢人下线成功")
 }
 
-// handleKickoutByDeviceAndDeviceId 根据设备和设备ID踢人下线
-// POST /api/online/kickout-by-device-id
+// handleKickoutByDeviceAndDeviceId handles kickout by device and device id 根据设备和设备ID踢人下线
 func handleKickoutByDeviceAndDeviceId(c *gin.Context) {
 	var req DeviceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -536,8 +500,7 @@ func handleKickoutByDeviceAndDeviceId(c *gin.Context) {
 	success(c, "踢人下线成功")
 }
 
-// handleKickoutByLoginID 根据 LoginID 踢出所有终端
-// POST /api/online/kickout-by-login-id
+// handleKickoutByLoginID handles kickout by login id 根据 LoginID 踢出所有终端
 func handleKickoutByLoginID(c *gin.Context) {
 	var req struct {
 		LoginID string `json:"loginId" binding:"required"`
@@ -555,10 +518,9 @@ func handleKickoutByLoginID(c *gin.Context) {
 	success(c, "踢人下线成功")
 }
 
-// handleReplace 根据 Token 顶人下线
-// POST /api/online/replace
+// handleReplace handles replace 根据 Token 顶人下线
 func handleReplace(c *gin.Context) {
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -570,8 +532,7 @@ func handleReplace(c *gin.Context) {
 	success(c, "顶人下线成功")
 }
 
-// handleReplaceByDevice 根据设备类型顶人下线
-// POST /api/online/replace-by-device
+// handleReplaceByDevice handles replace by device 根据设备类型顶人下线
 func handleReplaceByDevice(c *gin.Context) {
 	var req DeviceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -587,8 +548,7 @@ func handleReplaceByDevice(c *gin.Context) {
 	success(c, "顶人下线成功")
 }
 
-// handleReplaceByDeviceAndDeviceId 根据设备和设备ID顶人下线
-// POST /api/online/replace-by-device-id
+// handleReplaceByDeviceAndDeviceId handles replace by device and device id 根据设备和设备ID顶人下线
 func handleReplaceByDeviceAndDeviceId(c *gin.Context) {
 	var req DeviceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -604,8 +564,7 @@ func handleReplaceByDeviceAndDeviceId(c *gin.Context) {
 	success(c, "顶人下线成功")
 }
 
-// handleReplaceByLoginID 根据 LoginID 顶替所有终端
-// POST /api/online/replace-by-login-id
+// handleReplaceByLoginID handles replace by login id 根据 LoginID 顶替所有终端
 func handleReplaceByLoginID(c *gin.Context) {
 	var req struct {
 		LoginID string `json:"loginId" binding:"required"`
@@ -623,12 +582,9 @@ func handleReplaceByLoginID(c *gin.Context) {
 	success(c, "顶人下线成功")
 }
 
-// ============================================================================
-// Permission Management APIs - 权限管理接口
-// ============================================================================
+// -------------------------------------------------- Permission Management APIs - 权限管理接口 --------------------------------------------------
 
-// handleAddPermissions 为用户添加权限
-// POST /api/permission/add
+// handleAddPermissions handles add permissions 为用户添加权限
 func handleAddPermissions(c *gin.Context) {
 	var req PermissionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -644,8 +600,7 @@ func handleAddPermissions(c *gin.Context) {
 	success(c, "添加权限成功")
 }
 
-// handleAddPermissionsByToken 根据 Token 添加权限
-// POST /api/permission/add-by-token
+// handleAddPermissionsByToken handles add permissions by token 根据 Token 添加权限
 func handleAddPermissionsByToken(c *gin.Context) {
 	var req struct {
 		Permissions []string `json:"permissions" binding:"required"`
@@ -655,7 +610,7 @@ func handleAddPermissionsByToken(c *gin.Context) {
 		return
 	}
 
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -667,8 +622,7 @@ func handleAddPermissionsByToken(c *gin.Context) {
 	success(c, "添加权限成功")
 }
 
-// handleRemovePermissions 删除用户权限
-// POST /api/permission/remove
+// handleRemovePermissions handles remove permissions 删除用户权限
 func handleRemovePermissions(c *gin.Context) {
 	var req PermissionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -684,8 +638,7 @@ func handleRemovePermissions(c *gin.Context) {
 	success(c, "删除权限成功")
 }
 
-// handleRemovePermissionsByToken 根据 Token 删除权限
-// POST /api/permission/remove-by-token
+// handleRemovePermissionsByToken handles remove permissions by token 根据 Token 删除权限
 func handleRemovePermissionsByToken(c *gin.Context) {
 	var req struct {
 		Permissions []string `json:"permissions" binding:"required"`
@@ -695,7 +648,7 @@ func handleRemovePermissionsByToken(c *gin.Context) {
 		return
 	}
 
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -707,8 +660,7 @@ func handleRemovePermissionsByToken(c *gin.Context) {
 	success(c, "删除权限成功")
 }
 
-// handleGetPermissions 获取用户权限列表
-// GET /api/permission/list/:loginId
+// handleGetPermissions handles get permissions 获取用户权限列表
 func handleGetPermissions(c *gin.Context) {
 	loginID := c.Param("loginId")
 	if loginID == "" {
@@ -727,10 +679,9 @@ func handleGetPermissions(c *gin.Context) {
 	})
 }
 
-// handleGetPermissionsByToken 根据 Token 获取权限列表
-// POST /api/permission/list-by-token
+// handleGetPermissionsByToken handles get permissions by token 根据 Token 获取权限列表
 func handleGetPermissionsByToken(c *gin.Context) {
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -745,8 +696,7 @@ func handleGetPermissionsByToken(c *gin.Context) {
 	})
 }
 
-// handleHasPermission 检查是否拥有指定权限
-// POST /api/permission/has
+// handleHasPermission handles has permission 检查是否拥有指定权限
 func handleHasPermission(c *gin.Context) {
 	var req struct {
 		LoginID    string `json:"loginId" binding:"required"`
@@ -764,8 +714,7 @@ func handleHasPermission(c *gin.Context) {
 	})
 }
 
-// handleHasPermissionByToken 根据 Token 检查权限
-// POST /api/permission/has-by-token
+// handleHasPermissionByToken handles has permission by token 根据 Token 检查权限
 func handleHasPermissionByToken(c *gin.Context) {
 	var req struct {
 		Permission string `json:"permission" binding:"required"`
@@ -775,7 +724,7 @@ func handleHasPermissionByToken(c *gin.Context) {
 		return
 	}
 
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -786,8 +735,7 @@ func handleHasPermissionByToken(c *gin.Context) {
 	})
 }
 
-// handleHasPermissionsAnd 检查是否拥有所有权限（AND逻辑）
-// POST /api/permission/has-and
+// handleHasPermissionsAnd checks all permissions 检查是否拥有所有权限（AND逻辑）
 func handleHasPermissionsAnd(c *gin.Context) {
 	var req PermissionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -802,8 +750,7 @@ func handleHasPermissionsAnd(c *gin.Context) {
 	})
 }
 
-// handleHasPermissionsAndByToken 根据 Token 检查所有权限
-// POST /api/permission/has-and-by-token
+// handleHasPermissionsAndByToken handles has permissions and by token 根据 Token 检查所有权限
 func handleHasPermissionsAndByToken(c *gin.Context) {
 	var req struct {
 		Permissions []string `json:"permissions" binding:"required"`
@@ -813,7 +760,7 @@ func handleHasPermissionsAndByToken(c *gin.Context) {
 		return
 	}
 
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -824,8 +771,7 @@ func handleHasPermissionsAndByToken(c *gin.Context) {
 	})
 }
 
-// handleHasPermissionsOr 检查是否拥有任一权限（OR逻辑）
-// POST /api/permission/has-or
+// handleHasPermissionsOr checks any permission 检查是否拥有任一权限（OR逻辑）
 func handleHasPermissionsOr(c *gin.Context) {
 	var req PermissionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -840,8 +786,7 @@ func handleHasPermissionsOr(c *gin.Context) {
 	})
 }
 
-// handleHasPermissionsOrByToken 根据 Token 检查任一权限
-// POST /api/permission/has-or-by-token
+// handleHasPermissionsOrByToken handles has permissions or by token 根据 Token 检查任一权限
 func handleHasPermissionsOrByToken(c *gin.Context) {
 	var req struct {
 		Permissions []string `json:"permissions" binding:"required"`
@@ -851,7 +796,7 @@ func handleHasPermissionsOrByToken(c *gin.Context) {
 		return
 	}
 
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -862,12 +807,9 @@ func handleHasPermissionsOrByToken(c *gin.Context) {
 	})
 }
 
-// ============================================================================
-// Role Management APIs - 角色管理接口
-// ============================================================================
+// -------------------------------------------------- Role Management APIs - 角色管理接口 --------------------------------------------------
 
-// handleAddRoles 为用户添加角色
-// POST /api/role/add
+// handleAddRoles handles add roles 为用户添加角色
 func handleAddRoles(c *gin.Context) {
 	var req RoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -883,8 +825,7 @@ func handleAddRoles(c *gin.Context) {
 	success(c, "添加角色成功")
 }
 
-// handleAddRolesByToken 根据 Token 添加角色
-// POST /api/role/add-by-token
+// handleAddRolesByToken handles add roles by token 根据 Token 添加角色
 func handleAddRolesByToken(c *gin.Context) {
 	var req struct {
 		Roles []string `json:"roles" binding:"required"`
@@ -894,7 +835,7 @@ func handleAddRolesByToken(c *gin.Context) {
 		return
 	}
 
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -906,8 +847,7 @@ func handleAddRolesByToken(c *gin.Context) {
 	success(c, "添加角色成功")
 }
 
-// handleRemoveRoles 删除用户角色
-// POST /api/role/remove
+// handleRemoveRoles handles remove roles 删除用户角色
 func handleRemoveRoles(c *gin.Context) {
 	var req RoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -923,8 +863,7 @@ func handleRemoveRoles(c *gin.Context) {
 	success(c, "删除角色成功")
 }
 
-// handleRemoveRolesByToken 根据 Token 删除角色
-// POST /api/role/remove-by-token
+// handleRemoveRolesByToken handles remove roles by token 根据 Token 删除角色
 func handleRemoveRolesByToken(c *gin.Context) {
 	var req struct {
 		Roles []string `json:"roles" binding:"required"`
@@ -934,7 +873,7 @@ func handleRemoveRolesByToken(c *gin.Context) {
 		return
 	}
 
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -946,8 +885,7 @@ func handleRemoveRolesByToken(c *gin.Context) {
 	success(c, "删除角色成功")
 }
 
-// handleGetRoles 获取用户角色列表
-// GET /api/role/list/:loginId
+// handleGetRoles handles get roles 获取用户角色列表
 func handleGetRoles(c *gin.Context) {
 	loginID := c.Param("loginId")
 	if loginID == "" {
@@ -966,10 +904,9 @@ func handleGetRoles(c *gin.Context) {
 	})
 }
 
-// handleGetRolesByToken 根据 Token 获取角色列表
-// POST /api/role/list-by-token
+// handleGetRolesByToken handles get roles by token 根据 Token 获取角色列表
 func handleGetRolesByToken(c *gin.Context) {
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -984,8 +921,7 @@ func handleGetRolesByToken(c *gin.Context) {
 	})
 }
 
-// handleHasRole 检查是否拥有指定角色
-// POST /api/role/has
+// handleHasRole handles has role 检查是否拥有指定角色
 func handleHasRole(c *gin.Context) {
 	var req struct {
 		LoginID string `json:"loginId" binding:"required"`
@@ -1003,8 +939,7 @@ func handleHasRole(c *gin.Context) {
 	})
 }
 
-// handleHasRoleByToken 根据 Token 检查角色
-// POST /api/role/has-by-token
+// handleHasRoleByToken handles has role by token 根据 Token 检查角色
 func handleHasRoleByToken(c *gin.Context) {
 	var req struct {
 		Role string `json:"role" binding:"required"`
@@ -1014,7 +949,7 @@ func handleHasRoleByToken(c *gin.Context) {
 		return
 	}
 
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -1025,8 +960,7 @@ func handleHasRoleByToken(c *gin.Context) {
 	})
 }
 
-// handleHasRolesAnd 检查是否拥有所有角色（AND逻辑）
-// POST /api/role/has-and
+// handleHasRolesAnd checks all roles 检查是否拥有所有角色（AND逻辑）
 func handleHasRolesAnd(c *gin.Context) {
 	var req RoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1041,8 +975,7 @@ func handleHasRolesAnd(c *gin.Context) {
 	})
 }
 
-// handleHasRolesAndByToken 根据 Token 检查所有角色
-// POST /api/role/has-and-by-token
+// handleHasRolesAndByToken handles has roles and by token 根据 Token 检查所有角色
 func handleHasRolesAndByToken(c *gin.Context) {
 	var req struct {
 		Roles []string `json:"roles" binding:"required"`
@@ -1052,7 +985,7 @@ func handleHasRolesAndByToken(c *gin.Context) {
 		return
 	}
 
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -1063,8 +996,7 @@ func handleHasRolesAndByToken(c *gin.Context) {
 	})
 }
 
-// handleHasRolesOr 检查是否拥有任一角色（OR逻辑）
-// POST /api/role/has-or
+// handleHasRolesOr checks any role 检查是否拥有任一角色（OR逻辑）
 func handleHasRolesOr(c *gin.Context) {
 	var req RoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1079,8 +1011,7 @@ func handleHasRolesOr(c *gin.Context) {
 	})
 }
 
-// handleHasRolesOrByToken 根据 Token 检查任一角色
-// POST /api/role/has-or-by-token
+// handleHasRolesOrByToken handles has roles or by token 根据 Token 检查任一角色
 func handleHasRolesOrByToken(c *gin.Context) {
 	var req struct {
 		Roles []string `json:"roles" binding:"required"`
@@ -1090,7 +1021,7 @@ func handleHasRolesOrByToken(c *gin.Context) {
 		return
 	}
 
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -1101,12 +1032,9 @@ func handleHasRolesOrByToken(c *gin.Context) {
 	})
 }
 
-// ============================================================================
-// Session Management APIs - Session 管理接口
-// ============================================================================
+// -------------------------------------------------- Session Management APIs - Session 管理接口 --------------------------------------------------
 
-// handleGetSession 获取指定登录ID的会话
-// GET /api/session/:loginId
+// handleGetSession handles get session 获取指定登录ID的会话
 func handleGetSession(c *gin.Context) {
 	loginID := c.Param("loginId")
 	if loginID == "" {
@@ -1123,10 +1051,9 @@ func handleGetSession(c *gin.Context) {
 	success(c, session)
 }
 
-// handleGetSessionByToken 通过 Token 获取会话
-// POST /api/session/by-token
+// handleGetSessionByToken handles get session by token 通过 Token 获取会话
 func handleGetSessionByToken(c *gin.Context) {
-	// 从上下文获取token
+	// Get Token From Context 从上下文获取 token
 	token, _ := c.Get("token")
 	tokenStr := token.(string)
 
@@ -1139,8 +1066,7 @@ func handleGetSessionByToken(c *gin.Context) {
 	success(c, session)
 }
 
-// handleGetTokenValueListByLoginID 获取指定登录ID的所有Token
-// GET /api/session/tokens/:loginId
+// handleGetTokenValueListByLoginID handles get token value list by login id 获取指定登录ID的所有Token
 func handleGetTokenValueListByLoginID(c *gin.Context) {
 	loginID := c.Param("loginId")
 	if loginID == "" {
@@ -1161,8 +1087,7 @@ func handleGetTokenValueListByLoginID(c *gin.Context) {
 	})
 }
 
-// handleGetTokenValueListByDevice 获取指定设备类型的所有Token
-// GET /api/session/tokens/:loginId/:device
+// handleGetTokenValueListByDevice handles get token value list by device 获取指定设备类型的所有Token
 func handleGetTokenValueListByDevice(c *gin.Context) {
 	loginID := c.Param("loginId")
 	device := c.Param("device")
@@ -1184,12 +1109,9 @@ func handleGetTokenValueListByDevice(c *gin.Context) {
 	})
 }
 
-// ============================================================================
-// Account Disable Management APIs - 账号封禁管理接口
-// ============================================================================
+// -------------------------------------------------- Account Disable Management APIs - 账号封禁管理接口 --------------------------------------------------
 
-// handleDisable 封禁账号指定时长
-// POST /api/disable/ban
+// handleDisable handles disable 封禁账号指定时长
 func handleDisable(c *gin.Context) {
 	var req DisableRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1205,8 +1127,7 @@ func handleDisable(c *gin.Context) {
 	success(c, "封禁账号成功")
 }
 
-// handleUntie 解封账号
-// POST /api/disable/unban
+// handleUntie handles untie 解封账号
 func handleUntie(c *gin.Context) {
 	var req struct {
 		LoginID string `json:"loginId" binding:"required"`
@@ -1224,8 +1145,7 @@ func handleUntie(c *gin.Context) {
 	success(c, "解封账号成功")
 }
 
-// handleIsDisable 检查账号是否被封禁
-// GET /api/disable/is-disabled/:loginId
+// handleIsDisable handles is disable 检查账号是否被封禁
 func handleIsDisable(c *gin.Context) {
 	loginID := c.Param("loginId")
 	if loginID == "" {
@@ -1240,8 +1160,7 @@ func handleIsDisable(c *gin.Context) {
 	})
 }
 
-// handleGetDisableInfo 获取账号封禁信息
-// GET /api/disable/info/:loginId
+// handleGetDisableInfo handles get disable info 获取账号封禁信息
 func handleGetDisableInfo(c *gin.Context) {
 	loginID := c.Param("loginId")
 	if loginID == "" {
@@ -1258,8 +1177,7 @@ func handleGetDisableInfo(c *gin.Context) {
 	success(c, info)
 }
 
-// handleGetDisableTTL 获取账号剩余封禁时间
-// GET /api/disable/ttl/:loginId
+// handleGetDisableTTL handles get disable ttl 获取账号剩余封禁时间
 func handleGetDisableTTL(c *gin.Context) {
 	loginID := c.Param("loginId")
 	if loginID == "" {
@@ -1278,13 +1196,11 @@ func handleGetDisableTTL(c *gin.Context) {
 	})
 }
 
-// ============================================================================
-// Router Setup - 路由注册
-// ============================================================================
+// -------------------------------------------------- Router Setup - 路由注册 --------------------------------------------------
 
-// setupRoutes 注册所有路由
+// setupRoutes registers all routes 注册所有路由
 func setupRoutes(r *gin.Engine) {
-	// 根路径
+	// Root Path 根路径
 	r.GET("/", func(c *gin.Context) {
 		success(c, gin.H{
 			"message": "DToken Quick Start API",
@@ -1294,123 +1210,121 @@ func setupRoutes(r *gin.Engine) {
 
 	api := r.Group("/api")
 
-	// ========== 认证相关接口 ==========
+	// -------------------------------------------------- Authentication Routes - 认证相关接口 --------------------------------------------------
 	auth := api.Group("/auth")
 	{
-		// 不需要验证的接口
-		auth.POST("/login", handleLogin)                 // 用户登录
-		auth.POST("/login-by-token", handleLoginByToken) // Token 续期登录
+		// Public Endpoints 无需验证的接口
+		auth.POST("/login", handleLogin)
+		auth.POST("/login-by-token", handleLoginByToken)
 
-		// 需要验证的接口
-		auth.POST("/logout", authMiddleware(), handleLogout)                                                                    // 用户登出
-		auth.POST("/logout-by-device", authMiddleware(), handleLogoutByDevice)                                                  // 根据设备类型登出
-		auth.POST("/logout-by-device-id", authMiddleware(), handleLogoutByDeviceAndDeviceId)                                    // 根据设备和设备ID登出
-		auth.POST("/logout-by-login-id", authMiddleware(), handleLogoutByLoginID)                                               // 根据LoginID登出所有终端
-		auth.POST("/is-login", authMiddleware(), handleIsLogin)                                                                 // 检查是否登录
-		auth.POST("/check-login", authMiddleware(), handleCheckLogin)                                                           // 验证登录状态
-		auth.POST("/get-login-id", authMiddleware(), handleGetLoginID)                                                          // 获取登录ID
-		auth.POST("/get-token-info", authMiddleware(), handleGetTokenInfo)                                                      // 获取Token信息
-		auth.POST("/get-device", authMiddleware(), handleGetDevice)                                                             // 获取设备类型
-		auth.POST("/get-device-id", authMiddleware(), handleGetDeviceId)                                                        // 获取设备ID
-		auth.POST("/get-token-create-time", authMiddleware(), handleGetTokenCreateTime)                                         // 获取Token创建时间
-		auth.POST("/get-token-ttl", authMiddleware(), handleGetTokenTTL)                                                        // 获取Token TTL
-		auth.GET("/online-count/:loginId", authMiddleware(), handleGetOnlineTerminalCount)                                      // 获取在线终端总数
-		auth.GET("/online-count/:loginId/:device", authMiddleware(), handleGetOnlineTerminalCountByDevice)                      // 获取指定设备在线终端数
-		auth.GET("/online-count/:loginId/:device/:deviceId", authMiddleware(), handleGetOnlineTerminalCountByDeviceAndDeviceId) // 获取指定设备和设备ID在线终端数
+		// Protected Endpoints 需要验证的接口
+		auth.POST("/logout", authMiddleware(), handleLogout)
+		auth.POST("/logout-by-device", authMiddleware(), handleLogoutByDevice)
+		auth.POST("/logout-by-device-id", authMiddleware(), handleLogoutByDeviceAndDeviceId)
+		auth.POST("/logout-by-login-id", authMiddleware(), handleLogoutByLoginID)
+		auth.POST("/is-login", authMiddleware(), handleIsLogin)
+		auth.POST("/check-login", authMiddleware(), handleCheckLogin)
+		auth.POST("/get-login-id", authMiddleware(), handleGetLoginID)
+		auth.POST("/get-token-info", authMiddleware(), handleGetTokenInfo)
+		auth.POST("/get-device", authMiddleware(), handleGetDevice)
+		auth.POST("/get-device-id", authMiddleware(), handleGetDeviceId)
+		auth.POST("/get-token-create-time", authMiddleware(), handleGetTokenCreateTime)
+		auth.POST("/get-token-ttl", authMiddleware(), handleGetTokenTTL)
+		auth.GET("/online-count/:loginId", authMiddleware(), handleGetOnlineTerminalCount)
+		auth.GET("/online-count/:loginId/:device", authMiddleware(), handleGetOnlineTerminalCountByDevice)
+		auth.GET("/online-count/:loginId/:device/:deviceId", authMiddleware(), handleGetOnlineTerminalCountByDeviceAndDeviceId)
 	}
 
-	// ========== 在线状态管理接口 ==========
+	// -------------------------------------------------- Online Status Routes - 在线状态管理接口 --------------------------------------------------
 	online := api.Group("/online", authMiddleware())
 	{
-		online.POST("/kickout", handleKickout)                                 // 根据Token踢人下线
-		online.POST("/kickout-by-device", handleKickoutByDevice)               // 根据设备类型踢人下线
-		online.POST("/kickout-by-device-id", handleKickoutByDeviceAndDeviceId) // 根据设备和设备ID踢人下线
-		online.POST("/kickout-by-login-id", handleKickoutByLoginID)            // 根据LoginID踢出所有终端
-		online.POST("/replace", handleReplace)                                 // 根据Token顶人下线
-		online.POST("/replace-by-device", handleReplaceByDevice)               // 根据设备类型顶人下线
-		online.POST("/replace-by-device-id", handleReplaceByDeviceAndDeviceId) // 根据设备和设备ID顶人下线
-		online.POST("/replace-by-login-id", handleReplaceByLoginID)            // 根据LoginID顶替所有终端
+		online.POST("/kickout", handleKickout)
+		online.POST("/kickout-by-device", handleKickoutByDevice)
+		online.POST("/kickout-by-device-id", handleKickoutByDeviceAndDeviceId)
+		online.POST("/kickout-by-login-id", handleKickoutByLoginID)
+		online.POST("/replace", handleReplace)
+		online.POST("/replace-by-device", handleReplaceByDevice)
+		online.POST("/replace-by-device-id", handleReplaceByDeviceAndDeviceId)
+		online.POST("/replace-by-login-id", handleReplaceByLoginID)
 	}
 
-	// ========== 权限管理接口 ==========
+	// -------------------------------------------------- Permission Routes - 权限管理接口 --------------------------------------------------
 	permission := api.Group("/permission", authMiddleware())
 	{
-		permission.POST("/add", handleAddPermissions)                        // 添加权限
-		permission.POST("/add-by-token", handleAddPermissionsByToken)        // 根据Token添加权限
-		permission.POST("/remove", handleRemovePermissions)                  // 删除权限
-		permission.POST("/remove-by-token", handleRemovePermissionsByToken)  // 根据Token删除权限
-		permission.GET("/list/:loginId", handleGetPermissions)               // 获取权限列表
-		permission.POST("/list-by-token", handleGetPermissionsByToken)       // 根据Token获取权限列表
-		permission.POST("/has", handleHasPermission)                         // 检查是否拥有指定权限
-		permission.POST("/has-by-token", handleHasPermissionByToken)         // 根据Token检查权限
-		permission.POST("/has-and", handleHasPermissionsAnd)                 // 检查是否拥有所有权限（AND）
-		permission.POST("/has-and-by-token", handleHasPermissionsAndByToken) // 根据Token检查所有权限（AND）
-		permission.POST("/has-or", handleHasPermissionsOr)                   // 检查是否拥有任一权限（OR）
-		permission.POST("/has-or-by-token", handleHasPermissionsOrByToken)   // 根据Token检查任一权限（OR）
+		permission.POST("/add", handleAddPermissions)
+		permission.POST("/add-by-token", handleAddPermissionsByToken)
+		permission.POST("/remove", handleRemovePermissions)
+		permission.POST("/remove-by-token", handleRemovePermissionsByToken)
+		permission.GET("/list/:loginId", handleGetPermissions)
+		permission.POST("/list-by-token", handleGetPermissionsByToken)
+		permission.POST("/has", handleHasPermission)
+		permission.POST("/has-by-token", handleHasPermissionByToken)
+		permission.POST("/has-and", handleHasPermissionsAnd)
+		permission.POST("/has-and-by-token", handleHasPermissionsAndByToken)
+		permission.POST("/has-or", handleHasPermissionsOr)
+		permission.POST("/has-or-by-token", handleHasPermissionsOrByToken)
 	}
 
-	// ========== 角色管理接口 ==========
+	// -------------------------------------------------- Role Routes - 角色管理接口 --------------------------------------------------
 	role := api.Group("/role", authMiddleware())
 	{
-		role.POST("/add", handleAddRoles)                        // 添加角色
-		role.POST("/add-by-token", handleAddRolesByToken)        // 根据Token添加角色
-		role.POST("/remove", handleRemoveRoles)                  // 删除角色
-		role.POST("/remove-by-token", handleRemoveRolesByToken)  // 根据Token删除角色
-		role.GET("/list/:loginId", handleGetRoles)               // 获取角色列表
-		role.POST("/list-by-token", handleGetRolesByToken)       // 根据Token获取角色列表
-		role.POST("/has", handleHasRole)                         // 检查是否拥有指定角色
-		role.POST("/has-by-token", handleHasRoleByToken)         // 根据Token检查角色
-		role.POST("/has-and", handleHasRolesAnd)                 // 检查是否���有所有角色（AND）
-		role.POST("/has-and-by-token", handleHasRolesAndByToken) // 根据Token检查所有角色（AND）
-		role.POST("/has-or", handleHasRolesOr)                   // 检查是否拥有任一角色（OR）
-		role.POST("/has-or-by-token", handleHasRolesOrByToken)   // 根据Token检查任一角色（OR）
+		role.POST("/add", handleAddRoles)
+		role.POST("/add-by-token", handleAddRolesByToken)
+		role.POST("/remove", handleRemoveRoles)
+		role.POST("/remove-by-token", handleRemoveRolesByToken)
+		role.GET("/list/:loginId", handleGetRoles)
+		role.POST("/list-by-token", handleGetRolesByToken)
+		role.POST("/has", handleHasRole)
+		role.POST("/has-by-token", handleHasRoleByToken)
+		role.POST("/has-and", handleHasRolesAnd)
+		role.POST("/has-and-by-token", handleHasRolesAndByToken)
+		role.POST("/has-or", handleHasRolesOr)
+		role.POST("/has-or-by-token", handleHasRolesOrByToken)
 	}
 
-	// ========== Session 管理接口 ==========
+	// -------------------------------------------------- Session Routes - Session 管理接口 --------------------------------------------------
 	session := api.Group("/session", authMiddleware())
 	{
-		session.GET("/:loginId", handleGetSession)                               // 获取会话
-		session.POST("/by-token", handleGetSessionByToken)                       // 根据Token获取会话
-		session.GET("/tokens/:loginId", handleGetTokenValueListByLoginID)        // 获取所有Token
-		session.GET("/tokens/:loginId/:device", handleGetTokenValueListByDevice) // 获取指定设备的所有Token
+		session.GET("/:loginId", handleGetSession)
+		session.POST("/by-token", handleGetSessionByToken)
+		session.GET("/tokens/:loginId", handleGetTokenValueListByLoginID)
+		session.GET("/tokens/:loginId/:device", handleGetTokenValueListByDevice)
 	}
 
-	// ========== 账号封禁管理接口 ==========
+	// -------------------------------------------------- Disable Routes - 账号封禁管理接口 --------------------------------------------------
 	disable := api.Group("/disable", authMiddleware())
 	{
-		disable.POST("/ban", handleDisable)                   // 封禁账号
-		disable.POST("/unban", handleUntie)                   // 解封账号
-		disable.GET("/is-disabled/:loginId", handleIsDisable) // 检查是否被封禁
-		disable.GET("/info/:loginId", handleGetDisableInfo)   // 获取封禁信息
-		disable.GET("/ttl/:loginId", handleGetDisableTTL)     // 获取封禁TTL
+		disable.POST("/ban", handleDisable)
+		disable.POST("/unban", handleUntie)
+		disable.GET("/is-disabled/:loginId", handleIsDisable)
+		disable.GET("/info/:loginId", handleGetDisableInfo)
+		disable.GET("/ttl/:loginId", handleGetDisableTTL)
 	}
 
 	fmt.Println("所有路由注册完成")
 }
 
-// ============================================================================
-// Main Function - 主函数
-// ============================================================================
+// -------------------------------------------------- Main Function - 主函数 --------------------------------------------------
 
 func main() {
 	fmt.Println("========================================")
 	fmt.Println("DToken Quick Start - 完整测试示例")
 	fmt.Println("========================================")
 
-	// 初始化 DToken 框架
+	// Initialize DToken Framework 初始化 DToken 框架
 	if err := initDToken(); err != nil {
 		fmt.Printf("初始化失败: %v\n", err)
 		return
 	}
 
-	// 创建 Gin 引擎
+	// Create Gin Engine 创建 Gin 引擎
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 
-	// 注册所有路由
+	// Register All Routes 注册所有路由
 	setupRoutes(r)
 
-	// 启动服务器
+	// Start Server 启动服务器
 	port := ":8080"
 	fmt.Printf("\n服务器启动成功，监听端口: %s\n", port)
 	fmt.Println("========================================")

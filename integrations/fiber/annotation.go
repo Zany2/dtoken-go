@@ -187,6 +187,7 @@ func IgnoreMiddleware(
 	return GetHandler(ctx, handler, failFunc, &Annotation{Ignore: true})
 }
 
+// -------------------------------------------------- Combined Middleware - 组合中间件 --------------------------------------------------
 // CheckLoginAndRoleMiddleware decorates handler with login and role checks CheckLoginAndRoleMiddleware 为处理器增加登录与角色校验。
 func CheckLoginAndRoleMiddleware(
 	ctx context.Context,
@@ -233,6 +234,7 @@ func CheckAllMiddleware(
 	return GetHandler(ctx, handler, failFunc, ann)
 }
 
+// -------------------------------------------------- Route Group Helpers - 路由组辅助函数 --------------------------------------------------
 // AuthGroup attaches login checks to a Fiber router group AuthGroup 为 Fiber 路由组挂载登录校验。
 func AuthGroup(
 	ctx context.Context,

@@ -6,20 +6,20 @@ import (
 	"time"
 )
 
-// RenewPoolConfig configuration for the renewal pool manager-examples | 续期池配置
+// RenewPoolConfig defines renew pool configuration 续期池配置
 type RenewPoolConfig struct {
-	MinSize             int           // Minimum pool size | 最小协程数
-	MaxSize             int           // Maximum pool size | 最大协程数
-	ScaleUpRate         float64       // Scale-up threshold | 扩容阈值
-	ScaleDownRate       float64       // Scale-down threshold | 缩容阈值
-	CheckInterval       time.Duration // Auto-scale check interval | 检查间隔
-	Expiry              time.Duration // Idle worker expiry duration | 空闲协程过期时间
-	PrintStatusInterval time.Duration // Interval for periodic status printing | 定时打印池状态的间隔
-	PreAlloc            bool          // Whether to pre-allocate memory | 是否预分配内存
-	NonBlocking         bool          // Whether to use non-blocking mode | 是否为非阻塞模式
+	MinSize             int           // Minimum pool size 最小协程数
+	MaxSize             int           // Maximum pool size 最大协程数
+	ScaleUpRate         float64       // Scale-up threshold 扩容阈值
+	ScaleDownRate       float64       // Scale-down threshold 缩容阈值
+	CheckInterval       time.Duration // Auto-scale check interval 检查间隔
+	Expiry              time.Duration // Idle worker expiry duration 空闲协程过期时间
+	PrintStatusInterval time.Duration // Interval for periodic status printing 定时打印池状态的间隔
+	PreAlloc            bool          // Whether to pre-allocate memory 是否预分配内存
+	NonBlocking         bool          // Whether to use non-blocking mode 是否为非阻塞模式
 }
 
-// DefaultRenewPoolConfig returns default renew pool config | 返回默认续期池配置
+// DefaultRenewPoolConfig returns the default renew pool config 返回默认续期池配置
 func DefaultRenewPoolConfig() *RenewPoolConfig {
 	return &RenewPoolConfig{
 		MinSize:       DefaultMinSize,
@@ -33,10 +33,10 @@ func DefaultRenewPoolConfig() *RenewPoolConfig {
 	}
 }
 
-// Validate validates renew pool configuration | 验证续期池配置合法性
+// Validate validates renew pool configuration 验证续期池配置合法性
 func (c *RenewPoolConfig) Validate() error {
 	if c == nil {
-		return nil // Nil config is allowed | 允许未配置续期池
+		return nil // Nil config is allowed 允许未配置续期池
 	}
 
 	if c.MinSize <= 0 {
@@ -63,7 +63,7 @@ func (c *RenewPoolConfig) Validate() error {
 	return nil
 }
 
-// Clone returns a deep copy of the renew pool config | 克隆续期池配置
+// Clone returns a deep copy of the renew pool config 克隆续期池配置
 func (c *RenewPoolConfig) Clone() *RenewPoolConfig {
 	if c == nil {
 		return nil
@@ -72,55 +72,55 @@ func (c *RenewPoolConfig) Clone() *RenewPoolConfig {
 	return &copyCfg
 }
 
-// SetMinSize sets minimum pool size | 设置最小协程数
+// SetMinSize sets the minimum pool size 设置最小协程数
 func (c *RenewPoolConfig) SetMinSize(size int) *RenewPoolConfig {
 	c.MinSize = size
 	return c
 }
 
-// SetMaxSize sets maximum pool size | 设置最大协程数
+// SetMaxSize sets the maximum pool size 设置最大协程数
 func (c *RenewPoolConfig) SetMaxSize(size int) *RenewPoolConfig {
 	c.MaxSize = size
 	return c
 }
 
-// SetScaleUpRate sets scale-up threshold | 设置扩容阈值
+// SetScaleUpRate sets the scale up threshold 设置扩容阈值
 func (c *RenewPoolConfig) SetScaleUpRate(up float64) *RenewPoolConfig {
 	c.ScaleUpRate = up
 	return c
 }
 
-// SetScaleDownRate sets scale-down threshold | 设置缩容阈值
+// SetScaleDownRate sets the scale down threshold 设置缩容阈值
 func (c *RenewPoolConfig) SetScaleDownRate(down float64) *RenewPoolConfig {
 	c.ScaleDownRate = down
 	return c
 }
 
-// SetCheckInterval sets auto-scaling check interval | 设置检查间隔
+// SetCheckInterval sets the auto scaling check interval 设置检查间隔
 func (c *RenewPoolConfig) SetCheckInterval(interval time.Duration) *RenewPoolConfig {
 	c.CheckInterval = interval
 	return c
 }
 
-// SetExpiry sets worker expiry duration | 设置空闲协程过期时间
+// SetExpiry sets the worker expiry duration 设置空闲协程过期时间
 func (c *RenewPoolConfig) SetExpiry(expiry time.Duration) *RenewPoolConfig {
 	c.Expiry = expiry
 	return c
 }
 
-// SetPrintStatusInterval sets status print interval | 设置打印状态的间隔
+// SetPrintStatusInterval sets status print interval 设置打印状态的间隔
 func (c *RenewPoolConfig) SetPrintStatusInterval(interval time.Duration) *RenewPoolConfig {
 	c.PrintStatusInterval = interval
 	return c
 }
 
-// SetPreAlloc sets pre-allocation flag | 设置是否预分配内存
+// SetPreAlloc sets the pre allocation flag 设置是否预分配内存
 func (c *RenewPoolConfig) SetPreAlloc(prealloc bool) *RenewPoolConfig {
 	c.PreAlloc = prealloc
 	return c
 }
 
-// SetNonBlocking sets non-blocking mode | 设置是否非阻塞模式
+// SetNonBlocking sets the non blocking mode 设置是否非阻塞模式
 func (c *RenewPoolConfig) SetNonBlocking(nonblocking bool) *RenewPoolConfig {
 	c.NonBlocking = nonblocking
 	return c

@@ -1,16 +1,9 @@
-// @Author daixk 2026/1/22 17:32:00
 package manager
 
-// ============================================================================
-// Terminal Management - 终端管理
-// ============================================================================
+// -------------------------------------------------- Terminal Management - 终端管理 --------------------------------------------------
+// -------------------------------------------------- Terminal Removal Methods - 终端移除方法 --------------------------------------------------
 
-// ----------------------------------------------------------------------------
-// Terminal Removal Methods - 终端移除方法
-// ----------------------------------------------------------------------------
-
-// removeTerminalByToken removes a terminal from TerminalInfos by token value (at most one match).
-// removeTerminalByToken 根据 token 值删除 TerminalInfos 中匹配的项（最多一个）。
+// removeTerminalByToken removes terminal by token removeTerminalByToken 根据 token 值移除终端信息
 func (s *Session) removeTerminalByToken(tokenValue string) (TerminalInfo, bool) {
 	if tokenValue == "" {
 		return TerminalInfo{}, false
@@ -19,7 +12,7 @@ func (s *Session) removeTerminalByToken(tokenValue string) (TerminalInfo, bool) 
 	for i, ti := range s.TerminalInfos {
 		if ti.Token == tokenValue {
 			removed := ti
-			// 拼接 [0:i] + [i+1:]
+			// Remove matched terminal 保持顺序移除匹配终端
 			s.TerminalInfos = append(s.TerminalInfos[:i], s.TerminalInfos[i+1:]...)
 			return removed, true
 		}
@@ -28,11 +21,10 @@ func (s *Session) removeTerminalByToken(tokenValue string) (TerminalInfo, bool) 
 	return TerminalInfo{}, false
 }
 
-// removeTerminalByDevice removes all terminals from TerminalInfos that match the device type.
-// removeTerminalByDevice 根据设备类型删除 TerminalInfos 中的所有匹配项。
+// removeTerminalByDevice removes terminals by device removeTerminalByDevice 根据设备类型移除全部匹配终端
 func (s *Session) removeTerminalByDevice(device string) []TerminalInfo {
-	var kept []TerminalInfo    // 保留的项
-	var removed []TerminalInfo // 被删除的项
+	var kept []TerminalInfo    // kept stores remaining terminals kept 存储保留终端
+	var removed []TerminalInfo // removed stores removed terminals removed 存储被删除终端
 
 	for _, ti := range s.TerminalInfos {
 		if ti.Device == device {
@@ -46,8 +38,7 @@ func (s *Session) removeTerminalByDevice(device string) []TerminalInfo {
 	return removed
 }
 
-// removeTerminalByDeviceAndDeviceId removes all terminals that exactly match both device and deviceId.
-// removeTerminalByDeviceAndDeviceId 移除所有精确匹配 device 和 deviceId 的 TerminalInfo。
+// removeTerminalByDeviceAndDeviceId removes terminals by device and id removeTerminalByDeviceAndDeviceId 根据设备类型和设备 ID 移除终端
 func (s *Session) removeTerminalByDeviceAndDeviceId(device, deviceId string) []TerminalInfo {
 	var kept []TerminalInfo
 	var removed []TerminalInfo
@@ -64,8 +55,7 @@ func (s *Session) removeTerminalByDeviceAndDeviceId(device, deviceId string) []T
 	return removed
 }
 
-// removeOldestTerminal removes the oldest terminal (optionally filtered by device).
-// removeOldestTerminal 移除最老终端（可选按 device 过滤）。
+// removeOldestTerminal removes oldest terminal removeOldestTerminal 移除最老终端并可按设备过滤
 func (s *Session) removeOldestTerminal(device ...string) (TerminalInfo, bool) {
 	if len(s.TerminalInfos) == 0 {
 		return TerminalInfo{}, false
@@ -77,24 +67,21 @@ func (s *Session) removeOldestTerminal(device ...string) (TerminalInfo, bool) {
 		return first, true
 	}
 
-	// 有设备过滤：查找第一个匹配 device[0] 的项
+	// Find oldest matched terminal 查找最早匹配设备的终端
 	targetDevice := device[0]
 	for i, ti := range s.TerminalInfos {
 		if ti.Device == targetDevice {
-			// 找到第一个匹配项，移除它
 			removed := ti
-			// 保持顺序：拼接 [0:i] + [i+1:]
+			// Remove matched terminal 保持顺序移除匹配终端
 			s.TerminalInfos = append(s.TerminalInfos[:i], s.TerminalInfos[i+1:]...)
 			return removed, true
 		}
 	}
 
-	// 未找到匹配项
 	return TerminalInfo{}, false
 }
 
-// removeAllTerminals removes all terminals from TerminalInfos.
-// removeAllTerminals 移除所有终端。
+// removeAllTerminals removes all terminals removeAllTerminals 移除全部终端信息
 func (s *Session) removeAllTerminals() []TerminalInfo {
 	removed := make([]TerminalInfo, len(s.TerminalInfos))
 	copy(removed, s.TerminalInfos)
@@ -102,12 +89,9 @@ func (s *Session) removeAllTerminals() []TerminalInfo {
 	return removed
 }
 
-// ----------------------------------------------------------------------------
-// Terminal Query Methods - 终端查询方法
-// ----------------------------------------------------------------------------
+// -------------------------------------------------- Terminal Query Methods - 终端查询方法 --------------------------------------------------
 
-// getTerminalsByDevice returns all terminals that match the specified device type.
-// getTerminalsByDevice 返回所有匹配指定 device 的 TerminalInfo。
+// getTerminalsByDevice gets terminals by device getTerminalsByDevice 返回指定设备的全部终端信息
 func (s *Session) getTerminalsByDevice(device string) []TerminalInfo {
 	var matched []TerminalInfo
 	for _, ti := range s.TerminalInfos {
@@ -118,8 +102,7 @@ func (s *Session) getTerminalsByDevice(device string) []TerminalInfo {
 	return matched
 }
 
-// getTerminalsByDeviceAndDeviceId returns all terminals that exactly match both device and deviceId.
-// getTerminalsByDeviceAndDeviceId 返回所有精确匹配 device 和 deviceId 的 TerminalInfo。
+// getTerminalsByDeviceAndDeviceId gets terminals by device and id getTerminalsByDeviceAndDeviceId 返回精确匹配设备和设备 ID 的终端信息
 func (s *Session) getTerminalsByDeviceAndDeviceId(device, deviceId string) []TerminalInfo {
 	var matched []TerminalInfo
 	for _, ti := range s.TerminalInfos {
@@ -130,8 +113,7 @@ func (s *Session) getTerminalsByDeviceAndDeviceId(device, deviceId string) []Ter
 	return matched
 }
 
-// getLatestTerminalByDevice retrieves the latest terminal for the specified device.
-// getLatestTerminalByDevice 获取指定 device 下最新的 TerminalInfo。
+// getLatestTerminalByDevice gets latest terminal by device getLatestTerminalByDevice 获取指定设备下最新的终端信息
 func (s *Session) getLatestTerminalByDevice(device string) (TerminalInfo, bool) {
 	for i := len(s.TerminalInfos) - 1; i >= 0; i-- {
 		if s.TerminalInfos[i].Device == device {
@@ -141,27 +123,24 @@ func (s *Session) getLatestTerminalByDevice(device string) (TerminalInfo, bool) 
 	return TerminalInfo{}, false
 }
 
-// ============================================================================
-// Permission Management - 权限管理
-// ============================================================================
+// -------------------------------------------------- Permission Management - 权限管理 --------------------------------------------------
 
-// addPermissions adds a set of permissions to the session with automatic deduplication.
-// addPermissions 向会话中添加一组权限（自动去重）。
+// addPermissions adds permissions with dedupe addPermissions 向会话添加权限并自动去重
 func (s *Session) addPermissions(permissions ...string) {
 	if len(permissions) == 0 {
 		return
 	}
 
-	// 构建现有权限的集合（用于去重）
+	// Build existing set 构建现有权限集合
 	existing := make(map[string]struct{}, len(s.Permissions))
 	for _, p := range s.Permissions {
 		existing[p] = struct{}{}
 	}
 
-	// 添加新权限（跳过已存在的）
+	// Append new permissions 追加新的权限项
 	for _, p := range permissions {
 		if p == "" {
-			continue // 跳过空权限
+			continue // Skip empty permission 跳过空权限
 		}
 		if _, exists := existing[p]; !exists {
 			existing[p] = struct{}{}
@@ -170,14 +149,13 @@ func (s *Session) addPermissions(permissions ...string) {
 	}
 }
 
-// removePermissions removes a set of permissions from the session.
-// removePermissions 从会话中移除一组权限。
+// removePermissions removes permissions removePermissions 从会话移除指定权限
 func (s *Session) removePermissions(permissions ...string) {
 	if len(permissions) == 0 || len(s.Permissions) == 0 {
 		return
 	}
 
-	// 构建要删除的权限集合（去重 + 忽略空）
+	// Build remove set 构建待删除权限集合
 	toRemove := make(map[string]struct{}, len(permissions))
 	for _, p := range permissions {
 		if p != "" {
@@ -185,7 +163,7 @@ func (s *Session) removePermissions(permissions ...string) {
 		}
 	}
 
-	// 过滤保留不在 toRemove 中的权限
+	// Keep unmatched permissions 过滤保留未删除权限
 	var kept []string
 	for _, p := range s.Permissions {
 		if _, shouldRemove := toRemove[p]; !shouldRemove {
@@ -196,27 +174,24 @@ func (s *Session) removePermissions(permissions ...string) {
 	s.Permissions = kept
 }
 
-// ============================================================================
-// Role Management - 角色管理
-// ============================================================================
+// -------------------------------------------------- Role Management - 角色管理 --------------------------------------------------
 
-// addRoles adds a set of roles to the session with automatic deduplication.
-// addRoles 向会话中添加一组角色（自动去重）。
+// addRoles adds roles with dedupe addRoles 向会话添加角色并自动去重
 func (s *Session) addRoles(roles ...string) {
 	if len(roles) == 0 {
 		return
 	}
 
-	// 构建现有角色的集合（用于去重）
+	// Build existing set 构建现有角色集合
 	existing := make(map[string]struct{}, len(s.Roles))
 	for _, r := range s.Roles {
 		existing[r] = struct{}{}
 	}
 
-	// 添加新角色（跳过已存在或空的）
+	// Append new roles 追加新的角色项
 	for _, r := range roles {
 		if r == "" {
-			continue // 跳过空角色
+			continue // Skip empty role 跳过空角色
 		}
 		if _, exists := existing[r]; !exists {
 			existing[r] = struct{}{}
@@ -225,14 +200,13 @@ func (s *Session) addRoles(roles ...string) {
 	}
 }
 
-// removeRoles removes a set of roles from the session.
-// removeRoles 从会话中移除一组角色。
+// removeRoles removes roles removeRoles 从会话移除指定角色
 func (s *Session) removeRoles(roles ...string) {
 	if len(roles) == 0 || len(s.Roles) == 0 {
 		return
 	}
 
-	// 构建要删除的角色集合（去重 + 忽略空）
+	// Build remove set 构建待删除角色集合
 	toRemove := make(map[string]struct{}, len(roles))
 	for _, r := range roles {
 		if r != "" {
@@ -240,7 +214,7 @@ func (s *Session) removeRoles(roles ...string) {
 		}
 	}
 
-	// 过滤保留不在 toRemove 中的角色
+	// Keep unmatched roles 过滤保留未删除角色
 	var kept []string
 	for _, r := range s.Roles {
 		if _, shouldRemove := toRemove[r]; !shouldRemove {

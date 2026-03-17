@@ -13,18 +13,19 @@ import (
 	"time"
 )
 
+// ErrEmptyLoginID indicates loginID is empty 表示 loginID 不能为空
 var (
 	ErrEmptyLoginID = fmt.Errorf("loginID can not be empty")
 )
 
-// Generator Token生成器
+// Generator implements token generation Token 生成器实现
 type Generator struct {
 	timeout      int64
 	jwtSecretKey string
 	tokenStyle   adapter.TokenStyle
 }
 
-// NewGenerator 创建新的Token生成器
+// NewGenerator creates a token generator 创建新的 Token 生成器
 func NewGenerator(timeout int64, jwtSecretKey string, tokenStyle adapter.TokenStyle) *Generator {
 	return &Generator{
 		timeout:      timeout,
@@ -33,7 +34,7 @@ func NewGenerator(timeout int64, jwtSecretKey string, tokenStyle adapter.TokenSt
 	}
 }
 
-// NewDefaultGenerator 创建新的默认的Token生成器
+// NewDefaultGenerator creates the default token generator 创建新的默认 Token 生成器
 func NewDefaultGenerator() *Generator {
 	return &Generator{
 		timeout:      DefaultTimeout,
@@ -42,9 +43,9 @@ func NewDefaultGenerator() *Generator {
 	}
 }
 
-// ============ 公共方法 ============
+// -------------------------------------------------- Public Methods - 公共方法 --------------------------------------------------
 
-// Generate 根据配置的风格生成Token
+// Generate creates a token by configured style 根据配置的风格生成 Token
 func (g *Generator) Generate(loginID, device, deviceId string) (string, error) {
 	if loginID == "" {
 		return "", ErrEmptyLoginID
@@ -74,9 +75,9 @@ func (g *Generator) Generate(loginID, device, deviceId string) (string, error) {
 	}
 }
 
-// ============ Token生成方法 ============
+// -------------------------------------------------- Token Generation Methods - Token 生成方法 --------------------------------------------------
 
-// generateUUID 生成UUID Token
+// generateUUID creates a UUID token 生成 UUID Token
 func (g *Generator) generateUUID() (string, error) {
 	u, err := uuid.NewRandom()
 	if err != nil {
@@ -85,7 +86,7 @@ func (g *Generator) generateUUID() (string, error) {
 	return u.String(), nil
 }
 
-// generateSimple 生成指定长度的简单随机字符串 Token
+// generateSimple creates a random string token with fixed length 生成指定长度的简单随机字符串 Token
 func (g *Generator) generateSimple(length int) (string, error) {
 	if length <= 0 {
 		length = DefaultSimpleLength
@@ -93,7 +94,7 @@ func (g *Generator) generateSimple(length int) (string, error) {
 	return randomStringFromCharset(TikCharset, length)
 }
 
-// generateJWT 生成JWT Token
+// generateJWT creates a JWT token 生成 JWT Token
 func (g *Generator) generateJWT(loginID, device, deviceId string) (string, error) {
 	now := time.Now()
 
@@ -104,7 +105,7 @@ func (g *Generator) generateJWT(loginID, device, deviceId string) (string, error
 		"iat":      now.Unix(),
 	}
 
-	// 如果配置了超时时间则添加过期时间
+	// Add expiration when timeout is configured 如果配置了超时时间则添加过期时间
 	if g.timeout > 0 {
 		claims["exp"] = now.Add(time.Duration(g.timeout) * time.Second).Unix()
 	}
@@ -120,7 +121,7 @@ func (g *Generator) generateJWT(loginID, device, deviceId string) (string, error
 	return signedToken, nil
 }
 
-// getJWTSecret 获取JWT密钥（带默认值）
+// getJWTSecret returns the JWT secret with fallback 获取 JWT 密钥（带默认值）
 func (g *Generator) getJWTSecret() string {
 	if g.jwtSecretKey != "" {
 		return g.jwtSecretKey
@@ -128,9 +129,9 @@ func (g *Generator) getJWTSecret() string {
 	return DefaultJWTSecret
 }
 
-// ============ JWT辅助方法 ============
+// -------------------------------------------------- JWT Helper Methods - JWT 辅助方法 --------------------------------------------------
 
-// ParseJWT 解析JWT Token并返回声明
+// ParseJWT parses a JWT token and returns claims 解析 JWT Token 并返回声明
 func (g *Generator) ParseJWT(tokenStr string) (jwt.MapClaims, error) {
 	if tokenStr == "" {
 		return nil, fmt.Errorf("token string cannot be empty")
@@ -139,7 +140,7 @@ func (g *Generator) ParseJWT(tokenStr string) (jwt.MapClaims, error) {
 	secretKey := g.getJWTSecret()
 
 	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (any, error) {
-		// Verify signing method | 验证签名方法
+		// Verify the signing method 验证签名方法
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("%w: %v", fmt.Errorf("unexpected signing method"), token.Header["alg"])
 		}
@@ -157,13 +158,13 @@ func (g *Generator) ParseJWT(tokenStr string) (jwt.MapClaims, error) {
 	return nil, fmt.Errorf("invalid token")
 }
 
-// ValidateJWT 验证JWT Token
+// ValidateJWT validates the JWT token 验证 JWT Token
 func (g *Generator) ValidateJWT(tokenStr string) error {
 	_, err := g.ParseJWT(tokenStr)
 	return err
 }
 
-// GetLoginIDFromJWT 从JWT Token中提取登录ID
+// GetLoginIDFromJWT extracts loginID from a JWT token 从 JWT Token 中提取登录 ID
 func (g *Generator) GetLoginIDFromJWT(tokenStr string) (string, error) {
 	claims, err := g.ParseJWT(tokenStr)
 	if err != nil {
@@ -178,14 +179,14 @@ func (g *Generator) GetLoginIDFromJWT(tokenStr string) (string, error) {
 	return loginID, nil
 }
 
-// generateHash 生成SHA256哈希风格Token
+// generateHash creates a SHA256 hash style token 生成 SHA256 哈希风格 Token
 func (g *Generator) generateHash(loginID, device, deviceId string) (string, error) {
 	randomBytes := make([]byte, HashRandomBytesLen)
 	if _, err := rand.Read(randomBytes); err != nil {
 		return "", fmt.Errorf("failed to generate random bytes: %w", err)
 	}
 
-	// Create hash input | 创建哈希输入
+	// Build the hash input 创建哈希输入
 	data := fmt.Sprintf(
 		"%s:%s:%s:%d:%s",
 		loginID,
@@ -199,7 +200,7 @@ func (g *Generator) generateHash(loginID, device, deviceId string) (string, erro
 	return hex.EncodeToString(hash[:]), nil
 }
 
-// generateTimestamp 生成时间戳风格Token
+// generateTimestamp creates a timestamp style token 生成时间戳风格 Token
 func (g *Generator) generateTimestamp(loginID string) (string, error) {
 	randomBytes := make([]byte, TimestampRandomLen)
 	if _, err := rand.Read(randomBytes); err != nil {
@@ -211,12 +212,12 @@ func (g *Generator) generateTimestamp(loginID string) (string, error) {
 	return fmt.Sprintf("%d_%s_%s", timestamp, loginID, random), nil
 }
 
-// generateTik 生成 TikTok 风格的短 ID Token。
+// generateTik creates a TikTok style short ID token 生成 TikTok 风格的短 ID Token。
 func (g *Generator) generateTik() (string, error) {
 	return randomStringFromCharset(TikCharset, TikTokenLength)
 }
 
-// randomStringFromCharset 使用指定字符集和加密安全随机数生成字符串。
+// randomStringFromCharset creates a random string from the charset 使用指定字符集和加密安全随机数生成字符串。
 func randomStringFromCharset(charset string, length int) (string, error) {
 	if length <= 0 || charset == "" {
 		return "", fmt.Errorf("invalid length or charset")

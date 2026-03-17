@@ -8,6 +8,7 @@ import (
 	"gf_v2/internal/cmd"
 )
 
+// main starts the GoFrame v2 example 启动 GoFrame v2 示例
 func main() {
 	cmd.Main.Run(gctx.GetInitCtx())
 }

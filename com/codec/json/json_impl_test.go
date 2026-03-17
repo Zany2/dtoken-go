@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// TestJSONSerializer_Name tests serializer name behavior 测试序列化器名称行为
 func TestJSONSerializer_Name(t *testing.T) {
 	s := NewJSONSerializer()
 	if got := s.Name(); got != "json" {
@@ -13,6 +14,7 @@ func TestJSONSerializer_Name(t *testing.T) {
 	}
 }
 
+// TestJSONSerializer_Encode tests JSON encoding behavior 测试 JSON 编码行为
 func TestJSONSerializer_Encode(t *testing.T) {
 	s := NewJSONSerializer()
 
@@ -41,9 +43,11 @@ func TestJSONSerializer_Encode(t *testing.T) {
 	}
 }
 
+// TestJSONSerializer_Decode tests JSON decoding behavior 测试 JSON 解码行为
 func TestJSONSerializer_Decode(t *testing.T) {
 	s := NewJSONSerializer()
 
+	// Person defines test data for JSON serializer tests 定义 JSON 序列化测试数据
 	type Person struct {
 		Name string
 	}

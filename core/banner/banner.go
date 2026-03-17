@@ -1,4 +1,3 @@
-// @Author daixk 2026/2/1 15:07:00
 package banner
 
 import (
@@ -11,7 +10,7 @@ import (
 )
 
 const (
-	// BannerText Banner 文本内容
+	// BannerText stores banner text content BannerText 存储 Banner 文本内容
 	BannerText = `
  ____  _____     _
 |  _ \|_   _|__ | | _____ _ __
@@ -22,27 +21,27 @@ const (
 `
 )
 
-// PrintBanner 打印启动 Banner 和关键配置信息
+// PrintBanner prints startup banner and key config info PrintBanner 打印启动 Banner 和关键配置信息
 func PrintBanner(cfg *config.Config) {
 	if cfg == nil || !cfg.IsPrintBanner {
 		return
 	}
 
-	// 打印 Banner
+	// Print banner 打印 Banner
 	fmt.Print(BannerText)
 	fmt.Printf(":: DToken-Go ::        (version %s)\n\n", core.Version)
 
-	// 打印关键配置信息
+	// Print config summary 打印关键配置信息
 	fmt.Println("========================================")
 	fmt.Println("         Configuration Summary          ")
 	fmt.Println("========================================")
 
-	// 认证配置
+	// Auth config 认证配置
 	fmt.Printf("AuthType         : %s\n", strings.TrimSuffix(cfg.AuthType, ":"))
 	fmt.Printf("TokenName        : %s\n", cfg.TokenName)
 	fmt.Printf("TokenStyle       : %s\n", getTokenStyleName(cfg.TokenStyle))
 
-	// 超时配置
+	// Timeout config 超时配置
 	fmt.Printf("Timeout          : %s\n", formatDuration(cfg.Timeout))
 	if cfg.AutoRenew {
 		fmt.Printf("AutoRenew        : Enabled\n")
@@ -53,13 +52,13 @@ func PrintBanner(cfg *config.Config) {
 	}
 	fmt.Printf("ActiveTimeout    : %s\n", formatDuration(cfg.ActiveTimeout))
 
-	// 并发配置
+	// Concurrency config 并发配置
 	fmt.Printf("Concurrency      : %s\n", formatConcurrency(cfg))
 
-	// Token 读取配置
+	// Token source config Token 读取配置
 	fmt.Printf("Token Source     : %s\n", formatTokenSource(cfg))
 
-	// 日志配置
+	// Log config 日志配置
 	if cfg.IsLog {
 		fmt.Printf("Logging          : Enabled\n")
 	} else {
@@ -72,7 +71,7 @@ func PrintBanner(cfg *config.Config) {
 	fmt.Println()
 }
 
-// getTokenStyleName 获取 Token 风格名称
+// getTokenStyleName gets token style name getTokenStyleName 获取 Token 风格名称
 func getTokenStyleName(style adapter.TokenStyle) string {
 	switch style {
 	case adapter.TokenStyleUUID:
@@ -98,7 +97,7 @@ func getTokenStyleName(style adapter.TokenStyle) string {
 	}
 }
 
-// formatDuration 格式化时长显示
+// formatDuration formats duration display formatDuration 格式化时长显示
 func formatDuration(seconds int64) string {
 	if seconds == config.NoLimit {
 		return "No Limit"
@@ -109,7 +108,7 @@ func formatDuration(seconds int64) string {
 
 	d := time.Duration(seconds) * time.Second
 
-	// 大于等于 1 天
+	// Day branch 天级分支
 	if d >= 24*time.Hour {
 		days := d / (24 * time.Hour)
 		hours := (d % (24 * time.Hour)) / time.Hour
@@ -119,7 +118,7 @@ func formatDuration(seconds int64) string {
 		return fmt.Sprintf("%dd", days)
 	}
 
-	// 大于等于 1 小时
+	// Hour branch 小时级分支
 	if d >= time.Hour {
 		hours := d / time.Hour
 		minutes := (d % time.Hour) / time.Minute
@@ -129,7 +128,7 @@ func formatDuration(seconds int64) string {
 		return fmt.Sprintf("%dh", hours)
 	}
 
-	// 大于等于 1 分钟
+	// Minute branch 分钟级分支
 	if d >= time.Minute {
 		minutes := d / time.Minute
 		seconds := (d % time.Minute) / time.Second
@@ -139,11 +138,11 @@ func formatDuration(seconds int64) string {
 		return fmt.Sprintf("%dm", minutes)
 	}
 
-	// 小于 1 分钟
+	// Second branch 秒级分支
 	return fmt.Sprintf("%ds", seconds)
 }
 
-// formatConcurrency 格式化并发配置显示
+// formatConcurrency formats concurrency config formatConcurrency 格式化并发配置显示
 func formatConcurrency(cfg *config.Config) string {
 	if !cfg.IsConcurrent {
 		return fmt.Sprintf("Disabled (Scope: %s)", cfg.ConcurrencyScope)
@@ -168,7 +167,7 @@ func formatConcurrency(cfg *config.Config) string {
 	return strings.Join(parts, ", ")
 }
 
-// formatTokenSource 格式化 Token 读取来源显示
+// formatTokenSource formats token source display formatTokenSource 格式化 Token 读取来源显示
 func formatTokenSource(cfg *config.Config) string {
 	var sources []string
 	if cfg.IsReadHeader {

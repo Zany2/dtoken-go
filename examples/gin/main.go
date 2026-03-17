@@ -14,28 +14,23 @@ import (
 func main() {
 	ctx := context.Background()
 
-	// Initialize DToken Manager
-	// 初始化 DToken 管理器
+	// Initialize DToken Manager 初始化 DToken 管理器
 	initManager(ctx)
 
-	// Create Gin router
-	// 创建 Gin 路由器
+	// Create Gin router 创建 Gin 路由器
 	r := gin.Default()
 
-	// Register middleware
-	// 注册中间件
+	// Register middleware 注册中间件
 	r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
 
-	// Public routes (no authentication required)
-	// 公开路由（无需认证）
+	// Public routes (no authentication required) 公开路由（无需认证）
 	api := r.Group("/api")
 	{
 		api.POST("/login", handleLogin)
 		api.GET("/public", handlePublic)
 	}
 
-	// Protected routes (authentication required)
-	// 受保护路由（需要认证）
+	// Protected routes (authentication required) 受保护路由（需要认证）
 	user := r.Group("/api/user")
 	user.Use(gindt.AuthMiddleware(ctx))
 	{
@@ -43,8 +38,7 @@ func main() {
 		user.POST("/logout", handleLogout)
 	}
 
-	// Admin routes (require admin role)
-	// 管理员路由（需要管理员角色）
+	// Admin routes (require admin role) 管理员路由（需要管理员角色）
 	admin := r.Group("/api/admin")
 	admin.Use(gindt.RoleMiddleware(ctx, []string{"admin"}))
 	{
@@ -53,37 +47,30 @@ func main() {
 		admin.POST("/enable", handleEnableUser)
 	}
 
-	// Permission-based routes
-	// 基于权限的路由
+	// Permission-based routes 基于权限的路由
 	resource := r.Group("/api/resource")
 	resource.Use(gindt.PermissionMiddleware(ctx, []string{"resource:read"}))
 	{
 		resource.GET("/list", handleResourceList)
 	}
 
-	// Annotation-based routes
-	// 基于注解的路由
+	// Annotation-based routes 基于注解的路由
 	annotation := r.Group("/api/annotation")
 	{
-		// Check login only
-		// 仅检查登录
+		// Check login only 仅检查登录
 		annotation.GET("/profile", gindt.CheckLoginMiddleware(ctx, handleProfile, handleAuthFail))
 
-		// Check role
-		// 检查角色
+		// Check role 检查角色
 		annotation.GET("/admin-data", gindt.CheckRoleMiddleware(ctx, []string{"admin"}, handleAdminData, handleAuthFail))
 
-		// Check permission
-		// 检查权限
+		// Check permission 检查权限
 		annotation.GET("/sensitive", gindt.CheckPermissionMiddleware(ctx, []string{"data:read"}, handleSensitiveData, handleAuthFail))
 
-		// Check all (login + role + permission)
-		// 全面检查（登录 + 角色 + 权限）
+		// Check all (login + role + permission) 全面检查（登录 + 角色 + 权限）
 		annotation.GET("/super", gindt.CheckAllMiddleware(ctx, []string{"super-admin"}, []string{"all:access"}, handleSuperData, handleAuthFail))
 	}
 
-	// Start server
-	// 启动服务器
+	// Start server 启动服务器
 	fmt.Println("Server starting on http://localhost:8080")
 	fmt.Println("服务器启动在 http://localhost:8080")
 	fmt.Println("\nAvailable endpoints:")
@@ -101,17 +88,14 @@ func main() {
 	r.Run(":8080")
 }
 
-// initManager initializes the DToken manager
-// initManager 初始化 DToken 管理器
+// initManager initializes the DToken manager 初始化 DToken 管理器
 func initManager(ctx context.Context) {
-	// 使用 Redis 存储
-	// Redis URL 格式: redis://[username]:[password]@[host]:[port]/[database]
+	// Use Redis Storage And URL Format 使用 Redis 存储与 Redis URL 格式
 	storage, err := redis.NewStorage("redis://:root@192.168.19.104:6379/0?dial_timeout=3&read_timeout=10s&max_retries=2")
 	if err != nil {
 		panic("Failed to connect to Redis: " + err.Error())
 	}
-	// Create builder and configure
-	// 创建构建器并配置
+	// Create builder and configure 创建构建器并配置
 	builder := gindt.NewDefaultBuilder()
 	mgr := builder.
 		SetStorage(storage).
@@ -120,20 +104,16 @@ func initManager(ctx context.Context) {
 		MaxLoginCount(3).
 		Build()
 
-	// Set manager
-	// 设置管理器
+	// Set manager 设置管理器
 	gindt.SetManager(mgr)
 
 	fmt.Println("✓ DToken Manager initialized successfully with Gin Redis storage")
 	fmt.Println("✓ DToken 管理器初始化成功（使用 Gin Redis 存储）")
 }
 
-// ============================================================================
-// Handler Functions - 处理器函数
-// ============================================================================
+// -------------------------------------------------- Handler Functions - 处理器函数 --------------------------------------------------
 
-// handleLogin handles user login
-// handleLogin 处理用户登录
+// handleLogin handles user login 处理用户登录
 func handleLogin(c *gin.Context) {
 	var req struct {
 		Username string `json:"username" form:"username"`
@@ -149,8 +129,7 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	// Simple authentication (in production, verify against database)
-	// 简单认证（生产环境中应该验证数据库）
+	// Simple authentication (in production, verify against database) 简单认证（生产环境中应该验证数据库）
 	if req.Username == "" || req.Password == "" {
 		c.JSON(200, gin.H{
 			"code":    gindt.CodeBadRequest,
@@ -160,8 +139,7 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	// Simulate user authentication
-	// 模拟用户认证
+	// Simulate user authentication 模拟用户认证
 	if req.Username != "admin" || req.Password != "123456" {
 		c.JSON(200, gin.H{
 			"code":    gindt.CodeNotLogin,
@@ -171,8 +149,7 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	// Login and get token
-	// 登录并获取 token
+	// Login and get token 登录并获取 token
 	token, err := gindt.Login(c.Request.Context(), req.Username)
 	if err != nil {
 		c.JSON(200, gin.H{
@@ -183,8 +160,7 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	// Add roles and permissions for admin user
-	// 为管理员用户添加角色和权限
+	// Add roles and permissions for admin user 为管理员用户添加角色和权限
 	_ = gindt.AddRoles(c.Request.Context(), req.Username, []string{"admin", "super-admin"})
 	_ = gindt.AddPermissions(c.Request.Context(), req.Username, []string{"resource:read", "resource:write", "data:read", "all:access"})
 
@@ -198,8 +174,7 @@ func handleLogin(c *gin.Context) {
 	})
 }
 
-// handlePublic handles public endpoint
-// handlePublic 处理公开接口
+// handlePublic handles public endpoint 处理公开接口
 func handlePublic(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"code":    gindt.CodeSuccess,
@@ -208,11 +183,9 @@ func handlePublic(c *gin.Context) {
 	})
 }
 
-// handleUserInfo handles user info request
-// handleUserInfo 处理用户信息请求
+// handleUserInfo handles user info request 处理用户信息请求
 func handleUserInfo(c *gin.Context) {
-	// Get DToken context
-	// 获取 DToken 上下文
+	// Get DToken context 获取 DToken 上下文
 	dCtx, ok := gindt.GetDTokenContext(c)
 	if !ok {
 		c.JSON(200, gin.H{
@@ -234,8 +207,7 @@ func handleUserInfo(c *gin.Context) {
 		return
 	}
 
-	// Get token info
-	// 获取 token 信息
+	// Get token info 获取 token 信息
 	tokenInfo, err := dCtx.GetTokenInfo(c.Request.Context())
 	if err != nil {
 		c.JSON(200, gin.H{
@@ -246,8 +218,7 @@ func handleUserInfo(c *gin.Context) {
 		return
 	}
 
-	// Get roles and permissions using convenience methods
-	// 使用便捷方法获取角色和权限
+	// Get roles and permissions using convenience methods 使用便捷方法获取角色和权限
 	roles, _ := dCtx.GetRoles(c.Request.Context())
 	permissions, _ := dCtx.GetPermissions(c.Request.Context())
 
@@ -265,11 +236,9 @@ func handleUserInfo(c *gin.Context) {
 	})
 }
 
-// handleLogout handles user logout
-// handleLogout 处理用户登出
+// handleLogout handles user logout 处理用户登出
 func handleLogout(c *gin.Context) {
-	// Get DToken context
-	// 获取 DToken 上下文
+	// Get DToken context 获取 DToken 上下文
 	dCtx, ok := gindt.GetDTokenContext(c)
 	if !ok {
 		c.JSON(200, gin.H{
@@ -298,8 +267,7 @@ func handleLogout(c *gin.Context) {
 	})
 }
 
-// handleAdminUsers handles admin users list
-// handleAdminUsers 处理管理员用户列表
+// handleAdminUsers handles admin users list 处理管理员用户列表
 func handleAdminUsers(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"code":    gindt.CodeSuccess,
@@ -311,8 +279,7 @@ func handleAdminUsers(c *gin.Context) {
 	})
 }
 
-// handleDisableUser handles disabling a user
-// handleDisableUser 处理封禁用户
+// handleDisableUser handles disabling a user 处理封禁用户
 func handleDisableUser(c *gin.Context) {
 	var req struct {
 		Username string `json:"username" form:"username"`
@@ -327,8 +294,7 @@ func handleDisableUser(c *gin.Context) {
 		return
 	}
 
-	// Disable user for 1 hour
-	// 封禁用户 1 小时
+	// Disable user for 1 hour 封禁用户 1 小时
 	err := gindt.Disable(c.Request.Context(), req.Username, time.Hour, "Violated terms of service")
 	if err != nil {
 		c.JSON(200, gin.H{
@@ -346,8 +312,7 @@ func handleDisableUser(c *gin.Context) {
 	})
 }
 
-// handleEnableUser handles enabling a user
-// handleEnableUser 处理解封用户
+// handleEnableUser handles enabling a user 处理解封用户
 func handleEnableUser(c *gin.Context) {
 	var req struct {
 		Username string `json:"username" form:"username"`
@@ -379,8 +344,7 @@ func handleEnableUser(c *gin.Context) {
 	})
 }
 
-// handleResourceList handles resource list
-// handleResourceList 处理资源列表
+// handleResourceList handles resource list 处理资源列表
 func handleResourceList(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"code":    gindt.CodeSuccess,
@@ -392,8 +356,7 @@ func handleResourceList(c *gin.Context) {
 	})
 }
 
-// handleProfile handles profile request
-// handleProfile 处理个人资料请求
+// handleProfile handles profile request 处理个人资料请求
 func handleProfile(c *gin.Context) {
 	dCtx, _ := gindt.GetDTokenContext(c)
 	// Use convenience method - 使用便捷方法
@@ -409,8 +372,7 @@ func handleProfile(c *gin.Context) {
 	})
 }
 
-// handleAdminData handles admin data request
-// handleAdminData 处理管理员数据请求
+// handleAdminData handles admin data request 处理管理员数据请求
 func handleAdminData(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"code":    gindt.CodeSuccess,
@@ -419,8 +381,7 @@ func handleAdminData(c *gin.Context) {
 	})
 }
 
-// handleSensitiveData handles sensitive data request
-// handleSensitiveData 处理敏感数据请求
+// handleSensitiveData handles sensitive data request 处理敏感数据请求
 func handleSensitiveData(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"code":    gindt.CodeSuccess,
@@ -429,8 +390,7 @@ func handleSensitiveData(c *gin.Context) {
 	})
 }
 
-// handleSuperData handles super admin data request
-// handleSuperData 处理超级管理员数据请求
+// handleSuperData handles super admin data request 处理超级管理员数据请求
 func handleSuperData(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"code":    gindt.CodeSuccess,
@@ -439,8 +399,7 @@ func handleSuperData(c *gin.Context) {
 	})
 }
 
-// handleAuthFail handles authentication failure
-// handleAuthFail 处理认证失败
+// handleAuthFail handles authentication failure 处理认证失败
 func handleAuthFail(c *gin.Context, err error) {
 	var code int
 	var message string

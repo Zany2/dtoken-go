@@ -16,12 +16,14 @@ import (
 type LogicType string
 
 const (
+	// DTokenCtxKey stores request scoped DToken context DTokenCtxKey 存储请求级 DToken 上下文
 	DTokenCtxKey = "DCtx"
 
 	LogicOr  LogicType = "OR"
 	LogicAnd LogicType = "AND"
 )
 
+// AuthOption defines auth option setter AuthOption 定义认证选项设置器
 type AuthOption func(*AuthOptions)
 
 // AuthOptions carries middleware auth options AuthOptions 保存中间件认证选项。
@@ -110,7 +112,7 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) gofiber.Handler {
 	}
 }
 
-// PermissionMiddleware checks whether the current token has required permissions PermissionMiddleware 检查当前 token 是否具备所需权限。
+// PermissionMiddleware checks whether the current token has required permissions PermissionMiddleware 检查当前 token 是否具备所需权限
 func PermissionMiddleware(
 	ctx context.Context,
 	permissions []string,
@@ -157,7 +159,7 @@ func PermissionMiddleware(
 	}
 }
 
-// RoleMiddleware checks whether the current token has required roles RoleMiddleware 检查当前 token 是否具备所需角色。
+// RoleMiddleware checks whether the current token has required roles RoleMiddleware 检查当前 token 是否具备所需角色
 func RoleMiddleware(
 	ctx context.Context,
 	roles []string,

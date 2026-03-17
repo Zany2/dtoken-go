@@ -1,4 +1,3 @@
-// @Author daixk 2026/1/22 13:46:00
 package utils
 
 import (
@@ -6,7 +5,7 @@ import (
 	"math"
 )
 
-// ToBytes 将任意类型转换为字节切片
+// ToBytes converts value to bytes ToBytes 将任意类型转换为字节切片
 func ToBytes(value any) ([]byte, error) {
 	switch v := value.(type) {
 	case string:
@@ -22,7 +21,7 @@ func ToBytes(value any) ([]byte, error) {
 	}
 }
 
-// ToInt64 将任意类型转换为 int64
+// ToInt64 converts value to int64 ToInt64 将任意类型转换为 int64
 func ToInt64(value any) (int64, error) {
 	switch v := value.(type) {
 	case int:
@@ -53,7 +52,7 @@ func ToInt64(value any) (int64, error) {
 	case float64:
 		return int64(v), nil
 	case string:
-		// 简单尝试：仅支持纯数字字符串（不处理空格、进制等）
+		// Parse simple decimal string 仅尝试解析纯数字十进制字符串
 		var i int
 		if _, err := fmt.Sscanf(v, "%d", &i); err == nil {
 			return int64(i), nil

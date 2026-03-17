@@ -1,4 +1,3 @@
-// @Author daixk 2026/2/1 15:30:00
 package banner
 
 import (
@@ -7,19 +6,23 @@ import (
 	"testing"
 )
 
-// TestPrintBanner_Full 测试完整配置的 Banner 打印
+// TestPrintBanner_Full tests full banner config TestPrintBanner_Full 测试完整配置的 Banner 打印
 func TestPrintBanner_Full(t *testing.T) {
 	t.Log("========== 测试完整配置的 Banner ==========")
 	cfg := &config.Config{
-		IsPrintBanner:    true,
-		AuthType:         "login",
-		TokenName:        "token",
-		TokenStyle:       adapter.TokenStyleUUID,
-		Timeout:          86400, // 1 天
-		AutoRenew:        true,
-		RenewMaxRefresh:  604800, // 7 天
-		RenewInterval:    3600,   // 1 小时
-		ActiveTimeout:    1800,   // 30 分钟
+		IsPrintBanner: true,
+		AuthType:      "login",
+		TokenName:     "token",
+		TokenStyle:    adapter.TokenStyleUUID,
+		// Timeout sample day value Timeout 示例天级值
+		Timeout:   86400,
+		AutoRenew: true,
+		// RenewMaxRefresh sample day value RenewMaxRefresh 示例天级值
+		RenewMaxRefresh: 604800,
+		// RenewInterval sample hour value RenewInterval 示例小时值
+		RenewInterval: 3600,
+		// ActiveTimeout sample minute value ActiveTimeout 示例分钟值
+		ActiveTimeout:    1800,
 		IsConcurrent:     true,
 		ConcurrencyScope: "user",
 		IsShare:          false,
@@ -32,15 +35,16 @@ func TestPrintBanner_Full(t *testing.T) {
 	PrintBanner(cfg)
 }
 
-// TestPrintBanner_Simple 测试简单配置的 Banner 打印
+// TestPrintBanner_Simple tests simple banner config TestPrintBanner_Simple 测试简单配置的 Banner 打印
 func TestPrintBanner_Simple(t *testing.T) {
 	t.Log("========== 测试简单配置的 Banner ==========")
 	cfg := &config.Config{
-		IsPrintBanner:    true,
-		AuthType:         "admin:",
-		TokenName:        "admin-token",
-		TokenStyle:       adapter.TokenStyleSimple,
-		Timeout:          7200, // 2 小时
+		IsPrintBanner: true,
+		AuthType:      "admin:",
+		TokenName:     "admin-token",
+		TokenStyle:    adapter.TokenStyleSimple,
+		// Timeout sample hour value Timeout 示例小时值
+		Timeout:          7200,
 		AutoRenew:        false,
 		ActiveTimeout:    config.NoLimit,
 		IsConcurrent:     false,
@@ -53,19 +57,23 @@ func TestPrintBanner_Simple(t *testing.T) {
 	PrintBanner(cfg)
 }
 
-// TestPrintBanner_JWT 测试 JWT 风格的 Banner 打印
+// TestPrintBanner_JWT tests JWT banner config TestPrintBanner_JWT 测试 JWT 风格的 Banner 打印
 func TestPrintBanner_JWT(t *testing.T) {
 	t.Log("========== 测试 JWT 风格的 Banner ==========")
 	cfg := &config.Config{
-		IsPrintBanner:    true,
-		AuthType:         "api:",
-		TokenName:        "jwt-token",
-		TokenStyle:       adapter.TokenStyleJWT,
-		Timeout:          3600, // 1 小时
-		AutoRenew:        true,
-		RenewMaxRefresh:  86400, // 1 天
-		RenewInterval:    1800,  // 30 分钟
-		ActiveTimeout:    600,   // 10 分钟
+		IsPrintBanner: true,
+		AuthType:      "api:",
+		TokenName:     "jwt-token",
+		TokenStyle:    adapter.TokenStyleJWT,
+		// Timeout sample hour value Timeout 示例小时值
+		Timeout:   3600,
+		AutoRenew: true,
+		// RenewMaxRefresh sample day value RenewMaxRefresh 示例天级值
+		RenewMaxRefresh: 86400,
+		// RenewInterval sample minute value RenewInterval 示例分钟值
+		RenewInterval: 1800,
+		// ActiveTimeout sample minute value ActiveTimeout 示例分钟值
+		ActiveTimeout:    600,
 		IsConcurrent:     true,
 		ConcurrencyScope: "user",
 		IsShare:          true,
@@ -78,7 +86,7 @@ func TestPrintBanner_JWT(t *testing.T) {
 	PrintBanner(cfg)
 }
 
-// TestPrintBanner_Disabled 测试禁用 Banner 打印
+// TestPrintBanner_Disabled tests disabled banner TestPrintBanner_Disabled 测试禁用 Banner 打印
 func TestPrintBanner_Disabled(t *testing.T) {
 	t.Log("========== 测试禁用 Banner（不应该有输出）==========")
 	cfg := &config.Config{
@@ -90,7 +98,7 @@ func TestPrintBanner_Disabled(t *testing.T) {
 	t.Log("========== 禁用 Banner 测试完成 ==========")
 }
 
-// TestPrintBanner_Nil 测试 nil 配置
+// TestPrintBanner_Nil tests nil config TestPrintBanner_Nil 测试 nil 配置
 func TestPrintBanner_Nil(t *testing.T) {
 	t.Log("========== 测试 nil 配置（不应该有输出）==========")
 	PrintBanner(nil)

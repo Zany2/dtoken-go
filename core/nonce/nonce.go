@@ -12,24 +12,22 @@ import (
 	"time"
 )
 
-// NonceManager is the nonce manager.
-// NonceManager Nonce管理器
+// NonceManager defines nonce manager NonceManager 定义 Nonce 管理器
 type NonceManager struct {
-	authType  string          // 认证体系类型
-	keyPrefix string          // 可配置的前缀
-	ttl       time.Duration   // Nonce有效期
-	mu        sync.RWMutex    // 并发访问读写锁
-	storage   adapter.Storage // 存储适配器
+	authType  string          // authType stores auth type authType 存储认证体系类型
+	keyPrefix string          // keyPrefix stores key prefix keyPrefix 存储可配置前缀
+	ttl       time.Duration   // ttl stores nonce ttl ttl 存储 Nonce 有效期
+	mu        sync.RWMutex    // mu guards concurrent access mu 保护并发读写
+	storage   adapter.Storage // storage stores storage adapter storage 存储存储适配器
 }
 
-// NewNonceManager creates a new nonce manager.
-// NewNonceManager 创建新的Nonce管理器
+// NewNonceManager creates nonce manager NewNonceManager 创建新的 Nonce 管理器
 func NewNonceManager(authType, prefix string, storage adapter.Storage, ttl time.Duration) *NonceManager {
 	if ttl == 0 {
-		ttl = DefaultNonceTTL // 默认5分钟
+		ttl = DefaultNonceTTL // Use default ttl 使用默认有效期
 	}
 	if storage == nil {
-		storage = memory.NewStorage() // 如果未提供使用内存存储
+		storage = memory.NewStorage() // Use memory storage by default 默认使用内存存储
 	}
 
 	return &NonceManager{
@@ -40,14 +38,12 @@ func NewNonceManager(authType, prefix string, storage adapter.Storage, ttl time.
 	}
 }
 
-// Generate generates a new nonce and stores it (using default TTL).
-// Generate 生成新的nonce并存储（使用默认有效期）。
+// Generate creates nonce with default ttl Generate 使用默认有效期生成并存储 nonce
 func (nm *NonceManager) Generate(ctx context.Context) (string, error) {
 	return nm.GenerateWithTimeout(ctx, nm.ttl)
 }
 
-// GenerateWithTimeout generates a new nonce with a custom timeout duration.
-// GenerateWithTimeout 生成新的nonce并存储，使用指定的有效期。
+// GenerateWithTimeout creates nonce with timeout GenerateWithTimeout 使用指定有效期生成并存储 nonce
 func (nm *NonceManager) GenerateWithTimeout(ctx context.Context, timeout time.Duration) (string, error) {
 	if timeout <= 0 {
 		timeout = nm.ttl
@@ -67,8 +63,7 @@ func (nm *NonceManager) GenerateWithTimeout(ctx context.Context, timeout time.Du
 	return nonce, nil
 }
 
-// GetTTL returns the remaining TTL of a nonce in seconds.
-// GetTTL 获取nonce的剩余有效时间（秒）。
+// GetTTL gets remaining nonce ttl GetTTL 获取 nonce 的剩余有效时间秒数
 func (nm *NonceManager) GetTTL(ctx context.Context, nonce string) (int64, error) {
 	if nonce == "" {
 		return -2, nil
@@ -91,8 +86,7 @@ func (nm *NonceManager) GetTTL(ctx context.Context, nonce string) (int64, error)
 	}
 }
 
-// Verify verifies and consumes a nonce (one-time use), returns false if nonce does not exist or has been used.
-// Verify 验证nonce并消费它（一次性使用），如果nonce不存在或已使用则返回false。
+// Verify verifies and consumes nonce Verify 验证并消费 nonce 且在不存在时返回 false
 func (nm *NonceManager) Verify(ctx context.Context, nonce string) bool {
 	if nonce == "" {
 		return false
@@ -108,8 +102,7 @@ func (nm *NonceManager) Verify(ctx context.Context, nonce string) bool {
 	return err == nil
 }
 
-// VerifyAndConsume verifies and consumes a nonce, returns error if invalid.
-// VerifyAndConsume 验证并消费nonce，无效时返回错误。
+// VerifyAndConsume verifies nonce with error VerifyAndConsume 验证并消费 nonce 且在无效时返回错误
 func (nm *NonceManager) VerifyAndConsume(ctx context.Context, nonce string) error {
 	if !nm.Verify(ctx, nonce) {
 		return derror.ErrInvalidNonce
@@ -117,8 +110,7 @@ func (nm *NonceManager) VerifyAndConsume(ctx context.Context, nonce string) erro
 	return nil
 }
 
-// IsValid checks if a nonce is valid without consuming it.
-// IsValid 检查nonce是否有效（不消费）。
+// IsValid checks nonce without consuming IsValid 检查 nonce 是否有效且不消费
 func (nm *NonceManager) IsValid(ctx context.Context, nonce string) bool {
 	if nonce == "" {
 		return false
@@ -132,8 +124,7 @@ func (nm *NonceManager) IsValid(ctx context.Context, nonce string) bool {
 	return nm.storage.Exists(ctx, key)
 }
 
-// getNonceKey generates the storage key for a nonce.
-// getNonceKey 获取nonce的存储键。
+// getNonceKey builds nonce storage key getNonceKey 获取 nonce 的存储键
 func (nm *NonceManager) getNonceKey(nonce string) string {
 	return nm.keyPrefix + nm.authType + NonceKeySuffix + nonce
 }

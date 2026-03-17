@@ -11,6 +11,7 @@ import (
 )
 
 var (
+	// Main defines the main command 定义主命令
 	Main = gcmd.Command{
 		Name:  "main",
 		Usage: "main",

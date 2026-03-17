@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// TestMsgPackSerializer_Name tests serializer name behavior 测试序列化器名称行为
 func TestMsgPackSerializer_Name(t *testing.T) {
 	s := NewMsgPackSerializer()
 	if got := s.Name(); got != "msgpack" {
@@ -13,9 +14,11 @@ func TestMsgPackSerializer_Name(t *testing.T) {
 	}
 }
 
+// TestMsgPackSerializer_Encode tests MsgPack encoding behavior 测试 MsgPack 编码行为
 func TestMsgPackSerializer_Encode(t *testing.T) {
 	s := NewMsgPackSerializer()
 
+	// Person defines test data for MsgPack serializer tests 定义 MsgPack 序列化测试数据
 	type Person struct {
 		Name string
 		Age  int
@@ -59,9 +62,11 @@ func TestMsgPackSerializer_Encode(t *testing.T) {
 	}
 }
 
+// TestMsgPackSerializer_Decode tests MsgPack decoding behavior 测试 MsgPack 解码行为
 func TestMsgPackSerializer_Decode(t *testing.T) {
 	s := NewMsgPackSerializer()
 
+	// Person defines test data for MsgPack serializer tests 定义 MsgPack 序列化测试数据
 	type Person struct {
 		Name string
 		Age  int
