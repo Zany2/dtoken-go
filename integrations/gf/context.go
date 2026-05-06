@@ -79,7 +79,6 @@ func (g *GFContext) SetHeader(key string, value string) {
 	g.c.Header.Set(key, value)
 }
 
-// -------------------------------------------------- Additional Methods - 额外接口方法 --------------------------------------------------
 // GetHeaders implements adapter.RequestContext 实现 adapter.RequestContext 接口
 func (g *GFContext) GetHeaders() map[string][]string {
 	return g.c.Header

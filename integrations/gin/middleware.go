@@ -61,7 +61,6 @@ func WithFailFunc(fn func(c *gin.Context, err error)) AuthOption {
 	}
 }
 
-// -------------------------------------------------- Middleware - 中间件 --------------------------------------------------
 // RegisterDTokenContextMiddleware registers DToken context middleware RegisterDTokenContextMiddleware 注册 DToken 上下文中间件
 func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) gin.HandlerFunc {
 	options := defaultAuthOptions()
@@ -226,7 +225,6 @@ func RoleMiddleware(
 	}
 }
 
-// -------------------------------------------------- Context Helpers - 上下文辅助函数 --------------------------------------------------
 // GetDTokenContext gets cached DToken context GetDTokenContext 获取缓存的 DToken 上下文
 func GetDTokenContext(c *gin.Context) (*DContext.DTokenContext, bool) {
 	v, exists := c.Get(DTokenCtxKey)
@@ -252,7 +250,6 @@ func getDContext(c *gin.Context, mgr *manager.Manager) *DContext.DTokenContext {
 	return dCtx
 }
 
-// -------------------------------------------------- Response Helpers - 响应辅助函数 --------------------------------------------------
 // writeErrorResponse writes error response writeErrorResponse 写入错误响应
 func writeErrorResponse(c *gin.Context, err error) {
 	var dtErr *derror.DTokenError

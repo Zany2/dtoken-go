@@ -13,8 +13,6 @@ import (
 	"time"
 )
 
-// -------------------------------------------------- Data Structures - 数据结构 --------------------------------------------------
-
 // Response defines unified response payload 统一响应结构
 type Response struct {
 	Code int         `json:"code"`
@@ -65,8 +63,6 @@ type TokenRequest struct {
 	Token string `json:"token" binding:"required"`
 }
 
-// -------------------------------------------------- Helper Functions - 辅助函数 --------------------------------------------------
-
 // success writes success response 成功响应
 func success(c *gin.Context, data interface{}) {
 	c.JSON(http.StatusOK, Response{
@@ -93,8 +89,6 @@ func unauthorized(c *gin.Context, msg string) {
 	c.Abort()
 }
 
-// -------------------------------------------------- Middleware - 中间件 --------------------------------------------------
-
 // authMiddleware checks login state 登录验证中间件 验证用户是否已登录，并将token存入上下文
 func authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -118,8 +112,6 @@ func authMiddleware() gin.HandlerFunc {
 		c.Next()
 	}
 }
-
-// -------------------------------------------------- Initialization - 初始化 --------------------------------------------------
 
 // initDToken initializes the DToken framework 初始化 DToken 框架
 func initDToken() error {
@@ -148,8 +140,6 @@ func initDToken() error {
 	fmt.Println("DToken 框架初始化成功")
 	return nil
 }
-
-// -------------------------------------------------- Authentication APIs - 认证相关接口 --------------------------------------------------
 
 // handleLogin handles login 用户登录
 func handleLogin(c *gin.Context) {
@@ -450,8 +440,6 @@ func handleGetOnlineTerminalCountByDeviceAndDeviceId(c *gin.Context) {
 	})
 }
 
-// -------------------------------------------------- Online Status Management APIs - 在线状态管理接口 --------------------------------------------------
-
 // handleKickout handles kickout 根据 Token 踢人下线
 func handleKickout(c *gin.Context) {
 	var req TokenRequest
@@ -581,8 +569,6 @@ func handleReplaceByLoginID(c *gin.Context) {
 
 	success(c, "顶人下线成功")
 }
-
-// -------------------------------------------------- Permission Management APIs - 权限管理接口 --------------------------------------------------
 
 // handleAddPermissions handles add permissions 为用户添加权限
 func handleAddPermissions(c *gin.Context) {
@@ -807,8 +793,6 @@ func handleHasPermissionsOrByToken(c *gin.Context) {
 	})
 }
 
-// -------------------------------------------------- Role Management APIs - 角色管理接口 --------------------------------------------------
-
 // handleAddRoles handles add roles 为用户添加角色
 func handleAddRoles(c *gin.Context) {
 	var req RoleRequest
@@ -1032,8 +1016,6 @@ func handleHasRolesOrByToken(c *gin.Context) {
 	})
 }
 
-// -------------------------------------------------- Session Management APIs - Session 管理接口 --------------------------------------------------
-
 // handleGetSession handles get session 获取指定登录ID的会话
 func handleGetSession(c *gin.Context) {
 	loginID := c.Param("loginId")
@@ -1108,8 +1090,6 @@ func handleGetTokenValueListByDevice(c *gin.Context) {
 		"tokens": tokens,
 	})
 }
-
-// -------------------------------------------------- Account Disable Management APIs - 账号封禁管理接口 --------------------------------------------------
 
 // handleDisable handles disable 封禁账号指定时长
 func handleDisable(c *gin.Context) {
@@ -1196,8 +1176,6 @@ func handleGetDisableTTL(c *gin.Context) {
 	})
 }
 
-// -------------------------------------------------- Router Setup - 路由注册 --------------------------------------------------
-
 // setupRoutes registers all routes 注册所有路由
 func setupRoutes(r *gin.Engine) {
 	// Root Path 根路径
@@ -1210,7 +1188,6 @@ func setupRoutes(r *gin.Engine) {
 
 	api := r.Group("/api")
 
-	// -------------------------------------------------- Authentication Routes - 认证相关接口 --------------------------------------------------
 	auth := api.Group("/auth")
 	{
 		// Public Endpoints 无需验证的接口
@@ -1235,7 +1212,6 @@ func setupRoutes(r *gin.Engine) {
 		auth.GET("/online-count/:loginId/:device/:deviceId", authMiddleware(), handleGetOnlineTerminalCountByDeviceAndDeviceId)
 	}
 
-	// -------------------------------------------------- Online Status Routes - 在线状态管理接口 --------------------------------------------------
 	online := api.Group("/online", authMiddleware())
 	{
 		online.POST("/kickout", handleKickout)
@@ -1248,7 +1224,6 @@ func setupRoutes(r *gin.Engine) {
 		online.POST("/replace-by-login-id", handleReplaceByLoginID)
 	}
 
-	// -------------------------------------------------- Permission Routes - 权限管理接口 --------------------------------------------------
 	permission := api.Group("/permission", authMiddleware())
 	{
 		permission.POST("/add", handleAddPermissions)
@@ -1265,7 +1240,6 @@ func setupRoutes(r *gin.Engine) {
 		permission.POST("/has-or-by-token", handleHasPermissionsOrByToken)
 	}
 
-	// -------------------------------------------------- Role Routes - 角色管理接口 --------------------------------------------------
 	role := api.Group("/role", authMiddleware())
 	{
 		role.POST("/add", handleAddRoles)
@@ -1282,7 +1256,6 @@ func setupRoutes(r *gin.Engine) {
 		role.POST("/has-or-by-token", handleHasRolesOrByToken)
 	}
 
-	// -------------------------------------------------- Session Routes - Session 管理接口 --------------------------------------------------
 	session := api.Group("/session", authMiddleware())
 	{
 		session.GET("/:loginId", handleGetSession)
@@ -1291,7 +1264,6 @@ func setupRoutes(r *gin.Engine) {
 		session.GET("/tokens/:loginId/:device", handleGetTokenValueListByDevice)
 	}
 
-	// -------------------------------------------------- Disable Routes - 账号封禁管理接口 --------------------------------------------------
 	disable := api.Group("/disable", authMiddleware())
 	{
 		disable.POST("/ban", handleDisable)
@@ -1303,8 +1275,6 @@ func setupRoutes(r *gin.Engine) {
 
 	fmt.Println("所有路由注册完成")
 }
-
-// -------------------------------------------------- Main Function - 主函数 --------------------------------------------------
 
 func main() {
 	fmt.Println("========================================")

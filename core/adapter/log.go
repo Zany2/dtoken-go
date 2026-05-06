@@ -59,13 +59,11 @@ func (l LogLevel) String() string {
 type LogControl interface {
 	Log
 
-	// -------------------------------------------------- Lifecycle - 生命周期 --------------------------------------------------
 	// Close closes logger and releases resources Close 关闭日志并释放资源
 	Close()
 	// Flush flushes buffered logs Flush 刷新缓冲区
 	Flush()
 
-	// -------------------------------------------------- Runtime Config - 运行时配置 --------------------------------------------------
 	// SetLevel updates log level SetLevel 动态更新日志级别
 	SetLevel(level LogLevel)
 	// SetPrefix updates log prefix SetPrefix 动态更新日志前缀
@@ -73,7 +71,6 @@ type LogControl interface {
 	// SetStdout toggles stdout output SetStdout 开关控制台输出
 	SetStdout(enable bool)
 
-	// -------------------------------------------------- State Query - 状态查询 --------------------------------------------------
 	// LogPath gets log path LogPath 获取日志目录
 	LogPath() string
 	// DropCount gets dropped log count DropCount 获取丢弃的日志数量

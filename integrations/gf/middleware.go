@@ -63,7 +63,6 @@ func WithFailFunc(fn func(r *ghttp.Request, err error)) AuthOption {
 	}
 }
 
-// -------------------------------------------------- Middleware - 中间件 --------------------------------------------------
 // RegisterDTokenContextMiddleware registers DToken context middleware RegisterDTokenContextMiddleware 注册 DToken 上下文中间件
 func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) ghttp.HandlerFunc {
 	options := defaultAuthOptions()
@@ -277,7 +276,6 @@ func RoleMiddleware(
 	}
 }
 
-// -------------------------------------------------- Context Helpers - 上下文辅助函数 --------------------------------------------------
 // GetDTokenContext gets cached DToken context GetDTokenContext 获取缓存的 DToken 上下文
 func GetDTokenContext(r *ghttp.Request) (*DContext.DTokenContext, bool) {
 	v := r.GetCtxVar(DTokenCtxKey)
@@ -336,7 +334,6 @@ func getDContext(r *ghttp.Request, mgr *manager.Manager) *DContext.DTokenContext
 	return dCtx
 }
 
-// -------------------------------------------------- Response Helpers - 响应辅助函数 --------------------------------------------------
 // writeErrorResponse writes error response writeErrorResponse 写入错误响应
 func writeErrorResponse(r *ghttp.Request, err error) {
 	var saErr *derror.DTokenError

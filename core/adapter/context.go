@@ -26,7 +26,7 @@ type CookieOptions struct {
 
 // RequestContext defines request context abstraction RequestContext 定义请求上下文抽象接口
 type RequestContext interface {
-	// -------------------------------------------------- Request Methods - 请求方法 --------------------------------------------------
+
 	// GetHeader gets request header GetHeader 获取请求头
 	GetHeader(key string) string
 	// GetHeaders gets all request headers GetHeaders 获取所有请求头
@@ -54,7 +54,6 @@ type RequestContext interface {
 	// IsTLS checks whether request uses HTTPS IsTLS 检查请求是否通过 HTTPS 发起
 	IsTLS() bool
 
-	// -------------------------------------------------- Response Methods - 响应方法 --------------------------------------------------
 	// SetStatusCode sets HTTP status code SetStatusCode 设置 HTTP 响应状态码
 	SetStatusCode(code int)
 	// SetHeader sets response header SetHeader 设置响应头
@@ -66,7 +65,6 @@ type RequestContext interface {
 	// SetCookieWithOptions sets cookie using options SetCookieWithOptions 使用选项设置 Cookie
 	SetCookieWithOptions(options *CookieOptions)
 
-	// -------------------------------------------------- Context Storage Methods - 上下文存储方法 --------------------------------------------------
 	// Set stores context value Set 设置上下文值
 	Set(key string, value any)
 	// Get gets context value Get 获取上下文值
@@ -76,7 +74,6 @@ type RequestContext interface {
 	// MustGet gets value or panics MustGet 获取上下文值且不存在时 panic
 	MustGet(key string) any
 
-	// -------------------------------------------------- Utility Methods - 工具方法 --------------------------------------------------
 	// Abort aborts request handling Abort 中止请求处理
 	Abort()
 	// IsAborted checks whether request aborted IsAborted 检查请求是否已中止
@@ -87,11 +84,9 @@ type RequestContext interface {
 type RequestContextExt interface {
 	RequestContext
 
-	// -------------------------------------------------- Advanced Response Methods - 高级响应方法 --------------------------------------------------
 	// JSON writes JSON response JSON 返回 JSON 格式响应
 	JSON(code int, v any) error
 
-	// -------------------------------------------------- Advanced Escape Methods - 高级逃逸方法 --------------------------------------------------
 	// GetRawRequest gets raw http request GetRawRequest 获取原始 *http.Request 对象
 	GetRawRequest() *http.Request
 	// GetRawResponseWriter gets raw response writer GetRawResponseWriter 获取原始 http.ResponseWriter 对象

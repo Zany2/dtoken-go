@@ -115,8 +115,6 @@ func initManager(ctx context.Context) {
 	fmt.Println("✓ DToken 管理器初始化成功（使用 GoFrame Redis 存储）")
 }
 
-// -------------------------------------------------- Handler Functions - 处理器函数 --------------------------------------------------
-
 // handleLogin handles user login 处理用户登录
 func handleLogin(r *ghttp.Request) {
 	username := r.Get("username").String()

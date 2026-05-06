@@ -4,7 +4,6 @@ import (
 	"time"
 )
 
-// -------------------------------------------------- Nonce Constants - Nonce 常量 --------------------------------------------------
 const (
 	// DefaultNonceTTL stores default nonce ttl DefaultNonceTTL 存储默认 nonce 过期时间
 	DefaultNonceTTL = 5 * time.Minute
@@ -14,7 +13,6 @@ const (
 	NonceKeySuffix = "nonce:"
 )
 
-// -------------------------------------------------- Refresh Token Constants - 刷新令牌常量 --------------------------------------------------
 const (
 	// DefaultRefreshTTL stores default refresh ttl DefaultRefreshTTL 存储默认刷新令牌过期时间
 	DefaultRefreshTTL = 30 * 24 * time.Hour

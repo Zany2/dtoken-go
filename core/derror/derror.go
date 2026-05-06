@@ -5,7 +5,6 @@ import (
 	"fmt"
 )
 
-// -------------------------------------------------- Error Codes - 错误码 --------------------------------------------------
 const (
 	// CodeSuccess indicates success CodeSuccess 表示操作成功
 	CodeSuccess = 0
@@ -37,8 +36,6 @@ const (
 	CodeInvalidParameter = 10008
 )
 
-// -------------------------------------------------- DTokenError Type - DToken 错误类型 --------------------------------------------------
-
 // DTokenError represents dtoken error DTokenError 表示带有错误码和消息的 DToken 错误
 type DTokenError struct {
 	Code    int
@@ -68,8 +65,6 @@ func NewDTokenError(code int, message string, err error) *DTokenError {
 	}
 }
 
-// -------------------------------------------------- System Errors - 系统错误 --------------------------------------------------
-
 var (
 	// ErrStorageUnavailable indicates storage unavailable ErrStorageUnavailable 表示存储后端不可用
 	ErrStorageUnavailable = errors.New("storage unavailable: unable to connect to storage backend")
@@ -85,8 +80,6 @@ var (
 	ErrInvalidParam = errors.New("invalid parameter")
 )
 
-// -------------------------------------------------- Account Errors - 账号错误 --------------------------------------------------
-
 var (
 	// ErrIDIsEmpty indicates empty id ErrIDIsEmpty 表示 ID 为空
 	ErrIDIsEmpty = errors.New("ID is required and cannot be empty")
@@ -97,8 +90,6 @@ var (
 	// ErrLoginLimitExceeded indicates login limit exceeded ErrLoginLimitExceeded 表示超出最大登录数量限制
 	ErrLoginLimitExceeded = errors.New("account error: login count exceeds the maximum limit")
 )
-
-// -------------------------------------------------- Authentication Errors - 认证错误 --------------------------------------------------
 
 var (
 	// ErrNotLogin indicates not login ErrNotLogin 表示用户未登录
@@ -115,16 +106,12 @@ var (
 	ErrInvalidDevice = errors.New("invalid device: device information is invalid or not recognized")
 )
 
-// -------------------------------------------------- Authorization Errors - 授权错误 --------------------------------------------------
-
 var (
 	// ErrPermissionDenied indicates permission denied ErrPermissionDenied 表示权限不足
 	ErrPermissionDenied = errors.New("permission denied: insufficient permissions to perform this action")
 	// ErrRoleDenied indicates role denied ErrRoleDenied 表示角色不足
 	ErrRoleDenied = errors.New("role denied: user does not have the required role")
 )
-
-// -------------------------------------------------- Service Disable Errors - 分类封禁错误 --------------------------------------------------
 
 var (
 	// ErrServiceDisabled indicates disabled service ErrServiceDisabled 表示账号的指定服务已被封禁
@@ -135,21 +122,15 @@ var (
 	ErrDisableLevelNotReached = errors.New("disable level not reached")
 )
 
-// -------------------------------------------------- Session Errors - 会话错误 --------------------------------------------------
-
 var (
 	// ErrSessionNotFound indicates session not found ErrSessionNotFound 表示会话不存在
 	ErrSessionNotFound = errors.New("session not found")
 )
 
-// -------------------------------------------------- Nonce Errors - Nonce 错误 --------------------------------------------------
-
 var (
 	// ErrInvalidNonce indicates invalid nonce ErrInvalidNonce 表示 nonce 无效或已过期
 	ErrInvalidNonce = errors.New("invalid or expired nonce")
 )
-
-// -------------------------------------------------- OAuth2 Errors - OAuth2 错误 --------------------------------------------------
 
 var (
 	// ErrClientOrClientIDEmpty indicates empty client ErrClientOrClientIDEmpty 表示客户端或客户端ID为空

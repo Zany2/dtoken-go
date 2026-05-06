@@ -3,7 +3,6 @@ package ants
 
 import "time"
 
-// -------------------------------------------------- Default Configuration Constants - 默认配置常量 --------------------------------------------------
 const (
 	DefaultMinSize       = 200              // Minimum pool size 最小协程数
 	DefaultMaxSize       = 2000             // Maximum pool size 最大协程数

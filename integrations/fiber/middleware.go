@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	DContext "github.com/Zany2/dtoken-go/core/context"
+	corecontext "github.com/Zany2/dtoken-go/core/context"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/manager"
 	"github.com/Zany2/dtoken-go/dtoken"
@@ -76,7 +76,7 @@ func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) go
 			return writeErrorResponse(c, err)
 		}
 
-		_ = getDContext(c, mgr)
+		_ = getDTokenContext(c, mgr)
 		return c.Next()
 	}
 }
@@ -98,7 +98,7 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) gofiber.Handler {
 			return writeErrorResponse(c, err)
 		}
 
-		dCtx := getDContext(c, mgr)
+		dCtx := getDTokenContext(c, mgr)
 		tokenValue := dCtx.GetTokenValue()
 		if !mgr.IsLogin(ctx, tokenValue) {
 			if options.FailFunc != nil {
@@ -137,7 +137,7 @@ func PermissionMiddleware(
 			return writeErrorResponse(c, err)
 		}
 
-		dCtx := getDContext(c, mgr)
+		dCtx := getDTokenContext(c, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
 		var ok bool
@@ -184,7 +184,7 @@ func RoleMiddleware(
 			return writeErrorResponse(c, err)
 		}
 
-		dCtx := getDContext(c, mgr)
+		dCtx := getDTokenContext(c, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
 		var ok bool
@@ -207,39 +207,39 @@ func RoleMiddleware(
 }
 
 // GetDTokenContext gets cached DToken context from Fiber request GetDTokenContext 从 Fiber 请求中获取缓存的 DToken 上下文。
-func GetDTokenContext(c *gofiber.Ctx) (*DContext.DTokenContext, bool) {
+func GetDTokenContext(c *gofiber.Ctx) (*corecontext.DTokenContext, bool) {
 	value := c.Locals(DTokenCtxKey)
 	if value == nil {
 		return nil, false
 	}
 
-	dCtx, ok := value.(*DContext.DTokenContext)
+	dCtx, ok := value.(*corecontext.DTokenContext)
 	return dCtx, ok
 }
 
-// getDContext returns the cached request context or creates one getDContext 获取或创建当前请求的 DToken 上下文。
-func getDContext(c *gofiber.Ctx, mgr *manager.Manager) *DContext.DTokenContext {
+// getDTokenContext gets or creates dtoken context getDTokenContext 获取或创建 DToken 上下文
+func getDTokenContext(c *gofiber.Ctx, mgr *manager.Manager) *corecontext.DTokenContext {
 	if value := c.Locals(DTokenCtxKey); value != nil {
-		if dCtx, ok := value.(*DContext.DTokenContext); ok {
+		if dCtx, ok := value.(*corecontext.DTokenContext); ok {
 			return dCtx
 		}
 	}
 
-	dCtx := DContext.NewContext(NewFiberContext(c), mgr)
+	dCtx := corecontext.NewContext(NewFiberContext(c), mgr)
 	c.Locals(DTokenCtxKey, dCtx)
 	return dCtx
 }
 
 // writeErrorResponse writes a standard error response writeErrorResponse 写入标准错误响应。
 func writeErrorResponse(c *gofiber.Ctx, err error) error {
-	var dtErr *derror.DTokenError
+	var dErr *derror.DTokenError
 	var code int
 	var message string
 	var httpStatus int
 
-	if errors.As(err, &dtErr) {
-		code = dtErr.Code
-		message = dtErr.Message
+	if errors.As(err, &dErr) {
+		code = dErr.Code
+		message = dErr.Message
 		httpStatus = getHTTPStatusFromCode(code)
 	} else {
 		code = derror.CodeServerError

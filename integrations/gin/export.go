@@ -13,7 +13,6 @@ import (
 	"github.com/Zany2/dtoken-go/dtoken"
 )
 
-// -------------------------------------------------- Type Aliases - 类型别名 --------------------------------------------------
 type (
 	Config = config.Config
 
@@ -32,7 +31,6 @@ type (
 	TokenStyle = adapter.TokenStyle
 )
 
-// -------------------------------------------------- Error Code Aliases - 错误码别名 --------------------------------------------------
 const (
 	CodeSuccess = derror.CodeSuccess
 
@@ -53,7 +51,6 @@ const (
 	CodeAccountDisabled = derror.CodeAccountDisabled
 )
 
-// -------------------------------------------------- Exported Aliases - 对外快捷入口与 API 别名 --------------------------------------------------
 var (
 	ErrNotLogin = derror.ErrNotLogin
 
@@ -68,7 +65,6 @@ var (
 	ErrAccountDisabled = derror.ErrAccountDisabled
 )
 
-// -------------------------------------------------- Token Style Aliases - Token 风格别名 --------------------------------------------------
 const (
 	TokenStyleUUID = adapter.TokenStyleUUID
 
@@ -83,7 +79,6 @@ const (
 	TokenStyleJWT = adapter.TokenStyleJWT
 )
 
-// -------------------------------------------------- Manager Management - Manager 管理 --------------------------------------------------
 func SetManager(mgr *manager.Manager) {
 	dtoken.SetManager(mgr)
 }
@@ -100,7 +95,6 @@ func DeleteAllManager() {
 	dtoken.DeleteAllManager()
 }
 
-// -------------------------------------------------- Builder And Config - 构建器与配置 --------------------------------------------------
 func NewDefaultBuilder() *builder.Builder {
 	return builder.NewBuilder()
 }
@@ -109,7 +103,6 @@ func NewDefaultConfig() *config.Config {
 	return config.DefaultConfig()
 }
 
-// -------------------------------------------------- Authentication - 登录认证 --------------------------------------------------
 func Login(ctx context.Context, loginID string, params ...string) (string, error) {
 	return dtoken.Login(ctx, loginID, params...)
 }
@@ -166,7 +159,6 @@ func ReplaceByLoginID(ctx context.Context, loginID string, authType ...string) e
 	return dtoken.ReplaceByLoginID(ctx, loginID, authType...)
 }
 
-// -------------------------------------------------- Token Validation - Token 校验 --------------------------------------------------
 func IsLogin(ctx context.Context, tokenValue string, authType ...string) bool {
 	return dtoken.IsLogin(ctx, tokenValue, authType...)
 }
@@ -211,7 +203,6 @@ func GetOnlineTerminalCountByDeviceAndDeviceId(ctx context.Context, loginID stri
 	return dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, loginID, device, deviceId, authType...)
 }
 
-// -------------------------------------------------- Account Disable - 账号封禁 --------------------------------------------------
 func Disable(ctx context.Context, loginID string, duration time.Duration, reason string, authType ...string) error {
 	return dtoken.Disable(ctx, loginID, duration, reason, authType...)
 }
@@ -232,7 +223,6 @@ func GetDisableTTL(ctx context.Context, loginID string, authType ...string) (int
 	return dtoken.GetDisableTTL(ctx, loginID, authType...)
 }
 
-// -------------------------------------------------- Session Management - Session 管理 --------------------------------------------------
 func GetSession(ctx context.Context, loginID string, authType ...string) (*manager.Session, error) {
 	return dtoken.GetSession(ctx, loginID, authType...)
 }
@@ -253,7 +243,6 @@ func GetTokenValueListByDeviceAndDeviceId(ctx context.Context, loginID string, d
 	return dtoken.GetTokenValueListByDeviceAndDeviceId(ctx, loginID, device, deviceId, checkAlive, authType...)
 }
 
-// -------------------------------------------------- Permission Verification - 权限校验 --------------------------------------------------
 func AddPermissions(ctx context.Context, loginID string, permissions []string, authType ...string) error {
 	return dtoken.AddPermissions(ctx, loginID, permissions, authType...)
 }
@@ -302,7 +291,6 @@ func HasPermissionsOrByToken(ctx context.Context, tokenValue string, permissions
 	return dtoken.HasPermissionsOrByToken(ctx, tokenValue, permissions, authType...)
 }
 
-// -------------------------------------------------- Role Management - 角色管理 --------------------------------------------------
 func AddRoles(ctx context.Context, loginID string, roles []string, authType ...string) error {
 	return dtoken.AddRoles(ctx, loginID, roles, authType...)
 }
@@ -351,7 +339,6 @@ func HasRolesOrByToken(ctx context.Context, tokenValue string, roles []string, a
 	return dtoken.HasRolesOrByToken(ctx, tokenValue, roles, authType...)
 }
 
-// -------------------------------------------------- Nonce Management - Nonce 管理 --------------------------------------------------
 func GenerateNonce(ctx context.Context, authType ...string) (string, error) {
 	return dtoken.GenerateNonce(ctx, authType...)
 }
@@ -368,7 +355,6 @@ func IsNonceValid(ctx context.Context, nonce string, authType ...string) bool {
 	return dtoken.IsNonceValid(ctx, nonce, authType...)
 }
 
-// -------------------------------------------------- OAuth2 Management - OAuth2 管理 --------------------------------------------------
 func RegisterOAuth2Client(client *oauth2.Client, authType ...string) error {
 	return dtoken.RegisterOAuth2Client(client, authType...)
 }

@@ -209,7 +209,6 @@ func IgnoreMiddleware(
 	return GetHandler(ctx, handler, failFunc, ann)
 }
 
-// -------------------------------------------------- Combined Middleware - 组合中间件 --------------------------------------------------
 // CheckLoginAndRoleMiddleware creates login and role middleware CheckLoginAndRoleMiddleware 生成登录与角色检查中间件
 func CheckLoginAndRoleMiddleware(
 	ctx context.Context,
@@ -256,7 +255,6 @@ func CheckAllMiddleware(
 	return GetHandler(ctx, handler, failFunc, ann)
 }
 
-// -------------------------------------------------- Route Group Helpers - 路由组辅助函数 --------------------------------------------------
 // AuthGroup creates auth route group AuthGroup 创建认证路由组
 func AuthGroup(
 	ctx context.Context,

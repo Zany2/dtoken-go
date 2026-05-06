@@ -90,9 +90,6 @@ func extractBearerToken(auth string) string {
 	return auth
 }
 
-// -------------------------------------------------- Convenience Methods - 便捷方法 --------------------------------------------------
-// -------------------------------------------------- Authentication Methods - 基础认证方法 --------------------------------------------------
-
 // IsLogin checks login state IsLogin 检查当前 token 是否已登录
 func (c *DTokenContext) IsLogin(ctx context.Context) bool {
 	token := c.GetTokenValue()
@@ -137,8 +134,6 @@ func (c *DTokenContext) Logout(ctx context.Context) error {
 	}
 	return c.manager.Logout(ctx, token)
 }
-
-// -------------------------------------------------- Token Information Methods - Token 信息方法 --------------------------------------------------
 
 // GetTokenInfo gets token info GetTokenInfo 获取当前 token 的信息
 func (c *DTokenContext) GetTokenInfo(ctx context.Context) (*manager.TokenInfo, error) {
@@ -185,8 +180,6 @@ func (c *DTokenContext) GetTokenTTL(ctx context.Context) (int64, error) {
 	return c.manager.GetTokenTTL(ctx, token)
 }
 
-// -------------------------------------------------- Token Management Methods - Token 管理方法 --------------------------------------------------
-
 // Kickout kicks out current token Kickout 踢出当前 token
 func (c *DTokenContext) Kickout(ctx context.Context) error {
 	token := c.GetTokenValue()
@@ -204,8 +197,6 @@ func (c *DTokenContext) Replace(ctx context.Context) error {
 	}
 	return c.manager.Replace(ctx, token)
 }
-
-// -------------------------------------------------- Device Management Methods - 设备管理方法 --------------------------------------------------
 
 // LogoutByDevice logs out current user by device LogoutByDevice 按设备登出当前用户
 func (c *DTokenContext) LogoutByDevice(ctx context.Context, device string) error {
@@ -288,8 +279,6 @@ func (c *DTokenContext) ReplaceByLoginID(ctx context.Context) error {
 	return c.manager.ReplaceByLoginID(ctx, loginID)
 }
 
-// -------------------------------------------------- Token List Methods - Token 列表方法 --------------------------------------------------
-
 // GetTokenValueList gets token list GetTokenValueList 获取当前登录用户的全部 token 列表
 func (c *DTokenContext) GetTokenValueList(ctx context.Context, checkAlive ...bool) ([]string, error) {
 	loginID, err := c.GetLoginID(ctx)
@@ -317,8 +306,6 @@ func (c *DTokenContext) GetTokenValueListByDeviceAndDeviceId(ctx context.Context
 	return c.manager.GetTokenValueListByDeviceAndDeviceId(ctx, loginID, device, deviceId, checkAlive...)
 }
 
-// -------------------------------------------------- Online Terminal Methods - 在线终端方法 --------------------------------------------------
-
 // GetOnlineTerminalCount gets online terminal count GetOnlineTerminalCount 获取当前用户的在线终端数量
 func (c *DTokenContext) GetOnlineTerminalCount(ctx context.Context) (int, error) {
 	loginID, err := c.GetLoginID(ctx)
@@ -345,8 +332,6 @@ func (c *DTokenContext) GetOnlineTerminalCountByDeviceAndDeviceId(ctx context.Co
 	}
 	return c.manager.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, loginID, device, deviceId)
 }
-
-// -------------------------------------------------- Role Methods - 角色方法 --------------------------------------------------
 
 // GetRoles gets role list GetRoles 获取当前登录用户的角色列表
 func (c *DTokenContext) GetRoles(ctx context.Context) ([]string, error) {
@@ -411,8 +396,6 @@ func (c *DTokenContext) RemoveRoles(ctx context.Context, roles []string) error {
 	return c.manager.RemoveRolesByToken(ctx, token, roles)
 }
 
-// -------------------------------------------------- Permission Methods - 权限方法 --------------------------------------------------
-
 // GetPermissions gets permission list GetPermissions 获取当前登录用户的权限列表
 func (c *DTokenContext) GetPermissions(ctx context.Context) ([]string, error) {
 	loginID, err := c.GetLoginID(ctx)
@@ -476,8 +459,6 @@ func (c *DTokenContext) RemovePermissions(ctx context.Context, permissions []str
 	return c.manager.RemovePermissionsByToken(ctx, token, permissions)
 }
 
-// -------------------------------------------------- Disable Management Methods - 封禁管理方法 --------------------------------------------------
-
 // IsDisable checks disable state IsDisable 检查当前用户是否被封禁
 func (c *DTokenContext) IsDisable(ctx context.Context) bool {
 	loginID, err := c.GetLoginID(ctx)
@@ -523,8 +504,6 @@ func (c *DTokenContext) Untie(ctx context.Context) error {
 	return c.manager.Untie(ctx, loginID)
 }
 
-// -------------------------------------------------- Session Methods - Session 方法 --------------------------------------------------
-
 // GetSession gets session by login id GetSession 获取当前登录用户的 Session
 func (c *DTokenContext) GetSession(ctx context.Context) (*manager.Session, error) {
 	loginID, err := c.GetLoginID(ctx)
@@ -542,8 +521,6 @@ func (c *DTokenContext) GetSessionByToken(ctx context.Context) (*manager.Session
 	}
 	return c.manager.GetSessionByToken(ctx, token)
 }
-
-// -------------------------------------------------- Nonce Management Methods - Nonce 管理方法 --------------------------------------------------
 
 // GenerateNonce generates nonce GenerateNonce 生成新的 nonce
 func (c *DTokenContext) GenerateNonce(ctx context.Context) (string, error) {
@@ -564,8 +541,6 @@ func (c *DTokenContext) VerifyAndConsumeNonce(ctx context.Context, nonce string)
 func (c *DTokenContext) IsNonceValid(ctx context.Context, nonce string) bool {
 	return c.manager.IsNonceValid(ctx, nonce)
 }
-
-// -------------------------------------------------- OAuth2 Management Methods - OAuth2 管理方法 --------------------------------------------------
 
 // ValidateOAuth2AccessToken validates access token ValidateOAuth2AccessToken 验证 OAuth2 访问令牌
 func (c *DTokenContext) ValidateOAuth2AccessToken(ctx context.Context, accessToken string) bool {

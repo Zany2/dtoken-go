@@ -1,0 +1,16 @@
+module github.com/Zany2/dtoken-go/examples/chi
+
+go 1.25.0
+
+require (
+	github.com/Zany2/dtoken-go/com/storage/redis v0.0.0
+	github.com/Zany2/dtoken-go/integrations/chi v0.0.0
+	github.com/go-chi/chi/v5 v5.0.11
+)
+
+require (
+	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/panjf2000/ants/v2 v2.11.3 // indirect
+	golang.org/x/sync v0.19.0 // indirect
+)

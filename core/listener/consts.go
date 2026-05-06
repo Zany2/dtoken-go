@@ -34,7 +34,6 @@ const (
 	EventAll Event = "*"
 )
 
-// -------------------------------------------------- Extra Keys - Extra 字段键名 --------------------------------------------------
 const (
 	// ExtraKeyPermission stores permission key ExtraKeyPermission 存储单个权限字段
 	ExtraKeyPermission = "permission"
@@ -54,7 +53,6 @@ const (
 	ExtraKeyLevel = "level"
 )
 
-// -------------------------------------------------- Logic Types - 逻辑类型常量 --------------------------------------------------
 const (
 	// LogicAnd indicates AND logic LogicAnd 表示需要满足所有条件的 AND 逻辑
 	LogicAnd = "AND"

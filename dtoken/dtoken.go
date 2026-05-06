@@ -15,8 +15,6 @@ var (
 	globalManagerMap sync.Map
 )
 
-// -------------------------------------------------- Manager Lifecycle - 管理器生命周期 --------------------------------------------------
-
 // SetManager stores a manager in the global map using the specified authentication type SetManager 使用指定的认证类型将管理器存储在全局 map 中。
 func SetManager(mgr *manager.Manager) {
 	validAutoType := getAutoType(mgr.GetConfig().AuthType)
@@ -52,10 +50,7 @@ func DeleteAllManager() {
 	globalManagerMap = sync.Map{}
 }
 
-// -------------------------------------------------- Login & Authentication - 登录与认证 --------------------------------------------------
-
 // Login performs user login and returns a token Login 执行用户登录并返回 token。
-// params optional 可选参数：[0]=device, [1]=deviceId, [2]=authType
 func Login(ctx context.Context, loginID string, params ...string) (string, error) {
 	device, deviceId, authType := parseDeviceAndAuthType(params...)
 	mgr, err := GetManager(authType)
@@ -66,7 +61,6 @@ func Login(ctx context.Context, loginID string, params ...string) (string, error
 }
 
 // LoginWithTimeout performs user login with a custom token timeout and returns a token LoginWithTimeout 执行用户登录并返回 token，使用指定的过期时间。
-// params optional 可选参数：[0]=device, [1]=deviceId, [2]=authType
 func LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, params ...string) (string, error) {
 	device, deviceId, authType := parseDeviceAndAuthType(params...)
 	mgr, err := GetManager(authType)
@@ -95,7 +89,6 @@ func Logout(ctx context.Context, tokenValue string, authType ...string) error {
 }
 
 // LogoutByDeviceAndDeviceId logs out a user by device type and device ID LogoutByDeviceAndDeviceId 根据设备类型和设备ID登出用户。
-// params optional 可选参数：[0]=device, [1]=deviceId, [2]=authType
 func LogoutByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error {
 	device, deviceId, authType := parseDeviceAndAuthType(params...)
 	mgr, err := GetManager(authType)
@@ -123,8 +116,6 @@ func LogoutByLoginID(ctx context.Context, loginID string, authType ...string) er
 	return mgr.LogoutByLoginID(ctx, loginID)
 }
 
-// -------------------------------------------------- Online Status Management - 在线状态管理 --------------------------------------------------
-
 // Kickout kicks out a user by token Kickout 根据 Token 踢人下线。
 func Kickout(ctx context.Context, tokenValue string, authType ...string) error {
 	mgr, err := GetManager(authType...)
@@ -144,7 +135,6 @@ func Replace(ctx context.Context, tokenValue string, authType ...string) error {
 }
 
 // KickoutByDeviceAndDeviceId kicks out a user by device type and device ID KickoutByDeviceAndDeviceId 根据设备类型和设备ID踢人下线。
-// params optional 可选参数：[0]=device, [1]=deviceId, [2]=authType
 func KickoutByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error {
 	device, deviceId, authType := parseDeviceAndAuthType(params...)
 	mgr, err := GetManager(authType)
@@ -173,7 +163,6 @@ func KickoutByLoginID(ctx context.Context, loginID string, authType ...string) e
 }
 
 // ReplaceByDeviceAndDeviceId replaces a user session by device type and device ID ReplaceByDeviceAndDeviceId 根据设备类型和设备ID顶人下线。
-// params optional 可选参数：[0]=device, [1]=deviceId, [2]=authType
 func ReplaceByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error {
 	device, deviceId, authType := parseDeviceAndAuthType(params...)
 	mgr, err := GetManager(authType)
@@ -201,8 +190,6 @@ func ReplaceByLoginID(ctx context.Context, loginID string, authType ...string) e
 	return mgr.ReplaceByLoginID(ctx, loginID)
 }
 
-// -------------------------------------------------- Token Validation - Token 验证 --------------------------------------------------
-
 // IsLogin checks if a user is logged in IsLogin 检查用户是否登录。
 func IsLogin(ctx context.Context, tokenValue string, authType ...string) bool {
 	mgr, err := GetManager(authType...)
@@ -220,8 +207,6 @@ func CheckLogin(ctx context.Context, tokenValue string, authType ...string) erro
 	}
 	return mgr.CheckLogin(ctx, tokenValue)
 }
-
-// -------------------------------------------------- Token Information - Token 信息 --------------------------------------------------
 
 // GetLoginID retrieves the login ID from a token GetLoginID 根据 Token 获取登录 ID。
 func GetLoginID(ctx context.Context, tokenValue string, authType ...string) (string, error) {
@@ -304,8 +289,6 @@ func GetOnlineTerminalCountByDeviceAndDeviceId(ctx context.Context, loginID stri
 	return mgr.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, loginID, device, deviceId)
 }
 
-// -------------------------------------------------- Account Disable Management - 账号封禁管理 --------------------------------------------------
-
 // Disable disables an account for a specified duration Disable 封禁账号指定时长。
 func Disable(ctx context.Context, loginID string, duration time.Duration, reason string, authType ...string) error {
 	mgr, err := GetManager(authType...)
@@ -350,8 +333,6 @@ func GetDisableTTL(ctx context.Context, loginID string, authType ...string) (int
 	}
 	return mgr.GetDisableTTL(ctx, loginID)
 }
-
-// -------------------------------------------------- Service Disable Management - 分类封禁管理 --------------------------------------------------
 
 // DisableService disables a specific service for an account DisableService 封禁账号的指定服务。
 func DisableService(ctx context.Context, loginID, service string, duration time.Duration, authType ...string) error {
@@ -452,8 +433,6 @@ func GetDisableServiceTTL(ctx context.Context, loginID, service string, authType
 	return mgr.GetDisableServiceTTL(ctx, loginID, service)
 }
 
-// -------------------------------------------------- Check Methods - 校验方法 --------------------------------------------------
-
 // CheckPermission checks if a user has a specific permission, returns error if not CheckPermission 校验用户是否拥有指定权限，无权限返回 error。
 func CheckPermission(ctx context.Context, loginID string, permission string, authType ...string) error {
 	mgr, err := GetManager(authType...)
@@ -517,8 +496,6 @@ func CheckDisable(ctx context.Context, loginID string, authType ...string) error
 	return mgr.CheckDisable(ctx, loginID)
 }
 
-// -------------------------------------------------- Token Renewal - Token 续期 --------------------------------------------------
-
 // RenewTimeout manually renews the timeout of a token RenewTimeout 手动续期指定 Token 的过期时间。
 func RenewTimeout(ctx context.Context, tokenValue string, timeout time.Duration, authType ...string) error {
 	mgr, err := GetManager(authType...)
@@ -527,8 +504,6 @@ func RenewTimeout(ctx context.Context, tokenValue string, timeout time.Duration,
 	}
 	return mgr.RenewTimeout(ctx, tokenValue, timeout)
 }
-
-// -------------------------------------------------- Terminal Traversal - 终端遍历 --------------------------------------------------
 
 // ForEachTerminal iterates over all terminals for a login ID and calls the visitor function ForEachTerminal 遍历指定登录 ID 的所有终端。
 func ForEachTerminal(ctx context.Context, loginID string, visitor manager.TerminalVisitor, authType ...string) error {
@@ -547,8 +522,6 @@ func ForEachTerminalByDevice(ctx context.Context, loginID, device string, visito
 	}
 	return mgr.ForEachTerminalByDevice(ctx, loginID, device, visitor)
 }
-
-// -------------------------------------------------- Session Management - 会话管理 --------------------------------------------------
 
 // GetSession retrieves session information for a login ID GetSession 获取指定登录 ID 的会话信息。
 func GetSession(ctx context.Context, loginID string, authType ...string) (*manager.Session, error) {
@@ -658,8 +631,6 @@ func SearchSessionId(ctx context.Context, keyword string, start, size int, authT
 	return mgr.SearchSessionId(ctx, keyword, start, size)
 }
 
-// -------------------------------------------------- Permission Management - 权限管理 --------------------------------------------------
-
 // AddPermissions adds permissions to a user AddPermissions 为用户添加权限。
 func AddPermissions(ctx context.Context, loginID string, permissions []string, authType ...string) error {
 	mgr, err := GetManager(authType...)
@@ -767,8 +738,6 @@ func HasPermissionsOrByToken(ctx context.Context, tokenValue string, permissions
 	}
 	return mgr.HasPermissionsOrByToken(ctx, tokenValue, permissions)
 }
-
-// -------------------------------------------------- Role Management - 角色管理 --------------------------------------------------
 
 // AddRoles adds roles to a user AddRoles 为用户添加角色。
 func AddRoles(ctx context.Context, loginID string, roles []string, authType ...string) error {
@@ -878,8 +847,6 @@ func HasRolesOrByToken(ctx context.Context, tokenValue string, roles []string, a
 	return mgr.HasRolesOrByToken(ctx, tokenValue, roles)
 }
 
-// -------------------------------------------------- Nonce Management - Nonce 管理 --------------------------------------------------
-
 // GenerateNonce generates a new nonce GenerateNonce 生成新的 nonce（使用默认有效期）。
 func GenerateNonce(ctx context.Context, authType ...string) (string, error) {
 	mgr, err := GetManager(authType...)
@@ -933,8 +900,6 @@ func GetNonceTTL(ctx context.Context, nonce string, authType ...string) (int64, 
 	}
 	return mgr.GetNonceTTL(ctx, nonce)
 }
-
-// -------------------------------------------------- OAuth2 Management - OAuth2 管理 --------------------------------------------------
 
 // RegisterOAuth2Client registers an OAuth2 client RegisterOAuth2Client 注册 OAuth2 客户端。
 func RegisterOAuth2Client(client *oauth2.Client, authType ...string) error {
@@ -1044,8 +1009,6 @@ func RevokeOAuth2Token(ctx context.Context, accessToken string, authType ...stri
 	}
 	return mgr.RevokeOAuth2Token(ctx, accessToken)
 }
-
-// -------------------------------------------------- Internal Helper Methods - 内部辅助方法 --------------------------------------------------
 
 // getAutoType retrieves the valid authentication type prefix, ensuring it ends with a colon. Returns default if not provided getAutoType 获取有效的认证类型前缀，确保以冒号结尾。若未提供则返回默认值。
 func getAutoType(authType ...string) string {

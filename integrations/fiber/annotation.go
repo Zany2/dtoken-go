@@ -51,7 +51,8 @@ func GetHandler(ctx context.Context, handler gofiber.Handler, failFunc func(c *g
 			return writeErrorResponse(c, err)
 		}
 
-		dCtx := getDContext(c, mgr)
+		// Get DTokenContext (reuse cached context) 获取 DTokenContext（复用缓存上下文）
+		dCtx := getDTokenContext(c, mgr)
 		token := dCtx.GetTokenValue()
 		if !mgr.IsLogin(ctx, token) {
 			if failFunc != nil {
@@ -187,7 +188,6 @@ func IgnoreMiddleware(
 	return GetHandler(ctx, handler, failFunc, &Annotation{Ignore: true})
 }
 
-// -------------------------------------------------- Combined Middleware - 组合中间件 --------------------------------------------------
 // CheckLoginAndRoleMiddleware decorates handler with login and role checks CheckLoginAndRoleMiddleware 为处理器增加登录与角色校验。
 func CheckLoginAndRoleMiddleware(
 	ctx context.Context,
@@ -234,7 +234,6 @@ func CheckAllMiddleware(
 	return GetHandler(ctx, handler, failFunc, ann)
 }
 
-// -------------------------------------------------- Route Group Helpers - 路由组辅助函数 --------------------------------------------------
 // AuthGroup attaches login checks to a Fiber router group AuthGroup 为 Fiber 路由组挂载登录校验。
 func AuthGroup(
 	ctx context.Context,

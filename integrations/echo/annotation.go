@@ -50,7 +50,8 @@ func GetHandler(ctx context.Context, handler echo4.HandlerFunc, failFunc func(c 
 			return writeErrorResponse(c, err)
 		}
 
-		dCtx := getDContext(c, mgr)
+		// Get DTokenContext (reuse cached context) 获取 DTokenContext（复用缓存上下文）
+		dCtx := getDTokenContext(c, mgr)
 		token := dCtx.GetTokenValue()
 		if !mgr.IsLogin(ctx, token) {
 			if failFunc != nil {
@@ -155,7 +156,6 @@ func IgnoreMiddleware(ctx context.Context, handler echo4.HandlerFunc, failFunc f
 	return GetHandler(ctx, handler, failFunc, &Annotation{Ignore: true})
 }
 
-// -------------------------------------------------- Combined Middleware - 组合中间件 --------------------------------------------------
 // CheckLoginAndRoleMiddleware decorates handler with login and role checks CheckLoginAndRoleMiddleware 为处理器增加登录与角色校验
 func CheckLoginAndRoleMiddleware(ctx context.Context, roles []string, handler echo4.HandlerFunc, failFunc func(c echo4.Context, err error) error, authType ...string) echo4.HandlerFunc {
 	ann := &Annotation{CheckLogin: true, CheckRole: roles}
@@ -183,7 +183,6 @@ func CheckAllMiddleware(ctx context.Context, roles []string, perms []string, han
 	return GetHandler(ctx, handler, failFunc, ann)
 }
 
-// -------------------------------------------------- Route Group Helpers - 路由组辅助函数 --------------------------------------------------
 // AuthGroup attaches login middleware to Echo group AuthGroup 为 Echo 路由组挂载登录校验
 func AuthGroup(ctx context.Context, group *echo4.Group, failFunc func(c echo4.Context, err error) error, authType ...string) *echo4.Group {
 	options := []AuthOption{WithFailFunc(failFunc)}

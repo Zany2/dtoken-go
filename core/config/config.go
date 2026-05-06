@@ -44,6 +44,12 @@ type Config struct {
 	// MaxLoginCount stores max login count MaxLoginCount 存储同一账号最大登录数量
 	MaxLoginCount int64
 
+	// ReplacedLoginExitMode stores non-concurrent strategy ReplacedLoginExitMode 存储非并发登录处理策略
+	ReplacedLoginExitMode ReplacedLoginExitMode
+
+	// OverflowLogoutMode stores max-login overflow mode OverflowLogoutMode 存储最大登录数溢出处理模式
+	OverflowLogoutMode LogoutMode
+
 	// IsReadBody controls body token read IsReadBody 控制是否尝试从请求体读取 Token
 	IsReadBody bool
 
@@ -96,27 +102,29 @@ type CookieConfig struct {
 // DefaultConfig returns default config DefaultConfig 返回默认配置
 func DefaultConfig() *Config {
 	return &Config{
-		AuthType:         DefaultAuthType,
-		KeyPrefix:        DefaultKeyPrefix,
-		TokenName:        DefaultTokenName,
-		Timeout:          DefaultTimeout,
-		AutoRenew:        true,
-		RenewMaxRefresh:  DefaultTimeout / 2,
-		RenewInterval:    NoLimit,
-		ActiveTimeout:    NoLimit,
-		ConcurrencyScope: ConcurrencyScopeAccount,
-		IsConcurrent:     true,
-		IsShare:          true,
-		MaxLoginCount:    DefaultMaxLoginCount,
-		IsReadBody:       false,
-		IsReadHeader:     true,
-		IsReadCookie:     false,
-		TokenStyle:       adapter.TokenStyleUUID,
-		JwtSecretKey:     "",
-		IsLog:            false,
-		IsPrintBanner:    true,
-		AsyncEvent:       true,
-		CookieConfig:     DefaultCookieConfig(),
+		AuthType:              DefaultAuthType,
+		KeyPrefix:             DefaultKeyPrefix,
+		TokenName:             DefaultTokenName,
+		Timeout:               DefaultTimeout,
+		AutoRenew:             true,
+		RenewMaxRefresh:       DefaultTimeout / 2,
+		RenewInterval:         NoLimit,
+		ActiveTimeout:         NoLimit,
+		ConcurrencyScope:      ConcurrencyScopeAccount,
+		IsConcurrent:          true,
+		IsShare:               true,
+		MaxLoginCount:         DefaultMaxLoginCount,
+		ReplacedLoginExitMode: ReplacedLoginExitModeOldDevice,
+		OverflowLogoutMode:    LogoutModeKickout,
+		IsReadBody:            false,
+		IsReadHeader:          true,
+		IsReadCookie:          false,
+		TokenStyle:            adapter.TokenStyleUUID,
+		JwtSecretKey:          "",
+		IsLog:                 false,
+		IsPrintBanner:         true,
+		AsyncEvent:            true,
+		CookieConfig:          DefaultCookieConfig(),
 	}
 }
 
@@ -166,6 +174,22 @@ func (c *Config) Validate() error {
 	default:
 		return fmt.Errorf("ConcurrencyScope 必须为 %q 或 %q，当前值：%q",
 			ConcurrencyScopeAccount, ConcurrencyScopeDevice, c.ConcurrencyScope)
+	}
+
+	// Validate replaced login strategy 验证非并发登录处理策略
+	switch c.ReplacedLoginExitMode {
+	case ReplacedLoginExitModeOldDevice, ReplacedLoginExitModeNewDevice:
+	default:
+		return fmt.Errorf("ReplacedLoginExitMode 必须为 %q 或 %q，当前值：%q",
+			ReplacedLoginExitModeOldDevice, ReplacedLoginExitModeNewDevice, c.ReplacedLoginExitMode)
+	}
+
+	// Validate overflow logout mode 验证超限登录下线模式
+	switch c.OverflowLogoutMode {
+	case LogoutModeLogout, LogoutModeKickout, LogoutModeReplaced:
+	default:
+		return fmt.Errorf("OverflowLogoutMode 必须为 %q、%q 或 %q，当前值：%q",
+			LogoutModeLogout, LogoutModeKickout, LogoutModeReplaced, c.OverflowLogoutMode)
 	}
 
 	// Validate token style settings 验证 Token 风格相关配置
@@ -292,6 +316,18 @@ func (c *Config) SetIsShare(isShare bool) *Config {
 // SetMaxLoginCount sets max login count SetMaxLoginCount 设置最大登录数量
 func (c *Config) SetMaxLoginCount(count int64) *Config {
 	c.MaxLoginCount = count
+	return c
+}
+
+// SetReplacedLoginExitMode sets replaced login strategy SetReplacedLoginExitMode 设置非并发登录处理策略
+func (c *Config) SetReplacedLoginExitMode(mode ReplacedLoginExitMode) *Config {
+	c.ReplacedLoginExitMode = mode
+	return c
+}
+
+// SetOverflowLogoutMode sets overflow logout mode SetOverflowLogoutMode 设置超限登录下线模式
+func (c *Config) SetOverflowLogoutMode(mode LogoutMode) *Config {
+	c.OverflowLogoutMode = mode
 	return c
 }
 

@@ -36,8 +36,6 @@ import (
 //	server.RegisterClient(&oauth2.Client{...})
 //	token, _ := server.Token(ctx, &oauth2.TokenRequest{...}, nil)
 
-// -------------------------------------------------- Type Definitions - 类型定义 --------------------------------------------------
-
 // Client OAuth2 client configuration OAuth2客户端配置
 type Client struct {
 	ClientID     string      // Client ID 客户端ID
@@ -98,8 +96,6 @@ type OAuth2Server struct {
 	storage         adapter.Storage    // Storage adapter (Redis, Memory, etc.) 存储适配器（如 Redis、Memory）
 }
 
-// -------------------------------------------------- Constructor - 构造函数 --------------------------------------------------
-
 // NewOAuth2Server Creates a new OAuth2 server 创建新的OAuth2服务器
 func NewOAuth2Server(authType, prefix string, storage adapter.Storage, serializer adapter.Codec) *OAuth2Server {
 	if storage == nil {
@@ -119,8 +115,6 @@ func NewOAuth2Server(authType, prefix string, storage adapter.Storage, serialize
 		serializer:      serializer,
 	}
 }
-
-// -------------------------------------------------- Client Management - 客户端管理 --------------------------------------------------
 
 // RegisterClient Registers an OAuth2 client 注册OAuth2客户端
 func (s *OAuth2Server) RegisterClient(client *Client) error {
@@ -155,8 +149,6 @@ func (s *OAuth2Server) GetClient(clientID string) (*Client, error) {
 
 	return client, nil
 }
-
-// -------------------------------------------------- Unified Token Endpoint - 统一令牌端点 --------------------------------------------------
 
 // Token Unified token endpoint that dispatches to appropriate handler based on grant type 统一的令牌端点，根据授权类型分发到相应的处理逻辑
 //
@@ -220,8 +212,6 @@ func (s *OAuth2Server) Token(ctx context.Context, req *TokenRequest, validateUse
 		return nil, derror.ErrInvalidGrantType
 	}
 }
-
-// -------------------------------------------------- Authorization Code Grant - 授权码模式 --------------------------------------------------
 
 // GenerateAuthorizationCode Generates authorization code 生成授权码
 func (s *OAuth2Server) GenerateAuthorizationCode(ctx context.Context, clientID, userID, redirectURI string, scopes []string) (*AuthorizationCode, error) {
@@ -334,8 +324,6 @@ func (s *OAuth2Server) ExchangeCodeForToken(ctx context.Context, code, clientID,
 	return s.generateAccessToken(ctx, authCode.UserID, authCode.ClientID, authCode.Scopes)
 }
 
-// -------------------------------------------------- Client Credentials Grant - 客户端凭证模式 --------------------------------------------------
-
 // ClientCredentialsToken Gets access token using client credentials grant 使用客户端凭证模式获取访问令牌
 //
 // This grant type is used for server-to-server communication where no user is involved. 此授权类型用于服务器间通信，无需用户参与。
@@ -364,8 +352,6 @@ func (s *OAuth2Server) ClientCredentialsToken(ctx context.Context, clientID, cli
 
 	return s.generateAccessToken(ctx, clientID, clientID, scopes)
 }
-
-// -------------------------------------------------- Password Grant - 密码模式 --------------------------------------------------
 
 // PasswordGrantToken Gets access token using resource owner password credentials grant 使用密码模式获取访问令牌
 //
@@ -418,8 +404,6 @@ func (s *OAuth2Server) PasswordGrantToken(ctx context.Context, clientID, clientS
 	return s.generateAccessToken(ctx, userID, clientID, scopes)
 }
 
-// -------------------------------------------------- Refresh Token Grant - 刷新令牌模式 --------------------------------------------------
-
 // RefreshAccessToken Refreshes access token using refresh token 使用刷新令牌刷新访问令牌
 func (s *OAuth2Server) RefreshAccessToken(ctx context.Context, clientID, refreshToken, clientSecret string) (*AccessToken, error) {
 	if refreshToken == "" {
@@ -469,8 +453,6 @@ func (s *OAuth2Server) RefreshAccessToken(ctx context.Context, clientID, refresh
 	return s.generateAccessToken(ctx, accessTokenInfo.UserID, accessTokenInfo.ClientID, accessTokenInfo.Scopes)
 }
 
-// -------------------------------------------------- Token Validation - 令牌验证 --------------------------------------------------
-
 // ValidateAccessToken Validates access token 验证访问令牌
 func (s *OAuth2Server) ValidateAccessToken(ctx context.Context, accessToken string) bool {
 	if accessToken == "" {
@@ -508,8 +490,6 @@ func (s *OAuth2Server) ValidateAccessTokenAndGetInfo(ctx context.Context, access
 	return &accessTokenInfo, nil
 }
 
-// -------------------------------------------------- Token Revocation - 令牌撤销 --------------------------------------------------
-
 // RevokeToken Revokes access token and its refresh token 撤销访问令牌及其刷新令牌
 func (s *OAuth2Server) RevokeToken(ctx context.Context, accessToken string) error {
 	if accessToken == "" {
@@ -542,8 +522,6 @@ func (s *OAuth2Server) RevokeToken(ctx context.Context, accessToken string) erro
 
 	return s.storage.Delete(ctx, key)
 }
-
-// -------------------------------------------------- Private Helper Methods - 私有辅助方法 --------------------------------------------------
 
 // getCodeKey Gets storage key for authorization code 获取授权码的存储键
 func (s *OAuth2Server) getCodeKey(code string) string {

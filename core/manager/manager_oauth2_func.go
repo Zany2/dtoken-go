@@ -6,8 +6,6 @@ import (
 	"github.com/Zany2/dtoken-go/core/oauth2"
 )
 
-// -------------------------------------------------- OAuth2 Management - OAuth2 管理 --------------------------------------------------
-
 // RegisterOAuth2Client registers oauth2 client RegisterOAuth2Client 注册 OAuth2 客户端
 func (m *Manager) RegisterOAuth2Client(client *oauth2.Client) error {
 	return m.oauth2Manager.RegisterClient(client)

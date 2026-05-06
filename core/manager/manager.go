@@ -1,6 +1,8 @@
 package manager
 
 import (
+	"sync"
+
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/listener"
@@ -21,6 +23,7 @@ type Manager struct {
 	nonceManager  *nonce.NonceManager  // nonceManager stores nonce manager nonceManager 存储 Nonce 管理器
 	oauth2Manager *oauth2.OAuth2Server // oauth2Manager stores oauth2 manager oauth2Manager 存储 OAuth2 管理器
 	eventManager  *listener.Manager    // eventManager stores event manager eventManager 存储事件管理器
+	loginLocks    sync.Map             // loginLocks stores per login write locks loginLocks 存储账号级写锁
 
 	CustomPermissionListFunc    func(loginID, authType string) ([]string, error)                   // CustomPermissionListFunc stores custom permission callback CustomPermissionListFunc 存储自定义权限列表获取函数
 	CustomRoleListFunc          func(loginID, authType string) ([]string, error)                   // CustomRoleListFunc stores custom role callback CustomRoleListFunc 存储自定义角色列表获取函数
@@ -35,6 +38,7 @@ type TokenInfo struct {
 	Device     string `json:"device"`     // Device stores device type Device 存储设备类型
 	DeviceId   string `json:"deviceId"`   // DeviceId stores device id DeviceId 存储设备 ID
 	CreateTime int64  `json:"createTime"` // CreateTime stores create time CreateTime 存储创建时间戳
+	Timeout    int64  `json:"timeout"`    // Timeout stores token timeout Timeout 存储 Token 实际有效期
 }
 
 // Session defines session object Session 定义用于存储用户数据的会话对象

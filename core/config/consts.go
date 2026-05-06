@@ -8,7 +8,7 @@ const (
 	SameSiteStrict SameSiteMode = "Strict"
 	// SameSiteLax uses lax mode SameSiteLax 使用宽松模式
 	SameSiteLax SameSiteMode = "Lax"
-	// SameSiteNone uses none mode SameSiteNone 使用无约束模式
+	// SameSiteNone uses none mode SameSiteNone 使用无限制模式
 	SameSiteNone SameSiteMode = "None"
 )
 
@@ -22,7 +22,28 @@ const (
 	ConcurrencyScopeDevice ConcurrencyScope = "device"
 )
 
-// -------------------------------------------------- Default Constants - 默认配置常量 --------------------------------------------------
+// ReplacedLoginExitMode defines non-concurrent login strategy ReplacedLoginExitMode 定义非并发登录处理策略
+type ReplacedLoginExitMode string
+
+const (
+	// ReplacedLoginExitModeOldDevice exits old terminals ReplacedLoginExitModeOldDevice 让旧终端下线
+	ReplacedLoginExitModeOldDevice ReplacedLoginExitMode = "old_device"
+	// ReplacedLoginExitModeNewDevice rejects new login ReplacedLoginExitModeNewDevice 拒绝新终端登录
+	ReplacedLoginExitModeNewDevice ReplacedLoginExitMode = "new_device"
+)
+
+// LogoutMode defines token exit mode LogoutMode 定义 Token 下线模式
+type LogoutMode string
+
+const (
+	// LogoutModeLogout deletes token mapping LogoutModeLogout 删除 Token 映射
+	LogoutModeLogout LogoutMode = "logout"
+	// LogoutModeKickout marks token as kicked out LogoutModeKickout 标记 Token 被踢下线
+	LogoutModeKickout LogoutMode = "kickout"
+	// LogoutModeReplaced marks token as replaced LogoutModeReplaced 标记 Token 被顶下线
+	LogoutModeReplaced LogoutMode = "replaced"
+)
+
 const (
 	// DefaultTokenName stores default token name DefaultTokenName 存储默认 Token 名称
 	DefaultTokenName = "dtoken"
@@ -30,6 +51,8 @@ const (
 	DefaultKeyPrefix = "dtoken:"
 	// DefaultAuthType stores default auth type DefaultAuthType 存储默认认证体系类型
 	DefaultAuthType = "auth:"
+	// TokenKeyPrefix stores token key prefix TokenKeyPrefix 存储 Token 键前缀
+	TokenKeyPrefix = "token:"
 	// DefaultTimeout stores default timeout DefaultTimeout 存储默认 Token 超时时间
 	DefaultTimeout = 2592000
 	// DefaultMaxLoginCount stores default max login count DefaultMaxLoginCount 存储默认最大并发登录数

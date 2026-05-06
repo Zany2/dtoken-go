@@ -5,8 +5,6 @@ import (
 	"time"
 )
 
-// -------------------------------------------------- Nonce Management - Nonce 管理 --------------------------------------------------
-
 // GenerateNonce generates nonce GenerateNonce 生成新的 nonce 并使用默认有效期
 func (m *Manager) GenerateNonce(ctx context.Context) (string, error) {
 	return m.nonceManager.Generate(ctx)

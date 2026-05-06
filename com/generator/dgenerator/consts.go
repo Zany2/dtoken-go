@@ -1,7 +1,6 @@
 // @Author daixk 2025/12/22 16:08:00
 package dgenerator
 
-// -------------------------------------------------- Token Generation Constants - Token 生成常量 --------------------------------------------------
 const (
 	// DefaultTimeout defines the default timeout 默认超时时间（30天，单位：秒）
 	DefaultTimeout = 2592000

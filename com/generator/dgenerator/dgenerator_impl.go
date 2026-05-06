@@ -43,8 +43,6 @@ func NewDefaultGenerator() *Generator {
 	}
 }
 
-// -------------------------------------------------- Public Methods - 公共方法 --------------------------------------------------
-
 // Generate creates a token by configured style 根据配置的风格生成 Token
 func (g *Generator) Generate(loginID, device, deviceId string) (string, error) {
 	if loginID == "" {
@@ -74,8 +72,6 @@ func (g *Generator) Generate(loginID, device, deviceId string) (string, error) {
 		return g.generateUUID()
 	}
 }
-
-// -------------------------------------------------- Token Generation Methods - Token 生成方法 --------------------------------------------------
 
 // generateUUID creates a UUID token 生成 UUID Token
 func (g *Generator) generateUUID() (string, error) {
@@ -128,8 +124,6 @@ func (g *Generator) getJWTSecret() string {
 	}
 	return DefaultJWTSecret
 }
-
-// -------------------------------------------------- JWT Helper Methods - JWT 辅助方法 --------------------------------------------------
 
 // ParseJWT parses a JWT token and returns claims 解析 JWT Token 并返回声明
 func (g *Generator) ParseJWT(tokenStr string) (jwt.MapClaims, error) {

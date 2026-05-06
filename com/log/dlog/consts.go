@@ -9,7 +9,6 @@ import (
 // LogLevel aliases adapter.LogLevel 日志级别别名
 type LogLevel = adapter.LogLevel
 
-// -------------------------------------------------- Log Level Constants - 日志级别常量 --------------------------------------------------
 const (
 	LevelDebug = adapter.LogLevelDebug // Debug level 调试级别
 	LevelInfo  = adapter.LogLevelInfo  // Info level 信息级别
@@ -17,7 +16,6 @@ const (
 	LevelError = adapter.LogLevelError // Error level 错误级别（最高）
 )
 
-// -------------------------------------------------- Default Logger Constants - 默认日志常量 --------------------------------------------------
 const (
 	DefaultPrefix            = "[DTOKEN] "              // Default log prefix 默认日志前缀
 	DefaultFileFormat        = "DTOKEN_{Y}-{m}-{d}.log" // Default log filename format 默认文件命名格式

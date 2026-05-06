@@ -16,7 +16,7 @@ This example showcases:
 
 ## Prerequisites
 
-- Go 1.21 or higher
+- Go 1.25 or higher
 - Redis server running (default: `192.168.19.104:6379`)
 
 ## Installation

@@ -1,8 +1,5 @@
 package manager
 
-// -------------------------------------------------- Terminal Management - 终端管理 --------------------------------------------------
-// -------------------------------------------------- Terminal Removal Methods - 终端移除方法 --------------------------------------------------
-
 // removeTerminalByToken removes terminal by token removeTerminalByToken 根据 token 值移除终端信息
 func (s *Session) removeTerminalByToken(tokenValue string) (TerminalInfo, bool) {
 	if tokenValue == "" {
@@ -89,8 +86,6 @@ func (s *Session) removeAllTerminals() []TerminalInfo {
 	return removed
 }
 
-// -------------------------------------------------- Terminal Query Methods - 终端查询方法 --------------------------------------------------
-
 // getTerminalsByDevice gets terminals by device getTerminalsByDevice 返回指定设备的全部终端信息
 func (s *Session) getTerminalsByDevice(device string) []TerminalInfo {
 	var matched []TerminalInfo
@@ -123,7 +118,19 @@ func (s *Session) getLatestTerminalByDevice(device string) (TerminalInfo, bool) 
 	return TerminalInfo{}, false
 }
 
-// -------------------------------------------------- Permission Management - 权限管理 --------------------------------------------------
+// hasTerminalToken checks whether token exists in session hasTerminalToken 检查会话中是否存在指定 Token
+func (s *Session) hasTerminalToken(tokenValue string) bool {
+	if tokenValue == "" {
+		return false
+	}
+
+	for _, ti := range s.TerminalInfos {
+		if ti.Token == tokenValue {
+			return true
+		}
+	}
+	return false
+}
 
 // addPermissions adds permissions with dedupe addPermissions 向会话添加权限并自动去重
 func (s *Session) addPermissions(permissions ...string) {
@@ -173,8 +180,6 @@ func (s *Session) removePermissions(permissions ...string) {
 
 	s.Permissions = kept
 }
-
-// -------------------------------------------------- Role Management - 角色管理 --------------------------------------------------
 
 // addRoles adds roles with dedupe addRoles 向会话添加角色并自动去重
 func (s *Session) addRoles(roles ...string) {

@@ -7,7 +7,7 @@ import (
 
 // Storage defines storage interface for token and session data Storage 定义用于存储 Token 和 Session 数据的接口
 type Storage interface {
-	// -------------------------------------------------- Basic Operations - 基本操作 --------------------------------------------------
+
 	// Set stores key-value pair with optional expiration Set 设置键值对并可选指定过期时间
 	Set(ctx context.Context, key string, value any, expiration time.Duration) error
 	// Get gets value by key Get 获取键对应的值
@@ -19,7 +19,6 @@ type Storage interface {
 	// Exists checks whether key exists Exists 检查键是否存在
 	Exists(ctx context.Context, key string) bool
 
-	// -------------------------------------------------- Key Management - 键管理 --------------------------------------------------
 	// Keys gets all keys matching pattern Keys 获取匹配模式的所有键
 	Keys(ctx context.Context, pattern string) ([]string, error)
 	// Expire sets key expiration Expire 设置键的过期时间
@@ -27,7 +26,6 @@ type Storage interface {
 	// TTL gets remaining lifetime of key TTL 获取键的剩余生存时间
 	TTL(ctx context.Context, key string) (time.Duration, error)
 
-	// -------------------------------------------------- Utility Methods - 工具方法 --------------------------------------------------
 	// Clear clears all data Clear 清空所有数据
 	Clear(ctx context.Context) error
 	// Ping checks whether storage is reachable Ping 检查存储是否可访问

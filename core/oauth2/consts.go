@@ -4,7 +4,6 @@ import (
 	"time"
 )
 
-// -------------------------------------------------- OAuth2 Constants - OAuth2 常量 --------------------------------------------------
 const (
 	// DefaultCodeExpiration stores code expiration DefaultCodeExpiration 存储授权码过期时间
 	DefaultCodeExpiration = 10 * time.Minute

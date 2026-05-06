@@ -1,6 +1,5 @@
 package manager
 
-// -------------------------------------------------- Storage Constants - 存储键与默认值常量 --------------------------------------------------
 const (
 	// DisableKeyPrefix stores disable key prefix DisableKeyPrefix 存储禁用状态存储前缀
 	DisableKeyPrefix = "disable:"

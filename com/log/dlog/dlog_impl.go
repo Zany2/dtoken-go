@@ -18,26 +18,21 @@ import (
 
 // Logger implements ILogger and LoggerControl 日志核心实现
 type Logger struct {
-	// -------------------------------------------------- Config & State - 配置与状态 --------------------------------------------------
 	cfg   *LoggerConfig // Logger configuration 日志配置
 	cfgMu sync.RWMutex  // Config lock 配置锁
 
-	// -------------------------------------------------- File IO - 文件读写 --------------------------------------------------
 	fileMu     sync.Mutex // File write lock 文件写锁
 	curFile    *os.File   // Current log file 当前日志文件
 	curName    string     // Current file name 当前日志文件名
 	curSize    int64      // Current log size 当前文件大小
 	lastRotate time.Time  // Last rotation time 上次切分时间
 
-	// -------------------------------------------------- Async Write - 异步写入 --------------------------------------------------
 	queue chan []byte   // Async write queue 异步写队列
 	quit  chan struct{} // Stop signal 停止信号
 	wg    sync.WaitGroup
 
-	// -------------------------------------------------- Time Cache - 时间缓存 --------------------------------------------------
 	timeCache atomic.Value // Cached time info 缓存的时间信息
 
-	// -------------------------------------------------- State - 状态 --------------------------------------------------
 	closed    uint32 // Closed flag 关闭标记
 	dropCount uint64 // Dropped log counter 队列满时丢弃日志计数
 
@@ -125,8 +120,6 @@ func (l *Logger) enqueue(b []byte) {
 		atomic.AddUint64(&l.dropCount, 1)
 	}
 }
-
-// -------------------------------------------------- Build Log Line - 构建日志行 --------------------------------------------------
 
 // buildLine builds the complete log line 构建完整日志行
 func (l *Logger) buildLine(level LogLevel, cfg LoggerConfig, args ...any) []byte {
@@ -234,8 +227,6 @@ func appendValue(buf *bytes.Buffer, v any) {
 	}
 }
 
-// -------------------------------------------------- Async Writer - 异步写线程 --------------------------------------------------
-
 // writerLoop processes all file IO 异步写线程处理文件操作
 func (l *Logger) writerLoop() {
 	defer func() {
@@ -314,8 +305,6 @@ func (l *Logger) writeToOutput(b []byte) {
 		_ = l.rotate(cfg)
 	}
 }
-
-// -------------------------------------------------- File Handling - 文件处理 --------------------------------------------------
 
 // ensureLogFile ensures a log file is open 确保日志文件存在
 func (l *Logger) ensureLogFile(now time.Time, cfg LoggerConfig) error {
@@ -479,8 +468,6 @@ func (l *Logger) formatFileName(t time.Time, cfg LoggerConfig) string {
 	return name
 }
 
-// -------------------------------------------------- Runtime Control - 运行时控制 --------------------------------------------------
-
 // SetLevel updates the minimum log level 动态更新日志级别
 func (l *Logger) SetLevel(level LogLevel) {
 	l.cfgMu.Lock()
@@ -577,8 +564,6 @@ func (l *Logger) DropCount() uint64 {
 	return atomic.LoadUint64(&l.dropCount)
 }
 
-// -------------------------------------------------- Buffer Pool - 缓冲池 --------------------------------------------------
-
 var bufPool = sync.Pool{
 	New: func() any { return new(bytes.Buffer) },
 }
@@ -594,8 +579,6 @@ func getBuf() *bytes.Buffer {
 func putBuf(b *bytes.Buffer) {
 	bufPool.Put(b)
 }
-
-// -------------------------------------------------- Helpers - 辅助方法 --------------------------------------------------
 
 // getFileSize returns the file size 获取文件大小
 func getFileSize(f *os.File) int64 {
@@ -710,8 +693,6 @@ func secureRandomInt(max int) int {
 	}
 	return int(n.Int64())
 }
-
-// -------------------------------------------------- Logging API - 日志接口 --------------------------------------------------
 
 // Print writes plain logs 输出普通日志
 func (l *Logger) Print(v ...any) { l.write(LevelInfo, v...) }
