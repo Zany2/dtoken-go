@@ -99,7 +99,7 @@ func (m *Manager) CloseManager() {
 	// Close storage if supported 若存储适配器支持 Close 则释放连接资源
 	if storageCloser, ok := m.storage.(interface{ Close() error }); ok {
 		if err := storageCloser.Close(); err != nil {
-			m.logger.Errorf("CloseManager: failed to close storage: %v", err)
+			m.logger.Errorf("manager.CloseManager: failed to close storage, error=%v", err)
 		}
 	}
 
@@ -292,18 +292,18 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 		// Reload token under lock 锁内重新读取 Token，避免续期已失效 Token
 		latestTokenInfo, err := m.getTokenInfo(bg, tokenValue)
 		if err != nil {
-			m.logger.Errorf("LoginByToken: token is no longer valid for token=%s, error=%v", tokenValue, err)
+			m.logger.Errorf("manager.LoginByToken: token is no longer valid, token=%s, error=%v", tokenValue, err)
 			return
 		}
 
 		// Validate token is still attached to session 确认 Token 仍属于当前会话
 		latestSession, err := m.getSession(bg, latestTokenInfo.LoginID)
 		if err != nil {
-			m.logger.Errorf("LoginByToken: failed to reload session for loginID=%s, error=%v", latestTokenInfo.LoginID, err)
+			m.logger.Errorf("manager.LoginByToken: failed to reload session, loginID=%s, error=%v", latestTokenInfo.LoginID, err)
 			return
 		}
 		if !latestSession.hasTerminalToken(tokenValue) {
-			m.logger.Errorf("LoginByToken: token not found in session for token=%s", tokenValue)
+			m.logger.Errorf("manager.LoginByToken: token not found in session, token=%s", tokenValue)
 			return
 		}
 
@@ -312,22 +312,22 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 
 		// Renew session without shortening existing TTL 续期 session，避免缩短已有 TTL
 		if err := m.saveSessionWithMinTTL(bg, sessionKey, *latestSession, expiration); err != nil {
-			m.logger.Errorf("LoginByToken: failed to save session for loginID=%s, error=%v", latestTokenInfo.LoginID, err)
+			m.logger.Errorf("manager.LoginByToken: failed to save session, loginID=%s, error=%v", latestTokenInfo.LoginID, err)
 		}
 		// Renew token 续期 Token
 		if err := m.expireTokenIfLimited(bg, tokenValue, expiration); err != nil {
-			m.logger.Errorf("LoginByToken: failed to expire token for token=%s, error=%v", tokenValue, err)
+			m.logger.Errorf("manager.LoginByToken: failed to expire token, token=%s, error=%v", tokenValue, err)
 		}
 
 		// Update metadata 更新 metadata
 		if m.config.RenewInterval > 0 {
 			if err := m.storage.Set(bg, m.getRenewKey(tokenValue), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {
-				m.logger.Errorf("LoginByToken: failed to set renew key for token=%s, error=%v", tokenValue, err)
+				m.logger.Errorf("manager.LoginByToken: failed to set renew key, token=%s, error=%v", tokenValue, err)
 			}
 		}
 		if m.config.ActiveTimeout > 0 {
 			if err := m.storage.Set(bg, m.getActiveKey(tokenValue), time.Now().Unix(), expiration); err != nil {
-				m.logger.Errorf("LoginByToken: failed to set active key for token=%s, error=%v", tokenValue, err)
+				m.logger.Errorf("manager.LoginByToken: failed to set active key, token=%s, error=%v", tokenValue, err)
 			}
 		}
 
@@ -1417,7 +1417,7 @@ func (m *Manager) HasPermission(ctx context.Context, loginID string, permission 
 
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
-		m.logger.Errorf("HasPermission: failed to get session for loginID=%s, error=%v", loginID, err)
+		m.logger.Errorf("manager.HasPermission: failed to get session, loginID=%s, error=%v", loginID, err)
 		return false
 	}
 
@@ -1451,7 +1451,7 @@ func (m *Manager) HasPermission(ctx context.Context, loginID string, permission 
 func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, permission string) bool {
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
-		m.logger.Errorf("HasPermissionByToken: failed to get token info for token=%s, error=%v", tokenValue, err)
+		m.logger.Errorf("manager.HasPermissionByToken: failed to get token info, token=%s, error=%v", tokenValue, err)
 		return false
 	}
 	// Get device and deviceId 获取 device/deviceId
@@ -1496,7 +1496,7 @@ func (m *Manager) HasPermissionsAnd(ctx context.Context, loginID string, permiss
 
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
-		m.logger.Errorf("HasPermissionsAnd: failed to get session for loginID=%s, error=%v", loginID, err)
+		m.logger.Errorf("manager.HasPermissionsAnd: failed to get session, loginID=%s, error=%v", loginID, err)
 		return false
 	}
 
@@ -1532,7 +1532,7 @@ func (m *Manager) HasPermissionsAnd(ctx context.Context, loginID string, permiss
 func (m *Manager) HasPermissionsAndByToken(ctx context.Context, tokenValue string, permissions []string) bool {
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
-		m.logger.Errorf("HasPermissionsAndByToken: failed to get token info for token=%s, error=%v", tokenValue, err)
+		m.logger.Errorf("manager.HasPermissionsAndByToken: failed to get token info, token=%s, error=%v", tokenValue, err)
 		return false
 	}
 	// Get device and deviceId 获取 device/deviceId
@@ -1579,7 +1579,7 @@ func (m *Manager) HasPermissionsOr(ctx context.Context, loginID string, permissi
 
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
-		m.logger.Errorf("HasPermissionsOr: failed to get session for loginID=%s, error=%v", loginID, err)
+		m.logger.Errorf("manager.HasPermissionsOr: failed to get session, loginID=%s, error=%v", loginID, err)
 		return false
 	}
 	if len(permissions) == 0 {
@@ -1618,7 +1618,7 @@ func (m *Manager) HasPermissionsOr(ctx context.Context, loginID string, permissi
 func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string, permissions []string) bool {
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
-		m.logger.Errorf("HasPermissionsOrByToken: failed to get token info for token=%s, error=%v", tokenValue, err)
+		m.logger.Errorf("manager.HasPermissionsOrByToken: failed to get token info, token=%s, error=%v", tokenValue, err)
 		return false
 	}
 	if len(permissions) == 0 {
@@ -1820,7 +1820,7 @@ func (m *Manager) HasRole(ctx context.Context, loginID string, role string) bool
 
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
-		m.logger.Errorf("HasRole: failed to get session for loginID=%s, error=%v", loginID, err)
+		m.logger.Errorf("manager.HasRole: failed to get session, loginID=%s, error=%v", loginID, err)
 		return false
 	}
 
@@ -1854,7 +1854,7 @@ func (m *Manager) HasRole(ctx context.Context, loginID string, role string) bool
 func (m *Manager) HasRoleByToken(ctx context.Context, tokenValue string, role string) bool {
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
-		m.logger.Errorf("HasRoleByToken: failed to get token info for token=%s, error=%v", tokenValue, err)
+		m.logger.Errorf("manager.HasRoleByToken: failed to get token info, token=%s, error=%v", tokenValue, err)
 		return false
 	}
 	// Get device and deviceId 获取 device/deviceId
@@ -1899,7 +1899,7 @@ func (m *Manager) HasRolesAnd(ctx context.Context, loginID string, roles []strin
 
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
-		m.logger.Errorf("HasRolesAnd: failed to get session for loginID=%s, error=%v", loginID, err)
+		m.logger.Errorf("manager.HasRolesAnd: failed to get session, loginID=%s, error=%v", loginID, err)
 		return false
 	}
 
@@ -1942,7 +1942,7 @@ func (m *Manager) HasRolesAnd(ctx context.Context, loginID string, roles []strin
 func (m *Manager) HasRolesAndByToken(ctx context.Context, tokenValue string, roles []string) bool {
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
-		m.logger.Errorf("HasRolesAndByToken: failed to get token info for token=%s, error=%v", tokenValue, err)
+		m.logger.Errorf("manager.HasRolesAndByToken: failed to get token info, token=%s, error=%v", tokenValue, err)
 		return false
 	}
 	// Get device and deviceId 获取 device/deviceId
@@ -1996,7 +1996,7 @@ func (m *Manager) HasRolesOr(ctx context.Context, loginID string, roles []string
 
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
-		m.logger.Errorf("HasRolesOr: failed to get session for loginID=%s, error=%v", loginID, err)
+		m.logger.Errorf("manager.HasRolesOr: failed to get session, loginID=%s, error=%v", loginID, err)
 		return false
 	}
 	if len(roles) == 0 {
@@ -2040,7 +2040,7 @@ func (m *Manager) HasRolesOr(ctx context.Context, loginID string, roles []string
 func (m *Manager) HasRolesOrByToken(ctx context.Context, tokenValue string, roles []string) bool {
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
-		m.logger.Errorf("HasRolesOrByToken: failed to get token info for token=%s, error=%v", tokenValue, err)
+		m.logger.Errorf("manager.HasRolesOrByToken: failed to get token info, token=%s, error=%v", tokenValue, err)
 		return false
 	}
 	if len(roles) == 0 {
@@ -2213,7 +2213,7 @@ func (m *Manager) submitAsync(name string, task func()) {
 	}
 
 	if err := m.pool.Submit(task); err != nil {
-		m.logger.Errorf("%s: failed to submit async task, fallback to goroutine: %v", name, err)
+		m.logger.Errorf("manager.submitAsync: failed to submit async task, task=%s, error=%v", name, err)
 		go task()
 	}
 }
@@ -2245,13 +2245,19 @@ func (m *Manager) rollbackLogin(ctx context.Context, sess *Session, loginID, tok
 	if sess != nil {
 		if _, ok := sess.removeTerminalByToken(token); ok {
 			if len(sess.TerminalInfos) == 0 {
-				_ = m.storage.Delete(ctx, m.getSessionKey(loginID))
+				if err := m.storage.Delete(ctx, m.getSessionKey(loginID)); err != nil {
+					m.logger.Errorf("manager.rollbackLogin: failed to delete empty session, loginID=%s, token=%s, error=%v", loginID, token, err)
+				}
 			} else {
-				_ = m.saveSessionWithMinTTL(ctx, m.getSessionKey(loginID), *sess, expiration)
+				if err := m.saveSessionWithMinTTL(ctx, m.getSessionKey(loginID), *sess, expiration); err != nil {
+					m.logger.Errorf("manager.rollbackLogin: failed to save session, loginID=%s, token=%s, error=%v", loginID, token, err)
+				}
 			}
 		}
 	}
-	_ = m.storage.Delete(ctx, append(m.getTokenStorageKeys(token), m.getRenewKey(token), m.getActiveKey(token))...)
+	if err := m.storage.Delete(ctx, append(m.getTokenStorageKeys(token), m.getRenewKey(token), m.getActiveKey(token))...); err != nil {
+		m.logger.Errorf("manager.rollbackLogin: failed to delete token data, loginID=%s, token=%s, error=%v", loginID, token, err)
+	}
 }
 
 // getSession retrieves session information (internal method). getSession 获取会话信息（内部方法）。
@@ -2433,7 +2439,7 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 			}
 
 			if err := m.storage.Set(bg, m.getActiveKey(tokenValue), time.Now().Unix(), m.resolveTokenExpiration(latestTokenInfo)); err != nil {
-				m.logger.Errorf("checkLoginInternal: failed to set active key for token=%s, error=%v", tokenValue, err)
+				m.logger.Errorf("manager.checkLoginInternal: failed to set active key, token=%s, error=%v", tokenValue, err)
 			}
 		}
 		m.submitAsync("checkLoginInternal active", activeFunc)
@@ -2609,7 +2615,7 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device ..
 
 	// Renew session without shortening existing TTL 续期 session，避免缩短已有 TTL
 	if err := m.saveSessionWithMinTTL(ctx, m.getSessionKey(terminalInfo.LoginID), *sess, expiration); err != nil {
-		m.logger.Errorf("getTokenAndShare: failed to save session for loginID=%s, error=%v", terminalInfo.LoginID, err)
+		m.logger.Errorf("manager.getTokenAndShare: failed to save session, loginID=%s, error=%v", terminalInfo.LoginID, err)
 	}
 
 	// Renew token by original timeout 按原始有效期续期 Token
@@ -2628,13 +2634,13 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device ..
 	// Renew or reset metadata 续期或重新设置 metadata
 	if m.config.RenewInterval > 0 {
 		if err := m.storage.Set(ctx, m.getRenewKey(terminalInfo.Token), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {
-			m.logger.Errorf("getTokenAndShare: failed to set renew key for token=%s, error=%v", terminalInfo.Token, err)
+			m.logger.Errorf("manager.getTokenAndShare: failed to set renew key, token=%s, error=%v", terminalInfo.Token, err)
 		}
 	}
 	// Set active timeout 设置最大不活跃时长
 	if m.config.ActiveTimeout > 0 {
 		if err := m.storage.Set(ctx, m.getActiveKey(terminalInfo.Token), time.Now().Unix(), expiration); err != nil {
-			m.logger.Errorf("getTokenAndShare: failed to set active key for token=%s, error=%v", terminalInfo.Token, err)
+			m.logger.Errorf("manager.getTokenAndShare: failed to set active key, token=%s, error=%v", terminalInfo.Token, err)
 		}
 	}
 
@@ -2990,34 +2996,34 @@ func (m *Manager) renewFunc(ctx context.Context, tokenValue, loginID string) {
 	// Recheck token attachment before renewal 续期前重新确认 Token 仍属于会话
 	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
 	if err != nil {
-		m.logger.Errorf("renewFunc: token is no longer valid for token=%s, error=%v", tokenValue, err)
+		m.logger.Errorf("manager.renewFunc: token is no longer valid, token=%s, error=%v", tokenValue, err)
 		return
 	}
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
-		m.logger.Errorf("renewFunc: failed to get session for loginID=%s, error=%v", loginID, err)
+		m.logger.Errorf("manager.renewFunc: failed to get session, loginID=%s, error=%v", loginID, err)
 		return
 	}
 	if !sess.hasTerminalToken(tokenValue) {
-		m.logger.Errorf("renewFunc: token not found in session for token=%s", tokenValue)
+		m.logger.Errorf("manager.renewFunc: token not found in session, token=%s", tokenValue)
 		return
 	}
 
 	// Renew token with its original timeout 使用 Token 原始有效期续期
 	expiration := m.resolveTokenExpiration(tokenInfo)
 	if err := m.expireTokenIfLimited(ctx, tokenValue, expiration); err != nil {
-		m.logger.Errorf("renewFunc: failed to expire token for token=%s, error=%v", tokenValue, err)
+		m.logger.Errorf("manager.renewFunc: failed to expire token, token=%s, error=%v", tokenValue, err)
 	}
 
 	// Renew session without shortening existing TTL 续期 Session，避免缩短已有 TTL
 	if err := m.saveSessionWithMinTTL(ctx, m.getSessionKey(loginID), *sess, expiration); err != nil {
-		m.logger.Errorf("renewFunc: failed to save session for loginID=%s, error=%v", loginID, err)
+		m.logger.Errorf("manager.renewFunc: failed to save session, loginID=%s, error=%v", loginID, err)
 	}
 
 	// Set renew interval marker 设置最小续期间隔标记
 	if m.config.RenewInterval > 0 {
 		if err := m.storage.Set(ctx, m.getRenewKey(tokenValue), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {
-			m.logger.Errorf("renewFunc: failed to set renew key for token=%s, error=%v", tokenValue, err)
+			m.logger.Errorf("manager.renewFunc: failed to set renew key, token=%s, error=%v", tokenValue, err)
 		}
 	}
 

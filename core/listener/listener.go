@@ -101,7 +101,7 @@ func NewManager(loggers ...adapter.Log) *Manager {
 	// panicHandler binds initialized logger panicHandler 绑定已初始化的 logger
 	m.panicHandler = func(event Event, data *EventData, recovered any) {
 		logger.Errorf(
-			"Listener listener panic recovered: event=%s, panic=%v",
+			"listener.Manager: listener panic recovered, event=%s, panic=%v",
 			event, recovered,
 		)
 	}
@@ -342,16 +342,16 @@ func (m *Manager) Trigger(data *EventData) {
 		extraInfo = fmt.Sprintf(", extra=%+v", data.Extra)
 	}
 	m.logger.Infof(
-		"Listener event triggered: event=%s, authType=%s, token=%s, loginID=%s, device=%s, deviceId=%s, timestamp=%d%s, listeners=%d",
+		"listener.Manager.Trigger: event triggered, event=%s, authType=%s, loginID=%s, device=%s, deviceId=%s, token=%s, timestamp=%d, listeners=%d%s",
 		data.Event,
 		data.AuthType,
-		data.Token,
 		data.LoginID,
 		data.Device,
 		data.DeviceId,
+		data.Token,
 		data.Timestamp,
-		extraInfo,
 		len(listenersToCall),
+		extraInfo,
 	)
 
 	// Execute listeners 执行监听器

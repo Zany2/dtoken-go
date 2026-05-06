@@ -644,7 +644,7 @@ func (b *Builder) Build() *manager.Manager {
 					case <-ticker.C:
 						running, capacity, usage := b.pool.Stats()
 						b.log.Infof(
-							"RenewPool Status: Capacity=%d, Running=%d, Usage=%.2f%%",
+							"builder.Build: renew pool status, capacity=%d, running=%d, usage=%.2f%%",
 							capacity, running, usage*100,
 						)
 					}
