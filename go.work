@@ -19,7 +19,6 @@ use (
 	./examples/echo
 	./examples/fiber
 	./examples/gf
-	./examples/gf_v2
 	./examples/gin
 	./examples/hertz
 	./examples/kratos
