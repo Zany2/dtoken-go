@@ -1,4 +1,4 @@
-# DToken Quick Start - 完整测试示例
+﻿# DToken Quick Start - 完整测试示例
 
 这是一个完整的 DToken 框架测试示例，包含了框架所有功能的 API 接口实现。
 
@@ -309,7 +309,7 @@ storage := redis.NewRedisStorage(&redis.Config{
 在 `initDToken()` 函数中修改 DToken 配置：
 
 ```go
-mgr, err := builder.NewBuilder().
+mgr, err := defaults.NewBuilder().
     AuthType("login").           // 认证体系类型
     KeyPrefix("dtoken:").        // 存储键前缀
     TokenName("token").          // Token 名称

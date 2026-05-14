@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	djson "github.com/Zany2/dtoken-go/com/codec/json"
-	"github.com/Zany2/dtoken-go/com/storage/memory"
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/utils"
@@ -98,13 +96,6 @@ type OAuth2Server struct {
 
 // NewOAuth2Server Creates a new OAuth2 server 创建新的OAuth2服务器
 func NewOAuth2Server(authType, prefix string, storage adapter.Storage, serializer adapter.Codec) *OAuth2Server {
-	if storage == nil {
-		storage = memory.NewStorage()
-	}
-	if serializer == nil {
-		serializer = djson.NewJSONSerializer()
-	}
-
 	return &OAuth2Server{
 		authType:        authType,
 		keyPrefix:       prefix,

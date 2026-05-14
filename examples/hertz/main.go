@@ -1,330 +1,140 @@
-// @Author daixk 2026/4/8 17:40:00
 package main
 
 import (
 	"context"
-	"errors"
-	"fmt"
+	"net/http"
 	"time"
 
-	"github.com/Zany2/dtoken-go/com/storage/redis"
 	hertzdt "github.com/Zany2/dtoken-go/integrations/hertz"
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
 )
 
+// Response defines the example response body Response 定义示例响应结构
 type Response struct {
 	Code    int         `json:"code"`
 	Message string      `json:"message"`
-	Data    interface{} `json:"data"`
+	Data    interface{} `json:"data,omitempty"`
 }
 
+// LoginRequest defines the login payload LoginRequest 定义登录请求参数
 type LoginRequest struct {
-	Username string `json:"username" query:"username" form:"username"`
-	Password string `json:"password" query:"password" form:"password"`
-}
-
-type UserRequest struct {
-	Username string `json:"username" query:"username" form:"username"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 func main() {
 	ctx := context.Background()
+	initDToken()
 
-	// initManager initializes manager initManager 初始化管理器
-	initManager(ctx)
-
-	// Create hertz server Create hertz server 创建 Hertz 服务
 	h := server.Default(server.WithHostPorts(":8080"))
 	h.Use(hertzdt.RegisterDTokenContextMiddleware(ctx))
+	h.POST("/login", handleLogin)
 
-	// Register public routes Register public routes 注册公开路由
-	api := h.Group("/api")
-	api.POST("/login", handleLogin)
-	api.GET("/public", handlePublic)
-
-	// Register user routes Register user routes 注册用户路由
-	user := h.Group("/api/user")
-	user.Use(hertzdt.AuthMiddleware(ctx))
-	user.GET("/info", handleUserInfo)
-	user.POST("/logout", handleLogout)
-
-	// Register admin routes Register admin routes 注册管理路由
-	admin := h.Group("/api/admin")
-	admin.Use(hertzdt.RoleMiddleware(ctx, []string{"admin"}))
-	admin.GET("/users", handleAdminUsers)
-	admin.POST("/disable", handleDisableUser)
-	admin.POST("/enable", handleEnableUser)
-
-	// Register permission routes Register permission routes 注册权限路由
-	resource := h.Group("/api/resource")
-	resource.Use(hertzdt.PermissionMiddleware(ctx, []string{"resource:read"}))
-	resource.GET("/list", handleResourceList)
-
-	// Register annotation routes Register annotation routes 注册注解路由
-	annotation := h.Group("/api/annotation")
-	annotation.GET("/profile", hertzdt.CheckLoginMiddleware(ctx, handleProfile, handleAuthFail))
-	annotation.GET("/admin-data", hertzdt.CheckRoleMiddleware(ctx, []string{"admin"}, handleAdminData, handleAuthFail))
-	annotation.GET("/sensitive", hertzdt.CheckPermissionMiddleware(ctx, []string{"data:read"}, handleSensitiveData, handleAuthFail))
-	annotation.GET("/super", hertzdt.CheckAllMiddleware(ctx, []string{"super-admin"}, []string{"all:access"}, handleSuperData, handleAuthFail))
-
-	// Print routes Print routes 打印路由
-	fmt.Println("Server starting on http://localhost:8080")
-	fmt.Println("Available endpoints:")
-	fmt.Println("  POST /api/login")
-	fmt.Println("  GET  /api/public")
-	fmt.Println("  GET  /api/user/info")
-	fmt.Println("  POST /api/user/logout")
-	fmt.Println("  GET  /api/admin/users")
-	fmt.Println("  POST /api/admin/disable")
-	fmt.Println("  POST /api/admin/enable")
-	fmt.Println("  GET  /api/resource/list")
-	fmt.Println("  GET  /api/annotation/profile")
-	fmt.Println("  GET  /api/annotation/admin-data")
-	fmt.Println("  GET  /api/annotation/sensitive")
-	fmt.Println("  GET  /api/annotation/super")
+	auth := h.Group("/")
+	auth.Use(hertzdt.AuthMiddleware(ctx))
+	auth.GET("/me", handleMe)
+	auth.GET("/admin", hertzdt.RoleMiddleware(ctx, []string{"admin"}), handleAdmin)
+	auth.GET("/articles", hertzdt.PermissionMiddleware(ctx, []string{"article:read"}), handleArticles)
+	auth.POST("/logout", handleLogout)
 
 	h.Spin()
 }
 
-// initManager initializes manager initManager 初始化管理器
-func initManager(ctx context.Context) {
-	// Create storage Create storage 创建存储
-	storage, err := redis.NewStorage("redis://:root@192.168.19.104:6379/0?dial_timeout=3&read_timeout=10s&max_retries=2")
-	if err != nil {
-		panic("failed to connect redis: " + err.Error())
-	}
-
-	// Build manager Build manager 构建管理器
-	builder := hertzdt.NewDefaultBuilder()
-	manager := builder.
-		SetStorage(storage).
-		Timeout(3600).
-		ActiveTimeout(1800).
-		MaxLoginCount(3).
+// initDToken initializes integration manager initDToken 初始化集成管理器
+func initDToken() {
+	mgr, err := hertzdt.NewBuilder().
+		Timeout(int64((2 * time.Hour).Seconds())).
+		IsPrintBanner(false).
 		Build()
-
-	hertzdt.SetManager(manager)
-
-	fmt.Println("DToken manager initialized successfully with Hertz storage")
-	_ = ctx
-}
-
-func writeJSON(ctx *hertzapp.RequestContext, code int, message string, data interface{}) {
-	ctx.JSON(200, Response{
-		Code:    code,
-		Message: message,
-		Data:    data,
-	})
-}
-
-func getDTokenContext(ctx *hertzapp.RequestContext) (*hertzdt.DTokenContext, bool) {
-	return hertzdt.GetDTokenContext(ctx)
-}
-
-// handleAuthFail handles auth failure handleAuthFail 处理鉴权失败
-func handleAuthFail(c context.Context, ctx *hertzapp.RequestContext, err error) {
-	code := hertzdt.CodePermissionDenied
-	switch {
-	case errors.Is(err, hertzdt.ErrNotLogin), errors.Is(err, hertzdt.ErrInvalidToken), errors.Is(err, hertzdt.ErrTokenExpired):
-		code = hertzdt.CodeNotLogin
-	case errors.Is(err, hertzdt.ErrRoleDenied), errors.Is(err, hertzdt.ErrPermissionDenied), errors.Is(err, hertzdt.ErrAccountDisabled):
-		code = hertzdt.CodePermissionDenied
-	default:
-		code = hertzdt.CodeServerError
+	if err != nil {
+		panic(err)
 	}
 
-	writeJSON(ctx, code, err.Error(), nil)
-	ctx.Abort()
-	_ = c
+	hertzdt.SetManager(mgr)
 }
 
-// handleLogin handles login handleLogin 处理登录
-func handleLogin(c context.Context, ctx *hertzapp.RequestContext) {
+// handleLogin logs in a demo user handleLogin 登录示例用户
+func handleLogin(ctx context.Context, c *hertzapp.RequestContext) {
 	var req LoginRequest
-	if err := ctx.Bind(&req); err != nil {
-		writeJSON(ctx, hertzdt.CodeBadRequest, "Invalid request", nil)
+	if err := c.Bind(&req); err != nil || req.Username == "" || req.Password == "" {
+		writeJSON(c, http.StatusBadRequest, hertzdt.CodeBadRequest, "username and password are required", nil)
 		return
 	}
 
-	if req.Username == "" || req.Password == "" {
-		writeJSON(ctx, hertzdt.CodeBadRequest, "Username and password are required", nil)
+	if req.Password != "123456" {
+		writeJSON(c, http.StatusUnauthorized, hertzdt.CodeNotLogin, "invalid username or password", nil)
 		return
 	}
 
-	if req.Username != "admin" || req.Password != "123456" {
-		writeJSON(ctx, hertzdt.CodeNotLogin, "Invalid username or password", nil)
-		return
-	}
-
-	token, err := hertzdt.Login(c, req.Username)
+	token, err := hertzdt.Login(ctx, req.Username)
 	if err != nil {
-		writeJSON(ctx, hertzdt.CodeServerError, fmt.Sprintf("Login failed: %v", err), nil)
+		writeJSON(c, http.StatusInternalServerError, hertzdt.CodeServerError, err.Error(), nil)
 		return
 	}
 
-	_ = hertzdt.AddRoles(c, req.Username, []string{"admin", "super-admin"})
-	_ = hertzdt.AddPermissions(c, req.Username, []string{"resource:read", "resource:write", "data:read", "all:access"})
+	// Seed demo authorization data 初始化示例权限数据
+	_ = hertzdt.AddRoles(ctx, req.Username, []string{"admin"})
+	_ = hertzdt.AddPermissions(ctx, req.Username, []string{"article:read"})
 
-	writeJSON(ctx, hertzdt.CodeSuccess, "Login successful", map[string]interface{}{
-		"token":    token,
-		"username": req.Username,
-	})
+	writeJSON(c, http.StatusOK, hertzdt.CodeSuccess, "ok", map[string]interface{}{"token": token})
 }
 
-// handlePublic handles public api handlePublic 处理公开接口
-func handlePublic(c context.Context, ctx *hertzapp.RequestContext) {
-	writeJSON(ctx, hertzdt.CodeSuccess, "This is a public endpoint", "Anyone can access this")
-	_ = c
-}
-
-// handleUserInfo handles user info handleUserInfo 处理用户信息
-func handleUserInfo(c context.Context, ctx *hertzapp.RequestContext) {
-	dCtx, ok := getDTokenContext(ctx)
+// handleMe returns current login information handleMe 返回当前登录信息
+func handleMe(ctx context.Context, c *hertzapp.RequestContext) {
+	dCtx, ok := hertzdt.GetDTokenContext(c)
 	if !ok {
-		writeJSON(ctx, hertzdt.CodeServerError, "Failed to get DToken context", nil)
+		writeJSON(c, http.StatusUnauthorized, hertzdt.CodeNotLogin, "not logged in", nil)
 		return
 	}
 
-	loginID, err := dCtx.GetLoginID(c)
+	loginID, err := dCtx.GetLoginID(ctx)
 	if err != nil {
-		writeJSON(ctx, hertzdt.CodeNotLogin, fmt.Sprintf("Failed to get login ID: %v", err), nil)
+		writeJSON(c, http.StatusUnauthorized, hertzdt.CodeNotLogin, err.Error(), nil)
 		return
 	}
 
-	tokenInfo, err := dCtx.GetTokenInfo(c)
-	if err != nil {
-		writeJSON(ctx, hertzdt.CodeServerError, fmt.Sprintf("Failed to get token info: %v", err), nil)
-		return
-	}
+	roles, _ := dCtx.GetRoles(ctx)
+	permissions, _ := dCtx.GetPermissions(ctx)
 
-	roles, _ := dCtx.GetRoles(c)
-	permissions, _ := dCtx.GetPermissions(c)
-
-	writeJSON(ctx, hertzdt.CodeSuccess, "User info retrieved successfully", map[string]interface{}{
-		"loginID":     loginID,
-		"tokenValue":  dCtx.GetTokenValue(),
-		"device":      tokenInfo.Device,
-		"createTime":  time.Unix(tokenInfo.CreateTime, 0).Format("2006-01-02 15:04:05"),
+	writeJSON(c, http.StatusOK, hertzdt.CodeSuccess, "ok", map[string]interface{}{
+		"loginId":     loginID,
 		"roles":       roles,
 		"permissions": permissions,
 	})
 }
 
-func handleLogout(c context.Context, ctx *hertzapp.RequestContext) {
-	dCtx, ok := getDTokenContext(ctx)
+// handleAdmin returns admin data handleAdmin 返回管理员数据
+func handleAdmin(_ context.Context, c *hertzapp.RequestContext) {
+	writeJSON(c, http.StatusOK, hertzdt.CodeSuccess, "ok", map[string]interface{}{"scope": "admin"})
+}
+
+// handleArticles returns protected article data handleArticles 返回受保护的文章数据
+func handleArticles(_ context.Context, c *hertzapp.RequestContext) {
+	writeJSON(c, http.StatusOK, hertzdt.CodeSuccess, "ok", []string{"article-a", "article-b"})
+}
+
+// handleLogout logs out current token handleLogout 注销当前 Token
+func handleLogout(ctx context.Context, c *hertzapp.RequestContext) {
+	dCtx, ok := hertzdt.GetDTokenContext(c)
 	if !ok {
-		writeJSON(ctx, hertzdt.CodeNotLogin, "Not logged in", nil)
+		writeJSON(c, http.StatusUnauthorized, hertzdt.CodeNotLogin, "not logged in", nil)
 		return
 	}
 
-	if err := dCtx.Logout(c); err != nil {
-		writeJSON(ctx, hertzdt.CodeServerError, fmt.Sprintf("Logout failed: %v", err), nil)
+	if err := dCtx.Logout(ctx); err != nil {
+		writeJSON(c, http.StatusInternalServerError, hertzdt.CodeServerError, err.Error(), nil)
 		return
 	}
 
-	writeJSON(ctx, hertzdt.CodeSuccess, "Logout successful", nil)
+	writeJSON(c, http.StatusOK, hertzdt.CodeSuccess, "ok", nil)
 }
 
-func handleAdminUsers(c context.Context, ctx *hertzapp.RequestContext) {
-	dCtx, ok := getDTokenContext(ctx)
-	if !ok {
-		writeJSON(ctx, hertzdt.CodeNotLogin, "Not logged in", nil)
-		return
-	}
-
-	loginID, _ := dCtx.GetLoginID(c)
-	writeJSON(ctx, hertzdt.CodeSuccess, "Admin users list", []map[string]interface{}{
-		{"id": 1, "username": "admin", "role": "admin"},
-		{"id": 2, "username": "user1", "role": "user"},
-		{"id": 3, "username": loginID, "role": "current-admin"},
+// writeJSON writes a unified JSON response writeJSON 写入统一 JSON 响应
+func writeJSON(c *hertzapp.RequestContext, httpStatus int, code int, message string, data interface{}) {
+	c.JSON(httpStatus, Response{
+		Code:    code,
+		Message: message,
+		Data:    data,
 	})
-}
-
-// handleDisableUser handles disable user handleDisableUser 处理封禁用户
-func handleDisableUser(c context.Context, ctx *hertzapp.RequestContext) {
-	var req UserRequest
-	if err := ctx.Bind(&req); err != nil || req.Username == "" {
-		writeJSON(ctx, hertzdt.CodeBadRequest, "Username is required", nil)
-		return
-	}
-
-	if err := hertzdt.Disable(c, req.Username, time.Hour, "Violated terms of service"); err != nil {
-		writeJSON(ctx, hertzdt.CodeServerError, fmt.Sprintf("Failed to disable user: %v", err), nil)
-		return
-	}
-
-	writeJSON(ctx, hertzdt.CodeSuccess, fmt.Sprintf("User %s has been disabled for 1 hour", req.Username), nil)
-}
-
-// handleEnableUser handles enable user handleEnableUser 处理解封用户
-func handleEnableUser(c context.Context, ctx *hertzapp.RequestContext) {
-	var req UserRequest
-	if err := ctx.Bind(&req); err != nil || req.Username == "" {
-		writeJSON(ctx, hertzdt.CodeBadRequest, "Username is required", nil)
-		return
-	}
-
-	if err := hertzdt.Untie(c, req.Username); err != nil {
-		writeJSON(ctx, hertzdt.CodeServerError, fmt.Sprintf("Failed to enable user: %v", err), nil)
-		return
-	}
-
-	writeJSON(ctx, hertzdt.CodeSuccess, fmt.Sprintf("User %s has been enabled", req.Username), nil)
-}
-
-// handleResourceList handles resource list handleResourceList 处理资源列表
-func handleResourceList(c context.Context, ctx *hertzapp.RequestContext) {
-	dCtx, ok := getDTokenContext(ctx)
-	if !ok {
-		writeJSON(ctx, hertzdt.CodeNotLogin, "Not logged in", nil)
-		return
-	}
-
-	loginID, _ := dCtx.GetLoginID(c)
-	writeJSON(ctx, hertzdt.CodeSuccess, "Resource list", []map[string]interface{}{
-		{"id": 1, "name": "resource-a", "owner": loginID},
-		{"id": 2, "name": "resource-b", "owner": "system"},
-	})
-}
-
-// handleProfile handles profile api handleProfile 处理个人信息
-func handleProfile(c context.Context, ctx *hertzapp.RequestContext) {
-	dCtx, ok := getDTokenContext(ctx)
-	if !ok {
-		writeJSON(ctx, hertzdt.CodeNotLogin, "Not logged in", nil)
-		return
-	}
-
-	loginID, _ := dCtx.GetLoginID(c)
-	writeJSON(ctx, hertzdt.CodeSuccess, "Profile data", map[string]interface{}{
-		"loginID": loginID,
-		"token":   dCtx.GetTokenValue(),
-	})
-}
-
-func handleAdminData(c context.Context, ctx *hertzapp.RequestContext) {
-	writeJSON(ctx, hertzdt.CodeSuccess, "Admin data", map[string]interface{}{
-		"dashboard": "hertz-admin",
-		"status":    "ok",
-	})
-	_ = c
-}
-
-// handleSensitiveData handles sensitive data handleSensitiveData 处理敏感数据
-func handleSensitiveData(c context.Context, ctx *hertzapp.RequestContext) {
-	writeJSON(ctx, hertzdt.CodeSuccess, "Sensitive data", map[string]interface{}{
-		"scope":   "data:read",
-		"records": 3,
-	})
-	_ = c
-}
-
-// handleSuperData handles super data handleSuperData 处理超级权限数据
-func handleSuperData(c context.Context, ctx *hertzapp.RequestContext) {
-	writeJSON(ctx, hertzdt.CodeSuccess, "Super admin data", map[string]interface{}{
-		"system": "hertz",
-		"level":  "super-admin",
-	})
-	_ = c
 }

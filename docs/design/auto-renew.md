@@ -1,4 +1,4 @@
-English | [中文文档](auto-renew_zh.md)
+﻿English | [中文文档](auto-renew_zh.md)
 
 # Auto-Renew Design
 
@@ -140,7 +140,7 @@ dtoken.GetTokenInfo(ctx, token)
 ### Enable Auto-Renew
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
@@ -150,7 +150,7 @@ builder.NewBuilder().
 ### Set Renew Trigger Threshold
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
@@ -161,7 +161,7 @@ builder.NewBuilder().
 ### Set Minimum Renew Interval
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
@@ -173,7 +173,7 @@ builder.NewBuilder().
 ### Combine with Active Timeout
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     Timeout(86400).
     ActiveTimeout(1800).
@@ -233,7 +233,7 @@ Async renew failure does not directly block the current request:
 ### Recommended Production Configuration
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetStorage(redisStorage).
     Timeout(86400).
     ActiveTimeout(1800).
@@ -246,7 +246,7 @@ builder.NewBuilder().
 ### Recommended Development Configuration
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     Timeout(7200).
     AutoRenew(true).
@@ -256,7 +256,7 @@ builder.NewBuilder().
 ### Security-First Configuration
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetStorage(redisStorage).
     Timeout(1800).
     AutoRenew(false).

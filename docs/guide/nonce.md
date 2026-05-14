@@ -1,4 +1,4 @@
-English | [中文文档](nonce_zh.md)
+﻿English | [中文文档](nonce_zh.md)
 
 # Nonce Anti-Replay
 
@@ -42,13 +42,13 @@ import (
     "fmt"
 
     "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/core/builder"
+    "github.com/Zany2/dtoken-go/defaults"
     "github.com/Zany2/dtoken-go/dtoken"
 )
 
 func initDToken() {
     dtoken.SetManager(
-        builder.NewBuilder().
+        defaults.NewBuilder().
             SetStorage(memory.NewStorage()).
             Build(),
     )

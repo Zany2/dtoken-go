@@ -14,6 +14,9 @@ type HertzContext struct {
 	aborted bool
 }
 
+// Interface assertion keeps request context contract checked at compile time 接口断言在编译期检查请求上下文契约
+var _ adapter.RequestContext = (*HertzContext)(nil)
+
 // NewHertzContext creates request context adapter NewHertzContext 创建请求上下文适配器
 func NewHertzContext(ctx *hertzapp.RequestContext) adapter.RequestContext {
 	return &HertzContext{ctx: ctx}

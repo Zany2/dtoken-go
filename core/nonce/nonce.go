@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"github.com/Zany2/dtoken-go/com/storage/memory"
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"sync"
@@ -25,9 +24,6 @@ type NonceManager struct {
 func NewNonceManager(authType, prefix string, storage adapter.Storage, ttl time.Duration) *NonceManager {
 	if ttl == 0 {
 		ttl = DefaultNonceTTL // Use default ttl 使用默认有效期
-	}
-	if storage == nil {
-		storage = memory.NewStorage() // Use memory storage by default 默认使用内存存储
 	}
 
 	return &NonceManager{

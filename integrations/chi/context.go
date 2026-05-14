@@ -20,6 +20,12 @@ type ChiContext struct {
 	aborted bool
 }
 
+// Interface assertions keep request context contracts checked at compile time 接口断言在编译期检查请求上下文契约
+var (
+	_ adapter.RequestContext    = (*ChiContext)(nil)
+	_ adapter.RequestContextExt = (*ChiContext)(nil)
+)
+
 // NewChiContext creates request context adapter NewChiContext 创建请求上下文适配器
 func NewChiContext(w http.ResponseWriter, r *http.Request) adapter.RequestContext {
 	return &ChiContext{

@@ -3,8 +3,6 @@ module github.com/Zany2/dtoken-go/examples/kratos
 go 1.25.0
 
 require (
-	github.com/Zany2/dtoken-go/com/storage/redis v0.0.0
-	github.com/Zany2/dtoken-go/integrations/kratos v0.0.0
 	github.com/go-kratos/kratos/v2 v2.9.1
 	google.golang.org/genproto/googleapis/api v0.0.0-20251111163417-95abcf5c77ba
 	google.golang.org/grpc v1.71.0

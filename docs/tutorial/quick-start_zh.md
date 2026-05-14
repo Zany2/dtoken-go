@@ -1,4 +1,4 @@
-# 快速开始
+﻿# 快速开始
 
 [English](quick-start.md) | 中文文档
 
@@ -34,7 +34,7 @@ import (
     "context"
 
     "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/core/builder"
+    "github.com/Zany2/dtoken-go/defaults"
     "github.com/Zany2/dtoken-go/dtoken"
 )
 
@@ -42,7 +42,7 @@ var ctx = context.Background()
 
 func init() {
     dtoken.SetManager(
-        builder.NewBuilder().
+        defaults.NewBuilder().
             SetStorage(memory.NewStorage()).
             TokenName("Authorization").
             Timeout(86400).
@@ -53,7 +53,7 @@ func init() {
 
 ### 初始化说明
 
-- `builder.NewBuilder()` 用来构建 `Manager`
+- `defaults.NewBuilder()` 用来构建 `Manager`
 - `SetStorage(...)` 用来指定存储实现
 - `dtoken.SetManager(...)` 用来注册全局 `Manager`
 - 后续业务中就可以直接通过 `dtoken` 调用能力
@@ -86,7 +86,7 @@ func main() {
 你可以继续通过 Builder 调整常见配置：
 
 ```go
-mgr := builder.NewBuilder().
+mgr := defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     TokenName("token").
     Timeout(7200).
@@ -128,4 +128,4 @@ dtoken.SetManager(mgr)
 - [登录认证详解](../guide/authentication_zh.md)
 - [权限验证详解](../guide/permission_zh.md)
 - [注解使用](../guide/annotation_zh.md)
-- [单包导入](../guide/single-import_zh.md)
+- [框架集成](../guide/framework-integration_zh.md)

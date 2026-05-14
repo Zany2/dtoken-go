@@ -23,6 +23,12 @@ type KratosContext struct {
 	aborted bool
 }
 
+// Interface assertions keep request context contracts checked at compile time 接口断言在编译期检查请求上下文契约
+var (
+	_ adapter.RequestContext    = (*KratosContext)(nil)
+	_ adapter.RequestContextExt = (*KratosContext)(nil)
+)
+
 // NewKratosContext creates request context adapter NewKratosContext 创建 Kratos 请求上下文适配器
 func NewKratosContext(ctx context.Context) adapter.RequestContext {
 	return &KratosContext{ctx: ctx}

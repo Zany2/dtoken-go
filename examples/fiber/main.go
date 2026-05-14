@@ -1,395 +1,132 @@
-// @Author daixk 2026/2/2 17:10:00
 package main
 
 import (
 	"context"
-	"fmt"
+	"net/http"
 	"time"
 
-	"github.com/Zany2/dtoken-go/com/storage/redis"
 	fiberdt "github.com/Zany2/dtoken-go/integrations/fiber"
 	gofiber "github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/logger"
-	"github.com/gofiber/fiber/v2/middleware/recover"
 )
 
-// Response defines unified response body Response 定义统一响应体
+// Response defines the example response body Response 定义示例响应结构
 type Response struct {
 	Code    int         `json:"code"`
 	Message string      `json:"message"`
-	Data    interface{} `json:"data"`
+	Data    interface{} `json:"data,omitempty"`
 }
 
-// LoginRequest defines login payload LoginRequest 定义登录参数
+// LoginRequest defines the login payload LoginRequest 定义登录请求参数
 type LoginRequest struct {
 	Username string `json:"username" form:"username"`
 	Password string `json:"password" form:"password"`
 }
 
-// UserRequest defines username payload UserRequest 定义用户名参数
-type UserRequest struct {
-	Username string `json:"username" form:"username"`
-}
-
 func main() {
 	ctx := context.Background()
+	initDToken()
 
-	// initManager initializes manager initManager 初始化管理器
-	initManager(ctx)
-
-	// Create fiber app Create fiber app 创建 Fiber 应用
 	app := gofiber.New()
-	app.Use(logger.New())
-	app.Use(recover.New())
 	app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx))
+	app.Post("/login", handleLogin)
 
-	// Register public routes Register public routes 注册公开路由
-	api := app.Group("/api")
-	api.Post("/login", handleLogin)
-	api.Get("/public", handlePublic)
+	auth := app.Group("")
+	auth.Use(fiberdt.AuthMiddleware(ctx))
+	auth.Get("/me", handleMe)
+	auth.Get("/admin", fiberdt.RoleMiddleware(ctx, []string{"admin"}), handleAdmin)
+	auth.Get("/articles", fiberdt.PermissionMiddleware(ctx, []string{"article:read"}), handleArticles)
+	auth.Post("/logout", handleLogout)
 
-	// Register user routes Register user routes 注册用户路由
-	user := app.Group("/api/user")
-	user.Use(fiberdt.AuthMiddleware(ctx))
-	user.Get("/info", handleUserInfo)
-	user.Post("/logout", handleLogout)
+	_ = app.Listen(":8080")
+}
 
-	// Register admin routes Register admin routes 注册管理路由
-	admin := app.Group("/api/admin")
-	admin.Use(fiberdt.AuthMiddleware(ctx))
-	admin.Use(fiberdt.RoleMiddleware(ctx, []string{"admin"}))
-	admin.Get("/users", handleAdminUsers)
-	admin.Post("/disable", handleDisableUser)
-	admin.Post("/enable", handleEnableUser)
-
-	// Register resource routes Register resource routes 注册权限路由
-	resource := app.Group("/api/resource")
-	resource.Use(fiberdt.AuthMiddleware(ctx))
-	resource.Use(fiberdt.PermissionMiddleware(ctx, []string{"resource:read"}))
-	resource.Get("/list", handleResourceList)
-
-	// Register annotation routes Register annotation routes 注册注解路由
-	annotation := app.Group("/api/annotation")
-	annotation.Get("/profile", fiberdt.CheckLoginMiddleware(ctx, handleProfile, handleAuthFail))
-	annotation.Get("/admin-data", fiberdt.CheckRoleMiddleware(ctx, []string{"admin"}, handleAdminData, handleAuthFail))
-	annotation.Get("/sensitive", fiberdt.CheckPermissionMiddleware(ctx, []string{"data:read"}, handleSensitiveData, handleAuthFail))
-	annotation.Get("/super", fiberdt.CheckAllMiddleware(ctx, []string{"super-admin"}, []string{"all:access"}, handleSuperData, handleAuthFail))
-
-	// Print routes Print routes 打印路由信息
-	fmt.Println("Server starting on http://localhost:8080")
-	fmt.Println("Available endpoints:")
-	fmt.Println("  POST /api/login")
-	fmt.Println("  GET  /api/public")
-	fmt.Println("  GET  /api/user/info")
-	fmt.Println("  POST /api/user/logout")
-	fmt.Println("  GET  /api/admin/users")
-	fmt.Println("  POST /api/admin/disable")
-	fmt.Println("  POST /api/admin/enable")
-	fmt.Println("  GET  /api/resource/list")
-	fmt.Println("  GET  /api/annotation/*")
-
-	if err := app.Listen(":8080"); err != nil {
+// initDToken initializes integration manager initDToken 初始化集成管理器
+func initDToken() {
+	mgr, err := fiberdt.NewBuilder().
+		Timeout(int64((2 * time.Hour).Seconds())).
+		IsPrintBanner(false).
+		Build()
+	if err != nil {
 		panic(err)
 	}
+
+	fiberdt.SetManager(mgr)
 }
 
-// initManager initializes manager initManager 初始化管理器
-func initManager(ctx context.Context) {
-	// Create redis storage Create redis storage 创建 Redis 存储
-	storage, err := redis.NewStorage("redis://:root@192.168.19.104:6379/0?dial_timeout=3&read_timeout=10s&max_retries=2")
-	if err != nil {
-		panic("failed to connect redis: " + err.Error())
-	}
-
-	// Build manager Build manager 构建管理器
-	builder := fiberdt.NewDefaultBuilder()
-	manager := builder.
-		SetStorage(storage).
-		Timeout(3600).
-		ActiveTimeout(1800).
-		MaxLoginCount(3).
-		Build()
-
-	fiberdt.SetManager(manager)
-
-	fmt.Println("DToken manager initialized successfully with Fiber storage")
-	_ = ctx
-}
-
-// handleLogin handles login handleLogin 处理登录
+// handleLogin logs in a demo user handleLogin 登录示例用户
 func handleLogin(c *gofiber.Ctx) error {
 	var req LoginRequest
-	if err := c.BodyParser(&req); err != nil {
-		return c.JSON(Response{
-			Code:    fiberdt.CodeBadRequest,
-			Message: "Invalid request",
-			Data:    nil,
-		})
+	if err := c.BodyParser(&req); err != nil || req.Username == "" || req.Password == "" {
+		return writeJSON(c, http.StatusBadRequest, fiberdt.CodeBadRequest, "username and password are required", nil)
 	}
 
-	if req.Username == "" || req.Password == "" {
-		return c.JSON(Response{
-			Code:    fiberdt.CodeBadRequest,
-			Message: "Username and password are required",
-			Data:    nil,
-		})
+	if req.Password != "123456" {
+		return writeJSON(c, http.StatusUnauthorized, fiberdt.CodeNotLogin, "invalid username or password", nil)
 	}
 
-	if req.Username != "admin" || req.Password != "123456" {
-		return c.JSON(Response{
-			Code:    fiberdt.CodeNotLogin,
-			Message: "Invalid username or password",
-			Data:    nil,
-		})
-	}
-
-	// Seed auth data after login Seed auth data after login 登录后写入示例权限数据
 	token, err := fiberdt.Login(c.UserContext(), req.Username)
 	if err != nil {
-		return c.JSON(Response{
-			Code:    fiberdt.CodeServerError,
-			Message: fmt.Sprintf("Login failed: %v", err),
-			Data:    nil,
-		})
+		return writeJSON(c, http.StatusInternalServerError, fiberdt.CodeServerError, err.Error(), nil)
 	}
-	_ = fiberdt.AddRoles(c.UserContext(), req.Username, []string{"admin", "super-admin"})
-	_ = fiberdt.AddPermissions(c.UserContext(), req.Username, []string{"resource:read", "resource:write", "data:read", "all:access"})
 
-	return c.JSON(Response{
-		Code:    fiberdt.CodeSuccess,
-		Message: "Login successful",
-		Data: map[string]interface{}{
-			"token":    token,
-			"username": req.Username,
-		},
-	})
+	// Seed demo authorization data 初始化示例权限数据
+	_ = fiberdt.AddRoles(c.UserContext(), req.Username, []string{"admin"})
+	_ = fiberdt.AddPermissions(c.UserContext(), req.Username, []string{"article:read"})
+
+	return writeJSON(c, http.StatusOK, fiberdt.CodeSuccess, "ok", gofiber.Map{"token": token})
 }
 
-// handlePublic handles public endpoint handlePublic 处理公开接口
-func handlePublic(c *gofiber.Ctx) error {
-	return c.JSON(Response{
-		Code:    fiberdt.CodeSuccess,
-		Message: "This is a public endpoint",
-		Data:    "Anyone can access this",
-	})
-}
-
-// handleUserInfo handles user info handleUserInfo 处理用户信息
-func handleUserInfo(c *gofiber.Ctx) error {
+// handleMe returns current login information handleMe 返回当前登录信息
+func handleMe(c *gofiber.Ctx) error {
 	dCtx, ok := fiberdt.GetDTokenContext(c)
 	if !ok {
-		return c.JSON(Response{
-			Code:    fiberdt.CodeServerError,
-			Message: "Failed to get DToken context",
-			Data:    nil,
-		})
+		return writeJSON(c, http.StatusUnauthorized, fiberdt.CodeNotLogin, "not logged in", nil)
 	}
 
 	loginID, err := dCtx.GetLoginID(c.UserContext())
 	if err != nil {
-		return c.JSON(Response{
-			Code:    fiberdt.CodeNotLogin,
-			Message: fmt.Sprintf("Failed to get login ID: %v", err),
-			Data:    nil,
-		})
-	}
-
-	tokenInfo, err := dCtx.GetTokenInfo(c.UserContext())
-	if err != nil {
-		return c.JSON(Response{
-			Code:    fiberdt.CodeServerError,
-			Message: fmt.Sprintf("Failed to get token info: %v", err),
-			Data:    nil,
-		})
+		return writeJSON(c, http.StatusUnauthorized, fiberdt.CodeNotLogin, err.Error(), nil)
 	}
 
 	roles, _ := dCtx.GetRoles(c.UserContext())
 	permissions, _ := dCtx.GetPermissions(c.UserContext())
 
-	return c.JSON(Response{
-		Code:    fiberdt.CodeSuccess,
-		Message: "User info retrieved successfully",
-		Data: map[string]interface{}{
-			"loginID":     loginID,
-			"tokenValue":  dCtx.GetTokenValue(),
-			"device":      tokenInfo.Device,
-			"createTime":  time.Unix(tokenInfo.CreateTime, 0).Format("2006-01-02 15:04:05"),
-			"roles":       roles,
-			"permissions": permissions,
-		},
+	return writeJSON(c, http.StatusOK, fiberdt.CodeSuccess, "ok", gofiber.Map{
+		"loginId":     loginID,
+		"roles":       roles,
+		"permissions": permissions,
 	})
 }
 
-// handleLogout handles logout handleLogout 处理退出登录
+// handleAdmin returns admin data handleAdmin 返回管理员数据
+func handleAdmin(c *gofiber.Ctx) error {
+	return writeJSON(c, http.StatusOK, fiberdt.CodeSuccess, "ok", gofiber.Map{"scope": "admin"})
+}
+
+// handleArticles returns protected article data handleArticles 返回受保护的文章数据
+func handleArticles(c *gofiber.Ctx) error {
+	return writeJSON(c, http.StatusOK, fiberdt.CodeSuccess, "ok", []string{"article-a", "article-b"})
+}
+
+// handleLogout logs out current token handleLogout 注销当前 Token
 func handleLogout(c *gofiber.Ctx) error {
 	dCtx, ok := fiberdt.GetDTokenContext(c)
 	if !ok {
-		return c.JSON(Response{
-			Code:    fiberdt.CodeNotLogin,
-			Message: "Not logged in",
-			Data:    nil,
-		})
+		return writeJSON(c, http.StatusUnauthorized, fiberdt.CodeNotLogin, "not logged in", nil)
 	}
 
 	if err := dCtx.Logout(c.UserContext()); err != nil {
-		return c.JSON(Response{
-			Code:    fiberdt.CodeServerError,
-			Message: fmt.Sprintf("Logout failed: %v", err),
-			Data:    nil,
-		})
+		return writeJSON(c, http.StatusInternalServerError, fiberdt.CodeServerError, err.Error(), nil)
 	}
 
-	return c.JSON(Response{
-		Code:    fiberdt.CodeSuccess,
-		Message: "Logout successful",
-		Data:    nil,
-	})
+	return writeJSON(c, http.StatusOK, fiberdt.CodeSuccess, "ok", nil)
 }
 
-// handleAdminUsers handles admin users handleAdminUsers 处理管理用户列表
-func handleAdminUsers(c *gofiber.Ctx) error {
-	return c.JSON(Response{
-		Code:    fiberdt.CodeSuccess,
-		Message: "Admin users list",
-		Data: []map[string]interface{}{
-			{"id": 1, "username": "admin", "role": "admin"},
-			{"id": 2, "username": "user1", "role": "user"},
-		},
-	})
-}
-
-// handleDisableUser handles disable handleDisableUser 处理封禁用户
-func handleDisableUser(c *gofiber.Ctx) error {
-	var req UserRequest
-	if err := c.BodyParser(&req); err != nil || req.Username == "" {
-		return c.JSON(Response{
-			Code:    fiberdt.CodeBadRequest,
-			Message: "Username is required",
-			Data:    nil,
-		})
-	}
-
-	if err := fiberdt.Disable(c.UserContext(), req.Username, time.Hour, "Violated terms of service"); err != nil {
-		return c.JSON(Response{
-			Code:    fiberdt.CodeServerError,
-			Message: fmt.Sprintf("Failed to disable user: %v", err),
-			Data:    nil,
-		})
-	}
-
-	return c.JSON(Response{
-		Code:    fiberdt.CodeSuccess,
-		Message: fmt.Sprintf("User %s has been disabled for 1 hour", req.Username),
-		Data:    nil,
-	})
-}
-
-// handleEnableUser handles enable handleEnableUser 处理解除封禁
-func handleEnableUser(c *gofiber.Ctx) error {
-	var req UserRequest
-	if err := c.BodyParser(&req); err != nil || req.Username == "" {
-		return c.JSON(Response{
-			Code:    fiberdt.CodeBadRequest,
-			Message: "Username is required",
-			Data:    nil,
-		})
-	}
-
-	if err := fiberdt.Untie(c.UserContext(), req.Username); err != nil {
-		return c.JSON(Response{
-			Code:    fiberdt.CodeServerError,
-			Message: fmt.Sprintf("Failed to enable user: %v", err),
-			Data:    nil,
-		})
-	}
-
-	return c.JSON(Response{
-		Code:    fiberdt.CodeSuccess,
-		Message: fmt.Sprintf("User %s has been enabled", req.Username),
-		Data:    nil,
-	})
-}
-
-// handleResourceList handles resource list handleResourceList 处理资源列表
-func handleResourceList(c *gofiber.Ctx) error {
-	return c.JSON(Response{
-		Code:    fiberdt.CodeSuccess,
-		Message: "Resource list",
-		Data: []map[string]interface{}{
-			{"id": 1, "name": "Resource 1", "type": "document"},
-			{"id": 2, "name": "Resource 2", "type": "image"},
-		},
-	})
-}
-
-// handleProfile handles profile handleProfile 处理个人资料
-func handleProfile(c *gofiber.Ctx) error {
-	dCtx, _ := fiberdt.GetDTokenContext(c)
-	loginID, _ := dCtx.GetLoginID(c.UserContext())
-
-	return c.JSON(Response{
-		Code:    fiberdt.CodeSuccess,
-		Message: "Profile data",
-		Data: map[string]interface{}{
-			"username": loginID,
-			"email":    loginID + "@example.com",
-		},
-	})
-}
-
-// handleAdminData handles admin data handleAdminData 处理管理数据
-func handleAdminData(c *gofiber.Ctx) error {
-	return c.JSON(Response{
-		Code:    fiberdt.CodeSuccess,
-		Message: "Admin data",
-		Data:    "This is admin-only data",
-	})
-}
-
-// handleSensitiveData handles sensitive data handleSensitiveData 处理敏感数据
-func handleSensitiveData(c *gofiber.Ctx) error {
-	return c.JSON(Response{
-		Code:    fiberdt.CodeSuccess,
-		Message: "Sensitive data",
-		Data:    "This is sensitive data requiring data:read permission",
-	})
-}
-
-// handleSuperData handles super data handleSuperData 处理超级管理数据
-func handleSuperData(c *gofiber.Ctx) error {
-	return c.JSON(Response{
-		Code:    fiberdt.CodeSuccess,
-		Message: "Super admin data",
-		Data:    "This requires super-admin role and all:access permission",
-	})
-}
-
-// handleAuthFail handles auth failure handleAuthFail 处理鉴权失败
-func handleAuthFail(c *gofiber.Ctx, err error) {
-	var code int
-	var message string
-
-	switch err {
-	case fiberdt.ErrNotLogin:
-		code = fiberdt.CodeNotLogin
-		message = "Not logged in"
-	case fiberdt.ErrPermissionDenied:
-		code = fiberdt.CodePermissionDenied
-		message = "Permission denied"
-	case fiberdt.ErrRoleDenied:
-		code = fiberdt.CodePermissionDenied
-		message = "Role denied"
-	case fiberdt.ErrAccountDisabled:
-		code = fiberdt.CodeAccountDisabled
-		message = "Account disabled"
-	default:
-		code = fiberdt.CodeServerError
-		message = err.Error()
-	}
-
-	_ = c.Status(gofiber.StatusOK).JSON(Response{
+// writeJSON writes a unified JSON response writeJSON 写入统一 JSON 响应
+func writeJSON(c *gofiber.Ctx, httpStatus int, code int, message string, data interface{}) error {
+	return c.Status(httpStatus).JSON(Response{
 		Code:    code,
 		Message: message,
-		Data:    nil,
+		Data:    data,
 	})
 }

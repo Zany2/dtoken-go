@@ -1,4 +1,4 @@
-[English](architecture.md) | 中文文档
+﻿[English](architecture.md) | 中文文档
 
 # 架构设计
 
@@ -104,7 +104,7 @@
 ### 1. Builder 模式
 
 ```go
-mgr := builder.NewBuilder().
+mgr := defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     TokenName("Authorization").
     Timeout(86400).

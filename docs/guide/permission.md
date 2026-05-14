@@ -1,4 +1,4 @@
-# Permission Management
+﻿# Permission Management
 
 [中文文档](permission_zh.md) | English
 
@@ -7,7 +7,7 @@
 In the current version, permissions and roles come from two places:
 
 1. `Session` fields: `Permissions` and `Roles`
-2. Custom callbacks configured through `builder.NewBuilder()`
+2. Custom callbacks configured through `defaults.NewBuilder()`
 
 Priority rules:
 
@@ -23,13 +23,13 @@ import (
     "context"
 
     "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/core/builder"
+    "github.com/Zany2/dtoken-go/defaults"
     "github.com/Zany2/dtoken-go/dtoken"
 )
 
 func initDToken() {
     dtoken.SetManager(
-        builder.NewBuilder().
+        defaults.NewBuilder().
             SetStorage(memory.NewStorage()).
             Build(),
     )
@@ -222,7 +222,7 @@ _ = dtoken.UntieService(ctx, "10001", "comment")
 
 ```go
 dtoken.SetManager(
-    builder.NewBuilder().
+    defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         SetCustomPermissionListFunc(func(loginID, authType string) ([]string, error) {
             if loginID == "10001" {
@@ -243,7 +243,7 @@ dtoken.SetManager(
 Extended callbacks can also use `device` and `deviceId`:
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetCustomPermissionListExtFunc(func(loginID, device, deviceId, authType string) ([]string, error) {
         if device == "app" {
             return []string{"mobile:read", "mobile:write"}, nil

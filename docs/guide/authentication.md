@@ -1,4 +1,4 @@
-# Authentication Guide
+﻿# Authentication Guide
 
 [中文文档](authentication_zh.md) | English
 
@@ -13,13 +13,13 @@ import (
     "context"
 
     "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/core/builder"
+    "github.com/Zany2/dtoken-go/defaults"
     "github.com/Zany2/dtoken-go/dtoken"
 )
 
 func initDToken() {
     dtoken.SetManager(
-        builder.NewBuilder().
+        defaults.NewBuilder().
             SetStorage(memory.NewStorage()).
             Build(),
     )
@@ -210,7 +210,7 @@ singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, "10001
 
 ```go
 dtoken.SetManager(
-    builder.NewBuilder().
+    defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         IsConcurrent(true).
         Build(),
@@ -224,7 +224,7 @@ dtoken.SetManager(
 
 ```go
 dtoken.SetManager(
-    builder.NewBuilder().
+    defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         IsConcurrent(true).
         IsShare(true).
@@ -239,7 +239,7 @@ When `IsConcurrent(true)` and `IsShare(false)` are both set, each login creates 
 
 ```go
 dtoken.SetManager(
-    builder.NewBuilder().
+    defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         IsConcurrent(true).
         IsShare(false).
@@ -256,7 +256,7 @@ When `MaxLoginCount > 0`, older terminals beyond the limit are removed automatic
 
 ```go
 dtoken.SetManager(
-    builder.NewBuilder().
+    defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         Timeout(24 * 60 * 60).
         AutoRenew(true).
@@ -283,7 +283,7 @@ This avoids unnecessary renewals on high-frequency traffic.
 
 ```go
 dtoken.SetManager(
-    builder.NewBuilder().
+    defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         Timeout(24 * 60 * 60).
         ActiveTimeout(30 * 60).
@@ -306,7 +306,7 @@ When `ActiveTimeout` is enabled:
 
 ```go
 dtoken.SetManager(
-    builder.NewBuilder().
+    defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         TokenName("dtoken").
         Timeout(24 * 60 * 60).

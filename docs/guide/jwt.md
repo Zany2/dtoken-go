@@ -1,4 +1,4 @@
-# JWT Guide
+﻿# JWT Guide
 
 [中文文档](jwt_zh.md) | English
 
@@ -6,9 +6,9 @@
 
 The current project supports switching the token generation style to `JWT` through:
 
-- `builder.NewBuilder().TokenStyle(TokenStyleJWT)`
-- `builder.NewBuilder().JwtSecretKey(...)`
-- `builder.NewBuilder().JwtSecret(...)`
+- `defaults.NewBuilder().TokenStyle(TokenStyleJWT)`
+- `defaults.NewBuilder().JwtSecretKey(...)`
+- `defaults.NewBuilder().JwtSecret(...)`
 
 ## Important Note
 
@@ -51,13 +51,13 @@ import (
 
     "github.com/Zany2/dtoken-go/com/storage/memory"
     "github.com/Zany2/dtoken-go/core/adapter"
-    "github.com/Zany2/dtoken-go/core/builder"
+    "github.com/Zany2/dtoken-go/defaults"
     "github.com/Zany2/dtoken-go/dtoken"
 )
 
 func initDToken() {
     dtoken.SetManager(
-        builder.NewBuilder().
+        defaults.NewBuilder().
             SetStorage(memory.NewStorage()).
             TokenStyle(adapter.TokenStyleJWT).
             JwtSecretKey("your-very-strong-secret-key").
@@ -76,7 +76,7 @@ func main() {
 ### Shortcut
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     JwtSecret("your-very-strong-secret-key").
     Timeout(2 * 60 * 60).
@@ -153,4 +153,4 @@ JWT is signed, not encrypted. It should still be transported over HTTPS in produ
 
 - [Authentication Guide](authentication.md)
 - [Redis Storage](redis-storage.md)
-- [Single Import Guide](single-import.md)
+- [Framework Integration Guide](framework-integration.md)

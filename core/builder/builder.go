@@ -1,19 +1,30 @@
 package builder
 
 import (
-	djson "github.com/Zany2/dtoken-go/com/codec/json"
-	"github.com/Zany2/dtoken-go/com/generator/dgenerator"
-	"github.com/Zany2/dtoken-go/com/log/dlog"
-	"github.com/Zany2/dtoken-go/com/log/nop"
-	"github.com/Zany2/dtoken-go/com/pool/ants"
-	"github.com/Zany2/dtoken-go/com/storage/memory"
+	"fmt"
+	"strings"
+	"time"
+
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/banner"
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/manager"
-	"strings"
-	"time"
 )
+
+// GeneratorFactory creates default token generator GeneratorFactory 创建默认 Token 生成器
+type GeneratorFactory func(cfg *config.Config) (adapter.Generator, error)
+
+// StorageFactory creates default storage adapter StorageFactory 创建默认存储适配器
+type StorageFactory func(cfg *config.Config) (adapter.Storage, error)
+
+// CodecFactory creates default codec adapter CodecFactory 创建默认编解码器适配器
+type CodecFactory func(cfg *config.Config) (adapter.Codec, error)
+
+// LogFactory creates default log adapter LogFactory 创建默认日志适配器
+type LogFactory func(cfg *config.Config) (adapter.Log, error)
+
+// PoolFactory creates default async task pool PoolFactory 创建默认异步任务池
+type PoolFactory func(cfg *config.Config) (adapter.Pool, error)
 
 // Builder defines manager builder Builder 定义 Manager 构建器
 type Builder struct {
@@ -38,15 +49,19 @@ type Builder struct {
 	isPrintBanner    bool                    // isPrintBanner controls banner print isPrintBanner 控制是否打印启动 Banner
 	asyncEvent       bool                    // asyncEvent controls async event asyncEvent 控制是否异步触发事件
 
-	cookieConfig    *config.CookieConfig  // cookieConfig stores cookie config cookieConfig 存储 Cookie 配置
-	renewPoolConfig *ants.RenewPoolConfig // renewPoolConfig stores renew pool config renewPoolConfig 存储续期协程池配置
-	logConfig       *dlog.LoggerConfig    // logConfig stores logger config logConfig 存储日志配置
+	cookieConfig *config.CookieConfig // cookieConfig stores cookie config cookieConfig 存储 Cookie 配置
 
 	generator adapter.Generator // generator stores token generator generator 存储 Token 生成器
 	storage   adapter.Storage   // storage stores storage adapter storage 存储存储适配器
 	codec     adapter.Codec     // codec stores codec adapter codec 存储编解码器适配器
 	log       adapter.Log       // log stores log adapter log 存储日志适配器
 	pool      adapter.Pool      // pool stores async task pool pool 存储异步任务协程池组件
+
+	generatorFactory GeneratorFactory // generatorFactory creates default generator generatorFactory 创建默认生成器
+	storageFactory   StorageFactory   // storageFactory creates default storage storageFactory 创建默认存储
+	codecFactory     CodecFactory     // codecFactory creates default codec codecFactory 创建默认编解码器
+	logFactory       LogFactory       // logFactory creates default logger logFactory 创建默认日志
+	poolFactory      PoolFactory      // poolFactory creates default pool poolFactory 创建默认协程池
 
 	customPermissionListFunc    func(loginID, authType string) ([]string, error)                   // customPermissionListFunc stores custom permission callback customPermissionListFunc 存储自定义权限列表回调
 	customRoleListFunc          func(loginID, authType string) ([]string, error)                   // customRoleListFunc stores custom role callback customRoleListFunc 存储自定义角色列表回调
@@ -73,13 +88,12 @@ func NewBuilder() *Builder {
 		isReadHeader:     true,
 		isReadCookie:     false,
 		tokenStyle:       adapter.TokenStyleUUID,
-		jwtSecretKey:     dgenerator.DefaultJWTSecret,
+		jwtSecretKey:     config.DefaultJWTSecretKey,
 		isLog:            false,
 		isPrintBanner:    true,
 		asyncEvent:       true,
 
-		cookieConfig:    config.DefaultCookieConfig(),
-		renewPoolConfig: ants.DefaultRenewPoolConfig(),
+		cookieConfig: config.DefaultCookieConfig(),
 	}
 }
 
@@ -281,207 +295,6 @@ func (b *Builder) CookieConfig(cfg *config.CookieConfig) *Builder {
 	return b
 }
 
-// RenewPoolMinSize sets renew pool min size RenewPoolMinSize 设置续期协程池最小协程数
-func (b *Builder) RenewPoolMinSize(size int) *Builder {
-	if b.renewPoolConfig == nil {
-		b.renewPoolConfig = &ants.RenewPoolConfig{}
-	}
-	b.renewPoolConfig.MinSize = size
-	return b
-}
-
-// RenewPoolMaxSize sets renew pool max size RenewPoolMaxSize 设置续期协程池最大协程数
-func (b *Builder) RenewPoolMaxSize(size int) *Builder {
-	if b.renewPoolConfig == nil {
-		b.renewPoolConfig = &ants.RenewPoolConfig{}
-	}
-	b.renewPoolConfig.MaxSize = size
-	return b
-}
-
-// RenewPoolScaleUpRate sets renew pool scale up rate RenewPoolScaleUpRate 设置协程池扩容触发比例
-func (b *Builder) RenewPoolScaleUpRate(rate float64) *Builder {
-	if b.renewPoolConfig == nil {
-		b.renewPoolConfig = &ants.RenewPoolConfig{}
-	}
-	b.renewPoolConfig.ScaleUpRate = rate
-	return b
-}
-
-// RenewPoolScaleDownRate sets renew pool scale down rate RenewPoolScaleDownRate 设置协程池缩容触发比例
-func (b *Builder) RenewPoolScaleDownRate(rate float64) *Builder {
-	if b.renewPoolConfig == nil {
-		b.renewPoolConfig = &ants.RenewPoolConfig{}
-	}
-	b.renewPoolConfig.ScaleDownRate = rate
-	return b
-}
-
-// RenewPoolCheckInterval sets pool check interval RenewPoolCheckInterval 设置协程池扩缩容检查间隔
-func (b *Builder) RenewPoolCheckInterval(interval time.Duration) *Builder {
-	if b.renewPoolConfig == nil {
-		b.renewPoolConfig = &ants.RenewPoolConfig{}
-	}
-	b.renewPoolConfig.CheckInterval = interval
-	return b
-}
-
-// RenewPoolExpiry sets pool worker expiry RenewPoolExpiry 设置协程池空闲协程过期时间
-func (b *Builder) RenewPoolExpiry(duration time.Duration) *Builder {
-	if b.renewPoolConfig == nil {
-		b.renewPoolConfig = &ants.RenewPoolConfig{}
-	}
-	b.renewPoolConfig.Expiry = duration
-	return b
-}
-
-// RenewPoolPrintStatusInterval sets pool status print interval RenewPoolPrintStatusInterval 设置协程池状态打印间隔
-func (b *Builder) RenewPoolPrintStatusInterval(interval time.Duration) *Builder {
-	if b.renewPoolConfig == nil {
-		b.renewPoolConfig = &ants.RenewPoolConfig{}
-	}
-	b.renewPoolConfig.PrintStatusInterval = interval
-	return b
-}
-
-// RenewPoolPreAlloc sets pool pre alloc switch RenewPoolPreAlloc 设置协程池是否预分配内存
-func (b *Builder) RenewPoolPreAlloc(preAlloc bool) *Builder {
-	if b.renewPoolConfig == nil {
-		b.renewPoolConfig = &ants.RenewPoolConfig{}
-	}
-	b.renewPoolConfig.PreAlloc = preAlloc
-	return b
-}
-
-// RenewPoolNonBlocking sets pool non blocking switch RenewPoolNonBlocking 设置协程池是否为非阻塞模式
-func (b *Builder) RenewPoolNonBlocking(nonBlocking bool) *Builder {
-	if b.renewPoolConfig == nil {
-		b.renewPoolConfig = &ants.RenewPoolConfig{}
-	}
-	b.renewPoolConfig.NonBlocking = nonBlocking
-	return b
-}
-
-// RenewPoolConfig sets full renew pool config RenewPoolConfig 设置完整续期协程池配置
-func (b *Builder) RenewPoolConfig(cfg *ants.RenewPoolConfig) *Builder {
-	b.renewPoolConfig = cfg
-	return b
-}
-
-// LoggerPath sets logger path LoggerPath 设置日志文件目录路径
-func (b *Builder) LoggerPath(path string) *Builder {
-	if b.logConfig == nil {
-		b.logConfig = &dlog.LoggerConfig{}
-	}
-	b.logConfig.Path = path
-	return b
-}
-
-// LoggerFileFormat sets logger file format LoggerFileFormat 设置日志文件命名格式
-func (b *Builder) LoggerFileFormat(format string) *Builder {
-	if b.logConfig == nil {
-		b.logConfig = &dlog.LoggerConfig{}
-	}
-	b.logConfig.FileFormat = format
-	return b
-}
-
-// LoggerPrefix sets logger prefix LoggerPrefix 设置日志行前缀
-func (b *Builder) LoggerPrefix(prefix string) *Builder {
-	if b.logConfig == nil {
-		b.logConfig = &dlog.LoggerConfig{}
-	}
-	b.logConfig.Prefix = prefix
-	return b
-}
-
-// LoggerLevel sets logger level LoggerLevel 设置日志最低输出级别
-func (b *Builder) LoggerLevel(level dlog.LogLevel) *Builder {
-	if b.logConfig == nil {
-		b.logConfig = &dlog.LoggerConfig{}
-	}
-	b.logConfig.Level = level
-	return b
-}
-
-// LoggerTimeFormat sets logger time format LoggerTimeFormat 设置日志时间戳格式
-func (b *Builder) LoggerTimeFormat(format string) *Builder {
-	if b.logConfig == nil {
-		b.logConfig = &dlog.LoggerConfig{}
-	}
-	b.logConfig.TimeFormat = format
-	return b
-}
-
-// LoggerStdout sets stdout switch LoggerStdout 设置是否将日志输出到控制台
-func (b *Builder) LoggerStdout(stdout bool) *Builder {
-	if b.logConfig == nil {
-		b.logConfig = &dlog.LoggerConfig{}
-	}
-	b.logConfig.Stdout = stdout
-	return b
-}
-
-// LoggerStdoutOnly sets stdout only switch LoggerStdoutOnly 设置是否仅输出到控制台
-func (b *Builder) LoggerStdoutOnly(stdoutOnly bool) *Builder {
-	if b.logConfig == nil {
-		b.logConfig = &dlog.LoggerConfig{}
-	}
-	b.logConfig.StdoutOnly = stdoutOnly
-	return b
-}
-
-// LoggerQueueSize sets logger queue size LoggerQueueSize 设置日志异步写入队列大小
-func (b *Builder) LoggerQueueSize(size int) *Builder {
-	if b.logConfig == nil {
-		b.logConfig = &dlog.LoggerConfig{}
-	}
-	b.logConfig.QueueSize = size
-	return b
-}
-
-// LoggerRotateSize sets rotate size LoggerRotateSize 设置日志文件滚动大小阈值
-func (b *Builder) LoggerRotateSize(size int64) *Builder {
-	if b.logConfig == nil {
-		b.logConfig = &dlog.LoggerConfig{}
-	}
-	b.logConfig.RotateSize = size
-	return b
-}
-
-// LoggerRotateExpire sets rotate expire LoggerRotateExpire 设置日志文件按时间滚动间隔
-func (b *Builder) LoggerRotateExpire(expire time.Duration) *Builder {
-	if b.logConfig == nil {
-		b.logConfig = &dlog.LoggerConfig{}
-	}
-	b.logConfig.RotateExpire = expire
-	return b
-}
-
-// LoggerRotateBackupLimit sets backup limit LoggerRotateBackupLimit 设置日志备份文件最大数量
-func (b *Builder) LoggerRotateBackupLimit(limit int) *Builder {
-	if b.logConfig == nil {
-		b.logConfig = &dlog.LoggerConfig{}
-	}
-	b.logConfig.RotateBackupLimit = limit
-	return b
-}
-
-// LoggerRotateBackupDays sets backup retain days LoggerRotateBackupDays 设置日志备份文件保留天数
-func (b *Builder) LoggerRotateBackupDays(days int) *Builder {
-	if b.logConfig == nil {
-		b.logConfig = &dlog.LoggerConfig{}
-	}
-	b.logConfig.RotateBackupDays = days
-	return b
-}
-
-// LoggerConfig sets full logger config LoggerConfig 设置完整日志配置
-func (b *Builder) LoggerConfig(cfg *dlog.LoggerConfig) *Builder {
-	b.logConfig = cfg
-	return b
-}
-
 // SetGenerator sets token generator SetGenerator 设置 Token 生成器
 func (b *Builder) SetGenerator(generator adapter.Generator) *Builder {
 	b.generator = generator
@@ -509,6 +322,36 @@ func (b *Builder) SetLog(log adapter.Log) *Builder {
 // SetPool sets async task pool SetPool 设置异步任务协程池
 func (b *Builder) SetPool(pool adapter.Pool) *Builder {
 	b.pool = pool
+	return b
+}
+
+// SetGeneratorFactory sets default generator factory SetGeneratorFactory 设置默认 Token 生成器工厂
+func (b *Builder) SetGeneratorFactory(factory GeneratorFactory) *Builder {
+	b.generatorFactory = factory
+	return b
+}
+
+// SetStorageFactory sets default storage factory SetStorageFactory 设置默认存储工厂
+func (b *Builder) SetStorageFactory(factory StorageFactory) *Builder {
+	b.storageFactory = factory
+	return b
+}
+
+// SetCodecFactory sets default codec factory SetCodecFactory 设置默认编解码器工厂
+func (b *Builder) SetCodecFactory(factory CodecFactory) *Builder {
+	b.codecFactory = factory
+	return b
+}
+
+// SetLogFactory sets default log factory SetLogFactory 设置默认日志工厂
+func (b *Builder) SetLogFactory(factory LogFactory) *Builder {
+	b.logFactory = factory
+	return b
+}
+
+// SetPoolFactory sets default pool factory SetPoolFactory 设置默认协程池工厂
+func (b *Builder) SetPoolFactory(factory PoolFactory) *Builder {
+	b.poolFactory = factory
 	return b
 }
 
@@ -550,19 +393,11 @@ func (b *Builder) Clone() *Builder {
 		cookieCopy := *b.cookieConfig
 		clone.cookieConfig = &cookieCopy
 	}
-	if b.renewPoolConfig != nil {
-		poolCopy := *b.renewPoolConfig
-		clone.renewPoolConfig = &poolCopy
-	}
-	if b.logConfig != nil {
-		logCopy := *b.logConfig
-		clone.logConfig = &logCopy
-	}
 	return &clone
 }
 
-// Build builds manager and prints banner Build 构建 Manager 实例并打印启动 Banner
-func (b *Builder) Build() *manager.Manager {
+// Build builds manager and returns configuration errors Build 构建 Manager 实例并返回配置错误
+func (b *Builder) Build() (*manager.Manager, error) {
 	if b.cookieConfig == nil {
 		b.cookieConfig = config.DefaultCookieConfig()
 	}
@@ -593,63 +428,65 @@ func (b *Builder) Build() *manager.Manager {
 
 	err := cfg.Validate()
 	if err != nil {
-		panic("Build Manager Invalid config err: " + err.Error())
+		return nil, fmt.Errorf("build manager invalid config: %w", err)
 	}
 
 	if b.generator == nil {
-		b.generator = dgenerator.NewGenerator(b.timeout, b.jwtSecretKey, b.tokenStyle)
+		if b.generatorFactory != nil {
+			b.generator, err = b.generatorFactory(cfg)
+			if err != nil {
+				return nil, fmt.Errorf("build manager create generator: %w", err)
+			}
+		}
+		if b.generator == nil {
+			return nil, fmt.Errorf("build manager missing generator: call SetGenerator or SetGeneratorFactory")
+		}
 	}
+
 	if b.storage == nil {
-		b.storage = memory.NewStorage()
+		if b.storageFactory != nil {
+			b.storage, err = b.storageFactory(cfg)
+			if err != nil {
+				return nil, fmt.Errorf("build manager create storage: %w", err)
+			}
+		}
+		if b.storage == nil {
+			return nil, fmt.Errorf("build manager missing storage: call SetStorage or SetStorageFactory")
+		}
 	}
+
 	if b.codec == nil {
-		b.codec = djson.NewJSONSerializer()
+		if b.codecFactory != nil {
+			b.codec, err = b.codecFactory(cfg)
+			if err != nil {
+				return nil, fmt.Errorf("build manager create codec: %w", err)
+			}
+		}
+		if b.codec == nil {
+			return nil, fmt.Errorf("build manager missing codec: call SetCodec or SetCodecFactory")
+		}
 	}
 
 	if b.isLog {
 		if b.log == nil {
-			if b.logConfig == nil {
-				b.logConfig = dlog.DefaultLoggerConfig()
+			if b.logFactory != nil {
+				b.log, err = b.logFactory(cfg)
 			}
-			b.log, err = dlog.NewLoggerWithConfig(b.logConfig)
 			if err != nil {
-				panic("Build Manager Invalid LoggerConfig err: " + err.Error())
+				return nil, fmt.Errorf("build manager create logger: %w", err)
+			}
+			if b.log == nil {
+				return nil, fmt.Errorf("build manager missing logger: call SetLog or SetLogFactory")
 			}
 		}
 	} else {
-		b.log = nop.NewNopLogger()
+		b.log = adapter.NewNopLogger()
 	}
 
-	if b.autoRenew {
-		if b.pool == nil {
-			if b.renewPoolConfig == nil {
-				b.renewPoolConfig = ants.DefaultRenewPoolConfig()
-			}
-			err = b.renewPoolConfig.Validate()
-			if err != nil {
-				panic("Build Manager Invalid RenewPoolConfig err: " + err.Error())
-			}
-			b.pool, err = ants.NewRenewPoolManagerWithConfig(b.renewPoolConfig)
-			if err != nil {
-				panic("Build Manager NewRenewPoolManagerWithConfig err: " + err.Error())
-			}
-		}
-
-		if b.renewPoolConfig.PrintStatusInterval > 0 {
-			ticker := time.NewTicker(b.renewPoolConfig.PrintStatusInterval)
-			go func() {
-				defer ticker.Stop()
-				for {
-					select {
-					case <-ticker.C:
-						running, capacity, usage := b.pool.Stats()
-						b.log.Infof(
-							"builder.Build: renew pool status, capacity=%d, running=%d, usage=%.2f%%",
-							capacity, running, usage*100,
-						)
-					}
-				}
-			}()
+	if b.autoRenew && b.pool == nil && b.poolFactory != nil {
+		b.pool, err = b.poolFactory(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("build manager create renew pool: %w", err)
 		}
 	}
 
@@ -657,5 +494,16 @@ func (b *Builder) Build() *manager.Manager {
 		banner.PrintBanner(cfg)
 	}
 
-	return manager.NewManager(cfg, b.generator, b.storage, b.codec, b.log, b.pool, b.customPermissionListFunc, b.customRoleListFunc, b.customPermissionListExtFunc, b.customRoleListExtFunc)
+	mgr := manager.NewManager(cfg, b.generator, b.storage, b.codec, b.log, b.pool, b.customPermissionListFunc, b.customRoleListFunc, b.customPermissionListExtFunc, b.customRoleListExtFunc)
+
+	return mgr, nil
+}
+
+// MustBuild builds manager and panics on error MustBuild 构建 Manager，失败时触发 panic
+func (b *Builder) MustBuild() *manager.Manager {
+	mgr, err := b.Build()
+	if err != nil {
+		panic(err)
+	}
+	return mgr
 }

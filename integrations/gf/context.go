@@ -13,6 +13,9 @@ type GFContext struct {
 	aborted bool
 }
 
+// Interface assertion keeps request context contract checked at compile time 接口断言在编译期检查请求上下文契约
+var _ adapter.RequestContext = (*GFContext)(nil)
+
 // NewGFContext creates request context adapter 创建请求上下文适配器
 func NewGFContext(c *ghttp.Request) adapter.RequestContext {
 	return &GFContext{

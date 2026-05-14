@@ -1,4 +1,4 @@
-# 权限管理
+﻿# 权限管理
 
 [English](permission.md) | 中文文档
 
@@ -7,7 +7,7 @@
 当前版本的权限与角色数据主要有两种来源：
 
 1. `Session` 中维护的 `Permissions`、`Roles`
-2. 通过 `builder.NewBuilder()` 注入的自定义回调
+2. 通过 `defaults.NewBuilder()` 注入的自定义回调
 
 优先级方面：
 
@@ -23,13 +23,13 @@ import (
     "context"
 
     "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/core/builder"
+    "github.com/Zany2/dtoken-go/defaults"
     "github.com/Zany2/dtoken-go/dtoken"
 )
 
 func initDToken() {
     dtoken.SetManager(
-        builder.NewBuilder().
+        defaults.NewBuilder().
             SetStorage(memory.NewStorage()).
             Build(),
     )
@@ -222,7 +222,7 @@ _ = dtoken.UntieService(ctx, "10001", "comment")
 
 ```go
 dtoken.SetManager(
-    builder.NewBuilder().
+    defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         SetCustomPermissionListFunc(func(loginID, authType string) ([]string, error) {
             if loginID == "10001" {
@@ -243,7 +243,7 @@ dtoken.SetManager(
 扩展回调还支持拿到 `device`、`deviceId`：
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetCustomPermissionListExtFunc(func(loginID, device, deviceId, authType string) ([]string, error) {
         if device == "app" {
             return []string{"mobile:read", "mobile:write"}, nil

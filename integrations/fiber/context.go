@@ -11,6 +11,9 @@ type FiberContext struct {
 	aborted bool
 }
 
+// Interface assertion keeps request context contract checked at compile time 接口断言在编译期检查请求上下文契约
+var _ adapter.RequestContext = (*FiberContext)(nil)
+
 // NewFiberContext creates a Fiber request context adapter NewFiberContext 创建 Fiber 请求上下文适配器。
 func NewFiberContext(c *gofiber.Ctx) adapter.RequestContext {
 	return &FiberContext{c: c}

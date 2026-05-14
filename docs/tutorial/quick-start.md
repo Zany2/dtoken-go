@@ -1,4 +1,4 @@
-# Quick Start
+﻿# Quick Start
 
 [中文文档](quick-start_zh.md) | English
 
@@ -34,7 +34,7 @@ import (
     "context"
 
     "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/core/builder"
+    "github.com/Zany2/dtoken-go/defaults"
     "github.com/Zany2/dtoken-go/dtoken"
 )
 
@@ -42,7 +42,7 @@ var ctx = context.Background()
 
 func init() {
     dtoken.SetManager(
-        builder.NewBuilder().
+        defaults.NewBuilder().
             SetStorage(memory.NewStorage()).
             TokenName("Authorization").
             Timeout(86400).
@@ -53,7 +53,7 @@ func init() {
 
 ### Initialization Notes
 
-- `builder.NewBuilder()` is used to build a `Manager`
+- `defaults.NewBuilder()` is used to build a `Manager`
 - `SetStorage(...)` specifies the storage implementation
 - `dtoken.SetManager(...)` registers the global `Manager`
 - after that, application code can call capability directly through `dtoken`
@@ -86,7 +86,7 @@ func main() {
 You can continue adjusting common settings through the Builder:
 
 ```go
-mgr := builder.NewBuilder().
+mgr := defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     TokenName("token").
     Timeout(7200).
@@ -128,4 +128,4 @@ After these steps, you already understand the most basic usage of the current DT
 - [Authentication Guide](../guide/authentication.md)
 - [Permission Guide](../guide/permission.md)
 - [Annotation Guide](../guide/annotation.md)
-- [Single Import Guide](../guide/single-import.md)
+- [Framework Integration Guide](../guide/framework-integration.md)

@@ -1,4 +1,4 @@
-# JWT 指南
+﻿# JWT 指南
 
 [English](jwt.md) | 中文文档
 
@@ -6,9 +6,9 @@
 
 当前项目支持把 Token 生成风格切换为 `JWT`，入口是：
 
-- `builder.NewBuilder().TokenStyle(TokenStyleJWT)`
-- `builder.NewBuilder().JwtSecretKey(...)`
-- `builder.NewBuilder().JwtSecret(...)`
+- `defaults.NewBuilder().TokenStyle(TokenStyleJWT)`
+- `defaults.NewBuilder().JwtSecretKey(...)`
+- `defaults.NewBuilder().JwtSecret(...)`
 
 ## 重要说明
 
@@ -59,13 +59,13 @@ import (
 
     "github.com/Zany2/dtoken-go/com/storage/memory"
     "github.com/Zany2/dtoken-go/core/adapter"
-    "github.com/Zany2/dtoken-go/core/builder"
+    "github.com/Zany2/dtoken-go/defaults"
     "github.com/Zany2/dtoken-go/dtoken"
 )
 
 func initDToken() {
     dtoken.SetManager(
-        builder.NewBuilder().
+        defaults.NewBuilder().
             SetStorage(memory.NewStorage()).
             TokenStyle(adapter.TokenStyleJWT).
             JwtSecretKey("your-very-strong-secret-key").
@@ -84,7 +84,7 @@ func main() {
 ### 使用快捷方式
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     JwtSecret("your-very-strong-secret-key").
     Timeout(2 * 60 * 60).
@@ -161,4 +161,4 @@ JWT 本身只是签名，不是加密，生产环境里仍然应该通过 HTTPS 
 
 - [登录认证](authentication_zh.md)
 - [Redis 存储](redis-storage_zh.md)
-- [单包导入](single-import_zh.md)
+- [框架集成](framework-integration_zh.md)

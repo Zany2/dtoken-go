@@ -16,7 +16,7 @@ English | [中文文档](README_zh.md)
 - [Event Listener](guide/listener.md) - Event system usage guide
 - [JWT Integration](guide/jwt.md) - JWT token configuration and usage
 - [Redis Storage](guide/redis-storage.md) - Redis storage configuration guide
-- [Single Import](guide/single-import.md) - `integrations/*` single-package import style
+- [Framework Integration](guide/framework-integration.md) - core API plus `integrations/*` middleware usage
 
 ### 🔒 Security Features
 

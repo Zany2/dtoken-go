@@ -5,16 +5,23 @@ use (
 	./com/codec/json
 	./com/codec/jsonv2
 	./com/codec/msgpack
+
 	./com/generator/dgenerator
+
 	./com/log/dlog
 	./com/log/gf
 	./com/log/nop
+
 	./com/pool/ants
+
 	./com/storage/memory
 	./com/storage/postgresql
 	./com/storage/redis
+
 	./core
+	./defaults
 	./dtoken
+
 	./examples/chi
 	./examples/echo
 	./examples/fiber
@@ -23,7 +30,6 @@ use (
 	./examples/hertz
 	./examples/kratos
 	./examples/quick_start
-	./examples/zero
 
 	./integrations/chi
 	./integrations/echo
@@ -31,19 +37,6 @@ use (
 	./integrations/gf
 	./integrations/gin
 	./integrations/hertz
+	./integrations/internal/authcheck
 	./integrations/kratos
-	./integrations/zero
-)
-
-replace (
-	github.com/Zany2/dtoken-go/com/storage/redis v0.0.0 => ./com/storage/redis
-	github.com/Zany2/dtoken-go/core v0.0.0 => ./core
-	github.com/Zany2/dtoken-go/dtoken v0.0.0 => ./dtoken
-	github.com/Zany2/dtoken-go/integrations/chi v0.0.0 => ./integrations/chi
-	github.com/Zany2/dtoken-go/integrations/echo v0.0.0 => ./integrations/echo
-	github.com/Zany2/dtoken-go/integrations/fiber v0.0.0 => ./integrations/fiber
-	github.com/Zany2/dtoken-go/integrations/gf v0.0.0 => ./integrations/gf
-	github.com/Zany2/dtoken-go/integrations/gin v0.0.0 => ./integrations/gin
-	github.com/Zany2/dtoken-go/integrations/hertz v0.0.0 => ./integrations/hertz
-	github.com/Zany2/dtoken-go/integrations/kratos v0.0.0 => ./integrations/kratos
 )

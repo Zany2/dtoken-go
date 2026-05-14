@@ -1,4 +1,4 @@
-# Gin DToken Example
+﻿# Gin DToken Example
 
 This example demonstrates how to use DToken-Go with the Gin web framework.
 
@@ -120,8 +120,8 @@ curl http://localhost:8080/api/admin/users \
 To test role and permission-based endpoints, uncomment the following lines in `handleLogin` function:
 
 ```go
-_ = gindt.AddRoles(c.Request.Context(), req.Username, []string{"admin", "super-admin"})
-_ = gindt.AddPermissions(c.Request.Context(), req.Username, []string{"resource:read", "resource:write", "data:read", "all:access"})
+_ = dtoken.AddRoles(c.Request.Context(), req.Username, []string{"admin", "super-admin"})
+_ = dtoken.AddPermissions(c.Request.Context(), req.Username, []string{"resource:read", "resource:write", "data:read", "all:access"})
 ```
 
 ## Project Structure
@@ -138,14 +138,13 @@ examples/gin/
 ### Manager Initialization
 
 ```go
-builder := gindt.NewDefaultBuilder()
-mgr := builder.
+mgr := defaults.NewBuilder().
     SetStorage(storage).
     Timeout(3600).       // 1 hour
     ActiveTimeout(1800). // 30 minutes
     MaxLoginCount(3).
     Build()
-gindt.SetManager(mgr)
+dtoken.SetManager(mgr)
 ```
 
 ### Middleware Usage

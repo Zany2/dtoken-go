@@ -1,4 +1,4 @@
-English | [中文文档](architecture_zh.md)
+﻿English | [中文文档](architecture_zh.md)
 
 # Architecture Design
 
@@ -104,7 +104,7 @@ English | [中文文档](architecture_zh.md)
 ### 1. Builder Pattern
 
 ```go
-mgr := builder.NewBuilder().
+mgr := defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     TokenName("Authorization").
     Timeout(86400).

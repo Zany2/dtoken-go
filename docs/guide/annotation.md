@@ -182,4 +182,4 @@ The core idea stays the same: register `DTokenContext` first, then attach annota
 
 - [Authentication Guide](authentication.md)
 - [Permission Management](permission.md)
-- [Single Import Guide](single-import.md)
+- [Framework Integration Guide](framework-integration.md)

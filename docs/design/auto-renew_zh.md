@@ -1,4 +1,4 @@
-[English](auto-renew.md) | 中文文档
+﻿[English](auto-renew.md) | 中文文档
 
 # 自动续签设计
 
@@ -140,7 +140,7 @@ dtoken.GetTokenInfo(ctx, token)
 ### 启用自动续签
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
@@ -150,7 +150,7 @@ builder.NewBuilder().
 ### 指定续签触发阈值
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
@@ -161,7 +161,7 @@ builder.NewBuilder().
 ### 指定最小续期间隔
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
@@ -173,7 +173,7 @@ builder.NewBuilder().
 ### 结合最大不活跃时长
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     Timeout(86400).
     ActiveTimeout(1800).
@@ -233,7 +233,7 @@ type Storage interface {
 ### 生产环境建议
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetStorage(redisStorage).
     Timeout(86400).
     ActiveTimeout(1800).
@@ -246,7 +246,7 @@ builder.NewBuilder().
 ### 开发环境建议
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     Timeout(7200).
     AutoRenew(true).
@@ -256,7 +256,7 @@ builder.NewBuilder().
 ### 安全优先配置
 
 ```go
-builder.NewBuilder().
+defaults.NewBuilder().
     SetStorage(redisStorage).
     Timeout(1800).
     AutoRenew(false).

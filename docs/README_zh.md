@@ -16,7 +16,7 @@
 - [事件监听](guide/listener_zh.md) - 事件系统使用指南
 - [JWT 使用](guide/jwt_zh.md) - JWT Token 配置和使用
 - [Redis 存储](guide/redis-storage_zh.md) - Redis 存储配置详解
-- [单包导入](guide/single-import_zh.md) - integrations 单包导入方式
+- [框架集成](guide/framework-integration_zh.md) - 核心 API 与 integrations 中间件用法
 
 ### 🔒 安全特性
 

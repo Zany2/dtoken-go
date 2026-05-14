@@ -15,6 +15,9 @@ type EchoContext struct {
 	aborted bool
 }
 
+// Interface assertion keeps request context contract checked at compile time 接口断言在编译期检查请求上下文契约
+var _ adapter.RequestContext = (*EchoContext)(nil)
+
 // NewEchoContext creates Echo request context adapter 创建 Echo 请求上下文适配器
 func NewEchoContext(c echo4.Context) adapter.RequestContext {
 	return &EchoContext{c: c}

@@ -1,4 +1,4 @@
-# Redis 存储指南
+﻿# Redis 存储指南
 
 [English](redis-storage.md) | 中文文档
 
@@ -30,7 +30,7 @@ package main
 
 import (
     "github.com/Zany2/dtoken-go/com/storage/redis"
-    "github.com/Zany2/dtoken-go/core/builder"
+    "github.com/Zany2/dtoken-go/defaults"
     "github.com/Zany2/dtoken-go/dtoken"
 )
 
@@ -41,7 +41,7 @@ func initDToken() {
     }
 
     dtoken.SetManager(
-        builder.NewBuilder().
+        defaults.NewBuilder().
             SetStorage(storage).
             Build(),
     )
@@ -67,7 +67,7 @@ if err != nil {
 }
 
 dtoken.SetManager(
-    builder.NewBuilder().
+    defaults.NewBuilder().
         SetStorage(storage).
         Build(),
 )
@@ -85,7 +85,7 @@ rdb := goredis.NewClient(&goredis.Options{
 storage := redis.NewStorageFromClient(rdb)
 
 dtoken.SetManager(
-    builder.NewBuilder().
+    defaults.NewBuilder().
         SetStorage(storage).
         Build(),
 )
@@ -114,7 +114,7 @@ dtoken.SetManager(
 storage, _ := redis.NewStorage("redis://localhost:6379/0")
 
 dtoken.SetManager(
-    builder.NewBuilder().
+    defaults.NewBuilder().
         SetStorage(storage).
         TokenName("dtoken").
         Timeout(2 * 60 * 60).

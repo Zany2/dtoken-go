@@ -3,8 +3,6 @@ module github.com/Zany2/dtoken-go/integrations/kratos
 go 1.25.0
 
 require (
-	github.com/Zany2/dtoken-go/core v0.0.0
-	github.com/Zany2/dtoken-go/dtoken v0.0.0
 	github.com/go-kratos/kratos/v2 v2.9.1
 )
 

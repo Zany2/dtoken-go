@@ -1,4 +1,4 @@
-[English](nonce.md) | 中文文档
+﻿[English](nonce.md) | 中文文档
 
 # Nonce 防重放
 
@@ -42,13 +42,13 @@ import (
     "fmt"
 
     "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/core/builder"
+    "github.com/Zany2/dtoken-go/defaults"
     "github.com/Zany2/dtoken-go/dtoken"
 )
 
 func initDToken() {
     dtoken.SetManager(
-        builder.NewBuilder().
+        defaults.NewBuilder().
             SetStorage(memory.NewStorage()).
             Build(),
     )

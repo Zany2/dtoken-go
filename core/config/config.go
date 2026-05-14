@@ -120,7 +120,7 @@ func DefaultConfig() *Config {
 		IsReadHeader:          true,
 		IsReadCookie:          false,
 		TokenStyle:            adapter.TokenStyleUUID,
-		JwtSecretKey:          "",
+		JwtSecretKey:          DefaultJWTSecretKey,
 		IsLog:                 false,
 		IsPrintBanner:         true,
 		AsyncEvent:            true,

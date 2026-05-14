@@ -2,7 +2,6 @@ package listener
 
 import (
 	"fmt"
-	"github.com/Zany2/dtoken-go/com/log/nop"
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"sync"
 	"time"
@@ -34,6 +33,9 @@ type Listener interface {
 
 // ListenerFunc defines listener function adapter ListenerFunc 定义监听器函数适配器
 type ListenerFunc func(data *EventData)
+
+// Interface assertion keeps listener contract checked at compile time 接口断言在编译期检查监听器契约
+var _ Listener = ListenerFunc(nil)
 
 // OnEvent implements listener interface OnEvent 实现 Listener 接口
 func (f ListenerFunc) OnEvent(data *EventData) {
@@ -83,7 +85,7 @@ func NewManager(loggers ...adapter.Log) *Manager {
 	if len(loggers) > 0 && loggers[0] != nil {
 		logger = loggers[0]
 	} else {
-		logger = nop.NewNopLogger()
+		logger = adapter.NewNopLogger()
 	}
 
 	m := &Manager{

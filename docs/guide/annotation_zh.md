@@ -182,4 +182,4 @@ r.GET("/admin",
 
 - [登录认证](authentication_zh.md)
 - [权限管理](permission_zh.md)
-- [单包导入](single-import_zh.md)
+- [框架集成](framework-integration_zh.md)
