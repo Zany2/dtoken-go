@@ -1,4 +1,4 @@
-// @Author daixk 2026/1/21 17:55:00
+// Author records daixk as original author at 2026/1/21 17:55:00. Author 记录 daixk 为原始作者，创建时间为 2026/1/21 17:55:00。
 package memory
 
 import (
@@ -16,8 +16,8 @@ var ErrKeyNotFound = errors.New("key not found")
 
 // TTL constants define memory TTL sentinel values TTL 常量定义内存 TTL 哨兵值
 const (
-	TTLNoExpire = time.Duration(-1)
-	TTLNotFound = time.Duration(-2)
+	TTLNoExpire = adapter.TTLNoExpire
+	TTLNotFound = adapter.TTLNotFound
 )
 
 // Storage implements in-memory storage with go-cache 基于 go-cache 的内存存储实现。
@@ -28,6 +28,8 @@ type Storage struct {
 
 // Interface assertion keeps storage contract checked at compile time 接口断言在编译期检查存储契约
 var _ adapter.Storage = (*Storage)(nil)
+var _ adapter.AtomicStorage = (*Storage)(nil)
+var _ adapter.FullStorage = (*Storage)(nil)
 
 // NewStorage creates a new memory storage instance 创建一个新的内存存储实例
 func NewStorage() *Storage {

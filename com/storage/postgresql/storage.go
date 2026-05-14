@@ -1,4 +1,4 @@
-// @Author daixk 2026/4/30 16:00:00
+// Author records daixk as original author at 2026/4/30 16:00:00. Author 记录 daixk 为原始作者，创建时间为 2026/4/30 16:00:00。
 package postgresql
 
 import (
@@ -22,9 +22,9 @@ var ErrKeyNotFound = errors.New("key not found")
 // TTL constants define PostgreSQL TTL sentinel values TTL 常量定义 PostgreSQL TTL 哨兵值
 const (
 	// TTLNoExpire indicates the key has no expiration TTLNoExpire 表示键永不过期
-	TTLNoExpire = time.Duration(-1)
+	TTLNoExpire = adapter.TTLNoExpire
 	// TTLNotFound indicates the key does not exist TTLNotFound 表示键不存在
-	TTLNotFound = time.Duration(-2)
+	TTLNotFound = adapter.TTLNotFound
 
 	// defaultTableName stores the default PostgreSQL table name defaultTableName 存储默认 PostgreSQL 表名
 	defaultTableName = "dtoken_storage"
@@ -64,6 +64,8 @@ type Storage struct {
 
 // Interface assertion keeps storage contract checked at compile time 接口断言在编译期检查存储契约
 var _ adapter.Storage = (*Storage)(nil)
+var _ adapter.AtomicStorage = (*Storage)(nil)
+var _ adapter.FullStorage = (*Storage)(nil)
 
 // tableIdentifier stores parsed table metadata tableIdentifier 存储解析后的表元数据
 type tableIdentifier struct {

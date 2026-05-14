@@ -8,502 +8,523 @@ import (
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/banner"
 	"github.com/Zany2/dtoken-go/core/config"
+	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
-// GeneratorFactory creates default token generator GeneratorFactory 创建默认 Token 生成器
+// GeneratorFactory creates a token generator from config.
 type GeneratorFactory func(cfg *config.Config) (adapter.Generator, error)
 
-// StorageFactory creates default storage adapter StorageFactory 创建默认存储适配器
+// StorageFactory creates a storage adapter from config.
 type StorageFactory func(cfg *config.Config) (adapter.Storage, error)
 
-// CodecFactory creates default codec adapter CodecFactory 创建默认编解码器适配器
+// CodecFactory creates a codec adapter from config.
 type CodecFactory func(cfg *config.Config) (adapter.Codec, error)
 
-// LogFactory creates default log adapter LogFactory 创建默认日志适配器
+// LogFactory creates a logger adapter from config.
 type LogFactory func(cfg *config.Config) (adapter.Log, error)
 
-// PoolFactory creates default async task pool PoolFactory 创建默认异步任务池
+// PoolFactory creates an async task pool from config.
 type PoolFactory func(cfg *config.Config) (adapter.Pool, error)
 
-// Builder defines manager builder Builder 定义 Manager 构建器
+// Components groups pluggable runtime components.
+type Components struct {
+	Generator adapter.Generator
+	Storage   adapter.Storage
+	Codec     adapter.Codec
+	Log       adapter.Log
+	Pool      adapter.Pool
+}
+
+// ComponentFactories groups default component factories.
+type ComponentFactories struct {
+	Generator GeneratorFactory
+	Storage   StorageFactory
+	Codec     CodecFactory
+	Log       LogFactory
+	Pool      PoolFactory
+}
+
+// Builder builds a Manager from config and replaceable components.
 type Builder struct {
-	authType         string                  // authType stores auth type authType 存储认证体系类型
-	keyPrefix        string                  // keyPrefix stores storage key prefix keyPrefix 存储存储键前缀
-	tokenName        string                  // tokenName stores token name tokenName 存储 Token 名称
-	timeout          int64                   // timeout stores token timeout seconds timeout 存储 Token 超时时间秒数
-	autoRenew        bool                    // autoRenew controls auto renew autoRenew 控制是否启用自动续期
-	renewMaxRefresh  int64                   // renewMaxRefresh stores renew trigger threshold renewMaxRefresh 存储续期触发阈值
-	renewInterval    int64                   // renewInterval stores minimum renew interval renewInterval 存储最小续期间隔
-	activeTimeout    int64                   // activeTimeout stores max inactive duration activeTimeout 存储最大不活跃时长
-	concurrencyScope config.ConcurrencyScope // concurrencyScope stores concurrency scope concurrencyScope 存储并发控制作用域
-	isConcurrent     bool                    // isConcurrent controls concurrent login isConcurrent 控制是否允许并发登录
-	isShare          bool                    // isShare controls shared token isShare 控制是否共享同一 Token
-	maxLoginCount    int64                   // maxLoginCount stores max login count maxLoginCount 存储最大并发登录数量
-	isReadBody       bool                    // isReadBody controls body token read isReadBody 控制是否从请求体读取 Token
-	isReadHeader     bool                    // isReadHeader controls header token read isReadHeader 控制是否从 Header 读取 Token
-	isReadCookie     bool                    // isReadCookie controls cookie token read isReadCookie 控制是否从 Cookie 读取 Token
-	tokenStyle       adapter.TokenStyle      // tokenStyle stores token style tokenStyle 存储 Token 生成风格
-	jwtSecretKey     string                  // jwtSecretKey stores JWT secret key jwtSecretKey 存储 JWT 密钥
-	isLog            bool                    // isLog controls logging isLog 控制是否开启日志输出
-	isPrintBanner    bool                    // isPrintBanner controls banner print isPrintBanner 控制是否打印启动 Banner
-	asyncEvent       bool                    // asyncEvent controls async event asyncEvent 控制是否异步触发事件
+	cfg        *config.Config
+	components Components
+	factories  ComponentFactories
 
-	cookieConfig *config.CookieConfig // cookieConfig stores cookie config cookieConfig 存储 Cookie 配置
+	accessProvider manager.AccessProvider
 
-	generator adapter.Generator // generator stores token generator generator 存储 Token 生成器
-	storage   adapter.Storage   // storage stores storage adapter storage 存储存储适配器
-	codec     adapter.Codec     // codec stores codec adapter codec 存储编解码器适配器
-	log       adapter.Log       // log stores log adapter log 存储日志适配器
-	pool      adapter.Pool      // pool stores async task pool pool 存储异步任务协程池组件
-
-	generatorFactory GeneratorFactory // generatorFactory creates default generator generatorFactory 创建默认生成器
-	storageFactory   StorageFactory   // storageFactory creates default storage storageFactory 创建默认存储
-	codecFactory     CodecFactory     // codecFactory creates default codec codecFactory 创建默认编解码器
-	logFactory       LogFactory       // logFactory creates default logger logFactory 创建默认日志
-	poolFactory      PoolFactory      // poolFactory creates default pool poolFactory 创建默认协程池
-
-	customPermissionListFunc    func(loginID, authType string) ([]string, error)                   // customPermissionListFunc stores custom permission callback customPermissionListFunc 存储自定义权限列表回调
-	customRoleListFunc          func(loginID, authType string) ([]string, error)                   // customRoleListFunc stores custom role callback customRoleListFunc 存储自定义角色列表回调
-	customPermissionListExtFunc func(loginID, device, deviceId, authType string) ([]string, error) // customPermissionListExtFunc stores custom extended permission callback customPermissionListExtFunc 存储扩展权限列表回调
-	customRoleListExtFunc       func(loginID, device, deviceId, authType string) ([]string, error) // customRoleListExtFunc stores custom extended role callback customRoleListExtFunc 存储扩展角色列表回调
+	customPermissionListFunc    func(loginID, authType string) ([]string, error)
+	customRoleListFunc          func(loginID, authType string) ([]string, error)
+	customPermissionListExtFunc func(loginID, device, deviceId, authType string) ([]string, error)
+	customRoleListExtFunc       func(loginID, device, deviceId, authType string) ([]string, error)
 }
 
-// NewBuilder creates builder with default config NewBuilder 创建使用默认配置的构建器
+// NewBuilder creates a builder with the default config.
 func NewBuilder() *Builder {
-	return &Builder{
-		authType:         config.DefaultAuthType,
-		keyPrefix:        config.DefaultKeyPrefix,
-		tokenName:        config.DefaultTokenName,
-		timeout:          config.DefaultTimeout,
-		autoRenew:        true,
-		renewMaxRefresh:  config.DefaultTimeout / 2,
-		renewInterval:    config.NoLimit,
-		activeTimeout:    config.NoLimit,
-		concurrencyScope: config.ConcurrencyScopeAccount,
-		isConcurrent:     true,
-		isShare:          false,
-		maxLoginCount:    config.NoLimit,
-		isReadBody:       false,
-		isReadHeader:     true,
-		isReadCookie:     false,
-		tokenStyle:       adapter.TokenStyleUUID,
-		jwtSecretKey:     config.DefaultJWTSecretKey,
-		isLog:            false,
-		isPrintBanner:    true,
-		asyncEvent:       true,
-
-		cookieConfig: config.DefaultCookieConfig(),
-	}
+	return &Builder{cfg: config.DefaultConfig()}
 }
 
-// AuthType sets auth type with suffix fix AuthType 设置认证体系类型并自动补全冒号
+// Config replaces the builder config with a clone of cfg.
+func (b *Builder) Config(cfg *config.Config) *Builder {
+	if cfg == nil {
+		b.cfg = config.DefaultConfig()
+		return b
+	}
+	b.cfg = cfg.Clone()
+	return b
+}
+
+// GetConfig returns the mutable builder config.
+func (b *Builder) GetConfig() *config.Config {
+	b.ensureConfig()
+	return b.cfg
+}
+
+// AuthType sets auth type with suffix fix.
 func (b *Builder) AuthType(authType string) *Builder {
+	b.ensureConfig()
 	if authType == "" {
-		b.authType = config.DefaultAuthType
+		b.cfg.AuthType = config.DefaultAuthType
 	} else if !strings.HasSuffix(authType, ":") {
-		b.authType = authType + ":"
+		b.cfg.AuthType = authType + ":"
 	} else {
-		b.authType = authType
+		b.cfg.AuthType = authType
 	}
 	return b
 }
 
-// KeyPrefix sets key prefix with suffix fix KeyPrefix 设置存储键前缀并自动补全冒号
+// KeyPrefix sets key prefix with suffix fix.
 func (b *Builder) KeyPrefix(keyPrefix string) *Builder {
+	b.ensureConfig()
 	if keyPrefix == "" {
-		b.keyPrefix = config.DefaultKeyPrefix
+		b.cfg.KeyPrefix = config.DefaultKeyPrefix
 	} else if !strings.HasSuffix(keyPrefix, ":") {
-		b.keyPrefix = keyPrefix + ":"
+		b.cfg.KeyPrefix = keyPrefix + ":"
 	} else {
-		b.keyPrefix = keyPrefix
+		b.cfg.KeyPrefix = keyPrefix
 	}
 	return b
 }
 
-// TokenName sets token name TokenName 设置 Token 名称
+// TokenName sets token name.
 func (b *Builder) TokenName(name string) *Builder {
-	b.tokenName = name
+	b.ensureConfig()
+	b.cfg.TokenName = name
 	return b
 }
 
-// Timeout sets timeout seconds Timeout 设置超时时间秒数
+// Timeout sets timeout seconds.
 func (b *Builder) Timeout(seconds int64) *Builder {
-	b.timeout = seconds
+	b.ensureConfig()
+	b.cfg.Timeout = seconds
 	return b
 }
 
-// TimeoutDuration sets timeout by duration TimeoutDuration 按时间段设置超时时间
+// TimeoutDuration sets timeout by duration.
 func (b *Builder) TimeoutDuration(d time.Duration) *Builder {
-	b.timeout = int64(d.Seconds())
+	b.ensureConfig()
+	b.cfg.Timeout = int64(d.Seconds())
 	return b
 }
 
-// AutoRenew sets auto renew switch AutoRenew 设置是否启用自动续期
+// AutoRenew sets auto renew switch.
 func (b *Builder) AutoRenew(autoRenew bool) *Builder {
-	b.autoRenew = autoRenew
+	b.ensureConfig()
+	b.cfg.AutoRenew = autoRenew
 	return b
 }
 
-// RenewMaxRefresh sets renew trigger threshold RenewMaxRefresh 设置自动续期触发阈值
+// RenewMaxRefresh sets renew trigger threshold.
 func (b *Builder) RenewMaxRefresh(seconds int64) *Builder {
-	b.renewMaxRefresh = seconds
+	b.ensureConfig()
+	b.cfg.RenewMaxRefresh = seconds
 	return b
 }
 
-// RenewInterval sets minimum renew interval RenewInterval 设置最小续期间隔
+// RenewInterval sets minimum renew interval.
 func (b *Builder) RenewInterval(seconds int64) *Builder {
-	b.renewInterval = seconds
+	b.ensureConfig()
+	b.cfg.RenewInterval = seconds
 	return b
 }
 
-// ActiveTimeout sets max inactive duration ActiveTimeout 设置最大不活跃时长
+// ActiveTimeout sets max inactive duration.
 func (b *Builder) ActiveTimeout(seconds int64) *Builder {
-	b.activeTimeout = seconds
+	b.ensureConfig()
+	b.cfg.ActiveTimeout = seconds
 	return b
 }
 
-// ConcurrencyScope sets concurrency scope ConcurrencyScope 设置并发控制作用域
+// ConcurrencyScope sets concurrency scope.
 func (b *Builder) ConcurrencyScope(concurrencyScope config.ConcurrencyScope) *Builder {
-	b.concurrencyScope = concurrencyScope
+	b.ensureConfig()
+	b.cfg.ConcurrencyScope = concurrencyScope
 	return b
 }
 
-// IsConcurrent sets concurrent login switch IsConcurrent 设置是否允许并发登录
+// IsConcurrent sets concurrent login switch.
 func (b *Builder) IsConcurrent(concurrent bool) *Builder {
-	b.isConcurrent = concurrent
+	b.ensureConfig()
+	b.cfg.IsConcurrent = concurrent
 	return b
 }
 
-// IsShare sets shared token switch IsShare 设置是否共享同一 Token
+// IsShare sets shared token switch.
 func (b *Builder) IsShare(share bool) *Builder {
-	b.isShare = share
+	b.ensureConfig()
+	b.cfg.IsShare = share
 	return b
 }
 
-// MaxLoginCount sets max login count MaxLoginCount 设置最大并发登录数量
+// MaxLoginCount sets max login count.
 func (b *Builder) MaxLoginCount(count int64) *Builder {
-	b.maxLoginCount = count
+	b.ensureConfig()
+	b.cfg.MaxLoginCount = count
 	return b
 }
 
-// IsReadBody sets body read switch IsReadBody 设置是否从请求体读取 Token
+// IsReadBody sets body read switch.
 func (b *Builder) IsReadBody(isRead bool) *Builder {
-	b.isReadBody = isRead
+	b.ensureConfig()
+	b.cfg.IsReadBody = isRead
 	return b
 }
 
-// IsReadHeader sets header read switch IsReadHeader 设置是否从 HTTP Header 读取 Token
+// IsReadHeader sets header read switch.
 func (b *Builder) IsReadHeader(isRead bool) *Builder {
-	b.isReadHeader = isRead
+	b.ensureConfig()
+	b.cfg.IsReadHeader = isRead
 	return b
 }
 
-// IsReadCookie sets cookie read switch IsReadCookie 设置是否从 Cookie 读取 Token
+// IsReadCookie sets cookie read switch.
 func (b *Builder) IsReadCookie(isRead bool) *Builder {
-	b.isReadCookie = isRead
+	b.ensureConfig()
+	b.cfg.IsReadCookie = isRead
 	return b
 }
 
-// TokenStyle sets token style TokenStyle 设置 Token 生成风格
+// TokenStyle sets token style.
 func (b *Builder) TokenStyle(style adapter.TokenStyle) *Builder {
-	b.tokenStyle = style
+	b.ensureConfig()
+	b.cfg.TokenStyle = style
 	return b
 }
 
-// JwtSecretKey sets JWT secret key JwtSecretKey 设置 JWT 密钥
+// JwtSecretKey sets JWT secret key.
 func (b *Builder) JwtSecretKey(key string) *Builder {
-	b.jwtSecretKey = key
+	b.ensureConfig()
+	b.cfg.JwtSecretKey = key
 	return b
 }
 
-// IsLog sets log switch IsLog 设置是否开启日志输出
+// IsLog sets log switch.
 func (b *Builder) IsLog(isLog bool) *Builder {
-	b.isLog = isLog
+	b.ensureConfig()
+	b.cfg.IsLog = isLog
 	return b
 }
 
-// IsPrintBanner sets banner print switch IsPrintBanner 设置是否打印启动 Banner
+// IsPrintBanner sets banner print switch.
 func (b *Builder) IsPrintBanner(isPrint bool) *Builder {
-	b.isPrintBanner = isPrint
+	b.ensureConfig()
+	b.cfg.IsPrintBanner = isPrint
 	return b
 }
 
-// AsyncEvent sets async event switch AsyncEvent 设置是否异步触发事件
+// AsyncEvent sets async event switch.
 func (b *Builder) AsyncEvent(asyncEvent bool) *Builder {
-	b.asyncEvent = asyncEvent
+	b.ensureConfig()
+	b.cfg.AsyncEvent = asyncEvent
 	return b
 }
 
-// CookieDomain sets cookie domain CookieDomain 设置 Cookie 作用域 Domain
+// CookieDomain sets cookie domain.
 func (b *Builder) CookieDomain(domain string) *Builder {
-	if b.cookieConfig == nil {
-		b.cookieConfig = &config.CookieConfig{}
-	}
-	b.cookieConfig.Domain = domain
+	cc := b.ensureCookieConfig()
+	cc.Domain = domain
 	return b
 }
 
-// CookiePath sets cookie path CookiePath 设置 Cookie 路径
+// CookiePath sets cookie path.
 func (b *Builder) CookiePath(path string) *Builder {
-	if b.cookieConfig == nil {
-		b.cookieConfig = &config.CookieConfig{}
-	}
-	b.cookieConfig.Path = path
+	cc := b.ensureCookieConfig()
+	cc.Path = path
 	return b
 }
 
-// CookieSecure sets cookie secure switch CookieSecure 设置 Cookie 是否仅在 HTTPS 下生效
+// CookieSecure sets cookie secure switch.
 func (b *Builder) CookieSecure(secure bool) *Builder {
-	if b.cookieConfig == nil {
-		b.cookieConfig = &config.CookieConfig{}
-	}
-	b.cookieConfig.Secure = secure
+	cc := b.ensureCookieConfig()
+	cc.Secure = secure
 	return b
 }
 
-// CookieHttpOnly sets cookie httpOnly switch CookieHttpOnly 设置 Cookie 是否禁止 JavaScript 访问
+// CookieHttpOnly sets cookie httpOnly switch.
 func (b *Builder) CookieHttpOnly(httpOnly bool) *Builder {
-	if b.cookieConfig == nil {
-		b.cookieConfig = &config.CookieConfig{}
-	}
-	b.cookieConfig.HttpOnly = httpOnly
+	cc := b.ensureCookieConfig()
+	cc.HttpOnly = httpOnly
 	return b
 }
 
-// CookieSameSite sets cookie sameSite CookieSameSite 设置 Cookie SameSite 属性
+// CookieSameSite sets cookie sameSite mode.
 func (b *Builder) CookieSameSite(sameSite config.SameSiteMode) *Builder {
-	if b.cookieConfig == nil {
-		b.cookieConfig = &config.CookieConfig{}
-	}
-	b.cookieConfig.SameSite = sameSite
+	cc := b.ensureCookieConfig()
+	cc.SameSite = sameSite
 	return b
 }
 
-// CookieMaxAge sets cookie max age CookieMaxAge 设置 Cookie 过期时间秒数
+// CookieMaxAge sets cookie max age seconds.
 func (b *Builder) CookieMaxAge(maxAge int64) *Builder {
-	if b.cookieConfig == nil {
-		b.cookieConfig = &config.CookieConfig{}
-	}
-	b.cookieConfig.MaxAge = maxAge
+	cc := b.ensureCookieConfig()
+	cc.MaxAge = maxAge
 	return b
 }
 
-// CookieConfig sets full cookie config CookieConfig 设置完整 Cookie 配置
+// CookieConfig sets full cookie config.
 func (b *Builder) CookieConfig(cfg *config.CookieConfig) *Builder {
-	b.cookieConfig = cfg
+	b.ensureConfig()
+	if cfg == nil {
+		b.cfg.CookieConfig = nil
+		return b
+	}
+	copyCfg := *cfg
+	b.cfg.CookieConfig = &copyCfg
 	return b
 }
 
-// SetGenerator sets token generator SetGenerator 设置 Token 生成器
+// SetGenerator sets token generator.
 func (b *Builder) SetGenerator(generator adapter.Generator) *Builder {
-	b.generator = generator
+	b.components.Generator = generator
 	return b
 }
 
-// SetStorage sets storage adapter SetStorage 设置存储适配器
+// SetStorage sets storage adapter.
 func (b *Builder) SetStorage(storage adapter.Storage) *Builder {
-	b.storage = storage
+	b.components.Storage = storage
 	return b
 }
 
-// SetCodec sets codec adapter SetCodec 设置编解码器适配器
+// SetCodec sets codec adapter.
 func (b *Builder) SetCodec(codec adapter.Codec) *Builder {
-	b.codec = codec
+	b.components.Codec = codec
 	return b
 }
 
-// SetLog sets log adapter SetLog 设置日志适配器
+// SetLog sets log adapter.
 func (b *Builder) SetLog(log adapter.Log) *Builder {
-	b.log = log
+	b.components.Log = log
 	return b
 }
 
-// SetPool sets async task pool SetPool 设置异步任务协程池
+// SetPool sets async task pool.
 func (b *Builder) SetPool(pool adapter.Pool) *Builder {
-	b.pool = pool
+	b.components.Pool = pool
 	return b
 }
 
-// SetGeneratorFactory sets default generator factory SetGeneratorFactory 设置默认 Token 生成器工厂
+// SetGeneratorFactory sets default generator factory.
 func (b *Builder) SetGeneratorFactory(factory GeneratorFactory) *Builder {
-	b.generatorFactory = factory
+	b.factories.Generator = factory
 	return b
 }
 
-// SetStorageFactory sets default storage factory SetStorageFactory 设置默认存储工厂
+// SetStorageFactory sets default storage factory.
 func (b *Builder) SetStorageFactory(factory StorageFactory) *Builder {
-	b.storageFactory = factory
+	b.factories.Storage = factory
 	return b
 }
 
-// SetCodecFactory sets default codec factory SetCodecFactory 设置默认编解码器工厂
+// SetCodecFactory sets default codec factory.
 func (b *Builder) SetCodecFactory(factory CodecFactory) *Builder {
-	b.codecFactory = factory
+	b.factories.Codec = factory
 	return b
 }
 
-// SetLogFactory sets default log factory SetLogFactory 设置默认日志工厂
+// SetLogFactory sets default log factory.
 func (b *Builder) SetLogFactory(factory LogFactory) *Builder {
-	b.logFactory = factory
+	b.factories.Log = factory
 	return b
 }
 
-// SetPoolFactory sets default pool factory SetPoolFactory 设置默认协程池工厂
+// SetPoolFactory sets default pool factory.
 func (b *Builder) SetPoolFactory(factory PoolFactory) *Builder {
-	b.poolFactory = factory
+	b.factories.Pool = factory
 	return b
 }
 
-// SetCustomPermissionListFunc sets permission callback SetCustomPermissionListFunc 设置自定义权限列表获取函数
+// SetAccessProvider sets the permission and role provider.
+func (b *Builder) SetAccessProvider(provider manager.AccessProvider) *Builder {
+	b.accessProvider = provider
+	return b
+}
+
+// SetCustomPermissionListFunc sets permission callback.
 func (b *Builder) SetCustomPermissionListFunc(f func(loginID, authType string) ([]string, error)) *Builder {
 	b.customPermissionListFunc = f
 	return b
 }
 
-// SetCustomRoleListFunc sets role callback SetCustomRoleListFunc 设置自定义角色列表获取函数
+// SetCustomRoleListFunc sets role callback.
 func (b *Builder) SetCustomRoleListFunc(f func(loginID, authType string) ([]string, error)) *Builder {
 	b.customRoleListFunc = f
 	return b
 }
 
-// SetCustomPermissionListExtFunc sets extended permission callback SetCustomPermissionListExtFunc 设置扩展权限列表获取函数
+// SetCustomPermissionListExtFunc sets extended permission callback.
 func (b *Builder) SetCustomPermissionListExtFunc(f func(loginID, device, deviceId, authType string) ([]string, error)) *Builder {
 	b.customPermissionListExtFunc = f
 	return b
 }
 
-// SetCustomRoleListExtFunc sets extended role callback SetCustomRoleListExtFunc 设置扩展角色列表获取函数
+// SetCustomRoleListExtFunc sets extended role callback.
 func (b *Builder) SetCustomRoleListExtFunc(f func(loginID, device, deviceId, authType string) ([]string, error)) *Builder {
 	b.customRoleListExtFunc = f
 	return b
 }
 
-// JwtSecret enables JWT style and sets secret JwtSecret 设置 JWT 模式并指定密钥
+// JwtSecret enables JWT style and sets secret.
 func (b *Builder) JwtSecret(secret string) *Builder {
-	b.tokenStyle = adapter.TokenStyleJWT
-	b.jwtSecretKey = secret
+	b.ensureConfig()
+	b.cfg.TokenStyle = adapter.TokenStyleJWT
+	b.cfg.JwtSecretKey = secret
 	return b
 }
 
-// Clone clones builder with deep copy Clone 深拷贝当前构建器
+// Clone clones builder with deep copy.
 func (b *Builder) Clone() *Builder {
 	clone := *b
-	if b.cookieConfig != nil {
-		cookieCopy := *b.cookieConfig
-		clone.cookieConfig = &cookieCopy
+	if b.cfg != nil {
+		clone.cfg = b.cfg.Clone()
 	}
 	return &clone
 }
 
-// Build builds manager and returns configuration errors Build 构建 Manager 实例并返回配置错误
+// Build builds manager and returns configuration errors.
 func (b *Builder) Build() (*manager.Manager, error) {
-	if b.cookieConfig == nil {
-		b.cookieConfig = config.DefaultCookieConfig()
+	b.ensureConfig()
+	cfg := b.cfg.Clone()
+	if cfg.CookieConfig == nil {
+		cfg.CookieConfig = config.DefaultCookieConfig()
 	}
 
-	cfg := &config.Config{
-		AuthType:         b.authType,
-		KeyPrefix:        b.keyPrefix,
-		TokenName:        b.tokenName,
-		Timeout:          b.timeout,
-		AutoRenew:        b.autoRenew,
-		RenewMaxRefresh:  b.renewMaxRefresh,
-		RenewInterval:    b.renewInterval,
-		ActiveTimeout:    b.activeTimeout,
-		ConcurrencyScope: b.concurrencyScope,
-		IsConcurrent:     b.isConcurrent,
-		IsShare:          b.isShare,
-		MaxLoginCount:    b.maxLoginCount,
-		IsReadBody:       b.isReadBody,
-		IsReadHeader:     b.isReadHeader,
-		IsReadCookie:     b.isReadCookie,
-		TokenStyle:       b.tokenStyle,
-		JwtSecretKey:     b.jwtSecretKey,
-		IsLog:            b.isLog,
-		IsPrintBanner:    b.isPrintBanner,
-		AsyncEvent:       b.asyncEvent,
-		CookieConfig:     b.cookieConfig,
-	}
-
-	err := cfg.Validate()
-	if err != nil {
+	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("build manager invalid config: %w", err)
 	}
 
-	if b.generator == nil {
-		if b.generatorFactory != nil {
-			b.generator, err = b.generatorFactory(cfg)
+	if b.components.Generator == nil {
+		if b.factories.Generator != nil {
+			generator, err := b.factories.Generator(cfg)
 			if err != nil {
 				return nil, fmt.Errorf("build manager create generator: %w", err)
 			}
+			b.components.Generator = generator
 		}
-		if b.generator == nil {
+		if b.components.Generator == nil {
 			return nil, fmt.Errorf("build manager missing generator: call SetGenerator or SetGeneratorFactory")
 		}
 	}
 
-	if b.storage == nil {
-		if b.storageFactory != nil {
-			b.storage, err = b.storageFactory(cfg)
+	if b.components.Storage == nil {
+		if b.factories.Storage != nil {
+			storage, err := b.factories.Storage(cfg)
 			if err != nil {
 				return nil, fmt.Errorf("build manager create storage: %w", err)
 			}
+			b.components.Storage = storage
 		}
-		if b.storage == nil {
+		if b.components.Storage == nil {
 			return nil, fmt.Errorf("build manager missing storage: call SetStorage or SetStorageFactory")
 		}
 	}
+	if _, ok := b.components.Storage.(adapter.AtomicStorage); !ok {
+		return nil, fmt.Errorf("%w: nonce verification requires adapter.AtomicStorage", derror.ErrStorageCapabilityUnsupported)
+	}
 
-	if b.codec == nil {
-		if b.codecFactory != nil {
-			b.codec, err = b.codecFactory(cfg)
+	if b.components.Codec == nil {
+		if b.factories.Codec != nil {
+			codec, err := b.factories.Codec(cfg)
 			if err != nil {
 				return nil, fmt.Errorf("build manager create codec: %w", err)
 			}
+			b.components.Codec = codec
 		}
-		if b.codec == nil {
+		if b.components.Codec == nil {
 			return nil, fmt.Errorf("build manager missing codec: call SetCodec or SetCodecFactory")
 		}
 	}
 
-	if b.isLog {
-		if b.log == nil {
-			if b.logFactory != nil {
-				b.log, err = b.logFactory(cfg)
+	if cfg.IsLog {
+		if b.components.Log == nil {
+			if b.factories.Log != nil {
+				logger, err := b.factories.Log(cfg)
+				if err != nil {
+					return nil, fmt.Errorf("build manager create logger: %w", err)
+				}
+				b.components.Log = logger
 			}
-			if err != nil {
-				return nil, fmt.Errorf("build manager create logger: %w", err)
-			}
-			if b.log == nil {
+			if b.components.Log == nil {
 				return nil, fmt.Errorf("build manager missing logger: call SetLog or SetLogFactory")
 			}
 		}
 	} else {
-		b.log = adapter.NewNopLogger()
+		b.components.Log = adapter.NewNopLogger()
 	}
 
-	if b.autoRenew && b.pool == nil && b.poolFactory != nil {
-		b.pool, err = b.poolFactory(cfg)
+	if cfg.AutoRenew && b.components.Pool == nil && b.factories.Pool != nil {
+		pool, err := b.factories.Pool(cfg)
 		if err != nil {
 			return nil, fmt.Errorf("build manager create renew pool: %w", err)
 		}
+		b.components.Pool = pool
 	}
 
-	if b.isPrintBanner {
+	if cfg.IsPrintBanner {
 		banner.PrintBanner(cfg)
 	}
 
-	mgr := manager.NewManager(cfg, b.generator, b.storage, b.codec, b.log, b.pool, b.customPermissionListFunc, b.customRoleListFunc, b.customPermissionListExtFunc, b.customRoleListExtFunc)
+	accessProvider := b.accessProvider
+	if accessProvider == nil {
+		accessProvider = manager.NewLegacyAccessProvider(
+			b.customPermissionListFunc,
+			b.customRoleListFunc,
+			b.customPermissionListExtFunc,
+			b.customRoleListExtFunc,
+		)
+	}
+
+	mgr := manager.NewManager(
+		cfg,
+		b.components.Generator,
+		b.components.Storage,
+		b.components.Codec,
+		b.components.Log,
+		b.components.Pool,
+		accessProvider,
+	)
 
 	return mgr, nil
 }
 
-// MustBuild builds manager and panics on error MustBuild 构建 Manager，失败时触发 panic
+// MustBuild builds manager and panics on error.
 func (b *Builder) MustBuild() *manager.Manager {
 	mgr, err := b.Build()
 	if err != nil {
 		panic(err)
 	}
 	return mgr
+}
+
+func (b *Builder) ensureConfig() {
+	if b.cfg == nil {
+		b.cfg = config.DefaultConfig()
+	}
+}
+
+func (b *Builder) ensureCookieConfig() *config.CookieConfig {
+	b.ensureConfig()
+	if b.cfg.CookieConfig == nil {
+		b.cfg.CookieConfig = config.DefaultCookieConfig()
+	}
+	return b.cfg.CookieConfig
 }

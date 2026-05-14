@@ -73,9 +73,9 @@ func (nm *NonceManager) GetTTL(ctx context.Context, nonce string) (int64, error)
 
 	seconds := int64(ttl)
 	switch {
-	case seconds == -2:
+	case ttl == adapter.TTLNotFound:
 		return -2, nil
-	case seconds == -1:
+	case ttl == adapter.TTLNoExpire:
 		return -1, nil
 	default:
 		return int64(ttl.Seconds()), nil
@@ -93,9 +93,14 @@ func (nm *NonceManager) Verify(ctx context.Context, nonce string) bool {
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
 
-	_, err := nm.storage.GetAndDelete(ctx, key)
+	atomicStorage, ok := nm.storage.(adapter.AtomicStorage)
+	if !ok {
+		return false
+	}
 
-	return err == nil
+	value, err := atomicStorage.GetAndDelete(ctx, key)
+
+	return err == nil && value != nil
 }
 
 // VerifyAndConsume verifies nonce with error VerifyAndConsume 验证并消费 nonce 且在无效时返回错误

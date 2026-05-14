@@ -78,6 +78,8 @@ var (
 	ErrManagerInvalidType = errors.New("manager has invalid type")
 	// ErrInvalidParam indicates invalid param ErrInvalidParam 表示参数无效
 	ErrInvalidParam = errors.New("invalid parameter")
+	// ErrStorageCapabilityUnsupported indicates required storage capability is missing.
+	ErrStorageCapabilityUnsupported = errors.New("storage capability unsupported")
 )
 
 var (
