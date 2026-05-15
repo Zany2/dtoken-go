@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package manager
 
 // removeTerminalByToken removes terminal by token removeTerminalByToken 根据 token 值移除终端信息

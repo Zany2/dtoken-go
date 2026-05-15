@@ -1,4 +1,4 @@
-// Author records daixk as original author at 2026/1/21 13:28:00. Author 记录 daixk 为原始作者，创建时间为 2026/1/21 13:28:00。
+// @Author daixk 2025/12/22 15:56:00
 package redis
 
 import (
@@ -13,6 +13,12 @@ import (
 
 // ErrKeyNotFound indicates the key is missing or expired 表示键不存在或已过期。
 var ErrKeyNotFound = errors.New("key not found")
+
+// TTL constants define Redis TTL sentinel values TTL 常量定义 Redis TTL 哨兵值
+const (
+	TTLNoExpire = adapter.TTLNoExpire
+	TTLNotFound = adapter.TTLNotFound
+)
 
 // Config defines Redis storage configuration Redis 存储配置
 type Config struct {
@@ -55,16 +61,21 @@ func NewStorage(url string) (*Storage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse redis url: %w", err)
 	}
+	opTimeout := 3 * time.Second
 
 	client := redis.NewClient(opts)
+	pingCtx, cancel := context.WithTimeout(context.Background(), opTimeout)
+	defer cancel()
 
 	// Test Redis connectivity 测试连接
-	if err = client.Ping(context.Background()).Err(); err != nil {
+	if err = client.Ping(pingCtx).Err(); err != nil {
+		_ = client.Close()
 		return nil, fmt.Errorf("failed to connect to redis: %w", err)
 	}
 
 	return &Storage{
-		client: client,
+		client:           client,
+		operationTimeout: opTimeout,
 	}, nil
 }
 
@@ -112,6 +123,9 @@ func NewStorageFromClient(client *redis.Client) *Storage {
 
 // Set stores a key value pair 设置键值对
 func (s *Storage) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
+	if err := s.ensureReady(); err != nil {
+		return err
+	}
 	ctx, cancel := s.withOperationTimeout(ctx)
 	defer cancel()
 
@@ -120,6 +134,9 @@ func (s *Storage) Set(ctx context.Context, key string, value any, expiration tim
 
 // Get retrieves the value 获取值
 func (s *Storage) Get(ctx context.Context, key string) (any, error) {
+	if err := s.ensureReady(); err != nil {
+		return nil, err
+	}
 	ctx, cancel := s.withOperationTimeout(ctx)
 	defer cancel()
 
@@ -136,6 +153,9 @@ func (s *Storage) Get(ctx context.Context, key string) (any, error) {
 
 // GetAndDelete atomically gets and deletes the key 原子获取并删除键
 func (s *Storage) GetAndDelete(ctx context.Context, key string) (any, error) {
+	if err := s.ensureReady(); err != nil {
+		return nil, err
+	}
 	ctx, cancel := s.withOperationTimeout(ctx)
 	defer cancel()
 
@@ -155,6 +175,9 @@ func (s *Storage) Delete(ctx context.Context, keys ...string) error {
 	if len(keys) == 0 {
 		return nil
 	}
+	if err := s.ensureReady(); err != nil {
+		return err
+	}
 	ctx, cancel := s.withOperationTimeout(ctx)
 	defer cancel()
 
@@ -168,6 +191,9 @@ func (s *Storage) Delete(ctx context.Context, keys ...string) error {
 
 // Exists checks whether the key exists 检查键是否存在
 func (s *Storage) Exists(ctx context.Context, key string) bool {
+	if err := s.ensureReady(); err != nil {
+		return false
+	}
 	ctx, cancel := s.withOperationTimeout(ctx)
 	defer cancel()
 
@@ -177,6 +203,12 @@ func (s *Storage) Exists(ctx context.Context, key string) bool {
 
 // Keys gets all keys matching the pattern 获取匹配模式的所有键
 func (s *Storage) Keys(ctx context.Context, pattern string) ([]string, error) {
+	if err := s.ensureReady(); err != nil {
+		return nil, err
+	}
+	if pattern == "" {
+		pattern = "*"
+	}
 	ctx, cancel := s.withOperationTimeout(ctx)
 	defer cancel()
 
@@ -202,6 +234,9 @@ func (s *Storage) Keys(ctx context.Context, pattern string) ([]string, error) {
 
 // Expire sets the expiration for the key 设置键的过期时间
 func (s *Storage) Expire(ctx context.Context, key string, expiration time.Duration) error {
+	if err := s.ensureReady(); err != nil {
+		return err
+	}
 	ctx, cancel := s.withOperationTimeout(ctx)
 	defer cancel()
 
@@ -219,14 +254,24 @@ func (s *Storage) Expire(ctx context.Context, key string, expiration time.Durati
 
 // TTL gets the remaining lifetime for the key 获取键的剩余生存时间
 func (s *Storage) TTL(ctx context.Context, key string) (time.Duration, error) {
+	if err := s.ensureReady(); err != nil {
+		return 0, err
+	}
 	ctx, cancel := s.withOperationTimeout(ctx)
 	defer cancel()
 
-	return s.client.TTL(ctx, key).Result()
+	ttl, err := s.client.TTL(ctx, key).Result()
+	if err != nil {
+		return 0, err
+	}
+	return normalizeTTL(ttl), nil
 }
 
 // Clear removes all stored data 清空所有数据
 func (s *Storage) Clear(ctx context.Context) error {
+	if err := s.ensureReady(); err != nil {
+		return err
+	}
 	ctx, cancel := s.withOperationTimeout(ctx)
 	defer cancel()
 
@@ -251,6 +296,9 @@ func (s *Storage) Clear(ctx context.Context) error {
 
 // Ping checks the Redis connection 检查连接
 func (s *Storage) Ping(ctx context.Context) error {
+	if err := s.ensureReady(); err != nil {
+		return err
+	}
 	ctx, cancel := s.withOperationTimeout(ctx)
 	defer cancel()
 
@@ -259,12 +307,38 @@ func (s *Storage) Ping(ctx context.Context) error {
 
 // Close closes the Redis connection 关闭连接
 func (s *Storage) Close() error {
+	if s == nil || s.client == nil {
+		return nil
+	}
 	return s.client.Close()
 }
 
 // GetClient returns the Redis client 获取 Redis 客户端
 func (s *Storage) GetClient() *redis.Client {
+	if s == nil {
+		return nil
+	}
 	return s.client
+}
+
+// ensureReady checks storage dependencies ensureReady 检查存储依赖是否可用
+func (s *Storage) ensureReady() error {
+	if s == nil || s.client == nil {
+		return errors.New("redis storage client is nil")
+	}
+	return nil
+}
+
+// normalizeTTL converts Redis sentinel durations to adapter sentinels normalizeTTL 转换 Redis TTL 哨兵值
+func normalizeTTL(ttl time.Duration) time.Duration {
+	switch ttl {
+	case -time.Second, adapter.TTLNoExpire:
+		return adapter.TTLNoExpire
+	case -2 * time.Second, adapter.TTLNotFound:
+		return adapter.TTLNotFound
+	default:
+		return ttl
+	}
 }
 
 // withOperationTimeout applies configured operation timeout. withOperationTimeout 应用已配置的单次操作超时时间。

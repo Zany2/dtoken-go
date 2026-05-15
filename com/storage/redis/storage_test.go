@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package redis
 
 import (
@@ -64,6 +65,29 @@ func TestWithOperationTimeoutAppliesConfiguredTimeout(t *testing.T) {
 	}
 }
 
+// TestNormalizeTTL verifies Redis TTL sentinels match adapter contract TestNormalizeTTL 验证 Redis TTL 哨兵值符合适配器契约
+func TestNormalizeTTL(t *testing.T) {
+	tests := []struct {
+		name string
+		ttl  time.Duration
+		want time.Duration
+	}{
+		{name: "no expire seconds", ttl: -time.Second, want: TTLNoExpire},
+		{name: "not found seconds", ttl: -2 * time.Second, want: TTLNotFound},
+		{name: "no expire adapter", ttl: TTLNoExpire, want: TTLNoExpire},
+		{name: "not found adapter", ttl: TTLNotFound, want: TTLNotFound},
+		{name: "positive", ttl: time.Minute, want: time.Minute},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeTTL(tt.ttl); got != tt.want {
+				t.Fatalf("normalizeTTL() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestNewStorageRejectsInvalidURL verifies Redis URL parse errors 测试 Redis URL 解析错误
 func TestNewStorageRejectsInvalidURL(t *testing.T) {
 	storage, err := NewStorage("://bad-url")
@@ -82,5 +106,28 @@ func TestNewStorageRejectsInvalidURL(t *testing.T) {
 func TestDeleteWithoutKeysSkipsClient(t *testing.T) {
 	if err := (&Storage{}).Delete(context.Background()); err != nil {
 		t.Fatalf("Delete() error = %v, want nil", err)
+	}
+}
+
+// TestNilClientReturnsErrors verifies nil client does not panic TestNilClientReturnsErrors 验证空客户端不会 panic
+func TestNilClientReturnsErrors(t *testing.T) {
+	storage := NewStorageFromClient(nil)
+	if storage == nil {
+		t.Fatal("NewStorageFromClient(nil) returned nil")
+	}
+	if storage.GetClient() != nil {
+		t.Fatal("GetClient() should return nil client")
+	}
+	if err := storage.Set(context.Background(), "k", "v", 0); err == nil {
+		t.Fatal("Set() error = nil, want nil client error")
+	}
+	if _, err := storage.Get(context.Background(), "k"); err == nil {
+		t.Fatal("Get() error = nil, want nil client error")
+	}
+	if storage.Exists(context.Background(), "k") {
+		t.Fatal("Exists() should return false for nil client")
+	}
+	if err := storage.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
 	}
 }

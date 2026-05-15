@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package kratos
 
 import (
@@ -8,22 +9,22 @@ import (
 	corecontext "github.com/Zany2/dtoken-go/core/context"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go/integrations/internal/authcheck"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/middleware"
 )
 
 // LogicType defines middleware logic type LogicType 定义中间件逻辑类型
-type LogicType string
+type LogicType = authcheck.LogicType
 
 const (
 	// DTokenCtxKey stores request scoped DToken context DTokenCtxKey 存储请求级 DToken 上下文
 	DTokenCtxKey = "DCtx"
 
 	// LogicOr represents OR logic LogicOr 表示或逻辑
-	LogicOr LogicType = "OR"
+	LogicOr LogicType = authcheck.LogicOr
 	// LogicAnd represents AND logic LogicAnd 表示与逻辑
-	LogicAnd LogicType = "AND"
+	LogicAnd LogicType = authcheck.LogicAnd
 )
 
 // FailFunc defines auth failure callback FailFunc 定义认证失败回调
@@ -74,7 +75,7 @@ func RegisterDTokenContextMiddleware(opts ...AuthOption) middleware.Middleware {
 
 	return func(next middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req any) (any, error) {
-			mgr, err := dtoken.GetManager(options.AuthType)
+			mgr, err := authcheck.GetManager(options.AuthType)
 			if err != nil {
 				return nil, dispatchFail(ctx, options.FailFunc, err)
 			}
@@ -94,14 +95,19 @@ func AuthMiddleware(opts ...AuthOption) middleware.Middleware {
 
 	return func(next middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req any) (any, error) {
-			mgr, err := dtoken.GetManager(options.AuthType)
+			mgr, err := authcheck.GetManager(options.AuthType)
 			if err != nil {
 				return nil, dispatchFail(ctx, options.FailFunc, err)
 			}
 
 			dCtx, ctx := getDTokenContext(ctx, mgr)
-			if !mgr.IsLogin(ctx, dCtx.GetTokenValue()) {
-				return nil, dispatchFail(ctx, options.FailFunc, derror.ErrNotLogin)
+			_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+				TokenValue: dCtx.GetTokenValue(),
+				CheckLogin: true,
+				LoginError: derror.ErrNotLogin,
+			})
+			if err != nil {
+				return nil, dispatchFail(ctx, options.FailFunc, err)
 			}
 
 			return next(ctx, req)
@@ -122,7 +128,7 @@ func PermissionMiddleware(permissions []string, opts ...AuthOption) middleware.M
 				return next(ctx, req)
 			}
 
-			mgr, err := dtoken.GetManager(options.AuthType)
+			mgr, err := authcheck.GetManager(options.AuthType)
 			if err != nil {
 				return nil, dispatchFail(ctx, options.FailFunc, err)
 			}
@@ -130,15 +136,13 @@ func PermissionMiddleware(permissions []string, opts ...AuthOption) middleware.M
 			dCtx, ctx := getDTokenContext(ctx, mgr)
 			tokenValue := dCtx.GetTokenValue()
 
-			var ok bool
-			if options.LogicType == LogicAnd {
-				ok = mgr.HasPermissionsAndByToken(ctx, tokenValue, permissions)
-			} else {
-				ok = mgr.HasPermissionsOrByToken(ctx, tokenValue, permissions)
-			}
-
-			if !ok {
-				return nil, dispatchFail(ctx, options.FailFunc, derror.ErrPermissionDenied)
+			_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+				TokenValue:  tokenValue,
+				Permissions: permissions,
+				LogicType:   options.LogicType,
+			})
+			if err != nil {
+				return nil, dispatchFail(ctx, options.FailFunc, err)
 			}
 
 			return next(ctx, req)
@@ -164,7 +168,7 @@ func PermissionPathMiddleware(permissions []string, opts ...AuthOption) middlewa
 				return next(ctx, req)
 			}
 
-			mgr, err := dtoken.GetManager(options.AuthType)
+			mgr, err := authcheck.GetManager(options.AuthType)
 			if err != nil {
 				return nil, dispatchFail(ctx, options.FailFunc, err)
 			}
@@ -172,15 +176,13 @@ func PermissionPathMiddleware(permissions []string, opts ...AuthOption) middlewa
 			dCtx, ctx := getDTokenContext(ctx, mgr)
 			tokenValue := dCtx.GetTokenValue()
 
-			var ok bool
-			if options.LogicType == LogicAnd {
-				ok = mgr.HasPermissionsAndByToken(ctx, tokenValue, reqPermissions)
-			} else {
-				ok = mgr.HasPermissionsOrByToken(ctx, tokenValue, reqPermissions)
-			}
-
-			if !ok {
-				return nil, dispatchFail(ctx, options.FailFunc, derror.ErrPermissionDenied)
+			_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+				TokenValue:  tokenValue,
+				Permissions: reqPermissions,
+				LogicType:   options.LogicType,
+			})
+			if err != nil {
+				return nil, dispatchFail(ctx, options.FailFunc, err)
 			}
 
 			return next(ctx, req)
@@ -201,7 +203,7 @@ func RoleMiddleware(roles []string, opts ...AuthOption) middleware.Middleware {
 				return next(ctx, req)
 			}
 
-			mgr, err := dtoken.GetManager(options.AuthType)
+			mgr, err := authcheck.GetManager(options.AuthType)
 			if err != nil {
 				return nil, dispatchFail(ctx, options.FailFunc, err)
 			}
@@ -209,15 +211,13 @@ func RoleMiddleware(roles []string, opts ...AuthOption) middleware.Middleware {
 			dCtx, ctx := getDTokenContext(ctx, mgr)
 			tokenValue := dCtx.GetTokenValue()
 
-			var ok bool
-			if options.LogicType == LogicAnd {
-				ok = mgr.HasRolesAndByToken(ctx, tokenValue, roles)
-			} else {
-				ok = mgr.HasRolesOrByToken(ctx, tokenValue, roles)
-			}
-
-			if !ok {
-				return nil, dispatchFail(ctx, options.FailFunc, derror.ErrRoleDenied)
+			_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+				TokenValue: tokenValue,
+				Roles:      roles,
+				LogicType:  options.LogicType,
+			})
+			if err != nil {
+				return nil, dispatchFail(ctx, options.FailFunc, err)
 			}
 
 			return next(ctx, req)
@@ -243,7 +243,7 @@ func GetDTokenContextByCtx(ctx context.Context) (*corecontext.DTokenContext, boo
 
 // GetLoginIDByCtx gets login ID by context GetLoginIDByCtx 从上下文获取登录 ID
 func GetLoginIDByCtx(ctx context.Context, authType ...string) (string, error) {
-	mgr, err := dtoken.GetManager(authType...)
+	mgr, err := authcheck.GetManager(firstAuthType(authType...))
 	if err != nil {
 		return "", err
 	}
@@ -254,7 +254,7 @@ func GetLoginIDByCtx(ctx context.Context, authType ...string) (string, error) {
 
 // GetTokenInfoByCtx gets token info by context GetTokenInfoByCtx 从上下文获取 Token 信息
 func GetTokenInfoByCtx(ctx context.Context, authType ...string) (*manager.TokenInfo, error) {
-	mgr, err := dtoken.GetManager(authType...)
+	mgr, err := authcheck.GetManager(firstAuthType(authType...))
 	if err != nil {
 		return nil, err
 	}
@@ -330,6 +330,14 @@ func getHTTPStatusFromCode(code int) int {
 	default:
 		return http.StatusInternalServerError
 	}
+}
+
+// firstAuthType returns the first optional auth type firstAuthType 返回第一个可选认证类型
+func firstAuthType(authType ...string) string {
+	if len(authType) == 0 {
+		return ""
+	}
+	return authType[0]
 }
 
 // getReasonFromCode maps error code to reason getReasonFromCode 映射错误码到错误原因

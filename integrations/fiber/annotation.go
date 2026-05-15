@@ -1,10 +1,11 @@
+// @Author daixk 2025/12/22 15:56:00
 package fiber
 
 import (
 	"context"
 
 	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go/integrations/internal/authcheck"
 	gofiber "github.com/gofiber/fiber/v2"
 )
 
@@ -42,7 +43,7 @@ func GetHandler(ctx context.Context, handler gofiber.Handler, failFunc func(c *g
 			return c.Next()
 		}
 
-		mgr, err := dtoken.GetManager(ann.AuthType)
+		mgr, err := authcheck.GetManager(ann.AuthType)
 		if err != nil {
 			if failFunc != nil {
 				failFunc(c, err)
@@ -54,64 +55,22 @@ func GetHandler(ctx context.Context, handler gofiber.Handler, failFunc func(c *g
 		// Get DTokenContext (reuse cached context) 获取 DTokenContext（复用缓存上下文）
 		dCtx := getDTokenContext(c, mgr)
 		token := dCtx.GetTokenValue()
-		if !mgr.IsLogin(ctx, token) {
+
+		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+			TokenValue:   token,
+			CheckLogin:   true,
+			CheckDisable: ann.CheckDisable,
+			Permissions:  ann.CheckPermission,
+			Roles:        ann.CheckRole,
+			LogicType:    ann.LogicType,
+			LoginError:   derror.ErrNotLogin,
+		})
+		if err != nil {
 			if failFunc != nil {
-				failFunc(c, derror.ErrNotLogin)
+				failFunc(c, err)
 				return nil
 			}
-			return writeErrorResponse(c, derror.ErrNotLogin)
-		}
-
-		var loginID string
-		if ann.CheckDisable || len(ann.CheckPermission) > 0 || len(ann.CheckRole) > 0 {
-			loginID, err = mgr.GetLoginID(ctx, token)
-			if err != nil {
-				if failFunc != nil {
-					failFunc(c, err)
-					return nil
-				}
-				return writeErrorResponse(c, err)
-			}
-		}
-
-		if ann.CheckDisable && mgr.IsDisable(ctx, loginID) {
-			if failFunc != nil {
-				failFunc(c, derror.ErrAccountDisabled)
-				return nil
-			}
-			return writeErrorResponse(c, derror.ErrAccountDisabled)
-		}
-
-		if len(ann.CheckPermission) > 0 {
-			var ok bool
-			if ann.LogicType == LogicAnd {
-				ok = mgr.HasPermissionsAnd(ctx, loginID, ann.CheckPermission)
-			} else {
-				ok = mgr.HasPermissionsOr(ctx, loginID, ann.CheckPermission)
-			}
-			if !ok {
-				if failFunc != nil {
-					failFunc(c, derror.ErrPermissionDenied)
-					return nil
-				}
-				return writeErrorResponse(c, derror.ErrPermissionDenied)
-			}
-		}
-
-		if len(ann.CheckRole) > 0 {
-			var ok bool
-			if ann.LogicType == LogicAnd {
-				ok = mgr.HasRolesAnd(ctx, loginID, ann.CheckRole)
-			} else {
-				ok = mgr.HasRolesOr(ctx, loginID, ann.CheckRole)
-			}
-			if !ok {
-				if failFunc != nil {
-					failFunc(c, derror.ErrRoleDenied)
-					return nil
-				}
-				return writeErrorResponse(c, derror.ErrRoleDenied)
-			}
+			return writeErrorResponse(c, err)
 		}
 
 		if handler != nil {

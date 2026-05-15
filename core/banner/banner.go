@@ -1,12 +1,14 @@
+// @Author daixk 2025/12/22 15:56:00
 package banner
 
 import (
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/Zany2/dtoken-go/core"
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
-	"strings"
-	"time"
 )
 
 const (
@@ -36,12 +38,13 @@ func PrintBanner(cfg *config.Config) {
 	fmt.Println("         Configuration Summary          ")
 	fmt.Println("========================================")
 
-	// Auth config 认证配置
+	// Print auth config 打印认证配置
 	fmt.Printf("AuthType         : %s\n", strings.TrimSuffix(cfg.AuthType, ":"))
+	fmt.Printf("KeyPrefix        : %s\n", strings.TrimSuffix(cfg.KeyPrefix, ":"))
 	fmt.Printf("TokenName        : %s\n", cfg.TokenName)
 	fmt.Printf("TokenStyle       : %s\n", getTokenStyleName(cfg.TokenStyle))
 
-	// Timeout config 超时配置
+	// Print timeout config 打印超时配置
 	fmt.Printf("Timeout          : %s\n", formatDuration(cfg.Timeout))
 	if cfg.AutoRenew {
 		fmt.Printf("AutoRenew        : Enabled\n")
@@ -52,13 +55,13 @@ func PrintBanner(cfg *config.Config) {
 	}
 	fmt.Printf("ActiveTimeout    : %s\n", formatDuration(cfg.ActiveTimeout))
 
-	// Concurrency config 并发配置
+	// Print concurrency config 打印并发配置
 	fmt.Printf("Concurrency      : %s\n", formatConcurrency(cfg))
 
-	// Token source config Token 读取配置
+	// Print token source config 打印 Token 读取配置
 	fmt.Printf("Token Source     : %s\n", formatTokenSource(cfg))
 
-	// Log config 日志配置
+	// Print log config 打印日志配置
 	if cfg.IsLog {
 		fmt.Printf("Logging          : Enabled\n")
 	} else {
@@ -108,7 +111,7 @@ func formatDuration(seconds int64) string {
 
 	d := time.Duration(seconds) * time.Second
 
-	// Day branch 天级分支
+	// Format day-level duration 格式化天级时长
 	if d >= 24*time.Hour {
 		days := d / (24 * time.Hour)
 		hours := (d % (24 * time.Hour)) / time.Hour
@@ -118,7 +121,7 @@ func formatDuration(seconds int64) string {
 		return fmt.Sprintf("%dd", days)
 	}
 
-	// Hour branch 小时级分支
+	// Format hour-level duration 格式化小时级时长
 	if d >= time.Hour {
 		hours := d / time.Hour
 		minutes := (d % time.Hour) / time.Minute
@@ -128,7 +131,7 @@ func formatDuration(seconds int64) string {
 		return fmt.Sprintf("%dh", hours)
 	}
 
-	// Minute branch 分钟级分支
+	// Format minute-level duration 格式化分钟级时长
 	if d >= time.Minute {
 		minutes := d / time.Minute
 		seconds := (d % time.Minute) / time.Second
@@ -138,11 +141,11 @@ func formatDuration(seconds int64) string {
 		return fmt.Sprintf("%dm", minutes)
 	}
 
-	// Second branch 秒级分支
+	// Format second-level duration 格式化秒级时长
 	return fmt.Sprintf("%ds", seconds)
 }
 
-// formatConcurrency formats concurrency config formatConcurrency 格式化并发配置显示
+// formatConcurrency formats concurrency config formatConcurrency 格式化并发配置
 func formatConcurrency(cfg *config.Config) string {
 	if !cfg.IsConcurrent {
 		return fmt.Sprintf("Disabled (Scope: %s)", cfg.ConcurrencyScope)
@@ -167,7 +170,7 @@ func formatConcurrency(cfg *config.Config) string {
 	return strings.Join(parts, ", ")
 }
 
-// formatTokenSource formats token source display formatTokenSource 格式化 Token 读取来源显示
+// formatTokenSource formats token source display formatTokenSource 格式化 Token 读取来源
 func formatTokenSource(cfg *config.Config) string {
 	var sources []string
 	if cfg.IsReadHeader {

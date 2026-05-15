@@ -1,4 +1,4 @@
-// Author records daixk as original author at 2026/1/22 17:33:00. Author 记录 daixk 为原始作者，创建时间为 2026/1/22 17:33:00。
+// @Author daixk 2025/12/22 15:56:00
 package manager
 
 import (
@@ -138,15 +138,13 @@ func (m *Manager) GetDisableTTL(ctx context.Context, loginID string) (int64, err
 		return 0, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
-	// Explain TTL semantics 存储适配器返回 time.Duration 类型，直接转换为 int64 即可，标准 Redis TTL 语义：-2 key 不存在，-1 key 无过期时间，>0 剩余秒数
-	seconds := int64(ttl)
-
+	// Explain TTL semantics 存储适配器返回 time.Duration 类型，按哨兵值和正数 TTL 语义转换为秒
 	switch {
 	case ttl == adapter.TTLNotFound:
 		return -2, nil // 未封禁
 	case ttl == adapter.TTLNoExpire:
 		return -1, nil // 永久封禁
-	case seconds > 0:
+	case ttl > 0:
 		return int64(ttl.Seconds()), nil
 	default:
 		return 0, nil
@@ -314,14 +312,15 @@ func (m *Manager) GetDisableServiceTTL(ctx context.Context, loginID, service str
 		return 0, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
-	seconds := int64(ttl)
 	switch {
 	case ttl == adapter.TTLNotFound:
 		return -2, nil
 	case ttl == adapter.TTLNoExpire:
 		return -1, nil
-	default:
+	case ttl > 0:
 		return int64(ttl.Seconds()), nil
+	default:
+		return 0, nil
 	}
 }
 

@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package ants
 
 import (
@@ -45,8 +46,8 @@ func TestRenewPoolManagerSubmitAndStop(t *testing.T) {
 	}
 }
 
-// TestRenewPoolManagerNormalizesConfig verifies config normalization during construction 测试构造时配置归一化
-func TestRenewPoolManagerNormalizesConfig(t *testing.T) {
+// TestRenewPoolManagerRejectsInvalidConfig verifies invalid config returns error TestRenewPoolManagerRejectsInvalidConfig 验证非法配置会返回错误
+func TestRenewPoolManagerRejectsInvalidConfig(t *testing.T) {
 	cfg := &RenewPoolConfig{
 		MinSize:       0,
 		MaxSize:       0,
@@ -56,13 +57,24 @@ func TestRenewPoolManagerNormalizesConfig(t *testing.T) {
 		Expiry:        DefaultExpiry,
 		NonBlocking:   true,
 	}
-	mgr, err := NewRenewPoolManagerWithConfig(cfg)
-	if err != nil {
-		t.Fatalf("NewRenewPoolManagerWithConfig() error = %v", err)
+	if mgr, err := NewRenewPoolManagerWithConfig(cfg); err == nil {
+		mgr.Stop()
+		t.Fatal("NewRenewPoolManagerWithConfig() error = nil, want invalid config error")
 	}
-	defer mgr.Stop()
+}
 
-	if cfg.MinSize != DefaultMinSize || cfg.MaxSize != DefaultMinSize {
-		t.Fatalf("normalized config = %+v", cfg)
+// TestRenewPoolManagerNilSafety verifies nil manager methods are safe TestRenewPoolManagerNilSafety 验证空管理器方法安全
+func TestRenewPoolManagerNilSafety(t *testing.T) {
+	var mgr *RenewPoolManager
+	if err := mgr.Submit(func() {}); err == nil {
+		t.Fatal("Submit(nil manager) error = nil, want error")
+	}
+	if err := mgr.Submit(nil); err == nil {
+		t.Fatal("Submit(nil task) error = nil, want error")
+	}
+	mgr.Stop()
+	running, capacity, usage := mgr.Stats()
+	if running != 0 || capacity != 0 || usage != 0 {
+		t.Fatalf("Stats(nil manager) = (%d, %d, %f), want zero", running, capacity, usage)
 	}
 }

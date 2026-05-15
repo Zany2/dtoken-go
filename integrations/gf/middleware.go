@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package gf
 
 import (
@@ -9,7 +10,6 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 
 	DContext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/dtoken"
 	"github.com/Zany2/dtoken-go/integrations/internal/authcheck"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -301,7 +301,7 @@ func GetDTokenContextByCtx(ctx context.Context) (*DContext.DTokenContext, bool) 
 
 // GetLoginIDByCtx gets login ID by context GetLoginIDByCtx 从上下文获取登录 ID
 func GetLoginIDByCtx(ctx context.Context, authType ...string) (string, error) {
-	mgr, err := dtoken.GetManager(authType...)
+	mgr, err := authcheck.GetManager(firstAuthType(authType...))
 	if err != nil {
 		return "", err
 	}
@@ -312,7 +312,7 @@ func GetLoginIDByCtx(ctx context.Context, authType ...string) (string, error) {
 
 // GetTokenInfoByCtx gets token info by context GetTokenInfoByCtx 从上下文获取 Token 信息
 func GetTokenInfoByCtx(ctx context.Context, authType ...string) (*manager.TokenInfo, error) {
-	mgr, err := dtoken.GetManager(authType...)
+	mgr, err := authcheck.GetManager(firstAuthType(authType...))
 	if err != nil {
 		return nil, err
 	}
@@ -383,4 +383,12 @@ func getHTTPStatusFromCode(code int) int {
 	default:
 		return http.StatusInternalServerError
 	}
+}
+
+// firstAuthType returns the optional auth type firstAuthType 返回可选认证类型
+func firstAuthType(authType ...string) string {
+	if len(authType) == 0 {
+		return ""
+	}
+	return authType[0]
 }

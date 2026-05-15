@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package adapter
 
 // Generator defines token generator interface Generator 定义 Token 生成接口

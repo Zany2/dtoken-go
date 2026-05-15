@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package chi
 
 import (
@@ -9,20 +10,20 @@ import (
 	DContext "github.com/Zany2/dtoken-go/core/context"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go/integrations/internal/authcheck"
 )
 
 // LogicType defines middleware logic type LogicType 定义中间件逻辑类型
-type LogicType string
+type LogicType = authcheck.LogicType
 
 const (
 	// DTokenCtxKey stores request scoped DToken context DTokenCtxKey 存储请求级 DToken 上下文
 	DTokenCtxKey = "DCtx"
 
 	// LogicOr represents OR logic LogicOr 表示或逻辑
-	LogicOr LogicType = "OR"
+	LogicOr LogicType = authcheck.LogicOr
 	// LogicAnd represents AND logic LogicAnd 表示与逻辑
-	LogicAnd LogicType = "AND"
+	LogicAnd LogicType = authcheck.LogicAnd
 )
 
 // AuthOption defines auth option setter AuthOption 定义认证选项设置器
@@ -70,7 +71,7 @@ func RegisterDTokenContextMiddleware(opts ...AuthOption) func(http.Handler) http
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			mgr, err := dtoken.GetManager(options.AuthType)
+			mgr, err := authcheck.GetManager(options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, r, err)
@@ -96,7 +97,7 @@ func AuthMiddleware(opts ...AuthOption) func(http.Handler) http.Handler {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			mgr, err := dtoken.GetManager(options.AuthType)
+			mgr, err := authcheck.GetManager(options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, r, err)
@@ -110,11 +111,16 @@ func AuthMiddleware(opts ...AuthOption) func(http.Handler) http.Handler {
 			dCtx := getDTokenContext(chiCtx, mgr)
 			tokenValue := dCtx.GetTokenValue()
 
-			if !mgr.IsLogin(chiCtx.r.Context(), tokenValue) {
+			_, err = authcheck.Check(chiCtx.r.Context(), mgr, authcheck.Request{
+				TokenValue: tokenValue,
+				CheckLogin: true,
+				LoginError: derror.ErrTokenExpired,
+			})
+			if err != nil {
 				if options.FailFunc != nil {
-					options.FailFunc(w, chiCtx.r, derror.ErrTokenExpired)
+					options.FailFunc(w, chiCtx.r, err)
 				} else {
-					writeErrorResponse(w, derror.ErrTokenExpired)
+					writeErrorResponse(w, err)
 				}
 				return
 			}
@@ -138,7 +144,7 @@ func PermissionMiddleware(permissions []string, opts ...AuthOption) func(http.Ha
 				return
 			}
 
-			mgr, err := dtoken.GetManager(options.AuthType)
+			mgr, err := authcheck.GetManager(options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, r, err)
@@ -152,18 +158,16 @@ func PermissionMiddleware(permissions []string, opts ...AuthOption) func(http.Ha
 			dCtx := getDTokenContext(chiCtx, mgr)
 			tokenValue := dCtx.GetTokenValue()
 
-			var ok bool
-			if options.LogicType == LogicAnd {
-				ok = mgr.HasPermissionsAndByToken(chiCtx.r.Context(), tokenValue, permissions)
-			} else {
-				ok = mgr.HasPermissionsOrByToken(chiCtx.r.Context(), tokenValue, permissions)
-			}
-
-			if !ok {
+			_, err = authcheck.Check(chiCtx.r.Context(), mgr, authcheck.Request{
+				TokenValue:  tokenValue,
+				Permissions: permissions,
+				LogicType:   options.LogicType,
+			})
+			if err != nil {
 				if options.FailFunc != nil {
-					options.FailFunc(w, chiCtx.r, derror.ErrPermissionDenied)
+					options.FailFunc(w, chiCtx.r, err)
 				} else {
-					writeErrorResponse(w, derror.ErrPermissionDenied)
+					writeErrorResponse(w, err)
 				}
 				return
 			}
@@ -190,7 +194,7 @@ func PermissionPathMiddleware(permissions []string, opts ...AuthOption) func(htt
 				return
 			}
 
-			mgr, err := dtoken.GetManager(options.AuthType)
+			mgr, err := authcheck.GetManager(options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, r, err)
@@ -204,18 +208,16 @@ func PermissionPathMiddleware(permissions []string, opts ...AuthOption) func(htt
 			dCtx := getDTokenContext(chiCtx, mgr)
 			tokenValue := dCtx.GetTokenValue()
 
-			var ok bool
-			if options.LogicType == LogicAnd {
-				ok = mgr.HasPermissionsAndByToken(chiCtx.r.Context(), tokenValue, reqPermissions)
-			} else {
-				ok = mgr.HasPermissionsOrByToken(chiCtx.r.Context(), tokenValue, reqPermissions)
-			}
-
-			if !ok {
+			_, err = authcheck.Check(chiCtx.r.Context(), mgr, authcheck.Request{
+				TokenValue:  tokenValue,
+				Permissions: reqPermissions,
+				LogicType:   options.LogicType,
+			})
+			if err != nil {
 				if options.FailFunc != nil {
-					options.FailFunc(w, chiCtx.r, derror.ErrPermissionDenied)
+					options.FailFunc(w, chiCtx.r, err)
 				} else {
-					writeErrorResponse(w, derror.ErrPermissionDenied)
+					writeErrorResponse(w, err)
 				}
 				return
 			}
@@ -239,7 +241,7 @@ func RoleMiddleware(roles []string, opts ...AuthOption) func(http.Handler) http.
 				return
 			}
 
-			mgr, err := dtoken.GetManager(options.AuthType)
+			mgr, err := authcheck.GetManager(options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, r, err)
@@ -253,18 +255,16 @@ func RoleMiddleware(roles []string, opts ...AuthOption) func(http.Handler) http.
 			dCtx := getDTokenContext(chiCtx, mgr)
 			tokenValue := dCtx.GetTokenValue()
 
-			var ok bool
-			if options.LogicType == LogicAnd {
-				ok = mgr.HasRolesAndByToken(chiCtx.r.Context(), tokenValue, roles)
-			} else {
-				ok = mgr.HasRolesOrByToken(chiCtx.r.Context(), tokenValue, roles)
-			}
-
-			if !ok {
+			_, err = authcheck.Check(chiCtx.r.Context(), mgr, authcheck.Request{
+				TokenValue: tokenValue,
+				Roles:      roles,
+				LogicType:  options.LogicType,
+			})
+			if err != nil {
 				if options.FailFunc != nil {
-					options.FailFunc(w, chiCtx.r, derror.ErrRoleDenied)
+					options.FailFunc(w, chiCtx.r, err)
 				} else {
-					writeErrorResponse(w, derror.ErrRoleDenied)
+					writeErrorResponse(w, err)
 				}
 				return
 			}

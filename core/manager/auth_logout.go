@@ -1,4 +1,4 @@
-// Author records daixk as original author at 2026/1/22 17:33:00. Author 记录 daixk 为原始作者，创建时间为 2026/1/22 17:33:00。
+// @Author daixk 2025/12/22 15:56:00
 package manager
 
 import (

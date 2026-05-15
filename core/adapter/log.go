@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package adapter
 
 // Log defines logging behavior interface Log 定义日志行为接口

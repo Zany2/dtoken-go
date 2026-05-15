@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package memory
 
 import (
@@ -66,6 +67,15 @@ func TestStorageKeysAndPatterns(t *testing.T) {
 	if !reflect.DeepEqual(keys, []string{"user:*"}) {
 		t.Fatalf("Keys(user:\\*) = %v", keys)
 	}
+
+	keys, err = s.Keys(ctx, "")
+	if err != nil {
+		t.Fatalf("Keys(empty) error = %v", err)
+	}
+	sort.Strings(keys)
+	if !reflect.DeepEqual(keys, []string{"team:1", "user:*", "user:1", "user:2"}) {
+		t.Fatalf("Keys(empty) = %v", keys)
+	}
 }
 
 // TestStorageTTLAndExpire verifies TTL and expiration behavior 测试 TTL 与过期行为
@@ -119,5 +129,30 @@ func TestStorageClearAndPing(t *testing.T) {
 	}
 	if len(keys) != 0 {
 		t.Fatalf("Clear() left keys: %v", keys)
+	}
+}
+
+// TestZeroValueStorageReturnsErrors verifies zero value storage is safe TestZeroValueStorageReturnsErrors 验证零值存储调用安全
+func TestZeroValueStorageReturnsErrors(t *testing.T) {
+	var s Storage
+	ctx := context.Background()
+
+	if err := s.Set(ctx, "k", "v", 0); err == nil {
+		t.Fatal("Set() error = nil, want nil cache error")
+	}
+	if _, err := s.Get(ctx, "k"); err == nil {
+		t.Fatal("Get() error = nil, want nil cache error")
+	}
+	if s.Exists(ctx, "k") {
+		t.Fatal("Exists() should return false for nil cache")
+	}
+	if _, err := s.TTL(ctx, "k"); err == nil {
+		t.Fatal("TTL() error = nil, want nil cache error")
+	}
+	if err := s.Delete(ctx); err != nil {
+		t.Fatalf("Delete(empty) error = %v, want nil", err)
+	}
+	if err := s.Delete(ctx, "k"); err == nil {
+		t.Fatal("Delete() error = nil, want nil cache error")
 	}
 }

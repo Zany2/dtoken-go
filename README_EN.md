@@ -53,7 +53,6 @@ Optional storage components:
 
 ```bash
 go get github.com/Zany2/dtoken-go/com/storage/redis
-go get github.com/Zany2/dtoken-go/com/storage/postgresql
 ```
 
 Optional framework integrations:

@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package dlog
 
 import (
@@ -64,5 +65,33 @@ func TestLoggerConfigSettersAndClone(t *testing.T) {
 	}
 	if nilClone := (*LoggerConfig)(nil).Clone(); nilClone == nil {
 		t.Fatal("Clone() on nil should return empty config")
+	}
+}
+
+// TestLoggerConfigValidate verifies invalid logger config detection TestLoggerConfigValidate 验证日志配置非法值检测
+func TestLoggerConfigValidate(t *testing.T) {
+	if err := DefaultLoggerConfig().Validate(); err != nil {
+		t.Fatalf("Validate(default) error = %v", err)
+	}
+	if err := (&LoggerConfig{}).Validate(); err != nil {
+		t.Fatalf("Validate(zero) error = %v", err)
+	}
+
+	tests := []LoggerConfig{
+		{TimeFormat: DefaultTimeFormat, Path: "   ", Level: LevelInfo, QueueSize: 1, RotateSize: 1},
+		{TimeFormat: DefaultTimeFormat, FileFormat: "   ", Level: LevelInfo, QueueSize: 1, RotateSize: 1},
+		{TimeFormat: DefaultTimeFormat, FileFormat: "logs/app.log", Level: LevelInfo, QueueSize: 1, RotateSize: 1},
+		{TimeFormat: DefaultTimeFormat, Level: LogLevel(99), QueueSize: 1, RotateSize: 1},
+		*DefaultLoggerConfig().SetQueueSize(0),
+		*DefaultLoggerConfig().SetRotateSize(0),
+		*DefaultLoggerConfig().SetRotateBackupLimit(0),
+		*DefaultLoggerConfig().SetRotateExpire(-time.Second),
+		*DefaultLoggerConfig().SetRotateBackupDays(-1),
+	}
+	for _, tt := range tests {
+		cfg := tt
+		if err := cfg.Validate(); err == nil {
+			t.Fatalf("Validate(%+v) should fail", cfg)
+		}
 	}
 }

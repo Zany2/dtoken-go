@@ -1,9 +1,12 @@
+// @Author daixk 2025/12/22 15:56:00
 package config
 
 import (
 	"fmt"
-	"github.com/Zany2/dtoken-go/core/adapter"
 	"strings"
+	"unicode"
+
+	"github.com/Zany2/dtoken-go/core/adapter"
 )
 
 // Config defines runtime config Config 定义运行时配置
@@ -142,25 +145,47 @@ func DefaultCookieConfig() *CookieConfig {
 
 // Validate validates config Validate 验证配置是否合法
 func (c *Config) Validate() error {
-	// Validate basic format 验证基础格式
-	if c.TokenName == "" {
-		return fmt.Errorf("TokenName 不能为空")
+	if c == nil {
+		return fmt.Errorf("Config must not be nil")
 	}
-	if strings.ContainsAny(c.TokenName, "\t\r\n") {
-		return fmt.Errorf("TokenName 不能包含制表符或换行符，当前值：%q", c.TokenName)
+
+	// Normalize namespaced fields first 先统一命名空间字段格式
+	c.normalizeNamespaces()
+
+	// Validate basic format 验证基础格式
+	if strings.TrimSpace(c.TokenName) == "" {
+		return fmt.Errorf("Config.TokenName must not be empty")
+	}
+	if hasWhitespace(c.TokenName) {
+		return fmt.Errorf("Config.TokenName must not contain whitespace: %q", c.TokenName)
 	}
 	if len(c.TokenName) > 64 {
-		return fmt.Errorf("TokenName 长度不能超过 64 个字符，当前长度：%d", len(c.TokenName))
+		return fmt.Errorf("Config.TokenName length must not exceed 64 characters: %d", len(c.TokenName))
 	}
 
 	if c.AuthType == "" {
-		return fmt.Errorf("AuthType 不能为空")
+		return fmt.Errorf("Config.AuthType must not be empty")
 	}
-	if strings.ContainsAny(c.AuthType, "\t\r\n") {
-		return fmt.Errorf("AuthType 不能包含制表符或换行符，当前值：%q", c.AuthType)
+	if hasWhitespace(c.AuthType) {
+		return fmt.Errorf("Config.AuthType must not contain whitespace: %q", c.AuthType)
+	}
+	if !hasNamespaceContent(c.AuthType) {
+		return fmt.Errorf("Config.AuthType must contain non-separator content: %q", c.AuthType)
 	}
 	if len(c.AuthType) > 64 {
-		return fmt.Errorf("AuthType 长度不能超过 64 个字符，当前长度：%d", len(c.AuthType))
+		return fmt.Errorf("Config.AuthType length must not exceed 64 characters: %d", len(c.AuthType))
+	}
+	if c.KeyPrefix == "" {
+		return fmt.Errorf("Config.KeyPrefix must not be empty")
+	}
+	if hasWhitespace(c.KeyPrefix) {
+		return fmt.Errorf("Config.KeyPrefix must not contain whitespace: %q", c.KeyPrefix)
+	}
+	if !hasNamespaceContent(c.KeyPrefix) {
+		return fmt.Errorf("Config.KeyPrefix must contain non-separator content: %q", c.KeyPrefix)
+	}
+	if len(c.KeyPrefix) > 64 {
+		return fmt.Errorf("Config.KeyPrefix length must not exceed 64 characters: %d", len(c.KeyPrefix))
 	}
 
 	// Validate numeric range 验证数值范围
@@ -172,7 +197,7 @@ func (c *Config) Validate() error {
 	switch c.ConcurrencyScope {
 	case ConcurrencyScopeAccount, ConcurrencyScopeDevice:
 	default:
-		return fmt.Errorf("ConcurrencyScope 必须为 %q 或 %q，当前值：%q",
+		return fmt.Errorf("Config.ConcurrencyScope must be %q or %q: %q",
 			ConcurrencyScopeAccount, ConcurrencyScopeDevice, c.ConcurrencyScope)
 	}
 
@@ -180,7 +205,7 @@ func (c *Config) Validate() error {
 	switch c.ReplacedLoginExitMode {
 	case ReplacedLoginExitModeOldDevice, ReplacedLoginExitModeNewDevice:
 	default:
-		return fmt.Errorf("ReplacedLoginExitMode 必须为 %q 或 %q，当前值：%q",
+		return fmt.Errorf("Config.ReplacedLoginExitMode must be %q or %q: %q",
 			ReplacedLoginExitModeOldDevice, ReplacedLoginExitModeNewDevice, c.ReplacedLoginExitMode)
 	}
 
@@ -188,36 +213,50 @@ func (c *Config) Validate() error {
 	switch c.OverflowLogoutMode {
 	case LogoutModeLogout, LogoutModeKickout, LogoutModeReplaced:
 	default:
-		return fmt.Errorf("OverflowLogoutMode 必须为 %q、%q 或 %q，当前值：%q",
+		return fmt.Errorf("Config.OverflowLogoutMode must be %q, %q, or %q: %q",
 			LogoutModeLogout, LogoutModeKickout, LogoutModeReplaced, c.OverflowLogoutMode)
 	}
 
 	// Validate token style settings 验证 Token 风格相关配置
-	if c.TokenStyle == adapter.TokenStyleJWT && c.JwtSecretKey == "" {
-		return fmt.Errorf("TokenStyle 为 JWT 时，JwtSecretKey 不能为空")
+	switch c.TokenStyle {
+	case adapter.TokenStyleUUID,
+		adapter.TokenStyleSimple,
+		adapter.TokenStyleRandom32,
+		adapter.TokenStyleRandom64,
+		adapter.TokenStyleRandom128,
+		adapter.TokenStyleJWT,
+		adapter.TokenStyleHash,
+		adapter.TokenStyleTimestamp,
+		adapter.TokenStyleTik:
+	default:
+		return fmt.Errorf("Config.TokenStyle is invalid: %q", c.TokenStyle)
 	}
-
-	// Auto fix renew threshold 自动修正续期阈值
-	if c.AutoRenew && c.Timeout != NoLimit && c.RenewMaxRefresh != NoLimit && c.RenewMaxRefresh > c.Timeout {
-		c.RenewMaxRefresh = c.Timeout / 2
-		if c.RenewMaxRefresh <= 0 {
-			c.RenewMaxRefresh = c.Timeout
-		}
+	if c.TokenStyle == adapter.TokenStyleJWT && strings.TrimSpace(c.JwtSecretKey) == "" {
+		return fmt.Errorf("Config.JwtSecretKey must not be empty when Config.TokenStyle is JWT")
 	}
 
 	// Validate time relation 验证时间关系
+	if c.AutoRenew && c.Timeout == NoLimit {
+		return fmt.Errorf("Config.Timeout must not be unlimited when Config.AutoRenew is true")
+	}
+	if c.AutoRenew && c.Timeout != NoLimit && c.RenewMaxRefresh != NoLimit && c.RenewMaxRefresh > c.Timeout {
+		return fmt.Errorf("Config.RenewMaxRefresh (%d) must not be greater than Config.Timeout (%d)", c.RenewMaxRefresh, c.Timeout)
+	}
+	if c.AutoRenew && c.Timeout != NoLimit && c.RenewInterval != NoLimit && c.RenewInterval >= c.Timeout {
+		return fmt.Errorf("Config.RenewInterval (%d) must be less than Config.Timeout (%d) so auto renewal can run before token expiration", c.RenewInterval, c.Timeout)
+	}
 	if c.AutoRenew && c.ActiveTimeout != NoLimit && c.RenewInterval != NoLimit && c.RenewInterval >= c.ActiveTimeout {
-		return fmt.Errorf("RenewInterval (%d) 必须小于 ActiveTimeout (%d)，否则活跃用户可能被踢出", c.RenewInterval, c.ActiveTimeout)
+		return fmt.Errorf("Config.RenewInterval (%d) must be less than Config.ActiveTimeout (%d)", c.RenewInterval, c.ActiveTimeout)
 	}
 
 	// Validate token sources 验证 Token 读取来源
 	if !c.IsReadHeader && !c.IsReadCookie && !c.IsReadBody {
-		return fmt.Errorf("至少需要启用 IsReadHeader、IsReadCookie 或 IsReadBody 中的一项")
+		return fmt.Errorf("Config must enable at least one token source: IsReadHeader, IsReadCookie, or IsReadBody")
 	}
 
 	// Validate cookie config 验证 Cookie 配置
 	if c.IsReadCookie && c.CookieConfig == nil {
-		return fmt.Errorf("启用 IsReadCookie 时，CookieConfig 不能为空")
+		return fmt.Errorf("Config.CookieConfig must not be nil when Config.IsReadCookie is true")
 	}
 	if c.CookieConfig != nil {
 		if err := c.validateCookieConfig(); err != nil {
@@ -232,18 +271,27 @@ func (c *Config) Validate() error {
 func (c *Config) validateCookieConfig() error {
 	cc := c.CookieConfig
 
-	if cc.Path == "" {
-		return fmt.Errorf("CookieConfig.Path 不能为空")
+	if hasWhitespace(cc.Domain) {
+		return fmt.Errorf("CookieConfig.Domain must not contain whitespace: %q", cc.Domain)
+	}
+	if strings.TrimSpace(cc.Path) == "" {
+		return fmt.Errorf("CookieConfig.Path must not be empty")
+	}
+	if !strings.HasPrefix(cc.Path, "/") {
+		return fmt.Errorf("CookieConfig.Path must start with /: %q", cc.Path)
+	}
+	if cc.MaxAge < 0 {
+		return fmt.Errorf("CookieConfig.MaxAge must not be negative: %d", cc.MaxAge)
 	}
 
 	switch cc.SameSite {
 	case SameSiteLax, SameSiteStrict, SameSiteNone, "":
 	default:
-		return fmt.Errorf("无效的 CookieConfig.SameSite 值：%v", cc.SameSite)
+		return fmt.Errorf("CookieConfig.SameSite is invalid: %v", cc.SameSite)
 	}
 
 	if cc.SameSite == SameSiteNone && !cc.Secure {
-		return fmt.Errorf("SameSite 为 None 时，Secure 必须为 true（浏览器强制要求）")
+		return fmt.Errorf("CookieConfig.Secure must be true when CookieConfig.SameSite is None")
 	}
 
 	return nil
@@ -261,13 +309,13 @@ func (c *Config) Clone() *Config {
 
 // SetAuthType sets auth type SetAuthType 设置认证体系类型
 func (c *Config) SetAuthType(authType string) *Config {
-	c.AuthType = authType
+	c.AuthType = normalizeNamespace(authType)
 	return c
 }
 
 // SetKeyPrefix sets key prefix SetKeyPrefix 设置存储键前缀
 func (c *Config) SetKeyPrefix(keyPrefix string) *Config {
-	c.KeyPrefix = keyPrefix
+	c.KeyPrefix = normalizeNamespace(keyPrefix)
 	return c
 }
 
@@ -387,9 +435,7 @@ func (c *Config) SetAsyncEvent(asyncEvent bool) *Config {
 
 // SetCookieConfig sets cookie config SetCookieConfig 设置 Cookie 配置
 func (c *Config) SetCookieConfig(cookieConfig *CookieConfig) *Config {
-	if cookieConfig != nil {
-		c.CookieConfig = cookieConfig
-	}
+	c.CookieConfig = cookieConfig
 	return c
 }
 
@@ -407,7 +453,37 @@ func (c *Config) checkNoLimits() error {
 		if value == -1 || value > 0 {
 			continue
 		}
-		return fmt.Errorf("%s 必须为 -1（无限制）或大于 0，当前值：%d", name, value)
+		return fmt.Errorf("Config.%s must be -1 (unlimited) or greater than 0: %d", name, value)
 	}
 	return nil
+}
+
+// normalizeNamespaces normalizes storage namespace fields normalizeNamespaces 统一存储命名空间字段格式
+func (c *Config) normalizeNamespaces() {
+	c.AuthType = normalizeNamespace(c.AuthType)
+	c.KeyPrefix = normalizeNamespace(c.KeyPrefix)
+}
+
+// normalizeNamespace trims spaces and appends the separator normalizeNamespace 去除空白并补齐命名空间分隔符
+func normalizeNamespace(value string) string {
+	value = strings.TrimSpace(value)
+	if value != "" && !strings.HasSuffix(value, ":") {
+		return value + ":"
+	}
+	return value
+}
+
+// hasWhitespace checks whether value contains whitespace hasWhitespace 检查字符串是否包含空白字符
+func hasWhitespace(value string) bool {
+	for _, r := range value {
+		if unicode.IsSpace(r) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasNamespaceContent checks namespace contains non-separator content hasNamespaceContent 检查命名空间是否包含分隔符以外的内容
+func hasNamespaceContent(value string) bool {
+	return strings.Trim(value, ":") != ""
 }

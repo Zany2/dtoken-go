@@ -3,6 +3,7 @@ package ants
 
 import (
 	"fmt"
+	"math"
 	"time"
 )
 
@@ -42,15 +43,21 @@ func (c *RenewPoolConfig) Validate() error {
 	if c.MinSize <= 0 {
 		return fmt.Errorf("RenewPoolConfig.MinSize must be > 0")
 	}
+	if c.MaxSize <= 0 {
+		return fmt.Errorf("RenewPoolConfig.MaxSize must be > 0")
+	}
 	if c.MaxSize < c.MinSize {
 		return fmt.Errorf("RenewPoolConfig.MaxSize must be >= RenewPoolConfig.MinSize")
 	}
 
-	if c.ScaleUpRate <= 0 || c.ScaleUpRate > 1 {
+	if math.IsNaN(c.ScaleUpRate) || math.IsInf(c.ScaleUpRate, 0) || c.ScaleUpRate <= 0 || c.ScaleUpRate > 1 {
 		return fmt.Errorf("RenewPoolConfig.ScaleUpRate must be between 0 and 1")
 	}
-	if c.ScaleDownRate < 0 || c.ScaleDownRate > 1 {
+	if math.IsNaN(c.ScaleDownRate) || math.IsInf(c.ScaleDownRate, 0) || c.ScaleDownRate < 0 || c.ScaleDownRate > 1 {
 		return fmt.Errorf("RenewPoolConfig.ScaleDownRate must be between 0 and 1")
+	}
+	if c.ScaleDownRate >= c.ScaleUpRate {
+		return fmt.Errorf("RenewPoolConfig.ScaleDownRate must be < RenewPoolConfig.ScaleUpRate")
 	}
 
 	if c.CheckInterval <= 0 {
@@ -58,6 +65,9 @@ func (c *RenewPoolConfig) Validate() error {
 	}
 	if c.Expiry <= 0 {
 		return fmt.Errorf("RenewPoolConfig.Expiry must be a positive duration")
+	}
+	if c.PrintStatusInterval < 0 {
+		return fmt.Errorf("RenewPoolConfig.PrintStatusInterval must not be negative")
 	}
 
 	return nil

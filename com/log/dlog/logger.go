@@ -596,46 +596,16 @@ func getFileSize(f *os.File) int64 {
 
 // prepareConfig applies defaults and ensures the directory exists 应用默认配置并确保目录存在
 func prepareConfig(cfg *LoggerConfig) (*LoggerConfig, error) {
-	if cfg == nil {
-		cfg = &LoggerConfig{}
-	}
-
-	c := *cfg // copy
-
-	if c.TimeFormat == "" {
-		c.TimeFormat = DefaultTimeFormat
-	}
-	if c.Prefix == "" {
-		c.Prefix = DefaultPrefix
-	}
-	if c.QueueSize <= 0 {
-		c.QueueSize = DefaultQueueSize
-	}
-
-	// Skip file config in stdout only mode 仅控制台模式不需要文件配置
-	if c.StdoutOnly {
-		c.Stdout = true
-		return &c, nil
-	}
-
-	// Apply file related defaults in file mode 文件模式：应用文件相关默认值
-	if c.FileFormat == "" {
-		c.FileFormat = DefaultFileFormat
-	}
-	if c.RotateSize <= 0 {
-		c.RotateSize = DefaultRotateSize
-	}
-	if c.RotateExpire < 0 {
-		c.RotateExpire = 0
-	}
-	if c.RotateBackupLimit <= 0 {
-		c.RotateBackupLimit = DefaultRotateBackupLimit
-	}
-	if c.RotateBackupDays < 0 {
-		c.RotateBackupDays = 0
+	c := normalizeConfig(cfg)
+	if err := validateNormalizedConfig(c); err != nil {
+		return nil, err
 	}
 
 	// Ensure the path exists 确保路径存在
+	if c.StdoutOnly {
+		return c, nil
+	}
+
 	if c.Path == "" {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -648,7 +618,7 @@ func prepareConfig(cfg *LoggerConfig) (*LoggerConfig, error) {
 		return nil, fmt.Errorf("failed to create log directory: %w", err)
 	}
 
-	return &c, nil
+	return c, nil
 }
 
 // currentCfg returns a config snapshot 返回当前配置快照

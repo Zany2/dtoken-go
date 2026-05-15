@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package oauth2
 
 import (
@@ -13,26 +14,53 @@ import (
 	"github.com/Zany2/dtoken-go/core/utils"
 )
 
-// Package oauth2 provides OAuth2 authorization server implementation OAuth2 授权服务器实现
-//
-// Supported Grant Types: 支持的授权类型:
-//   - Authorization Code (authorization_code) 授权码模式
-//   - Client Credentials (client_credentials) 客户端凭证模式
-//   - Password (password) 密码模式
-//   - Refresh Token (refresh_token) 刷新令牌模式
-//
-// Basic Flow: 基本流程:
-//  1. RegisterClient() - Register OAuth2 client 注册OAuth2客户端
-//  2. GenerateAuthorizationCode() - User authorizes, get code 用户授权，获取授权码
-//  3. Token() or ExchangeCodeForToken() - Exchange code for access token 用授权码换取访问令牌
-//  4. ValidateAccessToken() - Validate access token 验证访问令牌
-//  5. RefreshAccessToken() - Use refresh token to get new token 用刷新令牌获取新令牌
-//
-// Usage: 用法:
-//
-//	server := oauth2.NewOAuth2Server(authType, prefix, storage, serializer)
-//	server.RegisterClient(&oauth2.Client{...})
-//	token, _ := server.Token(ctx, &oauth2.TokenRequest{...}, nil)
+// Config defines OAuth2 server config Config 定义 OAuth2 服务端配置
+type Config struct {
+	// CodeExpiration stores authorization code ttl CodeExpiration 存储授权码有效期
+	CodeExpiration time.Duration
+	// TokenExpiration stores access token ttl TokenExpiration 存储访问令牌有效期
+	TokenExpiration time.Duration
+	// RefreshExpiration stores refresh token ttl RefreshExpiration 存储刷新令牌有效期
+	RefreshExpiration time.Duration
+}
+
+// DefaultConfig returns default OAuth2 config DefaultConfig 返回默认 OAuth2 配置
+func DefaultConfig() *Config {
+	return &Config{
+		CodeExpiration:    DefaultCodeExpiration,
+		TokenExpiration:   DefaultTokenExpiration,
+		RefreshExpiration: DefaultRefreshTTL,
+	}
+}
+
+// Validate validates OAuth2 config Validate 验证 OAuth2 配置
+func (c *Config) Validate() error {
+	if c == nil {
+		return nil
+	}
+	if c.CodeExpiration <= 0 {
+		return fmt.Errorf("OAuth2Config.CodeExpiration must be a positive duration")
+	}
+	if c.TokenExpiration <= 0 {
+		return fmt.Errorf("OAuth2Config.TokenExpiration must be a positive duration")
+	}
+	if c.RefreshExpiration <= 0 {
+		return fmt.Errorf("OAuth2Config.RefreshExpiration must be a positive duration")
+	}
+	if c.RefreshExpiration <= c.TokenExpiration {
+		return fmt.Errorf("OAuth2Config.RefreshExpiration must be greater than OAuth2Config.TokenExpiration")
+	}
+	return nil
+}
+
+// Clone returns a deep copy of OAuth2 config Clone 克隆 OAuth2 配置
+func (c *Config) Clone() *Config {
+	if c == nil {
+		return nil
+	}
+	copyCfg := *c
+	return &copyCfg
+}
 
 // Client OAuth2 client configuration OAuth2客户端配置
 type Client struct {
@@ -84,27 +112,56 @@ type UserValidator func(username, password string) (userID string, err error)
 
 // OAuth2Server OAuth2 authorization server OAuth2授权服务器
 type OAuth2Server struct {
-	authType        string             // Authentication system type 认证体系类型
-	keyPrefix       string             // Configurable prefix 可配置的前缀
-	clients         map[string]*Client // client map 客户端映射map
-	clientsMu       sync.RWMutex       // Clients map lock 客户端映射锁
-	codeExpiration  time.Duration      // Authorization code expiration (10min) 授权码过期时间（10分钟）
-	tokenExpiration time.Duration      // Access token expiration (2h) 访问令牌过期时间（2小时）
-	serializer      adapter.Codec      // Codec adapter for encoding and decoding operations 编解码器适配器
-	storage         adapter.Storage    // Storage adapter (Redis, Memory, etc.) 存储适配器（如 Redis、Memory）
+	authType          string             // Authentication system type 认证体系类型
+	keyPrefix         string             // Configurable prefix 可配置的前缀
+	clients           map[string]*Client // client map 客户端映射map
+	clientsMu         sync.RWMutex       // Clients map lock 客户端映射锁
+	codeExpiration    time.Duration      // Authorization code expiration (10min) 授权码过期时间（10分钟）
+	tokenExpiration   time.Duration      // Access token expiration (2h) 访问令牌过期时间（2小时）
+	refreshExpiration time.Duration      // Refresh token expiration 刷新令牌过期时间
+	serializer        adapter.Codec      // Codec adapter for encoding and decoding operations 编解码器适配器
+	storage           adapter.Storage    // Storage adapter (Redis, Memory, etc.) 存储适配器（如 Redis、Memory）
+}
+
+// NewDefaultOAuth2Server creates OAuth2 server with default config NewDefaultOAuth2Server 使用默认配置创建 OAuth2 服务端
+func NewDefaultOAuth2Server(authType, prefix string, storage adapter.Storage, serializer adapter.Codec) *OAuth2Server {
+	return NewOAuth2ServerWithConfig(authType, prefix, storage, serializer, DefaultConfig())
+}
+
+// NewOAuth2ServerWithConfig creates OAuth2 server with config NewOAuth2ServerWithConfig 使用配置创建 OAuth2 服务端
+func NewOAuth2ServerWithConfig(authType, prefix string, storage adapter.Storage, serializer adapter.Codec, cfg *Config) *OAuth2Server {
+	if cfg == nil {
+		cfg = DefaultConfig()
+	}
+
+	codeExpiration := cfg.CodeExpiration
+	if codeExpiration <= 0 {
+		codeExpiration = DefaultCodeExpiration
+	}
+	tokenExpiration := cfg.TokenExpiration
+	if tokenExpiration <= 0 {
+		tokenExpiration = DefaultTokenExpiration
+	}
+	refreshExpiration := cfg.RefreshExpiration
+	if refreshExpiration <= 0 {
+		refreshExpiration = DefaultRefreshTTL
+	}
+
+	return &OAuth2Server{
+		authType:          authType,
+		keyPrefix:         prefix,
+		clients:           make(map[string]*Client),
+		codeExpiration:    codeExpiration,
+		tokenExpiration:   tokenExpiration,
+		refreshExpiration: refreshExpiration,
+		storage:           storage,
+		serializer:        serializer,
+	}
 }
 
 // NewOAuth2Server Creates a new OAuth2 server 创建新的OAuth2服务器
 func NewOAuth2Server(authType, prefix string, storage adapter.Storage, serializer adapter.Codec) *OAuth2Server {
-	return &OAuth2Server{
-		authType:        authType,
-		keyPrefix:       prefix,
-		clients:         make(map[string]*Client),
-		codeExpiration:  DefaultCodeExpiration,
-		tokenExpiration: DefaultTokenExpiration,
-		storage:         storage,
-		serializer:      serializer,
-	}
+	return NewDefaultOAuth2Server(authType, prefix, storage, serializer)
 }
 
 // RegisterClient Registers an OAuth2 client 注册OAuth2客户端
@@ -142,45 +199,6 @@ func (s *OAuth2Server) GetClient(clientID string) (*Client, error) {
 }
 
 // Token Unified token endpoint that dispatches to appropriate handler based on grant type 统一的令牌端点，根据授权类型分发到相应的处理逻辑
-//
-// This method provides a single entry point for all OAuth2 token operations. 此方法为所有 OAuth2 令牌操作提供统一入口。
-//
-// Usage: 用法:
-//
-//	// Authorization Code Grant 授权码模式
-//	token, err := server.Token(ctx, &TokenRequest{
-//	    GrantType:    GrantTypeAuthorizationCode,
-//	    ClientID:     "client_id",
-//	    ClientSecret: "client_secret",
-//	    Code:         "auth_code",
-//	    RedirectURI:  "https://example.com/callback",
-//	}, nil)
-//
-//	// Client Credentials Grant 客户端凭证模式
-//	token, err := server.Token(ctx, &TokenRequest{
-//	    GrantType:    GrantTypeClientCredentials,
-//	    ClientID:     "client_id",
-//	    ClientSecret: "client_secret",
-//	    Scopes:       []string{"read", "write"},
-//	}, nil)
-//
-//	// Password Grant 密码模式
-//	token, err := server.Token(ctx, &TokenRequest{
-//	    GrantType:    GrantTypePassword,
-//	    ClientID:     "client_id",
-//	    ClientSecret: "client_secret",
-//	    Username:     "user",
-//	    Password:     "pass",
-//	    Scopes:       []string{"read"},
-//	}, userValidator)
-//
-//	// Refresh Token Grant 刷新令牌模式
-//	token, err := server.Token(ctx, &TokenRequest{
-//	    GrantType:    GrantTypeRefreshToken,
-//	    ClientID:     "client_id",
-//	    ClientSecret: "client_secret",
-//	    RefreshToken: "refresh_token",
-//	}, nil)
 func (s *OAuth2Server) Token(ctx context.Context, req *TokenRequest, validateUser UserValidator) (*AccessToken, error) {
 	if req == nil {
 		return nil, fmt.Errorf("%w: token request cannot be nil", derror.ErrInvalidAuthCode)
@@ -316,13 +334,6 @@ func (s *OAuth2Server) ExchangeCodeForToken(ctx context.Context, code, clientID,
 }
 
 // ClientCredentialsToken Gets access token using client credentials grant 使用客户端凭证模式获取访问令牌
-//
-// This grant type is used for server-to-server communication where no user is involved. 此授权类型用于服务器间通信，无需用户参与。
-// The client authenticates with its own credentials and receives an access token. 客户端使用自己的凭证进行认证并获取访问令牌。
-//
-// Usage: 用法:
-//
-//	token, err := server.ClientCredentialsToken(ctx, "client_id", "client_secret", []string{"read", "write"})
 func (s *OAuth2Server) ClientCredentialsToken(ctx context.Context, clientID, clientSecret string, scopes []string) (*AccessToken, error) {
 	client, err := s.GetClient(clientID)
 	if err != nil {
@@ -345,22 +356,6 @@ func (s *OAuth2Server) ClientCredentialsToken(ctx context.Context, clientID, cli
 }
 
 // PasswordGrantToken Gets access token using resource owner password credentials grant 使用密码模式获取访问令牌
-//
-// This grant type is used when the application is highly trusted (e.g., official app). 此授权类型用于高度信任的应用（如官方App）。
-// The user provides their username and password directly to the client. 用户直接向客户端提供用户名和密码。
-//
-// SECURITY WARNING: This grant type should only be used when other flows are not viable. 安全警告：仅在其他授权流程不可行时才应使用此授权类型。
-//
-// Usage: 用法:
-//
-//	validator := func(username, password string) (string, error) {
-//	    // Validate user credentials from your user store
-//	    if user := userService.Authenticate(username, password); user != nil {
-//	        return user.ID, nil
-//	    }
-//	    return "", errors.New("invalid credentials")
-//	}
-//	token, err := server.PasswordGrantToken(ctx, "client_id", "client_secret", "user", "pass", scopes, validator)
 func (s *OAuth2Server) PasswordGrantToken(ctx context.Context, clientID, clientSecret, username, password string, scopes []string, validateUser UserValidator) (*AccessToken, error) {
 	if validateUser == nil {
 		return nil, fmt.Errorf("%w: user validator function is required", derror.ErrInvalidUserCredentials)
@@ -616,7 +611,7 @@ func (s *OAuth2Server) generateAccessToken(ctx context.Context, userID, clientID
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
-	if err = s.storage.Set(ctx, refreshKey, encodeData, DefaultRefreshTTL); err != nil {
+	if err = s.storage.Set(ctx, refreshKey, encodeData, s.refreshExpiration); err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 

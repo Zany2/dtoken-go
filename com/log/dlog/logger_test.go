@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package dlog
 
 import (
@@ -53,6 +54,17 @@ func TestPrepareConfigDefaultsAndStdoutOnly(t *testing.T) {
 	}
 	if cfg.FileFormat != "" {
 		t.Fatalf("StdoutOnly should not force file format, got %q", cfg.FileFormat)
+	}
+	if cfg.Path != "" {
+		t.Fatalf("StdoutOnly should not force path, got %q", cfg.Path)
+	}
+	stdoutOnlyDir := filepath.Join(t.TempDir(), "stdout-only")
+	cfg, err = prepareConfig(&LoggerConfig{StdoutOnly: true, Path: stdoutOnlyDir})
+	if err != nil {
+		t.Fatalf("prepareConfig(stdout only path) error = %v", err)
+	}
+	if _, err = os.Stat(stdoutOnlyDir); !os.IsNotExist(err) {
+		t.Fatalf("StdoutOnly should not create log directory, stat error = %v", err)
 	}
 
 	dir := t.TempDir()

@@ -1,8 +1,11 @@
+// @Author daixk 2025/12/22 15:56:00
 package utils
 
 import (
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
 )
 
 // ToBytes converts value to bytes ToBytes 将任意类型转换为字节切片
@@ -35,6 +38,9 @@ func ToInt64(value any) (int64, error) {
 	case int64:
 		return v, nil
 	case uint:
+		if uint64(v) > math.MaxInt64 {
+			return 0, fmt.Errorf("uint value %d overflows int64", v)
+		}
 		return int64(v), nil
 	case uint8:
 		return int64(v), nil
@@ -52,12 +58,9 @@ func ToInt64(value any) (int64, error) {
 	case float64:
 		return int64(v), nil
 	case string:
-		// Parse simple decimal string 仅尝试解析纯数字十进制字符串
-		var i int
-		if _, err := fmt.Sscanf(v, "%d", &i); err == nil {
-			return int64(i), nil
-		}
-		return 0, fmt.Errorf("cannot parse string %q as int64", v)
+		return parseInt64String(v)
+	case []byte:
+		return parseInt64String(string(v))
 	case bool:
 		if v {
 			return 1, nil
@@ -66,4 +69,17 @@ func ToInt64(value any) (int64, error) {
 	default:
 		return 0, fmt.Errorf("unsupported type: %T", value)
 	}
+}
+
+// parseInt64String parses a strict base-10 int64 string parseInt64String 解析严格十进制 int64 字符串
+func parseInt64String(value string) (int64, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return 0, fmt.Errorf("cannot parse empty string as int64")
+	}
+	result, err := strconv.ParseInt(trimmed, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("cannot parse string %q as int64: %w", value, err)
+	}
+	return result, nil
 }

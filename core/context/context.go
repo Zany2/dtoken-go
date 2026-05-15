@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package context
 
 import (
@@ -30,7 +31,7 @@ func NewContext(reqCtx adapter.RequestContext, mgr *manager.Manager) *DTokenCont
 	}
 }
 
-// GetTokenValue gets token from current request GetTokenValue 按 Header 到 Cookie 再到 Query 顺序获取 Token
+// GetTokenValue gets token from current request GetTokenValue 按 Header、Cookie、Body 顺序获取 Token
 func (c *DTokenContext) GetTokenValue() string {
 	cfg := c.manager.GetConfig()
 
@@ -56,9 +57,11 @@ func (c *DTokenContext) GetTokenValue() string {
 		}
 	}
 
-	// Try query finally 最后从 Query 参数读取 Token
-	if token := strings.TrimSpace(c.reqCtx.GetQuery(cfg.TokenName)); token != "" {
-		return token
+	// Try form body finally 最后从表单请求体读取 Token
+	if cfg.IsReadBody {
+		if token := strings.TrimSpace(c.reqCtx.GetPostForm(cfg.TokenName)); token != "" {
+			return token
+		}
 	}
 
 	return ""

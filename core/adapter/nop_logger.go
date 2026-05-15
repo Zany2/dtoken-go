@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package adapter
 
 // NopLogger is a no-op logger used when logging is disabled NopLogger 是日志关闭时使用的空日志实现

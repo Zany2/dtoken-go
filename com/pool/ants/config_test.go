@@ -1,6 +1,8 @@
+// @Author daixk 2025/12/22 15:56:00
 package ants
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -43,11 +45,18 @@ func TestRenewPoolConfigDefaultsAndSetters(t *testing.T) {
 func TestRenewPoolConfigValidateInvalid(t *testing.T) {
 	tests := []RenewPoolConfig{
 		{MinSize: 0, MaxSize: 1, ScaleUpRate: 0.8, ScaleDownRate: 0.2, CheckInterval: time.Second, Expiry: time.Second},
+		{MinSize: 1, MaxSize: 0, ScaleUpRate: 0.8, ScaleDownRate: 0.2, CheckInterval: time.Second, Expiry: time.Second},
 		{MinSize: 2, MaxSize: 1, ScaleUpRate: 0.8, ScaleDownRate: 0.2, CheckInterval: time.Second, Expiry: time.Second},
 		{MinSize: 1, MaxSize: 1, ScaleUpRate: 0, ScaleDownRate: 0.2, CheckInterval: time.Second, Expiry: time.Second},
+		{MinSize: 1, MaxSize: 1, ScaleUpRate: math.NaN(), ScaleDownRate: 0.2, CheckInterval: time.Second, Expiry: time.Second},
+		{MinSize: 1, MaxSize: 1, ScaleUpRate: math.Inf(1), ScaleDownRate: 0.2, CheckInterval: time.Second, Expiry: time.Second},
 		{MinSize: 1, MaxSize: 1, ScaleUpRate: 0.8, ScaleDownRate: -0.1, CheckInterval: time.Second, Expiry: time.Second},
+		{MinSize: 1, MaxSize: 1, ScaleUpRate: 0.8, ScaleDownRate: math.NaN(), CheckInterval: time.Second, Expiry: time.Second},
+		{MinSize: 1, MaxSize: 1, ScaleUpRate: 0.8, ScaleDownRate: math.Inf(-1), CheckInterval: time.Second, Expiry: time.Second},
+		{MinSize: 1, MaxSize: 1, ScaleUpRate: 0.8, ScaleDownRate: 0.8, CheckInterval: time.Second, Expiry: time.Second},
 		{MinSize: 1, MaxSize: 1, ScaleUpRate: 0.8, ScaleDownRate: 0.2, CheckInterval: 0, Expiry: time.Second},
 		{MinSize: 1, MaxSize: 1, ScaleUpRate: 0.8, ScaleDownRate: 0.2, CheckInterval: time.Second, Expiry: 0},
+		{MinSize: 1, MaxSize: 1, ScaleUpRate: 0.8, ScaleDownRate: 0.2, CheckInterval: time.Second, Expiry: time.Second, PrintStatusInterval: -time.Second},
 	}
 
 	for _, tt := range tests {

@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package adapter
 
 // Codec defines serialization behavior interface Codec 定义序列化行为接口

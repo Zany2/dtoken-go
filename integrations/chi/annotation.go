@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package chi
 
 import (
@@ -5,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go/integrations/internal/authcheck"
 	chiRouter "github.com/go-chi/chi/v5"
 )
 
@@ -50,7 +51,7 @@ func GetHandler(handler http.HandlerFunc, annotations ...*Annotation) http.Handl
 			return
 		}
 
-		mgr, err := dtoken.GetManager(ann.AuthType)
+		mgr, err := authcheck.GetManager(ann.AuthType)
 		if err != nil {
 			writeErrorResponse(w, err)
 			return
@@ -62,49 +63,18 @@ func GetHandler(handler http.HandlerFunc, annotations ...*Annotation) http.Handl
 		r = chiCtx.r
 		token := dCtx.GetTokenValue()
 
-		if !mgr.IsLogin(r.Context(), token) {
-			writeErrorResponse(w, derror.ErrNotLogin)
+		_, err = authcheck.Check(r.Context(), mgr, authcheck.Request{
+			TokenValue:   token,
+			CheckLogin:   true,
+			CheckDisable: ann.CheckDisable,
+			Permissions:  ann.CheckPermission,
+			Roles:        ann.CheckRole,
+			LogicType:    ann.LogicType,
+			LoginError:   derror.ErrNotLogin,
+		})
+		if err != nil {
+			writeErrorResponse(w, err)
 			return
-		}
-
-		var loginID string
-		if ann.CheckDisable || len(ann.CheckPermission) > 0 || len(ann.CheckRole) > 0 {
-			loginID, err = mgr.GetLoginID(r.Context(), token)
-			if err != nil {
-				writeErrorResponse(w, err)
-				return
-			}
-		}
-
-		if ann.CheckDisable && mgr.IsDisable(r.Context(), loginID) {
-			writeErrorResponse(w, derror.ErrAccountDisabled)
-			return
-		}
-
-		if len(ann.CheckPermission) > 0 {
-			var ok bool
-			if ann.LogicType == LogicAnd {
-				ok = mgr.HasPermissionsAnd(r.Context(), loginID, ann.CheckPermission)
-			} else {
-				ok = mgr.HasPermissionsOr(r.Context(), loginID, ann.CheckPermission)
-			}
-			if !ok {
-				writeErrorResponse(w, derror.ErrPermissionDenied)
-				return
-			}
-		}
-
-		if len(ann.CheckRole) > 0 {
-			var ok bool
-			if ann.LogicType == LogicAnd {
-				ok = mgr.HasRolesAnd(r.Context(), loginID, ann.CheckRole)
-			} else {
-				ok = mgr.HasRolesOr(r.Context(), loginID, ann.CheckRole)
-			}
-			if !ok {
-				writeErrorResponse(w, derror.ErrRoleDenied)
-				return
-			}
 		}
 
 		if handler != nil {
@@ -206,7 +176,7 @@ func RoleAndPermissionGroup(group chiRouter.Router, roles []string, perms []stri
 
 // GetLoginIDFromRequest gets login ID from request GetLoginIDFromRequest 从请求获取登录 ID
 func GetLoginIDFromRequest(w http.ResponseWriter, r *http.Request, authType ...string) (string, error) {
-	mgr, err := dtoken.GetManager(authType...)
+	mgr, err := authcheck.GetManager(firstAuthType(authType...))
 	if err != nil {
 		return "", err
 	}
@@ -218,19 +188,23 @@ func GetLoginIDFromRequest(w http.ResponseWriter, r *http.Request, authType ...s
 
 // IsLoginFromRequest checks login state from request IsLoginFromRequest 从请求检查登录状态
 func IsLoginFromRequest(w http.ResponseWriter, r *http.Request, authType ...string) bool {
-	mgr, err := dtoken.GetManager(authType...)
+	mgr, err := authcheck.GetManager(firstAuthType(authType...))
 	if err != nil {
 		return false
 	}
 
 	chiCtx := NewChiContext(w, r).(*ChiContext)
 	dCtx := getDTokenContext(chiCtx, mgr)
-	return mgr.IsLogin(chiCtx.r.Context(), dCtx.GetTokenValue())
+	_, err = authcheck.Check(chiCtx.r.Context(), mgr, authcheck.Request{
+		TokenValue: dCtx.GetTokenValue(),
+		CheckLogin: true,
+	})
+	return err == nil
 }
 
 // GetTokenFromRequest gets token from request GetTokenFromRequest 从请求获取 Token
 func GetTokenFromRequest(w http.ResponseWriter, r *http.Request, authType ...string) string {
-	mgr, err := dtoken.GetManager(authType...)
+	mgr, err := authcheck.GetManager(firstAuthType(authType...))
 	if err != nil {
 		return ""
 	}
@@ -243,4 +217,12 @@ func GetTokenFromRequest(w http.ResponseWriter, r *http.Request, authType ...str
 // WithContext returns request context WithContext 返回请求上下文
 func WithContext(r *http.Request, authType ...string) context.Context {
 	return r.Context()
+}
+
+// firstAuthType returns the optional auth type firstAuthType 返回可选认证类型
+func firstAuthType(authType ...string) string {
+	if len(authType) == 0 {
+		return ""
+	}
+	return authType[0]
 }

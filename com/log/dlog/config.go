@@ -2,6 +2,8 @@
 package dlog
 
 import (
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -36,6 +38,17 @@ func DefaultLoggerConfig() *LoggerConfig {
 		RotateBackupLimit: DefaultRotateBackupLimit,
 		RotateBackupDays:  DefaultRotateBackupDays,
 	}
+}
+
+// Validate validates logger configuration Validate 验证日志配置
+func (c *LoggerConfig) Validate() error {
+	if c != nil && !isZeroConfig(c) {
+		if err := validateExplicitConfig(c); err != nil {
+			return err
+		}
+	}
+	cfg := normalizeConfig(c)
+	return validateNormalizedConfig(cfg)
 }
 
 // SetPath sets the log output directory 设置日志输出目录
@@ -120,4 +133,124 @@ func (c *LoggerConfig) Clone() *LoggerConfig {
 	}
 	copyCfg := *c
 	return &copyCfg
+}
+
+// normalizeConfig applies logger defaults normalizeConfig 应用日志默认配置
+func normalizeConfig(cfg *LoggerConfig) *LoggerConfig {
+	if cfg == nil {
+		cfg = &LoggerConfig{}
+	}
+
+	c := *cfg
+	if c.TimeFormat == "" {
+		c.TimeFormat = DefaultTimeFormat
+	}
+	if c.Prefix == "" {
+		c.Prefix = DefaultPrefix
+	}
+	if c.Level == 0 {
+		c.Level = LevelInfo
+	}
+	if c.QueueSize <= 0 {
+		c.QueueSize = DefaultQueueSize
+	}
+
+	if c.StdoutOnly {
+		c.Stdout = true
+		return &c
+	}
+
+	if c.FileFormat == "" {
+		c.FileFormat = DefaultFileFormat
+	}
+	if c.RotateSize <= 0 {
+		c.RotateSize = DefaultRotateSize
+	}
+	if c.RotateExpire < 0 {
+		c.RotateExpire = 0
+	}
+	if c.RotateBackupLimit <= 0 {
+		c.RotateBackupLimit = DefaultRotateBackupLimit
+	}
+	if c.RotateBackupDays < 0 {
+		c.RotateBackupDays = 0
+	}
+
+	return &c
+}
+
+// validateNormalizedConfig checks normalized logger config validateNormalizedConfig 校验归一化后的日志配置
+func validateNormalizedConfig(c *LoggerConfig) error {
+	if c == nil {
+		return nil
+	}
+	if strings.TrimSpace(c.TimeFormat) == "" {
+		return fmt.Errorf("LoggerConfig.TimeFormat must not be empty")
+	}
+	if c.Path != "" && strings.TrimSpace(c.Path) == "" {
+		return fmt.Errorf("LoggerConfig.Path must not be whitespace")
+	}
+	if c.FileFormat != "" && strings.TrimSpace(c.FileFormat) == "" {
+		return fmt.Errorf("LoggerConfig.FileFormat must not be whitespace")
+	}
+	if strings.ContainsAny(c.FileFormat, `/\`) {
+		return fmt.Errorf("LoggerConfig.FileFormat must be a file name, not a path")
+	}
+	switch c.Level {
+	case LevelDebug, LevelInfo, LevelWarn, LevelError:
+	default:
+		return fmt.Errorf("LoggerConfig.Level is invalid: %v", c.Level)
+	}
+	if c.QueueSize <= 0 {
+		return fmt.Errorf("LoggerConfig.QueueSize must be > 0")
+	}
+	if !c.StdoutOnly && c.RotateSize <= 0 {
+		return fmt.Errorf("LoggerConfig.RotateSize must be > 0")
+	}
+	if c.RotateExpire < 0 {
+		return fmt.Errorf("LoggerConfig.RotateExpire must not be negative")
+	}
+	if !c.StdoutOnly && c.RotateBackupLimit <= 0 {
+		return fmt.Errorf("LoggerConfig.RotateBackupLimit must be > 0")
+	}
+	if c.RotateBackupDays < 0 {
+		return fmt.Errorf("LoggerConfig.RotateBackupDays must not be negative")
+	}
+	return nil
+}
+
+// isZeroConfig checks whether config is the zero value isZeroConfig 妫€鏌ラ厤缃槸鍚︿负闆跺€?
+func isZeroConfig(c *LoggerConfig) bool {
+	return c.Path == "" &&
+		c.FileFormat == "" &&
+		c.Prefix == "" &&
+		c.Level == 0 &&
+		c.TimeFormat == "" &&
+		!c.Stdout &&
+		!c.StdoutOnly &&
+		c.QueueSize == 0 &&
+		c.RotateSize == 0 &&
+		c.RotateExpire == 0 &&
+		c.RotateBackupLimit == 0 &&
+		c.RotateBackupDays == 0
+}
+
+// validateExplicitConfig rejects invalid non-zero config values validateExplicitConfig 鎷掔粷闈為浂閰嶇疆涓殑鏄惧紡闈炴硶鍊?
+func validateExplicitConfig(c *LoggerConfig) error {
+	if c.QueueSize <= 0 {
+		return fmt.Errorf("LoggerConfig.QueueSize must be > 0")
+	}
+	if !c.StdoutOnly && c.RotateSize <= 0 {
+		return fmt.Errorf("LoggerConfig.RotateSize must be > 0")
+	}
+	if c.RotateExpire < 0 {
+		return fmt.Errorf("LoggerConfig.RotateExpire must not be negative")
+	}
+	if !c.StdoutOnly && c.RotateBackupLimit <= 0 {
+		return fmt.Errorf("LoggerConfig.RotateBackupLimit must be > 0")
+	}
+	if c.RotateBackupDays < 0 {
+		return fmt.Errorf("LoggerConfig.RotateBackupDays must not be negative")
+	}
+	return nil
 }

@@ -53,7 +53,6 @@ go get github.com/Zany2/dtoken-go/dtoken
 
 ```bash
 go get github.com/Zany2/dtoken-go/com/storage/redis
-go get github.com/Zany2/dtoken-go/com/storage/postgresql
 ```
 
 按需安装框架集成：

@@ -1,4 +1,4 @@
-// Author records daixk as original author at 2026/1/21 17:55:00. Author 记录 daixk 为原始作者，创建时间为 2026/1/21 17:55:00。
+// @Author daixk 2025/12/22 15:56:00
 package memory
 
 import (
@@ -40,6 +40,9 @@ func NewStorage() *Storage {
 
 // Set stores a key value pair 设置键值对
 func (s *Storage) Set(_ context.Context, key string, value any, expiration time.Duration) error {
+	if err := s.ensureReady(); err != nil {
+		return err
+	}
 	if expiration <= 0 {
 		s.c.Set(key, value, cache.NoExpiration) // Keep the key without expiration 永不过期
 	} else {
@@ -50,6 +53,9 @@ func (s *Storage) Set(_ context.Context, key string, value any, expiration time.
 
 // Get retrieves the value for a key 获取指定键的值
 func (s *Storage) Get(_ context.Context, key string) (any, error) {
+	if err := s.ensureReady(); err != nil {
+		return nil, err
+	}
 	if val, found := s.c.Get(key); found {
 		return val, nil
 	}
@@ -59,6 +65,9 @@ func (s *Storage) Get(_ context.Context, key string) (any, error) {
 
 // GetAndDelete atomically gets and deletes a key 原子地获取并删除指定键
 func (s *Storage) GetAndDelete(_ context.Context, key string) (any, error) {
+	if err := s.ensureReady(); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -74,6 +83,12 @@ func (s *Storage) GetAndDelete(_ context.Context, key string) (any, error) {
 
 // Delete removes one or more keys 删除一个或多个键
 func (s *Storage) Delete(_ context.Context, keys ...string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	if err := s.ensureReady(); err != nil {
+		return err
+	}
 	for _, key := range keys {
 		s.c.Delete(key)
 	}
@@ -82,12 +97,21 @@ func (s *Storage) Delete(_ context.Context, keys ...string) error {
 
 // Exists checks whether a key exists and is not expired 检查键是否存在且未过期
 func (s *Storage) Exists(_ context.Context, key string) bool {
+	if err := s.ensureReady(); err != nil {
+		return false
+	}
 	_, found := s.c.Get(key)
 	return found
 }
 
 // Keys returns all keys matching the pattern 返回匹配指定模式的所有键
 func (s *Storage) Keys(_ context.Context, pattern string) ([]string, error) {
+	if err := s.ensureReady(); err != nil {
+		return nil, err
+	}
+	if pattern == "" {
+		pattern = "*"
+	}
 	items := s.c.Items()
 	now := time.Now().UnixNano()
 	keys := make([]string, 0, len(items))
@@ -108,6 +132,9 @@ func (s *Storage) Keys(_ context.Context, pattern string) ([]string, error) {
 
 // Expire sets a new expiration for the key 为指定键设置新的过期时间
 func (s *Storage) Expire(_ context.Context, key string, expiration time.Duration) error {
+	if err := s.ensureReady(); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -129,6 +156,9 @@ func (s *Storage) Expire(_ context.Context, key string, expiration time.Duration
 
 // TTL returns the remaining lifetime for a key 获取指定键的剩余生存时间
 func (s *Storage) TTL(_ context.Context, key string) (time.Duration, error) {
+	if err := s.ensureReady(); err != nil {
+		return 0, err
+	}
 	_, expirationTime, found := s.c.GetWithExpiration(key)
 	if !found {
 		return TTLNotFound, nil
@@ -146,12 +176,26 @@ func (s *Storage) TTL(_ context.Context, key string) (time.Duration, error) {
 
 // Clear removes all stored data 清空所有数据。
 func (s *Storage) Clear(_ context.Context) error {
+	if err := s.ensureReady(); err != nil {
+		return err
+	}
 	s.c.Flush()
 	return nil
 }
 
 // Ping checks whether storage is available 检查存储是否可用
 func (s *Storage) Ping(_ context.Context) error {
+	if err := s.ensureReady(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ensureReady checks storage dependencies ensureReady 检查存储依赖是否可用
+func (s *Storage) ensureReady() error {
+	if s == nil || s.c == nil {
+		return errors.New("memory storage cache is nil")
+	}
 	return nil
 }
 

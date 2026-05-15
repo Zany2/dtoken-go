@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package adapter
 
 import (
@@ -86,7 +87,6 @@ type RequestContextExt interface {
 
 	// JSON writes JSON response JSON 返回 JSON 格式响应
 	JSON(code int, v any) error
-
 	// GetRawRequest gets raw http request GetRawRequest 获取原始 *http.Request 对象
 	GetRawRequest() *http.Request
 	// GetRawResponseWriter gets raw response writer GetRawResponseWriter 获取原始 http.ResponseWriter 对象

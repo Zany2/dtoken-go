@@ -1,10 +1,11 @@
+// @Author daixk 2025/12/22 15:56:00
 package kratos
 
 import (
 	"context"
 
 	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go/integrations/internal/authcheck"
 	"github.com/go-kratos/kratos/v2/middleware"
 )
 
@@ -40,51 +41,25 @@ func GetHandler(failFunc FailFunc, annotations ...*Annotation) middleware.Middle
 				return next(ctx, req)
 			}
 
-			mgr, err := dtoken.GetManager(ann.AuthType)
+			mgr, err := authcheck.GetManager(ann.AuthType)
 			if err != nil {
 				return nil, dispatchFail(ctx, failFunc, err)
 			}
 
 			dCtx, ctx := getDTokenContext(ctx, mgr)
 			tokenValue := dCtx.GetTokenValue()
-			if !mgr.IsLogin(ctx, tokenValue) {
-				return nil, dispatchFail(ctx, failFunc, derror.ErrNotLogin)
-			}
 
-			var loginID string
-			if ann.CheckDisable || len(ann.CheckPermission) > 0 || len(ann.CheckRole) > 0 {
-				loginID, err = mgr.GetLoginID(ctx, tokenValue)
-				if err != nil {
-					return nil, dispatchFail(ctx, failFunc, err)
-				}
-			}
-
-			if ann.CheckDisable && mgr.IsDisable(ctx, loginID) {
-				return nil, dispatchFail(ctx, failFunc, derror.ErrAccountDisabled)
-			}
-
-			if len(ann.CheckPermission) > 0 {
-				var ok bool
-				if ann.LogicType == LogicAnd {
-					ok = mgr.HasPermissionsAnd(ctx, loginID, ann.CheckPermission)
-				} else {
-					ok = mgr.HasPermissionsOr(ctx, loginID, ann.CheckPermission)
-				}
-				if !ok {
-					return nil, dispatchFail(ctx, failFunc, derror.ErrPermissionDenied)
-				}
-			}
-
-			if len(ann.CheckRole) > 0 {
-				var ok bool
-				if ann.LogicType == LogicAnd {
-					ok = mgr.HasRolesAnd(ctx, loginID, ann.CheckRole)
-				} else {
-					ok = mgr.HasRolesOr(ctx, loginID, ann.CheckRole)
-				}
-				if !ok {
-					return nil, dispatchFail(ctx, failFunc, derror.ErrRoleDenied)
-				}
+			_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+				TokenValue:   tokenValue,
+				CheckLogin:   true,
+				CheckDisable: ann.CheckDisable,
+				Permissions:  ann.CheckPermission,
+				Roles:        ann.CheckRole,
+				LogicType:    ann.LogicType,
+				LoginError:   derror.ErrNotLogin,
+			})
+			if err != nil {
+				return nil, dispatchFail(ctx, failFunc, err)
 			}
 
 			return next(ctx, req)
@@ -173,18 +148,22 @@ func GetLoginIDFromRequest(ctx context.Context, authType ...string) (string, err
 
 // IsLoginFromRequest checks login state from request context IsLoginFromRequest 从请求上下文检查登录状态
 func IsLoginFromRequest(ctx context.Context, authType ...string) bool {
-	mgr, err := dtoken.GetManager(authType...)
+	mgr, err := authcheck.GetManager(firstAuthType(authType...))
 	if err != nil {
 		return false
 	}
 
 	dCtx, ctx := getDTokenContext(ctx, mgr)
-	return mgr.IsLogin(ctx, dCtx.GetTokenValue())
+	_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		TokenValue: dCtx.GetTokenValue(),
+		CheckLogin: true,
+	})
+	return err == nil
 }
 
 // GetTokenFromRequest gets token from request context GetTokenFromRequest 从请求上下文获取 Token
 func GetTokenFromRequest(ctx context.Context, authType ...string) string {
-	mgr, err := dtoken.GetManager(authType...)
+	mgr, err := authcheck.GetManager(firstAuthType(authType...))
 	if err != nil {
 		return ""
 	}
@@ -196,4 +175,12 @@ func GetTokenFromRequest(ctx context.Context, authType ...string) string {
 // WithContext returns request context WithContext 返回请求上下文
 func WithContext(ctx context.Context, authType ...string) context.Context {
 	return ctx
+}
+
+// firstAuthType returns the first optional auth type firstAuthType 返回第一个可选认证类型
+func firstAuthType(authType ...string) string {
+	if len(authType) == 0 {
+		return ""
+	}
+	return authType[0]
 }

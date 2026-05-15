@@ -15,7 +15,6 @@ use (
 	./com/pool/ants
 
 	./com/storage/memory
-	./com/storage/postgresql
 	./com/storage/redis
 
 	./core

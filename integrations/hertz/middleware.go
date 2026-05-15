@@ -1,3 +1,4 @@
+// @Author daixk 2025/12/22 15:56:00
 package hertz
 
 import (
@@ -8,21 +9,21 @@ import (
 	corecontext "github.com/Zany2/dtoken-go/core/context"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go/integrations/internal/authcheck"
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 )
 
 // LogicType defines middleware logic type LogicType 定义中间件逻辑类型
-type LogicType string
+type LogicType = authcheck.LogicType
 
 const (
 	// DTokenCtxKey stores request scoped DToken context DTokenCtxKey 存储请求级 DToken 上下文
 	DTokenCtxKey = "DCtx"
 
 	// LogicOr represents OR logic LogicOr 表示或逻辑
-	LogicOr LogicType = "OR"
+	LogicOr LogicType = authcheck.LogicOr
 	// LogicAnd represents AND logic LogicAnd 表示与逻辑
-	LogicAnd LogicType = "AND"
+	LogicAnd LogicType = authcheck.LogicAnd
 )
 
 // AuthOption defines auth option setter AuthOption 定义认证选项设置器
@@ -69,7 +70,7 @@ func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) he
 	}
 
 	return func(c context.Context, reqCtx *hertzapp.RequestContext) {
-		mgr, err := dtoken.GetManager(options.AuthType)
+		mgr, err := authcheck.GetManager(options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, reqCtx, err)
@@ -93,7 +94,7 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) hertzapp.HandlerFun
 	}
 
 	return func(c context.Context, reqCtx *hertzapp.RequestContext) {
-		mgr, err := dtoken.GetManager(options.AuthType)
+		mgr, err := authcheck.GetManager(options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, reqCtx, err)
@@ -107,11 +108,16 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) hertzapp.HandlerFun
 		dCtx := getDTokenContext(reqCtx, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
-		if !mgr.IsLogin(ctx, tokenValue) {
+		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+			TokenValue: tokenValue,
+			CheckLogin: true,
+			LoginError: derror.ErrTokenExpired,
+		})
+		if err != nil {
 			if options.FailFunc != nil {
-				options.FailFunc(c, reqCtx, derror.ErrTokenExpired)
+				options.FailFunc(c, reqCtx, err)
 			} else {
-				writeErrorResponse(reqCtx, derror.ErrTokenExpired)
+				writeErrorResponse(reqCtx, err)
 			}
 			reqCtx.Abort()
 			return
@@ -138,7 +144,7 @@ func PermissionMiddleware(
 			return
 		}
 
-		mgr, err := dtoken.GetManager(options.AuthType)
+		mgr, err := authcheck.GetManager(options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, reqCtx, err)
@@ -152,18 +158,16 @@ func PermissionMiddleware(
 		dCtx := getDTokenContext(reqCtx, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
-		var ok bool
-		if options.LogicType == LogicAnd {
-			ok = mgr.HasPermissionsAndByToken(ctx, tokenValue, permissions)
-		} else {
-			ok = mgr.HasPermissionsOrByToken(ctx, tokenValue, permissions)
-		}
-
-		if !ok {
+		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+			TokenValue:  tokenValue,
+			Permissions: permissions,
+			LogicType:   options.LogicType,
+		})
+		if err != nil {
 			if options.FailFunc != nil {
-				options.FailFunc(c, reqCtx, derror.ErrPermissionDenied)
+				options.FailFunc(c, reqCtx, err)
 			} else {
-				writeErrorResponse(reqCtx, derror.ErrPermissionDenied)
+				writeErrorResponse(reqCtx, err)
 			}
 			reqCtx.Abort()
 			return
@@ -190,7 +194,7 @@ func RoleMiddleware(
 			return
 		}
 
-		mgr, err := dtoken.GetManager(options.AuthType)
+		mgr, err := authcheck.GetManager(options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, reqCtx, err)
@@ -204,18 +208,16 @@ func RoleMiddleware(
 		dCtx := getDTokenContext(reqCtx, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
-		var ok bool
-		if options.LogicType == LogicAnd {
-			ok = mgr.HasRolesAndByToken(ctx, tokenValue, roles)
-		} else {
-			ok = mgr.HasRolesOrByToken(ctx, tokenValue, roles)
-		}
-
-		if !ok {
+		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+			TokenValue: tokenValue,
+			Roles:      roles,
+			LogicType:  options.LogicType,
+		})
+		if err != nil {
 			if options.FailFunc != nil {
-				options.FailFunc(c, reqCtx, derror.ErrRoleDenied)
+				options.FailFunc(c, reqCtx, err)
 			} else {
-				writeErrorResponse(reqCtx, derror.ErrRoleDenied)
+				writeErrorResponse(reqCtx, err)
 			}
 			reqCtx.Abort()
 			return

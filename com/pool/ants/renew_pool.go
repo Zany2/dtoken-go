@@ -25,17 +25,10 @@ var _ adapter.Pool = (*RenewPoolManager)(nil)
 
 // NewRenewPoolManagerWithDefaultConfig creates a renew pool manager with default config 使用默认配置创建续期池管理器
 func NewRenewPoolManagerWithDefaultConfig() *RenewPoolManager {
-	mgr := &RenewPoolManager{
-		config:  DefaultRenewPoolConfig(),
-		stopCh:  make(chan struct{}),
-		started: true,
+	mgr, err := NewRenewPoolManagerWithConfig(DefaultRenewPoolConfig())
+	if err != nil {
+		return &RenewPoolManager{config: DefaultRenewPoolConfig(), stopCh: make(chan struct{})}
 	}
-
-	_ = mgr.initPool()
-
-	// Start the auto scaling routine 启动自动扩缩容协程
-	go mgr.autoScale()
-
 	return mgr
 }
 
@@ -44,11 +37,9 @@ func NewRenewPoolManagerWithConfig(cfg *RenewPoolConfig) (*RenewPoolManager, err
 	if cfg == nil {
 		cfg = DefaultRenewPoolConfig()
 	}
-	if cfg.MinSize <= 0 {
-		cfg.MinSize = DefaultMinSize
-	}
-	if cfg.MaxSize < cfg.MinSize {
-		cfg.MaxSize = cfg.MinSize
+	cfg = cfg.Clone()
+	if err := cfg.Validate(); err != nil {
+		return nil, err
 	}
 
 	mgr := &RenewPoolManager{
@@ -85,14 +76,20 @@ func (m *RenewPoolManager) initPool() error {
 
 // Submit submits a renewal task 提交续期任务
 func (m *RenewPoolManager) Submit(task func()) error {
-	if !m.started {
+	if m == nil || !m.started || m.pool == nil {
 		return fmt.Errorf("renew pool not started")
+	}
+	if task == nil {
+		return fmt.Errorf("renew pool task is nil")
 	}
 	return m.pool.Submit(task)
 }
 
 // Stop stops the auto scaling process 停止自动扩缩容
 func (m *RenewPoolManager) Stop() {
+	if m == nil {
+		return
+	}
 	m.closeOnce.Do(func() {
 		if !m.started {
 			return
@@ -108,6 +105,9 @@ func (m *RenewPoolManager) Stop() {
 
 // Stats returns current pool statistics 返回当前池状态
 func (m *RenewPoolManager) Stats() (running, capacity int, usage float64) {
+	if m == nil || m.pool == nil {
+		return
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -126,6 +126,9 @@ func (m *RenewPoolManager) Stats() (running, capacity int, usage float64) {
 
 // autoScale runs automatic pool scale up and down logic 自动扩缩容逻辑
 func (m *RenewPoolManager) autoScale() {
+	if m == nil || m.pool == nil || m.config == nil {
+		return
+	}
 	ticker := time.NewTicker(m.config.CheckInterval) // Ticker for periodic usage checks 定时器，用于定期检测使用率
 	defer ticker.Stop()                              // Stop ticker on exit 函数退出时停止定时器
 
