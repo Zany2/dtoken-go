@@ -3,7 +3,6 @@ package fiber
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
 	corecontext "github.com/Zany2/dtoken-go/core/context"
@@ -235,20 +234,8 @@ func getDTokenContext(c *gofiber.Ctx, mgr *manager.Manager) *corecontext.DTokenC
 
 // writeErrorResponse writes a standard error response writeErrorResponse 写入标准错误响应。
 func writeErrorResponse(c *gofiber.Ctx, err error) error {
-	var dErr *derror.DTokenError
-	var code int
-	var message string
-	var httpStatus int
-
-	if errors.As(err, &dErr) {
-		code = dErr.Code
-		message = dErr.Message
-		httpStatus = getHTTPStatusFromCode(code)
-	} else {
-		code = derror.CodeServerError
-		message = err.Error()
-		httpStatus = http.StatusInternalServerError
-	}
+	code, message := authcheck.GetErrorCodeAndMessage(err)
+	httpStatus := getHTTPStatusFromCode(code)
 
 	return c.Status(httpStatus).JSON(gofiber.Map{
 		"code":    code,
@@ -269,9 +256,9 @@ func writeSuccessResponse(c *gofiber.Ctx, data interface{}) error {
 // getHTTPStatusFromCode maps DToken error code to HTTP status getHTTPStatusFromCode 将 DToken 错误码映射为 HTTP 状态码。
 func getHTTPStatusFromCode(code int) int {
 	switch code {
-	case derror.CodeNotLogin:
+	case derror.CodeNotLogin, derror.CodeTokenInvalid, derror.CodeTokenExpired, derror.CodeActiveTimeout, derror.CodeKickedOut:
 		return http.StatusUnauthorized
-	case derror.CodePermissionDenied:
+	case derror.CodePermissionDenied, derror.CodeAccountDisabled:
 		return http.StatusForbidden
 	case derror.CodeBadRequest:
 		return http.StatusBadRequest

@@ -13,8 +13,8 @@ func (m *Manager) RegisterOAuth2Client(client *oauth2.Client) error {
 }
 
 // UnregisterOAuth2Client unregisters oauth2 client. UnregisterOAuth2Client 注销 OAuth2 客户端。
-func (m *Manager) UnregisterOAuth2Client(clientID string) {
-	m.oauth2Manager.UnregisterClient(clientID)
+func (m *Manager) UnregisterOAuth2Client(clientID string) error {
+	return m.oauth2Manager.UnregisterClient(clientID)
 }
 
 // GetOAuth2Client gets oauth2 client. GetOAuth2Client 根据 ID 获取 OAuth2 客户端。

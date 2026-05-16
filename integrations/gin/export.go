@@ -71,23 +71,37 @@ var (
 
 // DToken disable operations DToken 封禁操作。
 var (
-	Disable                       = dtoken.Disable
-	Untie                         = dtoken.Untie
-	IsDisable                     = dtoken.IsDisable
-	GetDisableInfo                = dtoken.GetDisableInfo
-	GetDisableTTL                 = dtoken.GetDisableTTL
-	DisableService                = dtoken.DisableService
-	DisableServiceWithReason      = dtoken.DisableServiceWithReason
-	DisableServiceLevel           = dtoken.DisableServiceLevel
-	DisableServiceLevelWithReason = dtoken.DisableServiceLevelWithReason
-	UntieService                  = dtoken.UntieService
-	IsDisableService              = dtoken.IsDisableService
-	IsDisableServiceLevel         = dtoken.IsDisableServiceLevel
-	CheckDisable                  = dtoken.CheckDisable
-	CheckDisableService           = dtoken.CheckDisableService
-	CheckDisableServiceLevel      = dtoken.CheckDisableServiceLevel
-	GetDisableServiceInfo         = dtoken.GetDisableServiceInfo
-	GetDisableServiceTTL          = dtoken.GetDisableServiceTTL
+	Disable                            = dtoken.Disable
+	Untie                              = dtoken.Untie
+	IsDisable                          = dtoken.IsDisable
+	GetDisableInfo                     = dtoken.GetDisableInfo
+	GetDisableTTL                      = dtoken.GetDisableTTL
+	DisableService                     = dtoken.DisableService
+	DisableServiceWithReason           = dtoken.DisableServiceWithReason
+	DisableServiceLevel                = dtoken.DisableServiceLevel
+	DisableServiceLevelWithReason      = dtoken.DisableServiceLevelWithReason
+	UntieService                       = dtoken.UntieService
+	IsDisableService                   = dtoken.IsDisableService
+	IsDisableServiceLevel              = dtoken.IsDisableServiceLevel
+	CheckDisable                       = dtoken.CheckDisable
+	CheckDisableService                = dtoken.CheckDisableService
+	CheckDisableServiceLevel           = dtoken.CheckDisableServiceLevel
+	GetDisableServiceInfo              = dtoken.GetDisableServiceInfo
+	GetDisableServiceTTL               = dtoken.GetDisableServiceTTL
+	DisableDevice                      = dtoken.DisableDevice
+	DisableDeviceWithReason            = dtoken.DisableDeviceWithReason
+	DisableDeviceAndDeviceId           = dtoken.DisableDeviceAndDeviceId
+	DisableDeviceAndDeviceIdWithReason = dtoken.DisableDeviceAndDeviceIdWithReason
+	UntieDevice                        = dtoken.UntieDevice
+	UntieDeviceAndDeviceId             = dtoken.UntieDeviceAndDeviceId
+	IsDisableDevice                    = dtoken.IsDisableDevice
+	IsDisableDeviceAndDeviceId         = dtoken.IsDisableDeviceAndDeviceId
+	CheckDisableDevice                 = dtoken.CheckDisableDevice
+	CheckDisableDeviceAndDeviceId      = dtoken.CheckDisableDeviceAndDeviceId
+	GetDisableDeviceInfo               = dtoken.GetDisableDeviceInfo
+	GetDisableDeviceAndDeviceIdInfo    = dtoken.GetDisableDeviceAndDeviceIdInfo
+	GetDisableDeviceTTL                = dtoken.GetDisableDeviceTTL
+	GetDisableDeviceAndDeviceIdTTL     = dtoken.GetDisableDeviceAndDeviceIdTTL
 )
 
 // DToken permission operations DToken 权限操作。

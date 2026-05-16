@@ -3,7 +3,6 @@ package gf
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
 	"github.com/Zany2/dtoken-go/core/derror"
@@ -336,20 +335,8 @@ func getDContext(r *ghttp.Request, mgr *manager.Manager) *DContext.DTokenContext
 
 // writeErrorResponse writes error response writeErrorResponse 写入错误响应
 func writeErrorResponse(r *ghttp.Request, err error) {
-	var saErr *derror.DTokenError
-	var code int
-	var message string
-	var httpStatus int
-
-	if errors.As(err, &saErr) {
-		code = saErr.Code
-		message = saErr.Message
-		httpStatus = getHTTPStatusFromCode(code)
-	} else {
-		code = derror.CodeServerError
-		message = err.Error()
-		httpStatus = http.StatusInternalServerError
-	}
+	code, message := authcheck.GetErrorCodeAndMessage(err)
+	httpStatus := getHTTPStatusFromCode(code)
 
 	r.Response.WriteStatusExit(httpStatus, g.Map{
 		"code":    code,
@@ -370,9 +357,9 @@ func writeSuccessResponse(r *ghttp.Request, data interface{}) {
 // getHTTPStatusFromCode maps error code to HTTP status getHTTPStatusFromCode 映射错误码到 HTTP 状态码
 func getHTTPStatusFromCode(code int) int {
 	switch code {
-	case derror.CodeNotLogin:
+	case derror.CodeNotLogin, derror.CodeTokenInvalid, derror.CodeTokenExpired, derror.CodeActiveTimeout, derror.CodeKickedOut:
 		return http.StatusUnauthorized
-	case derror.CodePermissionDenied:
+	case derror.CodePermissionDenied, derror.CodeAccountDisabled:
 		return http.StatusForbidden
 	case derror.CodeBadRequest:
 		return http.StatusBadRequest

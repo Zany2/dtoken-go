@@ -48,6 +48,10 @@ func (m *Manager) getSession(ctx context.Context, loginID string, autoCreate ...
 
 // getTokenInfo retrieves token information (internal method). getTokenInfo 获取 Token 信息（内部方法）。
 func (m *Manager) getTokenInfo(ctx context.Context, tokenValue string) (*TokenInfo, error) {
+	if tokenValue == "" {
+		return nil, derror.ErrInvalidToken
+	}
+
 	tokenInfoData, err := m.storage.Get(ctx, m.getTokenKey(tokenValue))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
@@ -66,20 +70,14 @@ func (m *Manager) getTokenInfo(ctx context.Context, tokenValue string) (*TokenIn
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
 	}
-
-	switch string(tokenInfoBytes) {
-	case string(TokenStateLogout):
-		return nil, derror.ErrInvalidToken
-	case string(TokenStateKickOut):
-		return nil, derror.ErrTokenKickout
-	case string(TokenStateReplaced):
-		return nil, derror.ErrTokenReplaced
+	if stateErr := tokenStateError(TokenState(tokenInfoBytes)); stateErr != nil {
+		return nil, stateErr
 	}
 
 	var tokenInfo TokenInfo
 	err = m.serializer.Decode(tokenInfoBytes, &tokenInfo)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
+		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
 
 	return &tokenInfo, nil
@@ -121,6 +119,9 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 	if m.isDisable(ctx, tokenInfo.LoginID) {
 		return derror.ErrAccountDisabled
 	}
+	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceId) {
+		return derror.ErrDeviceDisabled
+	}
 
 	sess, err := m.getSession(ctx, tokenInfo.LoginID)
 	if err != nil {
@@ -148,9 +149,16 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 			return derror.ErrInvalidToken
 		}
 		if time.Now().Unix()-timeStamp > m.config.ActiveTimeout {
-			// Kick out token when inactive timeout exceeded Token 已超过最大不活跃时长，执行踢出操作
-			_ = m.Kickout(ctx, tokenValue)
-			return derror.ErrTokenKickout
+			// Mark inactive timeout separately so later checks keep the exact cause. 单独标记不活跃超时以保留精确原因。
+			if err = m.processTerminals(ctx, tokenInfo.LoginID, func(sess *Session) []TerminalInfo {
+				if info, ok := sess.removeTerminalByToken(tokenValue); ok {
+					return []TerminalInfo{info}
+				}
+				return nil
+			}, TokenStateActiveTimeout); err != nil {
+				return err
+			}
+			return derror.ErrActiveTimeout
 		}
 	}
 
@@ -176,7 +184,7 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 		activeFunc := func() {
 			bg := context.Background()
 			unlock := m.lockLoginWrite(tokenInfo.LoginID)
-			defer unlock()
+			defer func() { unlock() }()
 
 			// Recheck token attachment before writing metadata 写入元数据前重新确认 Token 仍属于会话
 			latestTokenInfo, err := m.getTokenInfo(bg, tokenValue)

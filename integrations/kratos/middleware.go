@@ -3,7 +3,6 @@ package kratos
 
 import (
 	"context"
-	stderrors "errors"
 	"net/http"
 
 	corecontext "github.com/Zany2/dtoken-go/core/context"
@@ -293,33 +292,13 @@ func writeErrorResponse(err error) error {
 
 // getErrorCodeAndMessage gets error code and message getErrorCodeAndMessage 获取错误码和错误消息
 func getErrorCodeAndMessage(err error) (int, string) {
-	var dErr *derror.DTokenError
-	if stderrors.As(err, &dErr) {
-		return dErr.Code, dErr.Message
-	}
-
-	switch {
-	case stderrors.Is(err, derror.ErrNotLogin):
-		return derror.CodeNotLogin, err.Error()
-	case stderrors.Is(err, derror.ErrInvalidToken):
-		return derror.CodeTokenInvalid, err.Error()
-	case stderrors.Is(err, derror.ErrTokenExpired), stderrors.Is(err, derror.ErrTokenKickout), stderrors.Is(err, derror.ErrTokenReplaced):
-		return derror.CodeTokenExpired, err.Error()
-	case stderrors.Is(err, derror.ErrPermissionDenied), stderrors.Is(err, derror.ErrRoleDenied):
-		return derror.CodePermissionDenied, err.Error()
-	case stderrors.Is(err, derror.ErrAccountDisabled):
-		return derror.CodeAccountDisabled, err.Error()
-	case stderrors.Is(err, derror.ErrInvalidParam):
-		return derror.CodeBadRequest, err.Error()
-	default:
-		return derror.CodeServerError, err.Error()
-	}
+	return authcheck.GetErrorCodeAndMessage(err)
 }
 
 // getHTTPStatusFromCode maps error code to HTTP status getHTTPStatusFromCode 映射错误码到 HTTP 状态码
 func getHTTPStatusFromCode(code int) int {
 	switch code {
-	case derror.CodeNotLogin, derror.CodeTokenInvalid, derror.CodeTokenExpired:
+	case derror.CodeNotLogin, derror.CodeTokenInvalid, derror.CodeTokenExpired, derror.CodeActiveTimeout, derror.CodeKickedOut:
 		return http.StatusUnauthorized
 	case derror.CodePermissionDenied, derror.CodeAccountDisabled:
 		return http.StatusForbidden
@@ -343,7 +322,7 @@ func firstAuthType(authType ...string) string {
 // getReasonFromCode maps error code to reason getReasonFromCode 映射错误码到错误原因
 func getReasonFromCode(code int) string {
 	switch code {
-	case derror.CodeNotLogin, derror.CodeTokenInvalid, derror.CodeTokenExpired:
+	case derror.CodeNotLogin, derror.CodeTokenInvalid, derror.CodeTokenExpired, derror.CodeActiveTimeout, derror.CodeKickedOut:
 		return "UNAUTHORIZED"
 	case derror.CodePermissionDenied:
 		return "PERMISSION_DENIED"

@@ -100,6 +100,46 @@ func NewLegacyAccessProvider(
 	return provider
 }
 
+// loadPermissionsByLoginID loads login ID permissions and prefers provider data. loadPermissionsByLoginID 按登录 ID 加载权限并优先使用提供器数据。
+func (m *Manager) loadPermissionsByLoginID(ctx context.Context, loginID string) ([]string, error) {
+	subject := AccessSubject{AuthType: m.config.AuthType, LoginID: loginID}
+	if m.accessProvider != nil {
+		permissions, err := m.providerPermissions(ctx, nil, subject)
+		if err != nil {
+			return nil, err
+		}
+		if permissions != nil {
+			return permissions, nil
+		}
+	}
+
+	sess, err := m.getSession(ctx, loginID)
+	if err != nil {
+		return nil, err
+	}
+	return sess.Permissions, nil
+}
+
+// loadRolesByLoginID loads login ID roles and prefers provider data. loadRolesByLoginID 按登录 ID 加载角色并优先使用提供器数据。
+func (m *Manager) loadRolesByLoginID(ctx context.Context, loginID string) ([]string, error) {
+	subject := AccessSubject{AuthType: m.config.AuthType, LoginID: loginID}
+	if m.accessProvider != nil {
+		roles, err := m.providerRoles(ctx, nil, subject)
+		if err != nil {
+			return nil, err
+		}
+		if roles != nil {
+			return roles, nil
+		}
+	}
+
+	sess, err := m.getSession(ctx, loginID)
+	if err != nil {
+		return nil, err
+	}
+	return sess.Roles, nil
+}
+
 // loadPermissions loads permissions from provider with fallback. loadPermissions 从提供器加载权限并支持回退值。
 func (m *Manager) loadPermissions(ctx context.Context, fallback []string, subject AccessSubject) ([]string, error) {
 	// Fill default auth type 填充默认认证类型
@@ -125,12 +165,12 @@ func (m *Manager) providerPermissions(ctx context.Context, fallback []string, su
 	return permissions, nil
 }
 
-// resolvePermissions resolves permissions and falls back on errors. resolvePermissions 解析权限并在出错时回退。
+// resolvePermissions resolves permissions and fails closed on provider errors. resolvePermissions 解析权限并在提供器出错时安全拒绝。
 func (m *Manager) resolvePermissions(ctx context.Context, fallback []string, subject AccessSubject) []string {
 	permissions, err := m.loadPermissions(ctx, fallback, subject)
 	if err != nil {
 		m.logger.Errorf("manager.resolvePermissions: failed to resolve permissions, loginID=%s, error=%v", subject.LoginID, err)
-		return fallback
+		return []string{}
 	}
 	return permissions
 }
@@ -160,12 +200,12 @@ func (m *Manager) providerRoles(ctx context.Context, fallback []string, subject 
 	return roles, nil
 }
 
-// resolveRoles resolves roles and falls back on errors. resolveRoles 解析角色并在出错时回退。
+// resolveRoles resolves roles and fails closed on provider errors. resolveRoles 解析角色并在提供器出错时安全拒绝。
 func (m *Manager) resolveRoles(ctx context.Context, fallback []string, subject AccessSubject) []string {
 	roles, err := m.loadRoles(ctx, fallback, subject)
 	if err != nil {
 		m.logger.Errorf("manager.resolveRoles: failed to resolve roles, loginID=%s, error=%v", subject.LoginID, err)
-		return fallback
+		return []string{}
 	}
 	return roles
 }

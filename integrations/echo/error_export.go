@@ -40,6 +40,7 @@ var (
 	ErrNotLogin                 = derror.ErrNotLogin
 	ErrInvalidToken             = derror.ErrInvalidToken
 	ErrTokenExpired             = derror.ErrTokenExpired
+	ErrActiveTimeout            = derror.ErrActiveTimeout
 	ErrTokenKickout             = derror.ErrTokenKickout
 	ErrTokenReplaced            = derror.ErrTokenReplaced
 	ErrInvalidDevice            = derror.ErrInvalidDevice
@@ -47,6 +48,8 @@ var (
 	ErrRoleDenied               = derror.ErrRoleDenied
 	ErrServiceDisabled          = derror.ErrServiceDisabled
 	ErrServiceNotDisabled       = derror.ErrServiceNotDisabled
+	ErrDeviceDisabled           = derror.ErrDeviceDisabled
+	ErrDeviceNotDisabled        = derror.ErrDeviceNotDisabled
 	ErrDisableLevelNotReached   = derror.ErrDisableLevelNotReached
 	ErrSessionNotFound          = derror.ErrSessionNotFound
 	ErrInvalidNonce             = derror.ErrInvalidNonce

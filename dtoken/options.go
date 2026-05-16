@@ -59,6 +59,22 @@ type ServiceDisableOptions struct {
 	Reason string
 }
 
+// DeviceDisableOptions describes a device-scoped disable request. DeviceDisableOptions 描述设备维度封禁请求。
+type DeviceDisableOptions struct {
+	// AuthType stores the auth namespace. AuthType 存储认证命名空间。
+	AuthType string
+	// LoginID stores the subject id. LoginID 存储主体 ID。
+	LoginID string
+	// Device stores disabled device type. Device 存储被封禁设备类型。
+	Device string
+	// DeviceID stores disabled concrete device id. DeviceID 存储被封禁具体设备 ID。
+	DeviceID string
+	// Duration stores disable duration. Duration 存储封禁时长。
+	Duration time.Duration
+	// Reason stores disable reason. Reason 存储封禁原因。
+	Reason string
+}
+
 // PermissionOptions describes permission mutations and checks. PermissionOptions 描述权限变更和校验。
 type PermissionOptions struct {
 	// AuthType stores the auth namespace. AuthType 存储认证命名空间。

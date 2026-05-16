@@ -6,6 +6,10 @@ const (
 	DisableKeyPrefix = "disable:"
 	// DisableServiceKeyPrefix stores service disable key prefix. DisableServiceKeyPrefix 存储服务封禁键前缀。
 	DisableServiceKeyPrefix = "disable:service:"
+	// DisableDeviceKeyPrefix stores device disable key prefix. DisableDeviceKeyPrefix 存储设备封禁键前缀。
+	DisableDeviceKeyPrefix = "disable:device:"
+	// DisableDeviceIDKeyPrefix stores concrete device disable key prefix. DisableDeviceIDKeyPrefix 存储具体设备封禁键前缀。
+	DisableDeviceIDKeyPrefix = "disable:device:id:"
 	// SessionKeyPrefix stores session key prefix. SessionKeyPrefix 存储会话键前缀。
 	SessionKeyPrefix = "session:"
 	// RenewKeyPrefix stores renew key prefix. RenewKeyPrefix 存储 Token 续期键前缀。
@@ -40,4 +44,6 @@ const (
 	TokenStateKickOut TokenState = "KICK_OUT"
 	// TokenStateReplaced indicates replaced state. TokenStateReplaced 表示被顶下线状态。
 	TokenStateReplaced TokenState = "REPLACED"
+	// TokenStateActiveTimeout indicates inactive timeout state. TokenStateActiveTimeout 表示不活跃超时状态。
+	TokenStateActiveTimeout TokenState = "ACTIVE_TIMEOUT"
 )

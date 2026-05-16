@@ -254,7 +254,7 @@ func (m *Manager) logoutTerminals(
 	removalFunc func(*Session) []TerminalInfo,
 ) error {
 	unlock := m.lockLoginWrite(loginID)
-	defer unlock()
+	defer func() { unlock() }()
 
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
@@ -350,7 +350,7 @@ func (m *Manager) processTerminals(
 	state TokenState,
 ) error {
 	unlock := m.lockLoginWrite(loginID)
-	defer unlock()
+	defer func() { unlock() }()
 
 	// Load session 加载 Session
 	sess, err := m.getSession(ctx, loginID)
@@ -369,7 +369,7 @@ func (m *Manager) processTerminals(
 		token := info.Token
 
 		// Set token state 设置 token 状态
-		if err = m.setTokenState(ctx, token, state); err != nil {
+		if err = m.setTokenState(ctx, token, state, m.tokenStateExpiration(ctx, token)); err != nil {
 			return err
 		}
 
@@ -413,7 +413,7 @@ func (m *Manager) processTerminals(
 	// Trigger matched event 触发对应事件
 	var event listener.Event
 	switch state {
-	case TokenStateKickOut:
+	case TokenStateKickOut, TokenStateActiveTimeout:
 		event = listener.EventKickout
 	case TokenStateReplaced:
 		event = listener.EventReplace

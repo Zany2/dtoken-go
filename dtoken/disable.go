@@ -160,3 +160,129 @@ func GetDisableServiceTTL(ctx context.Context, loginID, service string, authType
 	}
 	return mgr.GetDisableServiceTTL(ctx, loginID, service)
 }
+
+// DisableDevice disables a device type for an account. DisableDevice 封禁账号的指定设备类型。
+func DisableDevice(ctx context.Context, loginID, device string, duration time.Duration, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.DisableDevice(ctx, loginID, device, duration)
+}
+
+// DisableDeviceWithReason disables a device type with reason. DisableDeviceWithReason 带原因封禁账号的指定设备类型。
+func DisableDeviceWithReason(ctx context.Context, loginID, device string, duration time.Duration, reason string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.DisableDevice(ctx, loginID, device, duration, reason)
+}
+
+// DisableDeviceAndDeviceId disables a concrete device for an account. DisableDeviceAndDeviceId 封禁账号的具体设备。
+func DisableDeviceAndDeviceId(ctx context.Context, loginID, device, deviceId string, duration time.Duration, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.DisableDeviceAndDeviceId(ctx, loginID, device, deviceId, duration)
+}
+
+// DisableDeviceAndDeviceIdWithReason disables a concrete device with reason. DisableDeviceAndDeviceIdWithReason 带原因封禁账号的具体设备。
+func DisableDeviceAndDeviceIdWithReason(ctx context.Context, loginID, device, deviceId string, duration time.Duration, reason string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.DisableDeviceAndDeviceId(ctx, loginID, device, deviceId, duration, reason)
+}
+
+// UntieDevice removes device type disable state. UntieDevice 解除设备类型封禁状态。
+func UntieDevice(ctx context.Context, loginID, device string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.UntieDevice(ctx, loginID, device)
+}
+
+// UntieDeviceAndDeviceId removes concrete device disable state. UntieDeviceAndDeviceId 解除具体设备封禁状态。
+func UntieDeviceAndDeviceId(ctx context.Context, loginID, device, deviceId string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.UntieDeviceAndDeviceId(ctx, loginID, device, deviceId)
+}
+
+// IsDisableDevice reports whether a device type is disabled. IsDisableDevice 判断设备类型是否被封禁。
+func IsDisableDevice(ctx context.Context, loginID, device string, authType ...string) bool {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return false
+	}
+	return mgr.IsDisableDevice(ctx, loginID, device)
+}
+
+// IsDisableDeviceAndDeviceId reports whether a concrete device is disabled. IsDisableDeviceAndDeviceId 判断具体设备是否被封禁。
+func IsDisableDeviceAndDeviceId(ctx context.Context, loginID, device, deviceId string, authType ...string) bool {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return false
+	}
+	return mgr.IsDisableDeviceAndDeviceId(ctx, loginID, device, deviceId)
+}
+
+// CheckDisableDevice validates device type disable state. CheckDisableDevice 校验设备类型封禁状态。
+func CheckDisableDevice(ctx context.Context, loginID, device string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.CheckDisableDevice(ctx, loginID, device)
+}
+
+// CheckDisableDeviceAndDeviceId validates concrete device disable state. CheckDisableDeviceAndDeviceId 校验具体设备封禁状态。
+func CheckDisableDeviceAndDeviceId(ctx context.Context, loginID, device, deviceId string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.CheckDisableDeviceAndDeviceId(ctx, loginID, device, deviceId)
+}
+
+// GetDisableDeviceInfo returns device type disable information. GetDisableDeviceInfo 获取设备类型封禁信息。
+func GetDisableDeviceInfo(ctx context.Context, loginID, device string, authType ...string) (*manager.DeviceDisableInfo, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return nil, err
+	}
+	return mgr.GetDisableDeviceInfo(ctx, loginID, device)
+}
+
+// GetDisableDeviceAndDeviceIdInfo returns concrete device disable information. GetDisableDeviceAndDeviceIdInfo 获取具体设备封禁信息。
+func GetDisableDeviceAndDeviceIdInfo(ctx context.Context, loginID, device, deviceId string, authType ...string) (*manager.DeviceDisableInfo, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return nil, err
+	}
+	return mgr.GetDisableDeviceAndDeviceIdInfo(ctx, loginID, device, deviceId)
+}
+
+// GetDisableDeviceTTL returns device type disable TTL in seconds. GetDisableDeviceTTL 获取设备类型封禁剩余秒数。
+func GetDisableDeviceTTL(ctx context.Context, loginID, device string, authType ...string) (int64, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return 0, err
+	}
+	return mgr.GetDisableDeviceTTL(ctx, loginID, device)
+}
+
+// GetDisableDeviceAndDeviceIdTTL returns concrete device disable TTL in seconds. GetDisableDeviceAndDeviceIdTTL 获取具体设备封禁剩余秒数。
+func GetDisableDeviceAndDeviceIdTTL(ctx context.Context, loginID, device, deviceId string, authType ...string) (int64, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return 0, err
+	}
+	return mgr.GetDisableDeviceAndDeviceIdTTL(ctx, loginID, device, deviceId)
+}

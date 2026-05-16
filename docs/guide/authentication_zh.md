@@ -232,7 +232,7 @@ dtoken.SetManager(
 )
 ```
 
-`IsShare(true)` 表示并发登录时可复用已有 token。  
+`IsShare(true)` 表示并发登录时可复用已有 token，但只会在相同设备维度内复用。  
 如果同时设置 `IsConcurrent(true)` 且 `IsShare(false)`，则每次登录都会生成新 token。
 
 ### 最大登录数
@@ -298,7 +298,7 @@ dtoken.SetManager(
 1. 登录成功时初始化活跃时间
 2. 鉴权校验时检查是否已超过活跃超时
 3. 未超时则异步刷新活跃时间
-4. 已超时则返回未登录相关错误
+4. 已超时则标记为 `active-timeout`，后续校验会继续返回对应错误
 
 `Timeout` 表示绝对过期时间，`ActiveTimeout` 表示不活跃超时，两者可以同时存在。
 

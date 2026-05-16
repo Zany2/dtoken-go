@@ -232,7 +232,7 @@ dtoken.SetManager(
 )
 ```
 
-`IsShare(true)` reuses an existing token during concurrent login.  
+`IsShare(true)` reuses an existing token during concurrent login, but only within the same device dimension.  
 When `IsConcurrent(true)` and `IsShare(false)` are both set, each login creates a new token.
 
 ### Max Login Count
@@ -298,7 +298,7 @@ When `ActiveTimeout` is enabled:
 1. The token gets an activity timestamp at login
 2. Each authentication check verifies whether the activity timeout has been exceeded
 3. If still active, the activity timestamp is refreshed asynchronously
-4. If expired, the token fails with a not-logged-in style error
+4. If expired, the token is marked as `active-timeout` and later checks keep returning the corresponding error
 
 `Timeout` is the absolute expiration time, while `ActiveTimeout` is the inactivity window.
 

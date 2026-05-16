@@ -5,15 +5,32 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/utils"
 	"time"
 )
 
-// setTokenState marks token logical state and removes legacy mapping. setTokenState 标记 Token 逻辑状态并清理历史映射。
-func (m *Manager) setTokenState(ctx context.Context, tokenValue string, state TokenState) error {
-	if err := m.storage.Set(ctx, m.getTokenKey(tokenValue), string(state), m.getExpiration()); err != nil {
+// tokenStateError maps stored token state to public errors. tokenStateError 将已存 token 状态映射为公开错误。
+func tokenStateError(state TokenState) error {
+	switch state {
+	case TokenStateLogout:
+		return derror.ErrInvalidToken
+	case TokenStateKickOut:
+		return derror.ErrTokenKickout
+	case TokenStateReplaced:
+		return derror.ErrTokenReplaced
+	case TokenStateActiveTimeout:
+		return derror.ErrActiveTimeout
+	default:
+		return nil
+	}
+}
+
+// setTokenState marks token logical state. setTokenState 标记 Token 逻辑状态。
+func (m *Manager) setTokenState(ctx context.Context, tokenValue string, state TokenState, expiration time.Duration) error {
+	if err := m.storage.Set(ctx, m.getTokenKey(tokenValue), string(state), expiration); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 	if err := m.storage.Delete(ctx, m.getLegacyTokenKey(tokenValue)); err != nil {
@@ -22,18 +39,36 @@ func (m *Manager) setTokenState(ctx context.Context, tokenValue string, state To
 	return nil
 }
 
+// tokenStateExpiration resolves token state ttl. tokenStateExpiration ?? Token ?? TTL?
+func (m *Manager) tokenStateExpiration(ctx context.Context, tokenValue string) time.Duration {
+	if ttl, err := m.storage.TTL(ctx, m.getTokenKey(tokenValue)); err == nil {
+		switch {
+		case ttl == adapter.TTLNoExpire:
+			return 0
+		case ttl > 0:
+			return ttl
+		}
+	}
+
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	if err != nil {
+		return m.getExpiration()
+	}
+	return m.resolveTokenExpiration(tokenInfo)
+}
+
 // applyLogoutModeToToken applies logout mode to token mapping. applyLogoutModeToToken 按下线模式处理 Token 映射。
 func (m *Manager) applyLogoutModeToToken(ctx context.Context, tokenValue string, mode config.LogoutMode) error {
 	switch mode {
 	case config.LogoutModeLogout:
-		// Delete mapping for normal logout 普通登出直接删除映射
+		// Delete mapping for normal logout 普通登出直接删除映射。
 		if err := m.storage.Delete(ctx, m.getTokenStorageKeys(tokenValue)...); err != nil {
 			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
 	case config.LogoutModeKickout:
-		return m.setTokenState(ctx, tokenValue, TokenStateKickOut)
+		return m.setTokenState(ctx, tokenValue, TokenStateKickOut, m.tokenStateExpiration(ctx, tokenValue))
 	case config.LogoutModeReplaced:
-		return m.setTokenState(ctx, tokenValue, TokenStateReplaced)
+		return m.setTokenState(ctx, tokenValue, TokenStateReplaced, m.tokenStateExpiration(ctx, tokenValue))
 	default:
 		return derror.ErrInvalidParam
 	}
@@ -95,6 +130,7 @@ func (m *Manager) checkTerminalTokenAlive(ctx context.Context, tokenValue string
 	if err != nil {
 		if errors.Is(err, derror.ErrInvalidToken) ||
 			errors.Is(err, derror.ErrTokenExpired) ||
+			errors.Is(err, derror.ErrActiveTimeout) ||
 			errors.Is(err, derror.ErrTokenKickout) ||
 			errors.Is(err, derror.ErrTokenReplaced) {
 			return false, nil
@@ -102,6 +138,9 @@ func (m *Manager) checkTerminalTokenAlive(ctx context.Context, tokenValue string
 		return false, err
 	}
 	if tokenInfo.LoginID == "" || m.isDisable(ctx, tokenInfo.LoginID) {
+		return false, nil
+	}
+	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceId) {
 		return false, nil
 	}
 

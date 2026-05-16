@@ -120,6 +120,15 @@ func CheckPermission(ctx context.Context, loginID string, permission string, aut
 	return mgr.CheckPermission(ctx, loginID, permission)
 }
 
+// CheckPermissionByToken validates a single permission by token. CheckPermissionByToken 按 token 校验单个权限。
+func CheckPermissionByToken(ctx context.Context, tokenValue string, permission string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.CheckPermissionByToken(ctx, tokenValue, permission)
+}
+
 // CheckPermissionAnd validates all permissions. CheckPermissionAnd 校验全部权限。
 func CheckPermissionAnd(ctx context.Context, loginID string, permissions []string, authType ...string) error {
 	mgr, err := GetManager(authType...)
@@ -129,6 +138,15 @@ func CheckPermissionAnd(ctx context.Context, loginID string, permissions []strin
 	return mgr.CheckPermissionAnd(ctx, loginID, permissions)
 }
 
+// CheckPermissionAndByToken validates all permissions by token. CheckPermissionAndByToken 按 token 校验全部权限。
+func CheckPermissionAndByToken(ctx context.Context, tokenValue string, permissions []string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.CheckPermissionAndByToken(ctx, tokenValue, permissions)
+}
+
 // CheckPermissionOr validates at least one permission. CheckPermissionOr 校验任一权限。
 func CheckPermissionOr(ctx context.Context, loginID string, permissions []string, authType ...string) error {
 	mgr, err := GetManager(authType...)
@@ -136,4 +154,13 @@ func CheckPermissionOr(ctx context.Context, loginID string, permissions []string
 		return err
 	}
 	return mgr.CheckPermissionOr(ctx, loginID, permissions)
+}
+
+// CheckPermissionOrByToken validates at least one permission by token. CheckPermissionOrByToken 按 token 校验任一权限。
+func CheckPermissionOrByToken(ctx context.Context, tokenValue string, permissions []string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.CheckPermissionOrByToken(ctx, tokenValue, permissions)
 }

@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
@@ -112,15 +111,13 @@ type UserValidator func(username, password string) (userID string, err error)
 
 // OAuth2Server OAuth2 authorization server OAuth2授权服务器
 type OAuth2Server struct {
-	authType          string             // Authentication system type 认证体系类型
-	keyPrefix         string             // Configurable prefix 可配置的前缀
-	clients           map[string]*Client // client map 客户端映射map
-	clientsMu         sync.RWMutex       // Clients map lock 客户端映射锁
-	codeExpiration    time.Duration      // Authorization code expiration (10min) 授权码过期时间（10分钟）
-	tokenExpiration   time.Duration      // Access token expiration (2h) 访问令牌过期时间（2小时）
-	refreshExpiration time.Duration      // Refresh token expiration 刷新令牌过期时间
-	serializer        adapter.Codec      // Codec adapter for encoding and decoding operations 编解码器适配器
-	storage           adapter.Storage    // Storage adapter (Redis, Memory, etc.) 存储适配器（如 Redis、Memory）
+	authType          string          // Authentication system type 认证体系类型
+	keyPrefix         string          // Configurable prefix 可配置的前缀
+	codeExpiration    time.Duration   // Authorization code expiration (10min) 授权码过期时间（10分钟）
+	tokenExpiration   time.Duration   // Access token expiration (2h) 访问令牌过期时间（2小时）
+	refreshExpiration time.Duration   // Refresh token expiration 刷新令牌过期时间
+	serializer        adapter.Codec   // Codec adapter for encoding and decoding operations 编解码器适配器
+	storage           adapter.Storage // Storage adapter (Redis, Memory, etc.) 存储适配器（如 Redis、Memory）
 }
 
 // NewDefaultOAuth2Server creates OAuth2 server with default config NewDefaultOAuth2Server 使用默认配置创建 OAuth2 服务端
@@ -150,7 +147,6 @@ func NewOAuth2ServerWithConfig(authType, prefix string, storage adapter.Storage,
 	return &OAuth2Server{
 		authType:          authType,
 		keyPrefix:         prefix,
-		clients:           make(map[string]*Client),
 		codeExpiration:    codeExpiration,
 		tokenExpiration:   tokenExpiration,
 		refreshExpiration: refreshExpiration,
@@ -169,33 +165,17 @@ func (s *OAuth2Server) RegisterClient(client *Client) error {
 	if client == nil || client.ClientID == "" {
 		return derror.ErrClientOrClientIDEmpty
 	}
-
-	s.clientsMu.Lock()
-	defer s.clientsMu.Unlock()
-
-	s.clients[client.ClientID] = client
-	return nil
+	return s.saveClient(context.Background(), client)
 }
 
 // UnregisterClient Unregisters an OAuth2 client 注销OAuth2客户端
-func (s *OAuth2Server) UnregisterClient(clientID string) {
-	s.clientsMu.Lock()
-	defer s.clientsMu.Unlock()
-
-	delete(s.clients, clientID)
+func (s *OAuth2Server) UnregisterClient(clientID string) error {
+	return s.deleteClient(context.Background(), clientID)
 }
 
 // GetClient Gets client by ID 根据ID获取客户端
 func (s *OAuth2Server) GetClient(clientID string) (*Client, error) {
-	s.clientsMu.RLock()
-	defer s.clientsMu.RUnlock()
-
-	client, exists := s.clients[clientID]
-	if !exists {
-		return nil, derror.ErrClientNotFound
-	}
-
-	return client, nil
+	return s.getClient(context.Background(), clientID)
 }
 
 // Token Unified token endpoint that dispatches to appropriate handler based on grant type 统一的令牌端点，根据授权类型分发到相应的处理逻辑
@@ -228,7 +208,7 @@ func (s *OAuth2Server) GenerateAuthorizationCode(ctx context.Context, clientID, 
 		return nil, derror.ErrUserIDEmpty
 	}
 
-	client, err := s.GetClient(clientID)
+	client, err := s.getClient(ctx, clientID)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +253,7 @@ func (s *OAuth2Server) GenerateAuthorizationCode(ctx context.Context, clientID, 
 
 // ExchangeCodeForToken Exchanges authorization code for access token 用授权码换取访问令牌
 func (s *OAuth2Server) ExchangeCodeForToken(ctx context.Context, code, clientID, clientSecret, redirectURI string) (*AccessToken, error) {
-	client, err := s.GetClient(clientID)
+	client, err := s.getClient(ctx, clientID)
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +315,7 @@ func (s *OAuth2Server) ExchangeCodeForToken(ctx context.Context, code, clientID,
 
 // ClientCredentialsToken Gets access token using client credentials grant 使用客户端凭证模式获取访问令牌
 func (s *OAuth2Server) ClientCredentialsToken(ctx context.Context, clientID, clientSecret string, scopes []string) (*AccessToken, error) {
-	client, err := s.GetClient(clientID)
+	client, err := s.getClient(ctx, clientID)
 	if err != nil {
 		return nil, err
 	}
@@ -361,7 +341,7 @@ func (s *OAuth2Server) PasswordGrantToken(ctx context.Context, clientID, clientS
 		return nil, fmt.Errorf("%w: user validator function is required", derror.ErrInvalidUserCredentials)
 	}
 
-	client, err := s.GetClient(clientID)
+	client, err := s.getClient(ctx, clientID)
 	if err != nil {
 		return nil, err
 	}
@@ -396,7 +376,7 @@ func (s *OAuth2Server) RefreshAccessToken(ctx context.Context, clientID, refresh
 		return nil, derror.ErrInvalidRefreshToken
 	}
 
-	client, err := s.GetClient(clientID)
+	client, err := s.getClient(ctx, clientID)
 	if err != nil {
 		return nil, err
 	}
@@ -522,6 +502,53 @@ func (s *OAuth2Server) getTokenKey(token string) string {
 // getRefreshKey Gets storage key for refresh token 获取刷新令牌的存储键
 func (s *OAuth2Server) getRefreshKey(refreshToken string) string {
 	return s.keyPrefix + s.authType + RefreshKeySuffix + refreshToken
+}
+
+// getClientKey gets storage key for OAuth2 client. getClientKey 获取 OAuth2 客户端存储键。
+func (s *OAuth2Server) getClientKey(clientID string) string {
+	return s.keyPrefix + s.authType + ClientKeySuffix + clientID
+}
+
+// saveClient saves OAuth2 client through shared storage. saveClient 通过共享存储保存 OAuth2 客户端。
+func (s *OAuth2Server) saveClient(ctx context.Context, client *Client) error {
+	encodeData, err := s.serializer.Encode(client)
+	if err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+	}
+	if err = s.storage.Set(ctx, s.getClientKey(client.ClientID), encodeData, 0); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	return nil
+}
+
+// deleteClient deletes OAuth2 client through shared storage. deleteClient 通过共享存储删除 OAuth2 客户端。
+func (s *OAuth2Server) deleteClient(ctx context.Context, clientID string) error {
+	if err := s.storage.Delete(ctx, s.getClientKey(clientID)); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	return nil
+}
+
+// getClient gets OAuth2 client through shared storage. getClient 通过共享存储获取 OAuth2 客户端。
+func (s *OAuth2Server) getClient(ctx context.Context, clientID string) (*Client, error) {
+	data, err := s.storage.Get(ctx, s.getClientKey(clientID))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	if data == nil {
+		return nil, derror.ErrClientNotFound
+	}
+
+	rawData, err := utils.ToBytes(data)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
+	}
+
+	var client Client
+	if err = s.serializer.Decode(rawData, &client); err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+	}
+	return &client, nil
 }
 
 // isValidRedirectURI Checks if redirect URI is valid for client 检查回调URI是否有效

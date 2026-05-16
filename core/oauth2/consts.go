@@ -26,6 +26,8 @@ const (
 	TokenKeySuffix = "oauth2:token:"
 	// RefreshKeySuffix stores refresh key suffix RefreshKeySuffix 存储刷新令牌键后缀
 	RefreshKeySuffix = "oauth2:refresh:"
+	// ClientKeySuffix stores client key suffix. ClientKeySuffix 存储客户端键后缀。
+	ClientKeySuffix = "oauth2:client:"
 
 	// TokenTypeBearer stores bearer token type TokenTypeBearer 存储 Bearer 令牌类型
 	TokenTypeBearer = "Bearer"

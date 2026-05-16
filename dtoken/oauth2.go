@@ -22,8 +22,7 @@ func UnregisterOAuth2Client(clientID string, authType ...string) error {
 	if err != nil {
 		return err
 	}
-	mgr.UnregisterOAuth2Client(clientID)
-	return nil
+	return mgr.UnregisterOAuth2Client(clientID)
 }
 
 // GetOAuth2Client gets an OAuth2 client by id. GetOAuth2Client 根据 ID 获取 OAuth2 客户端。

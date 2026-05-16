@@ -101,12 +101,18 @@ var (
 	ErrInvalidToken = errors.New("invalid or malformed authentication token")
 	// ErrTokenExpired indicates token expired ErrTokenExpired 表示令牌已过期
 	ErrTokenExpired = errors.New("authentication required: token has expired")
+	// ErrActiveTimeout indicates token exceeded max inactive duration. ErrActiveTimeout 表示 Token 超过最大不活跃时长。
+	ErrActiveTimeout = errors.New("authentication required: token exceeded maximum inactive duration")
 	// ErrTokenKickout indicates token kicked out ErrTokenKickout 表示 Token 已被踢下线
 	ErrTokenKickout = errors.New("authentication required: token has been kicked out")
 	// ErrTokenReplaced indicates token replaced ErrTokenReplaced 表示 Token 已被顶下线
 	ErrTokenReplaced = errors.New("authentication required: token has been replaced")
 	// ErrInvalidDevice indicates invalid device ErrInvalidDevice 表示设备无效
 	ErrInvalidDevice = errors.New("invalid device: device information is invalid or not recognized")
+	// ErrDeviceDisabled indicates disabled device ErrDeviceDisabled 表示设备已被封禁
+	ErrDeviceDisabled = errors.New("device disabled: this device is disabled for this account")
+	// ErrDeviceNotDisabled indicates device not disabled ErrDeviceNotDisabled 表示设备未被封禁
+	ErrDeviceNotDisabled = errors.New("device not disabled")
 )
 
 var (

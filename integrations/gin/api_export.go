@@ -12,6 +12,7 @@ type (
 	LogoutOptions         = dtoken.LogoutOptions
 	DisableOptions        = dtoken.DisableOptions
 	ServiceDisableOptions = dtoken.ServiceDisableOptions
+	DeviceDisableOptions  = dtoken.DeviceDisableOptions
 	PermissionOptions     = dtoken.PermissionOptions
 	RoleOptions           = dtoken.RoleOptions
 )
@@ -28,6 +29,7 @@ var (
 	ReplaceWithOptions           = dtoken.ReplaceWithOptions
 	DisableWithOptions           = dtoken.DisableWithOptions
 	DisableServiceWithOptions    = dtoken.DisableServiceWithOptions
+	DisableDeviceWithOptions     = dtoken.DisableDeviceWithOptions
 	AddPermissionsWithOptions    = dtoken.AddPermissionsWithOptions
 	RemovePermissionsWithOptions = dtoken.RemovePermissionsWithOptions
 	CheckPermissionWithOptions   = dtoken.CheckPermissionWithOptions

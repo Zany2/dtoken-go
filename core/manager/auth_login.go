@@ -23,13 +23,16 @@ func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout 
 	}
 
 	unlock := m.lockLoginWrite(loginID)
-	defer unlock()
+	defer func() { unlock() }()
 
 	if m.isDisable(ctx, loginID) {
 		return "", derror.ErrAccountDisabled
 	}
 
 	device, deviceId := m.getDeviceAndDeviceId(deviceAndDeviceId...)
+	if m.isDisableDeviceMatch(ctx, loginID, device, deviceId) {
+		return "", derror.ErrDeviceDisabled
+	}
 
 	// Load existing session 尝试加载现有 session
 	sess, err := m.loginGetSession(ctx, loginID)
@@ -41,7 +44,7 @@ func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout 
 
 	// Handle concurrency strategy 处理并发策略
 	if sess != nil {
-		token, handled, sessionDestroyed, handleErr := m.handleConcurrency(ctx, sess, loginID, device)
+		token, handled, sessionDestroyed, handleErr := m.handleConcurrency(ctx, sess, loginID, device, deviceId)
 		if handleErr != nil {
 			return "", handleErr
 		}
@@ -155,7 +158,7 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 	}
 
 	unlock := m.lockLoginWrite(tokenInfo.LoginID)
-	defer unlock()
+	defer func() { unlock() }()
 
 	// Reload token after acquiring lock 加锁后重新读取 token，避免并发下复活已失效 token
 	tokenInfo, err = m.getTokenInfo(ctx, tokenValue)
@@ -166,6 +169,9 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 	// Check account disable status 检查账号是否被封禁
 	if m.isDisable(ctx, tokenInfo.LoginID) {
 		return derror.ErrAccountDisabled
+	}
+	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceId) {
+		return derror.ErrDeviceDisabled
 	}
 
 	sess, err := m.getSession(ctx, tokenInfo.LoginID)
@@ -188,7 +194,7 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 	renewFunc := func() {
 		bg := context.Background()
 		unlock := m.lockLoginWrite(tokenInfo.LoginID)
-		defer unlock()
+		defer func() { unlock() }()
 
 		// Reload token under lock 锁内重新读取 Token，避免续期已失效 Token
 		latestTokenInfo, err := m.getTokenInfo(bg, tokenValue)
@@ -299,6 +305,10 @@ func (m *Manager) GetTokenCreateTime(ctx context.Context, tokenValue string) (in
 
 // GetTokenTTL retrieves the remaining time-to-live for a token in seconds. GetTokenTTL 获取 Token 的剩余有效时间（秒）。
 func (m *Manager) GetTokenTTL(ctx context.Context, tokenValue string) (int64, error) {
+	if tokenValue == "" {
+		return 0, derror.ErrInvalidToken
+	}
+
 	ttl, err := m.storage.TTL(ctx, m.getTokenKey(tokenValue))
 	if err != nil {
 		return 0, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
@@ -311,13 +321,12 @@ func (m *Manager) GetTokenTTL(ctx context.Context, tokenValue string) (int64, er
 	}
 
 	// Normalize TTL sentinel values 统一 TTL 哨兵值语义
-	seconds := int64(ttl)
 	switch {
 	case ttl == adapter.TTLNotFound:
 		return -2, nil
 	case ttl == adapter.TTLNoExpire:
 		return -1, nil
-	case seconds > 0:
+	case ttl > 0:
 		return int64(ttl.Seconds()), nil
 	default:
 		return 0, nil
@@ -336,7 +345,7 @@ func (m *Manager) RenewTimeout(ctx context.Context, tokenValue string, timeout t
 	}
 
 	unlock := m.lockLoginWrite(tokenInfo.LoginID)
-	defer unlock()
+	defer func() { unlock() }()
 
 	// Reload token after acquiring lock 加锁后重新读取 token，避免并发续期失效 token
 	tokenInfo, err = m.getTokenInfo(ctx, tokenValue)
@@ -406,7 +415,7 @@ func (m *Manager) renewFunc(ctx context.Context, tokenValue, loginID string) {
 	}
 
 	unlock := m.lockLoginWrite(loginID)
-	defer unlock()
+	defer func() { unlock() }()
 
 	// Recheck token attachment before renewal 续期前重新确认 Token 仍属于会话
 	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)

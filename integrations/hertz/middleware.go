@@ -3,7 +3,6 @@ package hertz
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
 	corecontext "github.com/Zany2/dtoken-go/core/context"
@@ -253,20 +252,8 @@ func getDTokenContext(ctx *hertzapp.RequestContext, mgr *manager.Manager) *corec
 
 // writeErrorResponse writes error response writeErrorResponse 写入错误响应
 func writeErrorResponse(ctx *hertzapp.RequestContext, err error) {
-	var dErr *derror.DTokenError
-	var code int
-	var message string
-	var httpStatus int
-
-	if errors.As(err, &dErr) {
-		code = dErr.Code
-		message = dErr.Message
-		httpStatus = getHTTPStatusFromCode(code)
-	} else {
-		code = derror.CodeServerError
-		message = err.Error()
-		httpStatus = http.StatusInternalServerError
-	}
+	code, message := authcheck.GetErrorCodeAndMessage(err)
+	httpStatus := getHTTPStatusFromCode(code)
 
 	ctx.JSON(httpStatus, map[string]interface{}{
 		"code":    code,
@@ -287,9 +274,9 @@ func writeSuccessResponse(ctx *hertzapp.RequestContext, data interface{}) {
 // getHTTPStatusFromCode maps error code to HTTP status getHTTPStatusFromCode 映射错误码到 HTTP 状态码
 func getHTTPStatusFromCode(code int) int {
 	switch code {
-	case derror.CodeNotLogin:
+	case derror.CodeNotLogin, derror.CodeTokenInvalid, derror.CodeTokenExpired, derror.CodeActiveTimeout, derror.CodeKickedOut:
 		return http.StatusUnauthorized
-	case derror.CodePermissionDenied:
+	case derror.CodePermissionDenied, derror.CodeAccountDisabled:
 		return http.StatusForbidden
 	case derror.CodeBadRequest:
 		return http.StatusBadRequest

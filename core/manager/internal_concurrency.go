@@ -12,7 +12,7 @@ import (
 func (m *Manager) handleConcurrency(
 	ctx context.Context,
 	sess *Session,
-	loginID, device string,
+	loginID, device, deviceId string,
 ) (reuseToken string, handled bool, destroyedSession bool, err error) {
 	// Clean expired tokens 清理已过期的 token
 	if err = m.cleanExpiredTerminals(ctx, sess); err != nil {
@@ -52,14 +52,8 @@ func (m *Manager) handleConcurrency(
 	}
 
 	if m.config.IsShare {
-		// Try token sharing reuse 允许共享：尝试复用
-		var token string
-		var shareErr error
-		if m.config.ConcurrencyScope == config.ConcurrencyScopeAccount {
-			token, shareErr = m.getTokenAndShare(ctx, sess)
-		} else if m.config.ConcurrencyScope == config.ConcurrencyScopeDevice {
-			token, shareErr = m.getTokenAndShare(ctx, sess, device)
-		}
+		// Try token sharing reuse only within the same device dimension. 仅在相同设备维度内尝试复用 Token。
+		token, shareErr := m.getTokenAndShare(ctx, sess, device, deviceId)
 		if shareErr != nil {
 			return "", false, false, shareErr
 		}
@@ -95,19 +89,23 @@ func (m *Manager) handleConcurrency(
 	return "", false, false, nil
 }
 
-// getTokenAndShare retrieves and shares a token 获取并共享 token
-func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device ...string) (string, error) {
+// getTokenAndShare retrieves and shares a token within one device dimension. getTokenAndShare 在同一设备维度内获取并共享 token。
+func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, deviceId string) (string, error) {
 	if len(sess.TerminalInfos) == 0 {
 		return "", nil
 	}
 
-	// Get candidate terminals 获取候选的 terminals
+	// Get candidate terminals 获取候选 terminals。
 	var candidates []TerminalInfo
-	if len(device) > 0 {
-		// Get terminals for specified device 指定设备：获取该设备的所有 terminals
-		candidates = sess.getTerminalsByDevice(device[0])
-	} else {
-		// Get all terminals for account scope 账号级别：获取所有 terminals
+	switch {
+	case device != "" && deviceId != "":
+		// Prefer concrete device matches when device ID exists. 存在设备 ID 时优先按具体设备匹配。
+		candidates = sess.getTerminalsByDeviceAndDeviceId(device, deviceId)
+	case device != "":
+		// Fall back to device type matching when no device ID exists. 没有设备 ID 时按设备类型匹配。
+		candidates = sess.getTerminalsByDevice(device)
+	default:
+		// Reuse by account only when caller supplied no device dimension. 调用方未提供设备维度时才按账号复用。
 		candidates = sess.TerminalInfos
 	}
 

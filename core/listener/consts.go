@@ -31,6 +31,10 @@ const (
 	EventDisableService Event = "disableService"
 	// EventUntieService indicates untie service event EventUntieService 表示账号服务解禁事件
 	EventUntieService Event = "untieService"
+	// EventDisableDevice indicates disable device event EventDisableDevice 表示账号设备被封禁事件
+	EventDisableDevice Event = "disableDevice"
+	// EventUntieDevice indicates untie device event EventUntieDevice 表示账号设备解禁事件
+	EventUntieDevice Event = "untieDevice"
 	// EventAll indicates wildcard event EventAll 表示匹配所有事件的通配符事件
 	EventAll Event = "*"
 )

@@ -17,7 +17,7 @@ func (m *Manager) AddPermissions(ctx context.Context, loginID string, permission
 	}
 
 	unlock := m.lockLoginWrite(loginID)
-	defer unlock()
+	defer func() { unlock() }()
 
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
@@ -36,7 +36,7 @@ func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, 
 	}
 
 	unlock := m.lockLoginWrite(tokenInfo.LoginID)
-	defer unlock()
+	defer func() { unlock() }()
 
 	if err = m.ensureTerminalTokenAlive(ctx, tokenValue); err != nil {
 		return err
@@ -57,7 +57,7 @@ func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permiss
 	}
 
 	unlock := m.lockLoginWrite(loginID)
-	defer unlock()
+	defer func() { unlock() }()
 
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
@@ -76,7 +76,7 @@ func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue strin
 	}
 
 	unlock := m.lockLoginWrite(tokenInfo.LoginID)
-	defer unlock()
+	defer func() { unlock() }()
 
 	if err = m.ensureTerminalTokenAlive(ctx, tokenValue); err != nil {
 		return err
@@ -95,24 +95,7 @@ func (m *Manager) GetPermissions(ctx context.Context, loginID string) ([]string,
 	if loginID == "" {
 		return nil, derror.ErrIDIsEmpty
 	}
-
-	subject := AccessSubject{LoginID: loginID}
-	if m.accessProvider != nil {
-		permissions, err := m.providerPermissions(ctx, nil, subject)
-		if err != nil {
-			return nil, err
-		}
-		if permissions != nil {
-			return permissions, nil
-		}
-	}
-
-	sess, err := m.getSession(ctx, loginID)
-	if err != nil {
-		return nil, err
-	}
-
-	return sess.Permissions, nil
+	return m.loadPermissionsByLoginID(ctx, loginID)
 }
 
 // GetPermissionsByToken retrieves the permission list by token. GetPermissionsByToken 根据 Token 获取权限列表。
@@ -132,17 +115,15 @@ func (m *Manager) GetPermissionsByToken(ctx context.Context, tokenValue string) 
 
 // HasPermission checks if a user has a specific permission. HasPermission 检查用户是否拥有指定权限。
 func (m *Manager) HasPermission(ctx context.Context, loginID string, permission string) bool {
-	if loginID == "" {
+	if loginID == "" || permission == "" {
 		return false
 	}
 
-	sess, err := m.getSession(ctx, loginID)
+	permissions, err := m.loadPermissionsByLoginID(ctx, loginID)
 	if err != nil {
-		m.logger.Errorf("manager.HasPermission: failed to get session, loginID=%s, error=%v", loginID, err)
+		m.logger.Errorf("manager.HasPermission: failed to load permissions, loginID=%s, error=%v", loginID, err)
 		return false
 	}
-
-	permissions := m.resolvePermissions(ctx, sess.Permissions, AccessSubject{LoginID: loginID})
 	hasPermission := m.hasPermissionInList(permissions, permission)
 
 	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
@@ -155,6 +136,10 @@ func (m *Manager) HasPermission(ctx context.Context, loginID string, permission 
 
 // HasPermissionByToken checks if a user has a specific permission by token. HasPermissionByToken 根据 Token 检查用户是否拥有指定权限。
 func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, permission string) bool {
+	if permission == "" {
+		return false
+	}
+
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
 		m.logger.Errorf("manager.HasPermissionByToken: failed to get token info, token=%s, error=%v", tokenValue, err)
@@ -184,13 +169,11 @@ func (m *Manager) HasPermissionsAnd(ctx context.Context, loginID string, permiss
 		return false
 	}
 
-	sess, err := m.getSession(ctx, loginID)
+	permList, err := m.loadPermissionsByLoginID(ctx, loginID)
 	if err != nil {
-		m.logger.Errorf("manager.HasPermissionsAnd: failed to get session, loginID=%s, error=%v", loginID, err)
+		m.logger.Errorf("manager.HasPermissionsAnd: failed to load permissions, loginID=%s, error=%v", loginID, err)
 		return false
 	}
-
-	permList := m.resolvePermissions(ctx, sess.Permissions, AccessSubject{LoginID: loginID})
 	hasAll := m.hasAllPermissions(permList, permissions)
 
 	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
@@ -233,17 +216,12 @@ func (m *Manager) HasPermissionsOr(ctx context.Context, loginID string, permissi
 	if loginID == "" {
 		return false
 	}
-	if len(permissions) == 0 {
-		return true
-	}
 
-	sess, err := m.getSession(ctx, loginID)
+	permList, err := m.loadPermissionsByLoginID(ctx, loginID)
 	if err != nil {
-		m.logger.Errorf("manager.HasPermissionsOr: failed to get session, loginID=%s, error=%v", loginID, err)
+		m.logger.Errorf("manager.HasPermissionsOr: failed to load permissions, loginID=%s, error=%v", loginID, err)
 		return false
 	}
-
-	permList := m.resolvePermissions(ctx, sess.Permissions, AccessSubject{LoginID: loginID})
 	hasAny := m.hasAnyPermission(permList, permissions)
 
 	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
@@ -257,10 +235,6 @@ func (m *Manager) HasPermissionsOr(ctx context.Context, loginID string, permissi
 
 // HasPermissionsOrByToken checks if a token user has any specified permission. HasPermissionsOrByToken 根据 Token 检查任一权限。
 func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string, permissions []string) bool {
-	if len(permissions) == 0 {
-		return true
-	}
-
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
 		m.logger.Errorf("manager.HasPermissionsOrByToken: failed to get token info, token=%s, error=%v", tokenValue, err)
@@ -287,7 +261,51 @@ func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string
 
 // CheckPermission checks if a user has a specific permission. CheckPermission 校验用户是否拥有指定权限。
 func (m *Manager) CheckPermission(ctx context.Context, loginID string, permission string) error {
-	if !m.HasPermission(ctx, loginID, permission) {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+
+	permissions, err := m.loadPermissionsByLoginID(ctx, loginID)
+	if err != nil {
+		return err
+	}
+	hasPermission := permission != "" && m.hasPermissionInList(permissions, permission)
+
+	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
+		listener.ExtraKeyPermission: permission,
+		listener.ExtraKeyResult:     hasPermission,
+	})
+
+	if !hasPermission {
+		return fmt.Errorf("%w: %s", derror.ErrPermissionDenied, permission)
+	}
+	return nil
+}
+
+// CheckPermissionByToken checks if a token user has a specific permission. CheckPermissionByToken 根据 Token 校验用户是否拥有指定权限。
+func (m *Manager) CheckPermissionByToken(ctx context.Context, tokenValue string, permission string) error {
+	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	if err != nil {
+		return err
+	}
+	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
+	permissions, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
+		LoginID:  sess.LoginID,
+		Device:   device,
+		DeviceID: deviceId,
+		Token:    tokenValue,
+	})
+	if err != nil {
+		return err
+	}
+	hasPermission := permission != "" && m.hasPermissionInList(permissions, permission)
+
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+		listener.ExtraKeyPermission: permission,
+		listener.ExtraKeyResult:     hasPermission,
+	})
+
+	if !hasPermission {
 		return fmt.Errorf("%w: %s", derror.ErrPermissionDenied, permission)
 	}
 	return nil
@@ -295,7 +313,53 @@ func (m *Manager) CheckPermission(ctx context.Context, loginID string, permissio
 
 // CheckPermissionAnd checks if a user has all specified permissions. CheckPermissionAnd 校验用户是否拥有全部权限。
 func (m *Manager) CheckPermissionAnd(ctx context.Context, loginID string, permissions []string) error {
-	if !m.HasPermissionsAnd(ctx, loginID, permissions) {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+
+	permList, err := m.loadPermissionsByLoginID(ctx, loginID)
+	if err != nil {
+		return err
+	}
+	hasAll := m.hasAllPermissions(permList, permissions)
+
+	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyLogic:       listener.LogicAnd,
+		listener.ExtraKeyResult:      hasAll,
+	})
+
+	if !hasAll {
+		return derror.ErrPermissionDenied
+	}
+	return nil
+}
+
+// CheckPermissionAndByToken checks if a token user has all specified permissions. CheckPermissionAndByToken 根据 Token 校验用户是否拥有全部权限。
+func (m *Manager) CheckPermissionAndByToken(ctx context.Context, tokenValue string, permissions []string) error {
+	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	if err != nil {
+		return err
+	}
+	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
+	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
+		LoginID:  sess.LoginID,
+		Device:   device,
+		DeviceID: deviceId,
+		Token:    tokenValue,
+	})
+	if err != nil {
+		return err
+	}
+	hasAll := m.hasAllPermissions(permList, permissions)
+
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyLogic:       listener.LogicAnd,
+		listener.ExtraKeyResult:      hasAll,
+	})
+
+	if !hasAll {
 		return derror.ErrPermissionDenied
 	}
 	return nil
@@ -303,7 +367,53 @@ func (m *Manager) CheckPermissionAnd(ctx context.Context, loginID string, permis
 
 // CheckPermissionOr checks if a user has any specified permission. CheckPermissionOr 校验用户是否拥有任一权限。
 func (m *Manager) CheckPermissionOr(ctx context.Context, loginID string, permissions []string) error {
-	if !m.HasPermissionsOr(ctx, loginID, permissions) {
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+
+	permList, err := m.loadPermissionsByLoginID(ctx, loginID)
+	if err != nil {
+		return err
+	}
+	hasAny := m.hasAnyPermission(permList, permissions)
+
+	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyLogic:       listener.LogicOr,
+		listener.ExtraKeyResult:      hasAny,
+	})
+
+	if !hasAny {
+		return derror.ErrPermissionDenied
+	}
+	return nil
+}
+
+// CheckPermissionOrByToken checks if a token user has any specified permission. CheckPermissionOrByToken 根据 Token 校验用户是否拥有任一权限。
+func (m *Manager) CheckPermissionOrByToken(ctx context.Context, tokenValue string, permissions []string) error {
+	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	if err != nil {
+		return err
+	}
+	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
+	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
+		LoginID:  sess.LoginID,
+		Device:   device,
+		DeviceID: deviceId,
+		Token:    tokenValue,
+	})
+	if err != nil {
+		return err
+	}
+	hasAny := m.hasAnyPermission(permList, permissions)
+
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyLogic:       listener.LogicOr,
+		listener.ExtraKeyResult:      hasAny,
+	})
+
+	if !hasAny {
 		return derror.ErrPermissionDenied
 	}
 	return nil
@@ -351,7 +461,13 @@ func (m *Manager) hasPermissionInList(perms []string, permission string) bool {
 }
 
 func (m *Manager) hasAllPermissions(perms []string, required []string) bool {
+	if len(required) == 0 {
+		return false
+	}
 	for _, need := range required {
+		if need == "" {
+			return false
+		}
 		if !m.hasPermissionInList(perms, need) {
 			return false
 		}
@@ -361,6 +477,9 @@ func (m *Manager) hasAllPermissions(perms []string, required []string) bool {
 
 func (m *Manager) hasAnyPermission(perms []string, required []string) bool {
 	for _, need := range required {
+		if need == "" {
+			continue
+		}
 		if m.hasPermissionInList(perms, need) {
 			return true
 		}

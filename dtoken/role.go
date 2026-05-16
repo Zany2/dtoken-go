@@ -120,6 +120,15 @@ func CheckRole(ctx context.Context, loginID string, role string, authType ...str
 	return mgr.CheckRole(ctx, loginID, role)
 }
 
+// CheckRoleByToken validates a single role by token. CheckRoleByToken 按 token 校验单个角色。
+func CheckRoleByToken(ctx context.Context, tokenValue string, role string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.CheckRoleByToken(ctx, tokenValue, role)
+}
+
 // CheckRoleAnd validates all roles. CheckRoleAnd 校验全部角色。
 func CheckRoleAnd(ctx context.Context, loginID string, roles []string, authType ...string) error {
 	mgr, err := GetManager(authType...)
@@ -129,6 +138,15 @@ func CheckRoleAnd(ctx context.Context, loginID string, roles []string, authType 
 	return mgr.CheckRoleAnd(ctx, loginID, roles)
 }
 
+// CheckRoleAndByToken validates all roles by token. CheckRoleAndByToken 按 token 校验全部角色。
+func CheckRoleAndByToken(ctx context.Context, tokenValue string, roles []string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.CheckRoleAndByToken(ctx, tokenValue, roles)
+}
+
 // CheckRoleOr validates at least one role. CheckRoleOr 校验任一角色。
 func CheckRoleOr(ctx context.Context, loginID string, roles []string, authType ...string) error {
 	mgr, err := GetManager(authType...)
@@ -136,4 +154,13 @@ func CheckRoleOr(ctx context.Context, loginID string, roles []string, authType .
 		return err
 	}
 	return mgr.CheckRoleOr(ctx, loginID, roles)
+}
+
+// CheckRoleOrByToken validates at least one role by token. CheckRoleOrByToken 按 token 校验任一角色。
+func CheckRoleOrByToken(ctx context.Context, tokenValue string, roles []string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.CheckRoleOrByToken(ctx, tokenValue, roles)
 }
