@@ -2,7 +2,9 @@ module github.com/Zany2/dtoken-go/examples/gin
 
 go 1.25.0
 
-require github.com/gin-gonic/gin v1.10.0
+require (
+	github.com/gin-gonic/gin v1.10.0
+)
 
 require (
 	github.com/bytedance/sonic v1.11.6 // indirect

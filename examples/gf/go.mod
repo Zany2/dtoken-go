@@ -2,7 +2,9 @@ module github.com/Zany2/dtoken-go/examples/gf
 
 go 1.25.0
 
-require github.com/gogf/gf/v2 v2.9.4
+require (
+	github.com/gogf/gf/v2 v2.9.4
+)
 
 require (
 	github.com/BurntSushi/toml v1.5.0 // indirect

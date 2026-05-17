@@ -1,2 +1,246 @@
-// @Author daixk 2025/12/28
+// @Author daixk 2025/12/22 15:56:00
 package fiber
+
+import (
+	"context"
+
+	"github.com/Zany2/dtoken-go/core/derror"
+	"github.com/Zany2/dtoken-go/integrations/internal/authcheck"
+	gofiber "github.com/gofiber/fiber/v2"
+)
+
+// Annotation describes declarative auth requirements for a handler Annotation 描述处理器的声明式认证要求。
+type Annotation struct {
+	AuthType        string
+	CheckLogin      bool
+	CheckRole       []string
+	CheckPermission []string
+	CheckDisable    bool
+	Ignore          bool
+	LogicType       LogicType
+}
+
+// GetHandler wraps Fiber handler with annotation-based auth checks GetHandler 为 Fiber 处理器包裹基于注解的认证校验。
+func GetHandler(ctx context.Context, handler gofiber.Handler, failFunc func(c *gofiber.Ctx, err error), annotations ...*Annotation) gofiber.Handler {
+	return func(c *gofiber.Ctx) error {
+		if len(annotations) > 0 && annotations[0].Ignore {
+			if handler != nil {
+				return handler(c)
+			}
+			return c.Next()
+		}
+
+		ann := &Annotation{}
+		if len(annotations) > 0 {
+			ann = annotations[0]
+		}
+
+		needAuth := ann.CheckLogin || ann.CheckDisable || len(ann.CheckPermission) > 0 || len(ann.CheckRole) > 0
+		if !needAuth {
+			if handler != nil {
+				return handler(c)
+			}
+			return c.Next()
+		}
+
+		mgr, err := authcheck.GetManager(ann.AuthType)
+		if err != nil {
+			if failFunc != nil {
+				failFunc(c, err)
+				return nil
+			}
+			return writeErrorResponse(c, err)
+		}
+
+		// Get DTokenContext (reuse cached context) 获取 DTokenContext（复用缓存上下文）
+		dCtx := getDTokenContext(c, mgr)
+		token := dCtx.GetTokenValue()
+
+		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+			TokenValue:   token,
+			CheckLogin:   true,
+			CheckDisable: ann.CheckDisable,
+			Permissions:  ann.CheckPermission,
+			Roles:        ann.CheckRole,
+			LogicType:    ann.LogicType,
+			LoginError:   derror.ErrNotLogin,
+		})
+		if err != nil {
+			if failFunc != nil {
+				failFunc(c, err)
+				return nil
+			}
+			return writeErrorResponse(c, err)
+		}
+
+		if handler != nil {
+			return handler(c)
+		}
+		return c.Next()
+	}
+}
+
+// CheckLoginMiddleware decorates handler with login checks CheckLoginMiddleware 为处理器增加登录校验。
+func CheckLoginMiddleware(
+	ctx context.Context,
+	handler gofiber.Handler,
+	failFunc func(c *gofiber.Ctx, err error),
+	authType ...string,
+) gofiber.Handler {
+	ann := &Annotation{CheckLogin: true}
+	if len(authType) > 0 {
+		ann.AuthType = authType[0]
+	}
+	return GetHandler(ctx, handler, failFunc, ann)
+}
+
+// CheckRoleMiddleware decorates handler with role checks CheckRoleMiddleware 为处理器增加角色校验。
+func CheckRoleMiddleware(
+	ctx context.Context,
+	roles []string,
+	handler gofiber.Handler,
+	failFunc func(c *gofiber.Ctx, err error),
+	authType ...string,
+) gofiber.Handler {
+	ann := &Annotation{CheckRole: roles}
+	if len(authType) > 0 {
+		ann.AuthType = authType[0]
+	}
+	return GetHandler(ctx, handler, failFunc, ann)
+}
+
+// CheckPermissionMiddleware decorates handler with permission checks CheckPermissionMiddleware 为处理器增加权限校验。
+func CheckPermissionMiddleware(
+	ctx context.Context,
+	perms []string,
+	handler gofiber.Handler,
+	failFunc func(c *gofiber.Ctx, err error),
+	authType ...string,
+) gofiber.Handler {
+	ann := &Annotation{CheckPermission: perms}
+	if len(authType) > 0 {
+		ann.AuthType = authType[0]
+	}
+	return GetHandler(ctx, handler, failFunc, ann)
+}
+
+// CheckDisableMiddleware decorates handler with account-disable checks CheckDisableMiddleware 为处理器增加封禁状态校验。
+func CheckDisableMiddleware(
+	ctx context.Context,
+	handler gofiber.Handler,
+	failFunc func(c *gofiber.Ctx, err error),
+	authType ...string,
+) gofiber.Handler {
+	ann := &Annotation{CheckDisable: true}
+	if len(authType) > 0 {
+		ann.AuthType = authType[0]
+	}
+	return GetHandler(ctx, handler, failFunc, ann)
+}
+
+// IgnoreMiddleware skips DToken checks for wrapped handler IgnoreMiddleware 为处理器跳过 DToken 校验。
+func IgnoreMiddleware(
+	ctx context.Context,
+	handler gofiber.Handler,
+	failFunc func(c *gofiber.Ctx, err error),
+) gofiber.Handler {
+	return GetHandler(ctx, handler, failFunc, &Annotation{Ignore: true})
+}
+
+// CheckLoginAndRoleMiddleware decorates handler with login and role checks CheckLoginAndRoleMiddleware 为处理器增加登录与角色校验。
+func CheckLoginAndRoleMiddleware(
+	ctx context.Context,
+	roles []string,
+	handler gofiber.Handler,
+	failFunc func(c *gofiber.Ctx, err error),
+	authType ...string,
+) gofiber.Handler {
+	ann := &Annotation{CheckLogin: true, CheckRole: roles}
+	if len(authType) > 0 {
+		ann.AuthType = authType[0]
+	}
+	return GetHandler(ctx, handler, failFunc, ann)
+}
+
+// CheckLoginAndPermissionMiddleware decorates handler with login and permission checks CheckLoginAndPermissionMiddleware 为处理器增加登录与权限校验。
+func CheckLoginAndPermissionMiddleware(
+	ctx context.Context,
+	perms []string,
+	handler gofiber.Handler,
+	failFunc func(c *gofiber.Ctx, err error),
+	authType ...string,
+) gofiber.Handler {
+	ann := &Annotation{CheckLogin: true, CheckPermission: perms}
+	if len(authType) > 0 {
+		ann.AuthType = authType[0]
+	}
+	return GetHandler(ctx, handler, failFunc, ann)
+}
+
+// CheckAllMiddleware decorates handler with login, role and permission checks CheckAllMiddleware 为处理器增加登录、角色和权限校验。
+func CheckAllMiddleware(
+	ctx context.Context,
+	roles []string,
+	perms []string,
+	handler gofiber.Handler,
+	failFunc func(c *gofiber.Ctx, err error),
+	authType ...string,
+) gofiber.Handler {
+	ann := &Annotation{CheckLogin: true, CheckRole: roles, CheckPermission: perms}
+	if len(authType) > 0 {
+		ann.AuthType = authType[0]
+	}
+	return GetHandler(ctx, handler, failFunc, ann)
+}
+
+// AuthGroup attaches login checks to a Fiber router group AuthGroup 为 Fiber 路由组挂载登录校验。
+func AuthGroup(
+	ctx context.Context,
+	group gofiber.Router,
+	handler gofiber.Handler,
+	failFunc func(c *gofiber.Ctx, err error),
+	authType ...string,
+) gofiber.Router {
+	group.Use(CheckLoginMiddleware(ctx, handler, failFunc, authType...))
+	return group
+}
+
+// RoleGroup attaches role checks to a Fiber router group RoleGroup 为 Fiber 路由组挂载角色校验。
+func RoleGroup(
+	ctx context.Context,
+	group gofiber.Router,
+	roles []string,
+	handler gofiber.Handler,
+	failFunc func(c *gofiber.Ctx, err error),
+	authType ...string,
+) gofiber.Router {
+	group.Use(CheckLoginAndRoleMiddleware(ctx, roles, handler, failFunc, authType...))
+	return group
+}
+
+// PermissionGroup attaches permission checks to a Fiber router group PermissionGroup 为 Fiber 路由组挂载权限校验。
+func PermissionGroup(
+	ctx context.Context,
+	group gofiber.Router,
+	perms []string,
+	handler gofiber.Handler,
+	failFunc func(c *gofiber.Ctx, err error),
+	authType ...string,
+) gofiber.Router {
+	group.Use(CheckLoginAndPermissionMiddleware(ctx, perms, handler, failFunc, authType...))
+	return group
+}
+
+// RoleAndPermissionGroup attaches role and permission checks to a Fiber router group RoleAndPermissionGroup 为 Fiber 路由组挂载角色与权限校验。
+func RoleAndPermissionGroup(
+	ctx context.Context,
+	group gofiber.Router,
+	roles []string,
+	perms []string,
+	handler gofiber.Handler,
+	failFunc func(c *gofiber.Ctx, err error),
+	authType ...string,
+) gofiber.Router {
+	group.Use(CheckAllMiddleware(ctx, roles, perms, handler, failFunc, authType...))
+	return group
+}

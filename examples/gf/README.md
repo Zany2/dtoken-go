@@ -1,4 +1,4 @@
-# GoFrame DToken Example
+﻿# GoFrame DToken Example
 
 This example demonstrates how to use DToken-Go with the GoFrame web framework.
 
@@ -16,7 +16,7 @@ This example showcases:
 
 ## Prerequisites
 
-- Go 1.21 or higher
+- Go 1.25 or higher
 - Redis server running (default: `192.168.19.104:6379`)
 
 ## Installation
@@ -120,8 +120,8 @@ curl http://localhost:8080/api/admin/users \
 To test role and permission-based endpoints, uncomment the following lines in `handleLogin` function:
 
 ```go
-_ = gfdt.AddRoles(r.Context(), username, []string{"admin", "super-admin"})
-_ = gfdt.AddPermissions(r.Context(), username, []string{"resource:read", "resource:write", "data:read", "all:access"})
+_ = dtoken.AddRoles(r.Context(), username, []string{"admin", "super-admin"})
+_ = dtoken.AddPermissions(r.Context(), username, []string{"resource:read", "resource:write", "data:read", "all:access"})
 ```
 
 ## Project Structure
@@ -138,14 +138,13 @@ examples/gf/
 ### Manager Initialization
 
 ```go
-builder := gfdt.NewDefaultBuilder()
-mgr := builder.
+mgr := defaults.NewBuilder().
     SetStorage(storage).
     Timeout(3600).       // 1 hour
     ActiveTimeout(1800). // 30 minutes
     MaxLoginCount(3).
     Build()
-gfdt.SetManager(mgr)
+dtoken.SetManager(mgr)
 ```
 
 ### Middleware Usage

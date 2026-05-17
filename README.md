@@ -1,333 +1,328 @@
-# dtoken-go
+<p align="center">
+  <img src="docs/assets/logo.png" alt="DToken-Go" width="180">
+</p>
 
-一个功能完备的 Go 语言认证授权框架，提供 Token 认证、权限管理、角色管理、会话管理、账号封禁、OAuth2 服务端等能力，支持多种 Web 框架集成。
+<h1 align="center">DToken-Go</h1>
+
+<p align="center">
+  一个面向 Go 应用的认证、授权与会话管理框架。
+</p>
+
+<p align="center">
+  中文 | <a href="README_EN.md">English</a>
+</p>
+
+---
+
+## 简介
+
+DToken-Go 是一个模块化的 Go 认证授权框架，提供 Token 登录认证、会话管理、角色和权限校验、账号封禁、Nonce 防重放、OAuth2 服务端等能力。
+
+它把核心能力、默认组件和 Web 框架集成拆分成独立模块：
+
+- `dtoken` 提供全局门面 API，适合业务代码直接调用。
+- `defaults` 提供开箱即用的默认 Builder，默认使用内存存储、JSON 编解码、默认 Token 生成器和日志组件。
+- `core` 提供核心接口、配置、Manager、上下文、事件、Nonce、OAuth2 等基础能力。
+- `com` 提供可插拔组件实现，例如存储、编解码、日志、Token 生成器和协程池。
+- `integrations` 提供 Gin、Echo、Fiber、Chi、GoFrame、Hertz、Kratos 等框架集成。
 
 ## 功能特性
 
-- **Token 认证** — 登录/登出、Token 校验、自动续期、多设备登录管理
-- **权限管理** — 权限的增删查、AND/OR 逻辑判断、自定义权限获取函数
-- **角色管理** — 角色的增删查、AND/OR 逻辑判断、自定义角色获取函数
-- **会话管理** — Session 数据存储、终端信息追踪、在线终端统计
-- **账号封禁** — 定时封禁/解封、封禁原因记录、剩余封禁时间查询
-- **在线状态管理** — 踢人下线（Kickout）、顶人下线（Replace）、按设备/账号维度操作
-- **OAuth2 服务端** — 授权码模式、客户端凭证模式、密码模式、刷新令牌
-- **Nonce 管理** — 一次性令牌生成与验证
-- **多认证体系** — 通过 `authType` 支持多套独立的认证体系并行运行
-- **可插拔架构** — 存储、编解码、日志、Token 生成器、协程池均可替换
+- Token 认证：登录、登出、Token 校验、自动续期、多终端管理。
+- 会话管理：Session 存储、终端信息追踪、在线终端统计。
+- 权限管理：权限增删查、AND/OR 校验、按 Token 校验、自定义权限回调。
+- 角色管理：角色增删查、AND/OR 校验、按 Token 校验、自定义角色回调。
+- 账号封禁：定时封禁、解封、封禁原因、剩余封禁时间查询。
+- 在线状态控制：踢人下线、顶人下线、按账号/设备/设备 ID 操作。
+- Nonce：一次性随机值生成、校验和消费，用于防重放场景。
+- OAuth2：授权码模式、客户端凭证模式、密码模式、刷新令牌、Token 校验和撤销。
+- 多认证体系：通过 `authType` 同时维护多套独立认证体系。
+- 可插拔组件：存储、编解码、日志、Token 生成器、协程池均可替换。
+- 多框架集成：为常见 Go Web 框架提供中间件、注解式校验和请求上下文适配。
 
-## 项目结构
+## 安装
 
+核心能力：
+
+```bash
+go get github.com/Zany2/dtoken-go/defaults
+go get github.com/Zany2/dtoken-go/dtoken
 ```
-dtoken-go/
-├── core/                        # 核心框架
-│   ├── adapter/                 # 适配器接口定义（Storage, Log, Codec, Generator, Pool）
-│   ├── builder/                 # Builder 构建器
-│   ├── config/                  # 配置结构体与校验
-│   ├── context/                 # 上下文处理
-│   ├── derror/                  # 错误定义
-│   ├── listener/                # 事件监听器
-│   ├── manager/                 # Manager 核心实现
-│   ├── nonce/                   # Nonce 管理
-│   ├── oauth2/                  # OAuth2 实现
-│   └── utils/                   # 工具函数
-├── com/                         # 组件实现
-│   ├── codec/                   # 编解码器（base64, json, jsonv2, msgpack）
-│   ├── generator/dgenerator/    # Token 生成器（UUID, JWT）
-│   ├── log/                     # 日志（dlog 默认日志, gf 适配, nop 空日志）
-│   ├── pool/ants/               # 协程池（基于 ants）
-│   └── storage/                 # 存储（memory 内存, redis）
-├── integrations/                # Web 框架集成
-│   ├── gin/                     # Gin 中间件
-│   ├── fiber/                   # Fiber 中间件
-│   ├── gf/                      # GoFrame 中间件
-│   └── zero/                    # Go-Zero 中间件
-├── dtoken/                      # 全局 API 门面
-└── examples/                    # 使用示例
-    ├── quick_start/             # 快速开始（完整 API 演示）
-    ├── gin/                     # Gin 集成示例
-    ├── gf/                      # GoFrame 示例
-    ├── gf_v2/                   # GoFrame v2 示例
-    └── zero/                    # Go-Zero 示例
+
+按需安装存储组件：
+
+```bash
+go get github.com/Zany2/dtoken-go/com/storage/redis
+```
+
+按需安装框架集成：
+
+```bash
+go get github.com/Zany2/dtoken-go/integrations/gin
+go get github.com/Zany2/dtoken-go/integrations/echo
+go get github.com/Zany2/dtoken-go/integrations/fiber
+go get github.com/Zany2/dtoken-go/integrations/chi
+go get github.com/Zany2/dtoken-go/integrations/gf
+go get github.com/Zany2/dtoken-go/integrations/hertz
+go get github.com/Zany2/dtoken-go/integrations/kratos
 ```
 
 ## 快速开始
 
-### 安装
-
-```bash
-# 核心模块
-go get github.com/Zany2/dtoken-go/core
-go get github.com/Zany2/dtoken-go/dtoken
-
-# 存储（按需选择）
-go get github.com/Zany2/dtoken-go/com/storage/redis
-go get github.com/Zany2/dtoken-go/com/storage/memory
-
-# Web 框架集成（按需选择）
-go get github.com/Zany2/dtoken-go/integrations/gin
-go get github.com/Zany2/dtoken-go/integrations/fiber
-go get github.com/Zany2/dtoken-go/integrations/gf
-go get github.com/Zany2/dtoken-go/integrations/zero
-```
-
-### 基础用法
+`defaults.NewBuilder()` 已经装配默认内存存储，因此最小示例不需要 Redis 或数据库。
 
 ```go
 package main
 
 import (
-    "context"
-    "fmt"
+	"context"
+	"fmt"
 
-    "github.com/Zany2/dtoken-go/core/builder"
-    "github.com/Zany2/dtoken-go/com/storage/redis"
-    "github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go/defaults"
+	"github.com/Zany2/dtoken-go/dtoken"
 )
 
 func main() {
-    ctx := context.Background()
+	ctx := context.Background()
 
-    // 1. 创建存储
-    storage, err := redis.NewStorage("redis://:password@localhost:6379/0")
-    if err != nil {
-        panic(err)
-    }
+	mgr, err := defaults.NewBuilder().
+		TokenName("Authorization").
+		Timeout(7200).
+		IsPrintBanner(false).
+		Build()
+	if err != nil {
+		panic(err)
+	}
+	dtoken.SetManager(mgr)
 
-    // 2. 构建 Manager
-    mgr := builder.NewBuilder().
-        TokenName("token").
-        Timeout(7200).          // Token 有效期 2 小时
-        IsConcurrent(true).     // 允许并发登录
-        MaxLoginCount(5).       // 最多 5 个设备同时在线
-        SetStorage(storage).
-        Build()
+	token, err := dtoken.Login(ctx, "user-1001")
+	if err != nil {
+		panic(err)
+	}
 
-    // 3. 注册全局 Manager
-    dtoken.SetManager(mgr)
+	_ = dtoken.AddRoles(ctx, "user-1001", []string{"admin"})
+	_ = dtoken.AddPermissions(ctx, "user-1001", []string{"article:read"})
 
-    // 4. 登录
-    token, _ := dtoken.Login(ctx, "user001")
-    fmt.Println("Token:", token)
+	loginID, _ := dtoken.GetLoginID(ctx, token)
+	hasRole := dtoken.HasRole(ctx, loginID, "admin")
+	hasPermission := dtoken.HasPermission(ctx, loginID, "article:read")
 
-    // 5. 校验登录状态
-    fmt.Println("IsLogin:", dtoken.IsLogin(ctx, token))
-
-    // 6. 获取登录 ID
-    loginID, _ := dtoken.GetLoginID(ctx, token)
-    fmt.Println("LoginID:", loginID)
-
-    // 7. 登出
-    _ = dtoken.Logout(ctx, token)
+	fmt.Println(token, loginID, hasRole, hasPermission)
+	_ = dtoken.Logout(ctx, token)
 }
 ```
 
-### Gin 框架集成
+完整快速开始示例见 [examples/quick_start](examples/quick_start/)。
+
+## Gin 集成示例
+
+框架示例推荐只导入对应的 `integrations/*` 包作为 DToken 入口。下面以 Gin 为例：
 
 ```go
 package main
 
 import (
-    "context"
-    gindt "github.com/Zany2/dtoken-go/integrations/gin"
-    "github.com/Zany2/dtoken-go/com/storage/redis"
-    "github.com/gin-gonic/gin"
+	"context"
+	"net/http"
+
+	gindt "github.com/Zany2/dtoken-go/integrations/gin"
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
-    ctx := context.Background()
+	ctx := context.Background()
 
-    // 初始化存储和 Manager
-    storage, _ := redis.NewStorage("redis://:password@localhost:6379/0")
-    mgr := gindt.NewDefaultBuilder().
-        SetStorage(storage).
-        Timeout(3600).
-        Build()
-    gindt.SetManager(mgr)
+	mgr, err := gindt.NewBuilder().
+		TokenName("Authorization").
+		IsPrintBanner(false).
+		Build()
+	if err != nil {
+		panic(err)
+	}
+	gindt.SetManager(mgr)
 
-    r := gin.Default()
+	r := gin.Default()
+	r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
 
-    // 注册 DToken 上下文中间件
-    r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
+	r.POST("/login", func(c *gin.Context) {
+		token, err := gindt.Login(c.Request.Context(), "user-1001")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		_ = gindt.AddRoles(c.Request.Context(), "user-1001", []string{"admin"})
+		c.JSON(http.StatusOK, gin.H{"token": token})
+	})
 
-    // 公开路由
-    r.POST("/login", handleLogin)
+	user := r.Group("/user")
+	user.Use(gindt.AuthMiddleware(ctx))
+	user.GET("/me", func(c *gin.Context) {
+		dCtx, _ := gindt.GetDTokenContext(c)
+		loginID, _ := dCtx.GetLoginID(c.Request.Context())
+		c.JSON(http.StatusOK, gin.H{"loginId": loginID})
+	})
 
-    // 需要登录的路由
-    user := r.Group("/user")
-    user.Use(gindt.AuthMiddleware(ctx))
-    {
-        user.GET("/info", handleUserInfo)
-    }
+	admin := r.Group("/admin")
+	admin.Use(gindt.AuthMiddleware(ctx), gindt.RoleMiddleware(ctx, []string{"admin"}))
+	admin.GET("/dashboard", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"message": "ok"})
+	})
 
-    // 需要角色的路由
-    admin := r.Group("/admin")
-    admin.Use(gindt.RoleMiddleware(ctx, []string{"admin"}))
-    {
-        admin.GET("/dashboard", handleDashboard)
-    }
-
-    // 需要权限的路由
-    resource := r.Group("/resource")
-    resource.Use(gindt.PermissionMiddleware(ctx, []string{"resource:read"}))
-    {
-        resource.GET("/list", handleResourceList)
-    }
-
-    r.Run(":8080")
+	_ = r.Run(":8080")
 }
 ```
 
-## 核心 API
+更多框架示例：
 
-### 登录与认证
+| 框架 | 示例 | 集成包 |
+| --- | --- | --- |
+| Gin | [examples/gin](examples/gin/) | `github.com/Zany2/dtoken-go/integrations/gin` |
+| Echo | [examples/echo](examples/echo/) | `github.com/Zany2/dtoken-go/integrations/echo` |
+| Fiber | [examples/fiber](examples/fiber/) | `github.com/Zany2/dtoken-go/integrations/fiber` |
+| Chi | [examples/chi](examples/chi/) | `github.com/Zany2/dtoken-go/integrations/chi` |
+| GoFrame | [examples/gf](examples/gf/) | `github.com/Zany2/dtoken-go/integrations/gf` |
+| Hertz | [examples/hertz](examples/hertz/) | `github.com/Zany2/dtoken-go/integrations/hertz` |
+| Kratos | [examples/kratos](examples/kratos/) | `github.com/Zany2/dtoken-go/integrations/kratos` |
 
-| 方法 | 说明 |
-|------|------|
-| `Login(ctx, loginID, params...)` | 登录，返回 Token。params 可选：device, deviceId, authType |
-| `Logout(ctx, tokenValue)` | 根据 Token 登出 |
-| `LogoutByLoginID(ctx, loginID)` | 登出指定用户的所有终端 |
-| `LogoutByDevice(ctx, loginID, device)` | 登出指定设备类型的所有终端 |
-| `IsLogin(ctx, tokenValue)` | 检查是否已登录 |
-| `CheckLogin(ctx, tokenValue)` | 检查登录状态，未登录返回 error |
+## 常用 API
+
+### 登录与 Token
+
+| API | 说明 |
+| --- | --- |
+| `Login(ctx, loginID, params...)` | 登录并返回 Token，`params` 可传 `device`、`deviceId`、`authType` |
+| `LoginByToken(ctx, tokenValue)` | 根据已有 Token 续登录 |
+| `Logout(ctx, tokenValue)` | 按 Token 登出 |
+| `LogoutByLoginID(ctx, loginID)` | 登出指定账号的所有终端 |
+| `IsLogin(ctx, tokenValue)` | 判断 Token 是否已登录 |
+| `CheckLogin(ctx, tokenValue)` | 校验登录状态，失败返回错误 |
 | `GetLoginID(ctx, tokenValue)` | 根据 Token 获取登录 ID |
-| `GetTokenInfo(ctx, tokenValue)` | 获取 Token 详细信息 |
+| `GetTokenInfo(ctx, tokenValue)` | 获取 Token 详情 |
+| `GetTokenTTL(ctx, tokenValue)` | 获取 Token 剩余有效时间 |
 
-### 在线状态管理
+### 权限与角色
 
-| 方法 | 说明 |
-|------|------|
-| `Kickout(ctx, tokenValue)` | 踢人下线 |
-| `KickoutByLoginID(ctx, loginID)` | 踢出指定用户所有终端 |
-| `Replace(ctx, tokenValue)` | 顶人下线 |
-| `ReplaceByLoginID(ctx, loginID)` | 顶替指定用户所有终端 |
-
-### 权限管理
-
-| 方法 | 说明 |
-|------|------|
+| API | 说明 |
+| --- | --- |
 | `AddPermissions(ctx, loginID, permissions)` | 添加权限 |
 | `RemovePermissions(ctx, loginID, permissions)` | 移除权限 |
 | `GetPermissions(ctx, loginID)` | 获取权限列表 |
-| `HasPermission(ctx, loginID, permission)` | 检查单个权限 |
-| `HasPermissionsAnd(ctx, loginID, permissions)` | 检查是否拥有全部权限 |
-| `HasPermissionsOr(ctx, loginID, permissions)` | 检查是否拥有任一权限 |
-
-### 角色管理
-
-| 方法 | 说明 |
-|------|------|
+| `HasPermission(ctx, loginID, permission)` | 判断是否拥有指定权限 |
+| `HasPermissionsAnd(ctx, loginID, permissions)` | 判断是否拥有全部权限 |
+| `HasPermissionsOr(ctx, loginID, permissions)` | 判断是否拥有任一权限 |
 | `AddRoles(ctx, loginID, roles)` | 添加角色 |
 | `RemoveRoles(ctx, loginID, roles)` | 移除角色 |
 | `GetRoles(ctx, loginID)` | 获取角色列表 |
-| `HasRole(ctx, loginID, role)` | 检查单个角色 |
-| `HasRolesAnd(ctx, loginID, roles)` | 检查是否拥有全部角色 |
-| `HasRolesOr(ctx, loginID, roles)` | 检查是否拥有任一角色 |
+| `HasRole(ctx, loginID, role)` | 判断是否拥有指定角色 |
+| `HasRolesAnd(ctx, loginID, roles)` | 判断是否拥有全部角色 |
+| `HasRolesOr(ctx, loginID, roles)` | 判断是否拥有任一角色 |
 
-### 账号封禁
+### 在线状态与封禁
 
-| 方法 | 说明 |
-|------|------|
-| `Disable(ctx, loginID, duration, reason)` | 封禁账号 |
+| API | 说明 |
+| --- | --- |
+| `Kickout(ctx, tokenValue)` | 踢出指定 Token |
+| `KickoutByLoginID(ctx, loginID)` | 踢出指定账号所有终端 |
+| `Replace(ctx, tokenValue)` | 顶替指定 Token |
+| `ReplaceByLoginID(ctx, loginID)` | 顶替指定账号所有终端 |
+| `Disable(ctx, loginID, duration, reason...)` | 封禁账号 |
 | `Untie(ctx, loginID)` | 解封账号 |
-| `IsDisable(ctx, loginID)` | 检查是否被封禁 |
-| `GetDisableInfo(ctx, loginID)` | 获取封禁详情 |
+| `IsDisable(ctx, loginID)` | 判断账号是否封禁 |
+| `GetDisableInfo(ctx, loginID)` | 获取封禁信息 |
 
-### OAuth2
+### Nonce 与 OAuth2
 
-| 方法 | 说明 |
-|------|------|
+| API | 说明 |
+| --- | --- |
+| `GenerateNonce(ctx)` | 生成一次性 Nonce |
+| `VerifyNonce(ctx, nonce)` | 校验 Nonce |
+| `VerifyAndConsumeNonce(ctx, nonce)` | 校验并消费 Nonce |
 | `RegisterOAuth2Client(client)` | 注册 OAuth2 客户端 |
 | `GenerateOAuth2AuthorizationCode(...)` | 生成授权码 |
 | `ExchangeOAuth2CodeForToken(...)` | 授权码换取 Token |
 | `OAuth2ClientCredentialsToken(...)` | 客户端凭证模式获取 Token |
 | `OAuth2PasswordGrantToken(...)` | 密码模式获取 Token |
-| `RefreshOAuth2AccessToken(...)` | 刷新 Token |
-| `ValidateOAuth2AccessToken(ctx, accessToken)` | 验证 Token |
-| `RevokeOAuth2Token(ctx, accessToken)` | 撤销 Token |
+| `RefreshOAuth2AccessToken(...)` | 刷新访问令牌 |
+| `ValidateOAuth2AccessToken(ctx, accessToken)` | 校验访问令牌 |
+| `RevokeOAuth2Token(ctx, accessToken)` | 撤销访问令牌 |
 
-### Nonce
-
-| 方法 | 说明 |
-|------|------|
-| `GenerateNonce(ctx)` | 生成 Nonce |
-| `VerifyNonce(ctx, nonce)` | 验证并消费 Nonce |
-| `IsNonceValid(ctx, nonce)` | 检查 Nonce 是否有效（不消费） |
-
-## 配置项
-
-通过 Builder 链式调用进行配置：
+## Builder 配置
 
 ```go
-builder.NewBuilder().
-    AuthType("user").              // 认证体系类型，默认 "login:"
-    TokenName("token").            // Token 名称，默认 "dtoken"
-    Timeout(7200).                 // Token 过期时间（秒），-1 永不过期
-    AutoRenew(true).               // 是否自动续期
-    RenewMaxRefresh(3600).         // 续期触发阈值（秒）
-    RenewInterval(60).             // 最小续期间隔（秒）
-    ActiveTimeout(1800).           // 最大不活跃时长（秒），-1 不限制
-    IsConcurrent(true).            // 是否允许并发登录
-    IsShare(false).                // 并发登录是否共用 Token
-    MaxLoginCount(5).              // 最大并发登录数，-1 不限制
-    ConcurrencyScope("account").   // 并发控制作用域：account / device
-    IsReadHeader(true).            // 从 Header 读取 Token
-    IsReadCookie(false).           // 从 Cookie 读取 Token
-    IsReadBody(false).             // 从请求体读取 Token
-    TokenStyle(adapter.TokenStyleUUID). // Token 风格：UUID / JWT
-    JwtSecret("your-secret").      // JWT 模式密钥
-    IsLog(true).                   // 开启日志
-    AsyncEvent(true).              // 异步触发事件
-    SetStorage(storage).           // 设置存储适配器
-    SetCodec(codec).               // 设置编解码器
-    SetLog(logger).                // 设置日志适配器
-    SetGenerator(generator).       // 设置 Token 生成器
-    SetPool(pool).                 // 设置协程池
-    Build()
+mgr, err := defaults.NewBuilder().
+	AuthType("user").
+	KeyPrefix("dtoken").
+	TokenName("Authorization").
+	Timeout(7200).
+	ActiveTimeout(1800).
+	AutoRenew(true).
+	RenewMaxRefresh(3600).
+	RenewInterval(60).
+	IsConcurrent(true).
+	IsShare(false).
+	MaxLoginCount(5).
+	IsReadHeader(true).
+	IsReadCookie(false).
+	IsReadBody(false).
+	IsLog(false).
+	IsPrintBanner(false).
+	SetStorage(storage).
+	Build()
 ```
+
+常用配置：
+
+| 配置 | 说明 |
+| --- | --- |
+| `AuthType` | 认证体系标识，用于多套认证并行 |
+| `KeyPrefix` | 存储 key 前缀 |
+| `TokenName` | Token 名称，通常对应 Header 或 Cookie 名 |
+| `Timeout` | Token 绝对过期时间，单位秒 |
+| `ActiveTimeout` | 最大不活跃时间，单位秒 |
+| `AutoRenew` | 是否自动续期 |
+| `RenewMaxRefresh` | 续期触发阈值 |
+| `RenewInterval` | 最小续期间隔 |
+| `IsConcurrent` | 是否允许同账号并发登录 |
+| `IsShare` | 并发登录时是否共享 Token |
+| `MaxLoginCount` | 最大在线终端数 |
+| `IsReadHeader` | 是否从 Header 读取 Token |
+| `IsReadCookie` | 是否从 Cookie 读取 Token |
+| `IsReadBody` | 是否从请求体读取 Token |
+| `SetStorage` | 设置自定义存储适配器 |
 
 ## 可插拔组件
 
-| 组件 | 可选实现 | 模块路径 |
-|------|---------|---------|
-| 存储 | Memory, Redis | `com/storage/memory`, `com/storage/redis` |
-| 编解码 | JSON, JSON v2, MessagePack, Base64 | `com/codec/*` |
-| 日志 | DLog（默认）, GoFrame 适配, Nop | `com/log/*` |
-| Token 生成器 | UUID, JWT | `com/generator/dgenerator` |
+| 类型 | 实现 | 模块 |
+| --- | --- | --- |
+| 存储 | Memory、Redis、PostgreSQL | `com/storage/*` |
+| 编解码 | JSON、JSON v2、MessagePack、Base64 | `com/codec/*` |
+| 日志 | DLog、GoFrame、Nop | `com/log/*` |
+| Token 生成器 | UUID、JWT | `com/generator/dgenerator` |
 | 协程池 | Ants | `com/pool/ants` |
 
-## Web 框架集成
+## 项目结构
 
-| 框架 | 模块路径 |
-|------|---------|
-| Gin | `integrations/gin` |
-| Fiber | `integrations/fiber` |
-| GoFrame | `integrations/gf` |
-| Go-Zero | `integrations/zero` |
-
-每个集成模块提供：
-- 上下文注册中间件
-- 登录认证中间件
-- 角色校验中间件
-- 权限校验中间件
-- 注解式路由校验（CheckLogin / CheckRole / CheckPermission / CheckAll）
-
-## 多认证体系
-
-通过 `authType` 参数支持多套独立认证体系并行运行：
-
-```go
-// 创建用户认证管理器
-userMgr := builder.NewBuilder().AuthType("user").SetStorage(storage).Build()
-dtoken.SetManager(userMgr)
-
-// 创建管理员认证管理器
-adminMgr := builder.NewBuilder().AuthType("admin").SetStorage(storage).Build()
-dtoken.SetManager(adminMgr)
-
-// 使用时指定 authType
-userToken, _ := dtoken.Login(ctx, "user001", "", "", "user")
-adminToken, _ := dtoken.Login(ctx, "admin001", "", "", "admin")
+```text
+dtoken-go/
+├── com/              # 可插拔组件实现
+├── core/             # 核心接口、配置、Manager、上下文、Nonce、OAuth2
+├── defaults/         # 默认 Builder 和默认组件装配
+├── docs/             # 详细文档和图片资源
+├── dtoken/           # 全局 API 门面
+├── examples/         # 快速开始和框架集成示例
+└── integrations/     # Web 框架集成包
 ```
+
+## 文档
+
+- [文档中心](docs/README_zh.md)
+- [快速开始](docs/tutorial/quick-start_zh.md)
+- [登录认证](docs/guide/authentication_zh.md)
+- [权限管理](docs/guide/permission_zh.md)
+- [框架集成](docs/guide/framework-integration_zh.md)
+- [Redis 存储](docs/guide/redis-storage_zh.md)
+- [OAuth2](docs/guide/oauth2_zh.md)
+- [API 参考](docs/api/dtoken_zh.md)
 
 ## License
 

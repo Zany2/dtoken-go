@@ -1,69 +1,67 @@
+// @Author daixk 2025/12/22 15:56:00
 package gin
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
 	DContext "github.com/Zany2/dtoken-go/core/context"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go/integrations/internal/authcheck"
 	"github.com/gin-gonic/gin"
 )
 
-// LogicType permission/role logic type
-// 权限/角色判断逻辑
-type LogicType string
+// LogicType defines middleware logic type LogicType 定义中间件逻辑类型
+type LogicType = authcheck.LogicType
 
 const (
+	// DTokenCtxKey stores request scoped DToken context DTokenCtxKey 存储请求级 DToken 上下文
 	DTokenCtxKey = "DCtx"
 
-	LogicOr  LogicType = "OR"  // Logical OR 任一满足
-	LogicAnd LogicType = "AND" // Logical AND 全部满足
+	// LogicOr represents OR logic LogicOr 表示或逻辑
+	LogicOr LogicType = authcheck.LogicOr
+	// LogicAnd represents AND logic LogicAnd 表示与逻辑
+	LogicAnd LogicType = authcheck.LogicAnd
 )
 
+// AuthOption defines auth option setter AuthOption 定义认证选项设置器
 type AuthOption func(*AuthOptions)
 
+// AuthOptions defines middleware auth options AuthOptions 定义中间件认证选项
 type AuthOptions struct {
 	AuthType  string
 	LogicType LogicType
 	FailFunc  func(c *gin.Context, err error)
 }
 
+// defaultAuthOptions returns default auth options defaultAuthOptions 返回默认认证选项
 func defaultAuthOptions() *AuthOptions {
 	return &AuthOptions{LogicType: LogicAnd}
 }
 
-// WithAuthType sets auth type
-// 设置认证类型
+// WithAuthType sets auth type WithAuthType 设置认证类型
 func WithAuthType(authType string) AuthOption {
 	return func(o *AuthOptions) {
 		o.AuthType = authType
 	}
 }
 
-// WithLogicType sets LogicType option
-// 设置逻辑类型
+// WithLogicType sets logic type WithLogicType 设置逻辑类型
 func WithLogicType(logicType LogicType) AuthOption {
 	return func(o *AuthOptions) {
 		o.LogicType = logicType
 	}
 }
 
-// WithFailFunc sets auth failure callback
-// 设置认证失败回调
+// WithFailFunc sets auth failure callback WithFailFunc 设置认证失败回调
 func WithFailFunc(fn func(c *gin.Context, err error)) AuthOption {
 	return func(o *AuthOptions) {
 		o.FailFunc = fn
 	}
 }
 
-// ============ Middlewares ============
-// ============ 中间件 ============
-
-// RegisterDTokenContextMiddleware initializes DToken context for each request
-// 初始化每次请求的 DToken 上下文的中间件
+// RegisterDTokenContextMiddleware registers DToken context middleware RegisterDTokenContextMiddleware 注册 DToken 上下文中间件
 func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) gin.HandlerFunc {
 	options := defaultAuthOptions()
 	for _, opt := range opts {
@@ -71,7 +69,7 @@ func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) gi
 	}
 
 	return func(c *gin.Context) {
-		mgr, err := dtoken.GetManager(options.AuthType)
+		mgr, err := authcheck.GetManager(options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, err)
@@ -85,8 +83,7 @@ func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) gi
 	}
 }
 
-// AuthMiddleware authentication middleware
-// 认证中间件
+// AuthMiddleware checks login status AuthMiddleware 校验登录状态
 func AuthMiddleware(ctx context.Context, opts ...AuthOption) gin.HandlerFunc {
 	options := defaultAuthOptions()
 	for _, opt := range opts {
@@ -94,7 +91,7 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		mgr, err := dtoken.GetManager(options.AuthType)
+		mgr, err := authcheck.GetManager(options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, err)
@@ -108,13 +105,16 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) gin.HandlerFunc {
 		dCtx := getDContext(c, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
-		// Check if user is logged in
-		// 检查用户是否已登录
-		if !dtoken.IsLogin(ctx, tokenValue) {
+		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+			TokenValue: tokenValue,
+			CheckLogin: true,
+			LoginError: derror.ErrTokenExpired,
+		})
+		if err != nil {
 			if options.FailFunc != nil {
-				options.FailFunc(c, derror.ErrTokenExpired)
+				options.FailFunc(c, err)
 			} else {
-				writeErrorResponse(c, derror.ErrTokenExpired)
+				writeErrorResponse(c, err)
 			}
 			c.Abort()
 			return
@@ -124,8 +124,7 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) gin.HandlerFunc {
 	}
 }
 
-// PermissionMiddleware permission check middleware
-// 权限校验中间件
+// PermissionMiddleware checks permissions PermissionMiddleware 校验权限
 func PermissionMiddleware(
 	ctx context.Context,
 	permissions []string,
@@ -143,7 +142,7 @@ func PermissionMiddleware(
 			return
 		}
 
-		mgr, err := dtoken.GetManager(options.AuthType)
+		mgr, err := authcheck.GetManager(options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, err)
@@ -157,18 +156,16 @@ func PermissionMiddleware(
 		dCtx := getDContext(c, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
-		var ok bool
-		if options.LogicType == LogicAnd {
-			ok = mgr.HasPermissionsAndByToken(ctx, tokenValue, permissions)
-		} else {
-			ok = mgr.HasPermissionsOrByToken(ctx, tokenValue, permissions)
-		}
-
-		if !ok {
+		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+			TokenValue:  tokenValue,
+			Permissions: permissions,
+			LogicType:   options.LogicType,
+		})
+		if err != nil {
 			if options.FailFunc != nil {
-				options.FailFunc(c, derror.ErrPermissionDenied)
+				options.FailFunc(c, err)
 			} else {
-				writeErrorResponse(c, derror.ErrPermissionDenied)
+				writeErrorResponse(c, err)
 			}
 			c.Abort()
 			return
@@ -178,8 +175,7 @@ func PermissionMiddleware(
 	}
 }
 
-// RoleMiddleware role check middleware
-// 角色校验中间件
+// RoleMiddleware checks roles RoleMiddleware 校验角色
 func RoleMiddleware(
 	ctx context.Context,
 	roles []string,
@@ -197,7 +193,7 @@ func RoleMiddleware(
 			return
 		}
 
-		mgr, err := dtoken.GetManager(options.AuthType)
+		mgr, err := authcheck.GetManager(options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, err)
@@ -211,18 +207,16 @@ func RoleMiddleware(
 		dCtx := getDContext(c, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
-		var ok bool
-		if options.LogicType == LogicAnd {
-			ok = mgr.HasRolesAndByToken(ctx, tokenValue, roles)
-		} else {
-			ok = mgr.HasRolesOrByToken(ctx, tokenValue, roles)
-		}
-
-		if !ok {
+		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+			TokenValue: tokenValue,
+			Roles:      roles,
+			LogicType:  options.LogicType,
+		})
+		if err != nil {
 			if options.FailFunc != nil {
-				options.FailFunc(c, derror.ErrRoleDenied)
+				options.FailFunc(c, err)
 			} else {
-				writeErrorResponse(c, derror.ErrRoleDenied)
+				writeErrorResponse(c, err)
 			}
 			c.Abort()
 			return
@@ -232,8 +226,7 @@ func RoleMiddleware(
 	}
 }
 
-// GetDTokenContext gets DToken context from Gin context
-// 获取 DToken 上下文
+// GetDTokenContext gets cached DToken context GetDTokenContext 获取缓存的 DToken 上下文
 func GetDTokenContext(c *gin.Context) (*DContext.DTokenContext, bool) {
 	v, exists := c.Get(DTokenCtxKey)
 	if !exists {
@@ -244,6 +237,7 @@ func GetDTokenContext(c *gin.Context) (*DContext.DTokenContext, bool) {
 	return ctx, ok
 }
 
+// getDContext gets or creates DToken context getDContext 获取或创建 DToken 上下文
 func getDContext(c *gin.Context, mgr *manager.Manager) *DContext.DTokenContext {
 	if v, exists := c.Get(DTokenCtxKey); exists {
 		if dCtx, ok := v.(*DContext.DTokenContext); ok {
@@ -257,26 +251,10 @@ func getDContext(c *gin.Context, mgr *manager.Manager) *DContext.DTokenContext {
 	return dCtx
 }
 
-// ============ Error Handling Helpers ============
-// ============ 错误处理辅助函数 ============
-
-// writeErrorResponse writes a standardized error response
-// 写入标准化的错误响应
+// writeErrorResponse writes error response writeErrorResponse 写入错误响应
 func writeErrorResponse(c *gin.Context, err error) {
-	var dtErr *derror.DTokenError
-	var code int
-	var message string
-	var httpStatus int
-
-	if errors.As(err, &dtErr) {
-		code = dtErr.Code
-		message = dtErr.Message
-		httpStatus = getHTTPStatusFromCode(code)
-	} else {
-		code = derror.CodeServerError
-		message = err.Error()
-		httpStatus = http.StatusInternalServerError
-	}
+	code, message := authcheck.GetErrorCodeAndMessage(err)
+	httpStatus := getHTTPStatusFromCode(code)
 
 	c.JSON(httpStatus, gin.H{
 		"code":    code,
@@ -285,8 +263,7 @@ func writeErrorResponse(c *gin.Context, err error) {
 	})
 }
 
-// writeSuccessResponse writes a standardized success response
-// 写入标准化的成功响应
+// writeSuccessResponse writes success response writeSuccessResponse 写入成功响应
 func writeSuccessResponse(c *gin.Context, data interface{}) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    derror.CodeSuccess,
@@ -295,13 +272,12 @@ func writeSuccessResponse(c *gin.Context, data interface{}) {
 	})
 }
 
-// getHTTPStatusFromCode converts DToken error code to HTTP status
-// 将DToken错误码转换为HTTP状态码
+// getHTTPStatusFromCode maps error code to HTTP status getHTTPStatusFromCode 映射错误码到 HTTP 状态码
 func getHTTPStatusFromCode(code int) int {
 	switch code {
-	case derror.CodeNotLogin:
+	case derror.CodeNotLogin, derror.CodeTokenInvalid, derror.CodeTokenExpired, derror.CodeActiveTimeout, derror.CodeKickedOut:
 		return http.StatusUnauthorized
-	case derror.CodePermissionDenied:
+	case derror.CodePermissionDenied, derror.CodeAccountDisabled:
 		return http.StatusForbidden
 	case derror.CodeBadRequest:
 		return http.StatusBadRequest

@@ -1,35 +1,46 @@
-// @Author daixk 2025/12/12 10:45:00
+// @Author daixk 2025/12/22 15:56:00
 package adapter
 
-// Log 日志行为抽象接口
+// Log defines logging behavior interface Log 定义日志行为接口
 type Log interface {
-	Print(v ...any)                 // 无级别日志输出
-	Printf(format string, v ...any) // 无级别格式化日志输出
+	// Print logs plain message Print 输出无级别日志
+	Print(v ...any)
+	// Printf logs formatted plain message Printf 输出无级别格式化日志
+	Printf(format string, v ...any)
 
-	Debug(v ...any)                 // 输出调试级别日志
-	Debugf(format string, v ...any) // 输出调试级别格式化日志
-
-	Info(v ...any)                 // 输出信息级别日志
-	Infof(format string, v ...any) // 输出信息级别格式化日志
-
-	Warn(v ...any)                 // 输出警告级别日志
-	Warnf(format string, v ...any) // 输出警告级别格式化日志
-
-	Error(v ...any)                 // 输出错误级别日志
-	Errorf(format string, v ...any) // 输出错误级别格式化日志
+	// Debug logs debug message Debug 输出调试级别日志
+	Debug(v ...any)
+	// Debugf logs formatted debug message Debugf 输出调试级别格式化日志
+	Debugf(format string, v ...any)
+	// Info logs info message Info 输出信息级别日志
+	Info(v ...any)
+	// Infof logs formatted info message Infof 输出信息级别格式化日志
+	Infof(format string, v ...any)
+	// Warn logs warn message Warn 输出警告级别日志
+	Warn(v ...any)
+	// Warnf logs formatted warn message Warnf 输出警告级别格式化日志
+	Warnf(format string, v ...any)
+	// Error logs error message Error 输出错误级别日志
+	Error(v ...any)
+	// Errorf logs formatted error message Errorf 输出错误级别格式化日志
+	Errorf(format string, v ...any)
 }
 
-// LogLevel 日志级别定义
+// LogLevel defines log level LogLevel 定义日志级别
 type LogLevel int
 
 const (
-	LogLevelDebug LogLevel = iota + 1 // 调试级别
-	LogLevelInfo                      // 信息级别
-	LogLevelWarn                      // 警告级别
-	LogLevelError                     // 错误级别（最高）
+	// LogLevelDebug represents debug level LogLevelDebug 表示调试级别
+	LogLevelDebug LogLevel = iota + 1
+	// LogLevelInfo represents info level LogLevelInfo 表示信息级别
+	LogLevelInfo
+	// LogLevelWarn represents warn level LogLevelWarn 表示警告级别
+	LogLevelWarn
+	// LogLevelError represents error level LogLevelError 表示错误级别
+	LogLevelError
 )
 
-// String 返回日志级别的字符串表示
+// String returns string form of log level String 返回日志级别字符串表示
 func (l LogLevel) String() string {
 	switch l {
 	case LogLevelDebug:
@@ -45,20 +56,24 @@ func (l LogLevel) String() string {
 	}
 }
 
-// LogControl 日志运行时控制接口
+// LogControl defines runtime log control interface LogControl 定义日志运行时控制接口
 type LogControl interface {
 	Log
 
-	// ---- 生命周期 ----
-	Close() // 关闭日志并释放资源
-	Flush() // 刷新缓冲区
+	// Close closes logger and releases resources Close 关闭日志并释放资源
+	Close()
+	// Flush flushes buffered logs Flush 刷新缓冲区
+	Flush()
 
-	// ---- 运行时配置 ----
-	SetLevel(level LogLevel) // 动态更新日志级别
-	SetPrefix(prefix string) // 动态更新日志前缀
-	SetStdout(enable bool)   // 开关控制台输出
+	// SetLevel updates log level SetLevel 动态更新日志级别
+	SetLevel(level LogLevel)
+	// SetPrefix updates log prefix SetPrefix 动态更新日志前缀
+	SetPrefix(prefix string)
+	// SetStdout toggles stdout output SetStdout 开关控制台输出
+	SetStdout(enable bool)
 
-	// ---- 状态查询 ----
-	LogPath() string   // 获取日志目录
-	DropCount() uint64 // 获取丢弃的日志数量
+	// LogPath gets log path LogPath 获取日志目录
+	LogPath() string
+	// DropCount gets dropped log count DropCount 获取丢弃的日志数量
+	DropCount() uint64
 }

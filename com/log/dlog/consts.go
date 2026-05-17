@@ -6,10 +6,9 @@ import (
 	"time"
 )
 
-// LogLevel is an alias for adapter.LogLevel 日志级别别名
+// LogLevel aliases adapter.LogLevel 日志级别别名
 type LogLevel = adapter.LogLevel
 
-// Log level constants 日志级别常量
 const (
 	LevelDebug = adapter.LogLevelDebug // Debug level 调试级别
 	LevelInfo  = adapter.LogLevelInfo  // Info level 信息级别

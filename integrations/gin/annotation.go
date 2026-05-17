@@ -1,16 +1,15 @@
-// @Author daixk 2025/12/28
+// @Author daixk 2025/12/22 15:56:00
 package gin
 
 import (
 	"context"
 
 	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go/integrations/internal/authcheck"
 	"github.com/gin-gonic/gin"
 )
 
-// Annotation annotation structure
-// 注解结构体
+// Annotation defines annotation config Annotation 定义注解配置
 type Annotation struct {
 	AuthType        string    // Optional: specify auth type 可选：指定认证类型
 	CheckLogin      bool      // Check login 检查登录
@@ -21,8 +20,7 @@ type Annotation struct {
 	LogicType       LogicType // OR or AND logic (default: OR) OR 或 AND 逻辑（默认: OR）
 }
 
-// GetHandler gets handler with annotations
-// 获取带注解的处理器
+// GetHandler gets annotation handler GetHandler 获取注解处理器
 func GetHandler(ctx context.Context, handler gin.HandlerFunc, failFunc func(c *gin.Context, err error), annotations ...*Annotation) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if len(annotations) > 0 && annotations[0].Ignore {
@@ -49,7 +47,7 @@ func GetHandler(ctx context.Context, handler gin.HandlerFunc, failFunc func(c *g
 			return
 		}
 
-		mgr, err := dtoken.GetManager(ann.AuthType)
+		mgr, err := authcheck.GetManager(ann.AuthType)
 		if err != nil {
 			if failFunc != nil {
 				failFunc(c, err)
@@ -63,74 +61,23 @@ func GetHandler(ctx context.Context, handler gin.HandlerFunc, failFunc func(c *g
 		dCtx := getDContext(c, mgr)
 		token := dCtx.GetTokenValue()
 
-		// Check if user is logged in
-		// 检查用户是否已登录
-		if !dtoken.IsLogin(ctx, token) {
+		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+			TokenValue:   token,
+			CheckLogin:   true,
+			CheckDisable: ann.CheckDisable,
+			Permissions:  ann.CheckPermission,
+			Roles:        ann.CheckRole,
+			LogicType:    ann.LogicType,
+			LoginError:   derror.ErrNotLogin,
+		})
+		if err != nil {
 			if failFunc != nil {
-				failFunc(c, derror.ErrNotLogin)
+				failFunc(c, err)
 			} else {
-				writeErrorResponse(c, derror.ErrNotLogin)
+				writeErrorResponse(c, err)
 			}
 			c.Abort()
 			return
-		}
-
-		var loginID string
-		if ann.CheckDisable || len(ann.CheckPermission) > 0 || len(ann.CheckRole) > 0 {
-			loginID, err = mgr.GetLoginID(ctx, token)
-			if err != nil {
-				writeErrorResponse(c, err)
-				c.Abort()
-				return
-			}
-		}
-
-		if ann.CheckDisable {
-			if mgr.IsDisable(ctx, loginID) {
-				if failFunc != nil {
-					failFunc(c, derror.ErrAccountDisabled)
-				} else {
-					writeErrorResponse(c, derror.ErrAccountDisabled)
-				}
-				c.Abort()
-				return
-			}
-		}
-
-		if len(ann.CheckPermission) > 0 {
-			var ok bool
-			if ann.LogicType == LogicAnd {
-				ok = mgr.HasPermissionsAnd(ctx, loginID, ann.CheckPermission)
-			} else {
-				ok = mgr.HasPermissionsOr(ctx, loginID, ann.CheckPermission)
-			}
-			if !ok {
-				if failFunc != nil {
-					failFunc(c, derror.ErrPermissionDenied)
-				} else {
-					writeErrorResponse(c, derror.ErrPermissionDenied)
-				}
-				c.Abort()
-				return
-			}
-		}
-
-		if len(ann.CheckRole) > 0 {
-			var ok bool
-			if ann.LogicType == LogicAnd {
-				ok = mgr.HasRolesAnd(ctx, loginID, ann.CheckRole)
-			} else {
-				ok = mgr.HasRolesOr(ctx, loginID, ann.CheckRole)
-			}
-			if !ok {
-				if failFunc != nil {
-					failFunc(c, derror.ErrRoleDenied)
-				} else {
-					writeErrorResponse(c, derror.ErrRoleDenied)
-				}
-				c.Abort()
-				return
-			}
 		}
 
 		if handler != nil {
@@ -141,8 +88,7 @@ func GetHandler(ctx context.Context, handler gin.HandlerFunc, failFunc func(c *g
 	}
 }
 
-// CheckLoginMiddleware decorator for login checking
-// 检查登录装饰器
+// CheckLoginMiddleware creates login check middleware CheckLoginMiddleware 生成登录检查中间件
 func CheckLoginMiddleware(
 	ctx context.Context,
 	handler gin.HandlerFunc,
@@ -156,8 +102,7 @@ func CheckLoginMiddleware(
 	return GetHandler(ctx, handler, failFunc, ann)
 }
 
-// CheckRoleMiddleware decorator for role checking
-// 检查角色装饰器
+// CheckRoleMiddleware creates role check middleware CheckRoleMiddleware 生成角色检查中间件
 func CheckRoleMiddleware(
 	ctx context.Context,
 	roles []string,
@@ -172,8 +117,7 @@ func CheckRoleMiddleware(
 	return GetHandler(ctx, handler, failFunc, ann)
 }
 
-// CheckPermissionMiddleware decorator for permission checking
-// 检查权限装饰器
+// CheckPermissionMiddleware creates permission check middleware CheckPermissionMiddleware 生成权限检查中间件
 func CheckPermissionMiddleware(
 	ctx context.Context,
 	perms []string,
@@ -188,8 +132,7 @@ func CheckPermissionMiddleware(
 	return GetHandler(ctx, handler, failFunc, ann)
 }
 
-// CheckDisableMiddleware decorator for checking if account is disabled
-// 检查是否被封禁装饰器
+// CheckDisableMiddleware creates disable check middleware CheckDisableMiddleware 生成封禁检查中间件
 func CheckDisableMiddleware(
 	ctx context.Context,
 	handler gin.HandlerFunc,
@@ -203,8 +146,7 @@ func CheckDisableMiddleware(
 	return GetHandler(ctx, handler, failFunc, ann)
 }
 
-// IgnoreMiddleware decorator to ignore authentication
-// 忽略认证装饰器
+// IgnoreMiddleware creates ignore auth middleware IgnoreMiddleware 生成忽略认证中间件
 func IgnoreMiddleware(
 	ctx context.Context,
 	handler gin.HandlerFunc,
@@ -214,11 +156,7 @@ func IgnoreMiddleware(
 	return GetHandler(ctx, handler, failFunc, ann)
 }
 
-// ============ Combined Middleware ============
-// ============ 组合中间件 ============
-
-// CheckLoginAndRoleMiddleware checks login and role
-// 检查登录和角色
+// CheckLoginAndRoleMiddleware creates login and role middleware CheckLoginAndRoleMiddleware 生成登录与角色检查中间件
 func CheckLoginAndRoleMiddleware(
 	ctx context.Context,
 	roles []string,
@@ -233,8 +171,7 @@ func CheckLoginAndRoleMiddleware(
 	return GetHandler(ctx, handler, failFunc, ann)
 }
 
-// CheckLoginAndPermissionMiddleware checks login and permission
-// 检查登录和权限
+// CheckLoginAndPermissionMiddleware creates login and permission middleware CheckLoginAndPermissionMiddleware 生成登录与权限检查中间件
 func CheckLoginAndPermissionMiddleware(
 	ctx context.Context,
 	perms []string,
@@ -249,8 +186,7 @@ func CheckLoginAndPermissionMiddleware(
 	return GetHandler(ctx, handler, failFunc, ann)
 }
 
-// CheckAllMiddleware checks login, role, permission and disable status
-// 全面检查
+// CheckAllMiddleware creates combined auth middleware CheckAllMiddleware 生成全部检查中间件
 func CheckAllMiddleware(
 	ctx context.Context,
 	roles []string,
@@ -266,11 +202,7 @@ func CheckAllMiddleware(
 	return GetHandler(ctx, handler, failFunc, ann)
 }
 
-// ============ Route Group Helper ============
-// ============ 路由组辅助函数 ============
-
-// AuthGroup creates a route group with authentication
-// 创建带认证的路由组
+// AuthGroup creates auth route group AuthGroup 创建认证路由组
 func AuthGroup(
 	ctx context.Context,
 	group *gin.RouterGroup,
@@ -282,8 +214,7 @@ func AuthGroup(
 	return group
 }
 
-// RoleGroup creates a route group with role checking
-// 创建带角色检查的路由组
+// RoleGroup creates role route group RoleGroup 创建角色路由组
 func RoleGroup(
 	ctx context.Context,
 	group *gin.RouterGroup,
@@ -296,8 +227,7 @@ func RoleGroup(
 	return group
 }
 
-// PermissionGroup creates a route group with permission checking
-// 创建带权限检查的路由组
+// PermissionGroup creates permission route group PermissionGroup 创建权限路由组
 func PermissionGroup(
 	ctx context.Context,
 	group *gin.RouterGroup,
@@ -310,8 +240,7 @@ func PermissionGroup(
 	return group
 }
 
-// RoleAndPermissionGroup creates a route group with role and permission checking
-// 创建带角色和权限检查的路由组
+// RoleAndPermissionGroup creates role and permission route group RoleAndPermissionGroup 创建角色与权限路由组
 func RoleAndPermissionGroup(
 	ctx context.Context,
 	group *gin.RouterGroup,

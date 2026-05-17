@@ -7,9 +7,9 @@ use (
 	./com/codec/msgpack
 
 	./com/generator/dgenerator
+
 	./com/log/dlog
 	./com/log/gf
-
 	./com/log/nop
 
 	./com/pool/ants
@@ -18,16 +18,24 @@ use (
 	./com/storage/redis
 
 	./core
+	./defaults
 	./dtoken
 
+	./examples/chi
+	./examples/echo
+	./examples/fiber
 	./examples/gf
-	./examples/gf_v2
 	./examples/gin
+	./examples/hertz
+	./examples/kratos
 	./examples/quick_start
-	./examples/zero
 
+	./integrations/chi
+	./integrations/echo
 	./integrations/fiber
 	./integrations/gf
 	./integrations/gin
-	./integrations/zero
+	./integrations/hertz
+	./integrations/internal/authcheck
+	./integrations/kratos
 )

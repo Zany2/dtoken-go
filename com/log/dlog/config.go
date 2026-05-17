@@ -2,11 +2,12 @@
 package dlog
 
 import (
+	"fmt"
+	"strings"
 	"time"
 )
 
-// LoggerConfig defines configuration for the logger
-// 日志配置项，定义日志输出的行为、格式和文件管理策略
+// LoggerConfig defines logger configuration 日志配置项，定义日志输出的行为、格式和文件管理策略
 type LoggerConfig struct {
 	Path              string        // Log directory path 日志文件目录
 	FileFormat        string        // Log file naming format 日志文件命名格式
@@ -22,8 +23,7 @@ type LoggerConfig struct {
 	RotateBackupDays  int           // Retention days for old log files 备份文件保留天数
 }
 
-// DefaultLoggerConfig returns default logger configuration
-// 返回默认日志配置
+// DefaultLoggerConfig returns default logger configuration 返回默认日志配置
 func DefaultLoggerConfig() *LoggerConfig {
 	return &LoggerConfig{
 		TimeFormat:        DefaultTimeFormat,
@@ -40,50 +40,54 @@ func DefaultLoggerConfig() *LoggerConfig {
 	}
 }
 
-// SetPath sets the log output directory
-// 设置日志输出目录
+// Validate validates logger configuration Validate 验证日志配置
+func (c *LoggerConfig) Validate() error {
+	if c != nil && !isZeroConfig(c) {
+		if err := validateExplicitConfig(c); err != nil {
+			return err
+		}
+	}
+	cfg := normalizeConfig(c)
+	return validateNormalizedConfig(cfg)
+}
+
+// SetPath sets the log output directory 设置日志输出目录
 func (c *LoggerConfig) SetPath(path string) *LoggerConfig {
 	c.Path = path
 	return c
 }
 
-// SetFileFormat sets the log file naming format
-// 设置日志文件命名格式
+// SetFileFormat sets the log file naming format 设置日志文件命名格式
 func (c *LoggerConfig) SetFileFormat(format string) *LoggerConfig {
 	c.FileFormat = format
 	return c
 }
 
-// SetPrefix sets the log line prefix
-// 设置日志输出前缀
+// SetPrefix sets the log line prefix 设置日志输出前缀
 func (c *LoggerConfig) SetPrefix(prefix string) *LoggerConfig {
 	c.Prefix = prefix
 	return c
 }
 
-// SetLevel sets the minimum output log level
-// 设置日志最低输出级别
+// SetLevel sets the minimum output log level 设置日志最低输出级别
 func (c *LoggerConfig) SetLevel(level LogLevel) *LoggerConfig {
 	c.Level = level
 	return c
 }
 
-// SetTimeFormat sets the timestamp format in log lines
-// 设置日志时间戳格式
+// SetTimeFormat sets the timestamp format in log lines 设置日志时间戳格式
 func (c *LoggerConfig) SetTimeFormat(format string) *LoggerConfig {
 	c.TimeFormat = format
 	return c
 }
 
-// SetStdout enables or disables console output
-// 设置是否输出到控制台
+// SetStdout enables or disables console output 设置是否输出到控制台
 func (c *LoggerConfig) SetStdout(enable bool) *LoggerConfig {
 	c.Stdout = enable
 	return c
 }
 
-// SetStdoutOnly enables console-only mode (no file output)
-// 设置仅输出到控制台模式
+// SetStdoutOnly enables console-only mode 设置仅输出到控制台模式
 func (c *LoggerConfig) SetStdoutOnly(enable bool) *LoggerConfig {
 	c.StdoutOnly = enable
 	if enable {
@@ -92,47 +96,161 @@ func (c *LoggerConfig) SetStdoutOnly(enable bool) *LoggerConfig {
 	return c
 }
 
-// SetQueueSize sets the async write queue size
-// 设置异步写入队列大小
+// SetQueueSize sets the async write queue size 设置异步写入队列大小
 func (c *LoggerConfig) SetQueueSize(size int) *LoggerConfig {
 	c.QueueSize = size
 	return c
 }
 
-// SetRotateSize sets the file size threshold for log rotation
-// 设置日志文件大小滚动阈值
+// SetRotateSize sets the file size threshold for log rotation 设置日志文件大小滚动阈值
 func (c *LoggerConfig) SetRotateSize(size int64) *LoggerConfig {
 	c.RotateSize = size
 	return c
 }
 
-// SetRotateExpire sets the time-based rotation interval
-// 设置时间滚动间隔
+// SetRotateExpire sets the time based rotation interval 设置时间滚动间隔
 func (c *LoggerConfig) SetRotateExpire(d time.Duration) *LoggerConfig {
 	c.RotateExpire = d
 	return c
 }
 
-// SetRotateBackupLimit sets the maximum number of backup log files retained
-// 设置最大备份文件数量
+// SetRotateBackupLimit sets the maximum number of retained backup files 设置最大备份文件数量
 func (c *LoggerConfig) SetRotateBackupLimit(limit int) *LoggerConfig {
 	c.RotateBackupLimit = limit
 	return c
 }
 
-// SetRotateBackupDays sets the retention days for backup log files
-// 设置日志备份保留天数
+// SetRotateBackupDays sets the backup retention days 设置日志备份保留天数
 func (c *LoggerConfig) SetRotateBackupDays(days int) *LoggerConfig {
 	c.RotateBackupDays = days
 	return c
 }
 
-// Clone returns a copy of the current logger configuration
-// 返回当前日志配置的副本
+// Clone returns a copy of the current logger configuration 返回当前日志配置的副本
 func (c *LoggerConfig) Clone() *LoggerConfig {
 	if c == nil {
 		return &LoggerConfig{}
 	}
 	copyCfg := *c
 	return &copyCfg
+}
+
+// normalizeConfig applies logger defaults normalizeConfig 应用日志默认配置
+func normalizeConfig(cfg *LoggerConfig) *LoggerConfig {
+	if cfg == nil {
+		cfg = &LoggerConfig{}
+	}
+
+	c := *cfg
+	if c.TimeFormat == "" {
+		c.TimeFormat = DefaultTimeFormat
+	}
+	if c.Prefix == "" {
+		c.Prefix = DefaultPrefix
+	}
+	if c.Level == 0 {
+		c.Level = LevelInfo
+	}
+	if c.QueueSize <= 0 {
+		c.QueueSize = DefaultQueueSize
+	}
+
+	if c.StdoutOnly {
+		c.Stdout = true
+		return &c
+	}
+
+	if c.FileFormat == "" {
+		c.FileFormat = DefaultFileFormat
+	}
+	if c.RotateSize <= 0 {
+		c.RotateSize = DefaultRotateSize
+	}
+	if c.RotateExpire < 0 {
+		c.RotateExpire = 0
+	}
+	if c.RotateBackupLimit <= 0 {
+		c.RotateBackupLimit = DefaultRotateBackupLimit
+	}
+	if c.RotateBackupDays < 0 {
+		c.RotateBackupDays = 0
+	}
+
+	return &c
+}
+
+// validateNormalizedConfig checks normalized logger config validateNormalizedConfig 校验归一化后的日志配置
+func validateNormalizedConfig(c *LoggerConfig) error {
+	if c == nil {
+		return nil
+	}
+	if strings.TrimSpace(c.TimeFormat) == "" {
+		return fmt.Errorf("LoggerConfig.TimeFormat must not be empty")
+	}
+	if c.Path != "" && strings.TrimSpace(c.Path) == "" {
+		return fmt.Errorf("LoggerConfig.Path must not be whitespace")
+	}
+	if c.FileFormat != "" && strings.TrimSpace(c.FileFormat) == "" {
+		return fmt.Errorf("LoggerConfig.FileFormat must not be whitespace")
+	}
+	if strings.ContainsAny(c.FileFormat, `/\`) {
+		return fmt.Errorf("LoggerConfig.FileFormat must be a file name, not a path")
+	}
+	switch c.Level {
+	case LevelDebug, LevelInfo, LevelWarn, LevelError:
+	default:
+		return fmt.Errorf("LoggerConfig.Level is invalid: %v", c.Level)
+	}
+	if c.QueueSize <= 0 {
+		return fmt.Errorf("LoggerConfig.QueueSize must be > 0")
+	}
+	if !c.StdoutOnly && c.RotateSize <= 0 {
+		return fmt.Errorf("LoggerConfig.RotateSize must be > 0")
+	}
+	if c.RotateExpire < 0 {
+		return fmt.Errorf("LoggerConfig.RotateExpire must not be negative")
+	}
+	if !c.StdoutOnly && c.RotateBackupLimit <= 0 {
+		return fmt.Errorf("LoggerConfig.RotateBackupLimit must be > 0")
+	}
+	if c.RotateBackupDays < 0 {
+		return fmt.Errorf("LoggerConfig.RotateBackupDays must not be negative")
+	}
+	return nil
+}
+
+// isZeroConfig checks whether config is the zero value isZeroConfig 妫€鏌ラ厤缃槸鍚︿负闆跺€?
+func isZeroConfig(c *LoggerConfig) bool {
+	return c.Path == "" &&
+		c.FileFormat == "" &&
+		c.Prefix == "" &&
+		c.Level == 0 &&
+		c.TimeFormat == "" &&
+		!c.Stdout &&
+		!c.StdoutOnly &&
+		c.QueueSize == 0 &&
+		c.RotateSize == 0 &&
+		c.RotateExpire == 0 &&
+		c.RotateBackupLimit == 0 &&
+		c.RotateBackupDays == 0
+}
+
+// validateExplicitConfig rejects invalid non-zero config values validateExplicitConfig 鎷掔粷闈為浂閰嶇疆涓殑鏄惧紡闈炴硶鍊?
+func validateExplicitConfig(c *LoggerConfig) error {
+	if c.QueueSize <= 0 {
+		return fmt.Errorf("LoggerConfig.QueueSize must be > 0")
+	}
+	if !c.StdoutOnly && c.RotateSize <= 0 {
+		return fmt.Errorf("LoggerConfig.RotateSize must be > 0")
+	}
+	if c.RotateExpire < 0 {
+		return fmt.Errorf("LoggerConfig.RotateExpire must not be negative")
+	}
+	if !c.StdoutOnly && c.RotateBackupLimit <= 0 {
+		return fmt.Errorf("LoggerConfig.RotateBackupLimit must be > 0")
+	}
+	if c.RotateBackupDays < 0 {
+		return fmt.Errorf("LoggerConfig.RotateBackupDays must not be negative")
+	}
+	return nil
 }
