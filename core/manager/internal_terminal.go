@@ -3,12 +3,15 @@ package manager
 
 // removeTerminalByToken removes terminal by token removeTerminalByToken 根据 token 值移除终端信息
 func (s *Session) removeTerminalByToken(tokenValue string) (TerminalInfo, bool) {
+	// Validate token value 校验 Token 值。
 	if tokenValue == "" {
 		return TerminalInfo{}, false
 	}
 
+	// Search matched terminal 查找匹配终端。
 	for i, ti := range s.TerminalInfos {
 		if ti.Token == tokenValue {
+			// Record removed terminal 记录被移除终端。
 			removed := ti
 			// Remove matched terminal 保持顺序移除匹配终端
 			s.TerminalInfos = append(s.TerminalInfos[:i], s.TerminalInfos[i+1:]...)
@@ -16,6 +19,7 @@ func (s *Session) removeTerminalByToken(tokenValue string) (TerminalInfo, bool) 
 		}
 	}
 
+	// Return not found 返回未找到。
 	return TerminalInfo{}, false
 }
 
@@ -24,6 +28,7 @@ func (s *Session) removeTerminalByDevice(device string) []TerminalInfo {
 	var kept []TerminalInfo    // kept stores remaining terminals kept 存储保留终端
 	var removed []TerminalInfo // removed stores removed terminals removed 存储被删除终端
 
+	// Split terminals by device 按设备拆分终端。
 	for _, ti := range s.TerminalInfos {
 		if ti.Device == device {
 			removed = append(removed, ti)
@@ -32,15 +37,18 @@ func (s *Session) removeTerminalByDevice(device string) []TerminalInfo {
 		}
 	}
 
+	// Replace terminal list 替换终端列表。
 	s.TerminalInfos = kept
 	return removed
 }
 
 // removeTerminalByDeviceAndDeviceId removes terminals by device and id removeTerminalByDeviceAndDeviceId 根据设备类型和设备 ID 移除终端
 func (s *Session) removeTerminalByDeviceAndDeviceId(device, deviceId string) []TerminalInfo {
+	// Prepare kept and removed lists 准备保留和移除列表。
 	var kept []TerminalInfo
 	var removed []TerminalInfo
 
+	// Split terminals by concrete device 按具体设备拆分终端。
 	for _, ti := range s.TerminalInfos {
 		if ti.Device == device && ti.DeviceId == deviceId {
 			removed = append(removed, ti)
@@ -49,16 +57,19 @@ func (s *Session) removeTerminalByDeviceAndDeviceId(device, deviceId string) []T
 		}
 	}
 
+	// Replace terminal list 替换终端列表。
 	s.TerminalInfos = kept
 	return removed
 }
 
 // removeOldestTerminal removes oldest terminal removeOldestTerminal 移除最老终端并可按设备过滤
 func (s *Session) removeOldestTerminal(device ...string) (TerminalInfo, bool) {
+	// Return when session has no terminals 无终端时直接返回。
 	if len(s.TerminalInfos) == 0 {
 		return TerminalInfo{}, false
 	}
 
+	// Remove first terminal when no device filter 无设备过滤时移除第一个终端。
 	if len(device) == 0 {
 		first := s.TerminalInfos[0]
 		s.TerminalInfos = s.TerminalInfos[1:]
@@ -66,6 +77,7 @@ func (s *Session) removeOldestTerminal(device ...string) (TerminalInfo, bool) {
 	}
 
 	// Find oldest matched terminal 查找最早匹配设备的终端
+	// Scan by device filter 按设备过滤扫描。
 	targetDevice := device[0]
 	for i, ti := range s.TerminalInfos {
 		if ti.Device == targetDevice {
@@ -76,19 +88,23 @@ func (s *Session) removeOldestTerminal(device ...string) (TerminalInfo, bool) {
 		}
 	}
 
+	// Return not found 返回未找到。
 	return TerminalInfo{}, false
 }
 
 // removeAllTerminals removes all terminals removeAllTerminals 移除全部终端信息
 func (s *Session) removeAllTerminals() []TerminalInfo {
+	// Copy removed terminals 拷贝被移除终端。
 	removed := make([]TerminalInfo, len(s.TerminalInfos))
 	copy(removed, s.TerminalInfos)
+	// Clear terminal list 清空终端列表。
 	s.TerminalInfos = []TerminalInfo{}
 	return removed
 }
 
 // getTerminalsByDevice gets terminals by device getTerminalsByDevice 返回指定设备的全部终端信息
 func (s *Session) getTerminalsByDevice(device string) []TerminalInfo {
+	// Collect matched terminals 收集匹配终端。
 	var matched []TerminalInfo
 	for _, ti := range s.TerminalInfos {
 		if ti.Device == device {
@@ -100,6 +116,7 @@ func (s *Session) getTerminalsByDevice(device string) []TerminalInfo {
 
 // getTerminalsByDeviceAndDeviceId gets terminals by device and id getTerminalsByDeviceAndDeviceId 返回精确匹配设备和设备 ID 的终端信息
 func (s *Session) getTerminalsByDeviceAndDeviceId(device, deviceId string) []TerminalInfo {
+	// Collect matched terminals 收集匹配终端。
 	var matched []TerminalInfo
 	for _, ti := range s.TerminalInfos {
 		if ti.Device == device && ti.DeviceId == deviceId {
@@ -111,20 +128,24 @@ func (s *Session) getTerminalsByDeviceAndDeviceId(device, deviceId string) []Ter
 
 // getLatestTerminalByDevice gets latest terminal by device getLatestTerminalByDevice 获取指定设备下最新的终端信息
 func (s *Session) getLatestTerminalByDevice(device string) (TerminalInfo, bool) {
+	// Scan from newest to oldest 从新到旧扫描。
 	for i := len(s.TerminalInfos) - 1; i >= 0; i-- {
 		if s.TerminalInfos[i].Device == device {
 			return s.TerminalInfos[i], true
 		}
 	}
+	// Return not found 返回未找到。
 	return TerminalInfo{}, false
 }
 
 // hasTerminalToken checks whether token exists in session hasTerminalToken 检查会话中是否存在指定 Token
 func (s *Session) hasTerminalToken(tokenValue string) bool {
+	// Validate token value 校验 Token 值。
 	if tokenValue == "" {
 		return false
 	}
 
+	// Search token in terminals 在终端列表中查找 Token。
 	for _, ti := range s.TerminalInfos {
 		if ti.Token == tokenValue {
 			return true
@@ -135,6 +156,7 @@ func (s *Session) hasTerminalToken(tokenValue string) bool {
 
 // addPermissions adds permissions with dedupe addPermissions 向会话添加权限并自动去重
 func (s *Session) addPermissions(permissions ...string) {
+	// Return when no permissions provided 没有权限时直接返回。
 	if len(permissions) == 0 {
 		return
 	}
@@ -159,6 +181,7 @@ func (s *Session) addPermissions(permissions ...string) {
 
 // removePermissions removes permissions removePermissions 从会话移除指定权限
 func (s *Session) removePermissions(permissions ...string) {
+	// Return when no removal needed 无需移除时直接返回。
 	if len(permissions) == 0 || len(s.Permissions) == 0 {
 		return
 	}
@@ -179,11 +202,13 @@ func (s *Session) removePermissions(permissions ...string) {
 		}
 	}
 
+	// Replace permissions 替换权限列表。
 	s.Permissions = kept
 }
 
 // addRoles adds roles with dedupe addRoles 向会话添加角色并自动去重
 func (s *Session) addRoles(roles ...string) {
+	// Return when no roles provided 没有角色时直接返回。
 	if len(roles) == 0 {
 		return
 	}
@@ -208,6 +233,7 @@ func (s *Session) addRoles(roles ...string) {
 
 // removeRoles removes roles removeRoles 从会话移除指定角色
 func (s *Session) removeRoles(roles ...string) {
+	// Return when no removal needed 无需移除时直接返回。
 	if len(roles) == 0 || len(s.Roles) == 0 {
 		return
 	}
@@ -228,5 +254,6 @@ func (s *Session) removeRoles(roles ...string) {
 		}
 	}
 
+	// Replace roles 替换角色列表。
 	s.Roles = kept
 }
