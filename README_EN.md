@@ -326,4 +326,4 @@ dtoken-go/
 
 ## License
 
-MIT
+Apache-2.0
