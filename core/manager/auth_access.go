@@ -46,20 +46,20 @@ func (f AccessProviderFunc) Roles(ctx context.Context, subject AccessSubject) ([
 	return f.RoleFunc(ctx, subject)
 }
 
-// legacyAccessProvider adapts the previous callback-style API. legacyAccessProvider 适配旧版回调式 API。
+// legacyAccessProvider adapts custom callback functions. legacyAccessProvider 适配自定义回调函数。
 type legacyAccessProvider struct {
-	permissionFunc    func(loginID, authType string) ([]string, error)                   // permissionFunc resolves legacy permissions. permissionFunc 解析旧版权限。
-	roleFunc          func(loginID, authType string) ([]string, error)                   // roleFunc resolves legacy roles. roleFunc 解析旧版角色。
-	permissionExtFunc func(loginID, device, deviceId, authType string) ([]string, error) // permissionExtFunc resolves terminal permissions. permissionExtFunc 解析终端维度权限。
-	roleExtFunc       func(loginID, device, deviceId, authType string) ([]string, error) // roleExtFunc resolves terminal roles. roleExtFunc 解析终端维度角色。
+	permissionFunc    func(loginID, authType string) ([]string, error)                   // permissionFunc resolves account permissions. permissionFunc 解析账号权限。
+	roleFunc          func(loginID, authType string) ([]string, error)                   // roleFunc resolves account roles. roleFunc 解析账号角色。
+	permissionExtFunc func(loginID, device, deviceId, authType string) ([]string, error) // permissionExtFunc resolves terminal permissions. permissionExtFunc 解析终端权限。
+	roleExtFunc       func(loginID, device, deviceId, authType string) ([]string, error) // roleExtFunc resolves terminal roles. roleExtFunc 解析终端角色。
 }
 
-// empty reports whether no legacy callback exists. empty 判断是否没有任何旧版回调。
+// empty reports whether no custom callback exists. empty 判断是否没有任何自定义回调。
 func (p *legacyAccessProvider) empty() bool {
 	return p == nil || (p.permissionFunc == nil && p.roleFunc == nil && p.permissionExtFunc == nil && p.roleExtFunc == nil)
 }
 
-// Permissions resolves permissions through legacy callbacks. Permissions 通过旧版回调解析权限。
+// Permissions resolves permissions through custom callbacks. Permissions 通过自定义回调解析权限。
 func (p *legacyAccessProvider) Permissions(_ context.Context, subject AccessSubject) ([]string, error) {
 	// Validate provider and subject 校验提供器和主体。
 	if p == nil || subject.LoginID == "" {
@@ -77,7 +77,7 @@ func (p *legacyAccessProvider) Permissions(_ context.Context, subject AccessSubj
 	return nil, nil
 }
 
-// Roles resolves roles through legacy callbacks. Roles 通过旧版回调解析角色。
+// Roles resolves roles through custom callbacks. Roles 通过自定义回调解析角色。
 func (p *legacyAccessProvider) Roles(_ context.Context, subject AccessSubject) ([]string, error) {
 	// Validate provider and subject 校验提供器和主体。
 	if p == nil || subject.LoginID == "" {
@@ -95,12 +95,12 @@ func (p *legacyAccessProvider) Roles(_ context.Context, subject AccessSubject) (
 	return nil, nil
 }
 
-// NewLegacyAccessProvider adapts the previous callback-style API into AccessProvider. NewLegacyAccessProvider 将旧版回调式 API 适配为 AccessProvider。
+// NewLegacyAccessProvider adapts custom callbacks into AccessProvider. NewLegacyAccessProvider 将自定义回调适配为 AccessProvider。
 func NewLegacyAccessProvider(
 	permissionFunc, roleFunc func(loginID, authType string) ([]string, error),
 	permissionExtFunc, roleExtFunc func(loginID, device, deviceId, authType string) ([]string, error),
 ) AccessProvider {
-	// Build legacy provider 构建旧版提供器。
+	// Build callback provider 构建回调提供器。
 	provider := &legacyAccessProvider{
 		permissionFunc:    permissionFunc,
 		roleFunc:          roleFunc,

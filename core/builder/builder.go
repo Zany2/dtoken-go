@@ -69,13 +69,13 @@ type Builder struct {
 	// accessProvider stores permission and role provider accessProvider 存储权限与角色提供器
 	accessProvider manager.AccessProvider
 
-	// customPermissionListFunc stores legacy permission callback customPermissionListFunc 存储旧版权限回调
+	// customPermissionListFunc custom account permission callback customPermissionListFunc 自定义账号权限回调
 	customPermissionListFunc func(loginID, authType string) ([]string, error)
-	// customRoleListFunc stores legacy role callback customRoleListFunc 存储旧版角色回调
+	// customRoleListFunc custom account role callback customRoleListFunc 自定义账号角色回调
 	customRoleListFunc func(loginID, authType string) ([]string, error)
-	// customPermissionListExtFunc stores extended permission callback customPermissionListExtFunc 存储扩展权限回调
+	// customPermissionListExtFunc custom terminal permission callback customPermissionListExtFunc 自定义终端权限回调
 	customPermissionListExtFunc func(loginID, device, deviceId, authType string) ([]string, error)
-	// customRoleListExtFunc stores extended role callback customRoleListExtFunc 存储扩展角色回调
+	// customRoleListExtFunc custom terminal role callback customRoleListExtFunc 自定义终端角色回调
 	customRoleListExtFunc func(loginID, device, deviceId, authType string) ([]string, error)
 }
 
