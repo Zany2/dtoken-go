@@ -31,7 +31,20 @@ func (m *Manager) AddPermissions(ctx context.Context, loginID string, permission
 	// Add permissions to session 向会话追加权限。
 	sess.addPermissions(permissions...)
 	// Persist updated session 持久化更新后的会话。
-	return m.saveToStorage(ctx, m.getSessionKey(loginID), *sess)
+	if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
+		return err
+	}
+
+	// Release lock before events 触发事件前释放锁。
+	unlock()
+	unlock = func() {}
+
+	// Trigger permission change event 触发权限变更事件。
+	m.triggerEvent(listener.EventPermissionChange, loginID, "", "", "", map[string]any{
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyAction:      listener.ActionAdd,
+	})
+	return nil
 }
 
 // AddPermissionsByToken adds permissions to a user by token. AddPermissionsByToken 根据 Token 为用户添加权限。
@@ -60,7 +73,20 @@ func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, 
 	// Add permissions to session 向会话追加权限。
 	sess.addPermissions(permissions...)
 	// Persist updated session 持久化更新后的会话。
-	return m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess)
+	if err = m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
+		return err
+	}
+
+	// Release lock before events 触发事件前释放锁。
+	unlock()
+	unlock = func() {}
+
+	// Trigger permission change event 触发权限变更事件。
+	m.triggerEvent(listener.EventPermissionChange, sess.LoginID, tokenInfo.Device, tokenInfo.DeviceId, tokenValue, map[string]any{
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyAction:      listener.ActionAdd,
+	})
+	return nil
 }
 
 // RemovePermissions removes permissions from a user. RemovePermissions 删除用户的指定权限。
@@ -84,7 +110,20 @@ func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permiss
 	// Remove permissions from session 从会话移除权限。
 	sess.removePermissions(permissions...)
 	// Persist updated session 持久化更新后的会话。
-	return m.saveToStorage(ctx, m.getSessionKey(loginID), *sess)
+	if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
+		return err
+	}
+
+	// Release lock before events 触发事件前释放锁。
+	unlock()
+	unlock = func() {}
+
+	// Trigger permission change event 触发权限变更事件。
+	m.triggerEvent(listener.EventPermissionChange, loginID, "", "", "", map[string]any{
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyAction:      listener.ActionRemove,
+	})
+	return nil
 }
 
 // RemovePermissionsByToken removes permissions from a user by token. RemovePermissionsByToken 根据 Token 删除用户的指定权限。
@@ -113,7 +152,20 @@ func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue strin
 	// Remove permissions from session 从会话移除权限。
 	sess.removePermissions(permissions...)
 	// Persist updated session 持久化更新后的会话。
-	return m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess)
+	if err = m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
+		return err
+	}
+
+	// Release lock before events 触发事件前释放锁。
+	unlock()
+	unlock = func() {}
+
+	// Trigger permission change event 触发权限变更事件。
+	m.triggerEvent(listener.EventPermissionChange, sess.LoginID, tokenInfo.Device, tokenInfo.DeviceId, tokenValue, map[string]any{
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyAction:      listener.ActionRemove,
+	})
+	return nil
 }
 
 // GetPermissions retrieves the permission list for a user. GetPermissions 获取用户的权限列表。

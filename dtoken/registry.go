@@ -3,6 +3,7 @@ package dtoken
 
 import (
 	"github.com/Zany2/dtoken-go/core/builder"
+	"github.com/Zany2/dtoken-go/core/listener"
 	"strings"
 	"sync"
 
@@ -41,6 +42,15 @@ func SetManager(mgr *manager.Manager) {
 func GetManager(authType ...string) (*manager.Manager, error) {
 	validAutoType := getAutoType(authType...)
 	return loadManager(validAutoType)
+}
+
+// GetEventManager retrieves event manager by auth type. GetEventManager 根据认证类型获取事件监听管理器。
+func GetEventManager(authType ...string) (*listener.Manager, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return nil, err
+	}
+	return mgr.GetEventManager(), nil
 }
 
 // DeleteManager deletes the manager for the specified auth type and releases resources. DeleteManager 删除指定认证类型的管理器并释放资源。

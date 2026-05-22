@@ -4,6 +4,7 @@ package manager
 import (
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
+	"github.com/Zany2/dtoken-go/core/listener"
 	"github.com/Zany2/dtoken-go/core/nonce"
 	"github.com/Zany2/dtoken-go/core/oauth2"
 )
@@ -51,4 +52,9 @@ func (m *Manager) GetNonceManager() *nonce.NonceManager {
 // GetOAuth2Manager retrieves the OAuth2 manager. GetOAuth2Manager 获取 OAuth2 管理器。
 func (m *Manager) GetOAuth2Manager() *oauth2.OAuth2Server {
 	return m.oauth2Manager
+}
+
+// GetEventManager retrieves the event manager. GetEventManager 获取事件监听管理器。
+func (m *Manager) GetEventManager() *listener.Manager {
+	return m.eventManager
 }

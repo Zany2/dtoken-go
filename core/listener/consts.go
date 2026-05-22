@@ -25,8 +25,12 @@ const (
 	EventDestroySession Event = "destroySession"
 	// EventPermissionCheck indicates permission check event EventPermissionCheck 表示权限检查事件
 	EventPermissionCheck Event = "permissionCheck"
+	// EventPermissionChange indicates permission mutation event EventPermissionChange 表示权限变更事件
+	EventPermissionChange Event = "permissionChange"
 	// EventRoleCheck indicates role check event EventRoleCheck 表示角色检查事件
 	EventRoleCheck Event = "roleCheck"
+	// EventRoleChange indicates role mutation event EventRoleChange 表示角色变更事件
+	EventRoleChange Event = "roleChange"
 	// EventDisableService indicates disable service event EventDisableService 表示账号服务被封禁事件
 	EventDisableService Event = "disableService"
 	// EventUntieService indicates untie service event EventUntieService 表示账号服务解禁事件
@@ -52,6 +56,10 @@ const (
 	ExtraKeyLogic = "logic"
 	// ExtraKeyResult stores result key ExtraKeyResult 存储检查结果字段
 	ExtraKeyResult = "result"
+	// ExtraKeyAction stores mutation action key ExtraKeyAction 存储变更动作字段
+	ExtraKeyAction = "action"
+	// ExtraKeyShared stores shared token flag key ExtraKeyShared 存储共享 Token 标记字段
+	ExtraKeyShared = "shared"
 	// ExtraKeyService stores service key ExtraKeyService 存储服务模块字段
 	ExtraKeyService = "service"
 	// ExtraKeyLevel stores level key ExtraKeyLevel 存储封禁等级字段
@@ -63,4 +71,11 @@ const (
 	LogicAnd = "AND"
 	// LogicOr indicates OR logic LogicOr 表示满足任一条件即可的 OR 逻辑
 	LogicOr = "OR"
+)
+
+const (
+	// ActionAdd indicates add mutation ActionAdd 表示添加动作
+	ActionAdd = "add"
+	// ActionRemove indicates remove mutation ActionRemove 表示移除动作
+	ActionRemove = "remove"
 )
