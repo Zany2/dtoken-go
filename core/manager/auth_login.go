@@ -42,7 +42,11 @@ func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout 
 	}
 
 	// Load existing session 尝试加载现有 session
-	sess, err := m.loginGetSession(ctx, loginID)
+	sess, err := m.getSession(ctx, loginID)
+	if errors.Is(err, derror.ErrSessionNotFound) {
+		sess = nil
+		err = nil
+	}
 	if err != nil {
 		return "", err
 	}
@@ -60,6 +64,14 @@ func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout 
 		if handled {
 			// Return shared token when reused 复用时直接返回共享 Token。
 			if token != "" {
+				// Release lock before events 触发事件前释放锁。
+				unlock()
+				unlock = func() {}
+
+				// Trigger shared login event 触发共享 Token 登录事件。
+				m.triggerEvent(listener.EventLogin, loginID, device, deviceId, token, map[string]any{
+					listener.ExtraKeyShared: true,
+				})
 				return token, nil // 复用 token
 			}
 		}

@@ -3,6 +3,7 @@ package dtoken
 
 import (
 	"github.com/Zany2/dtoken-go/core/derror"
+	"github.com/Zany2/dtoken-go/core/listener"
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
@@ -22,6 +23,14 @@ func (a *Auth) Manager() *manager.Manager {
 		return nil
 	}
 	return a.manager
+}
+
+// EventManager returns the underlying event manager. EventManager 返回底层事件监听管理器。
+func (a *Auth) EventManager() *listener.Manager {
+	if a == nil || a.manager == nil {
+		return nil
+	}
+	return a.manager.GetEventManager()
 }
 
 // Close releases resources held by the underlying manager. Close 释放底层管理器持有的资源。

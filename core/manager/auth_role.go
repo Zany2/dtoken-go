@@ -30,7 +30,20 @@ func (m *Manager) AddRoles(ctx context.Context, loginID string, roles []string) 
 	// Add roles to session 向会话追加角色。
 	sess.addRoles(roles...)
 	// Persist updated session 持久化更新后的会话。
-	return m.saveToStorage(ctx, m.getSessionKey(loginID), *sess)
+	if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
+		return err
+	}
+
+	// Release lock before events 触发事件前释放锁。
+	unlock()
+	unlock = func() {}
+
+	// Trigger role change event 触发角色变更事件。
+	m.triggerEvent(listener.EventRoleChange, loginID, "", "", "", map[string]any{
+		listener.ExtraKeyRoles:  roles,
+		listener.ExtraKeyAction: listener.ActionAdd,
+	})
+	return nil
 }
 
 // AddRolesByToken adds roles to a user by token. AddRolesByToken 根据 Token 为用户添加角色。
@@ -59,7 +72,20 @@ func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles 
 	// Add roles to session 向会话追加角色。
 	sess.addRoles(roles...)
 	// Persist updated session 持久化更新后的会话。
-	return m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess)
+	if err = m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
+		return err
+	}
+
+	// Release lock before events 触发事件前释放锁。
+	unlock()
+	unlock = func() {}
+
+	// Trigger role change event 触发角色变更事件。
+	m.triggerEvent(listener.EventRoleChange, sess.LoginID, tokenInfo.Device, tokenInfo.DeviceId, tokenValue, map[string]any{
+		listener.ExtraKeyRoles:  roles,
+		listener.ExtraKeyAction: listener.ActionAdd,
+	})
+	return nil
 }
 
 // RemoveRoles removes roles from a user. RemoveRoles 删除用户的指定角色。
@@ -83,7 +109,20 @@ func (m *Manager) RemoveRoles(ctx context.Context, loginID string, roles []strin
 	// Remove roles from session 从会话移除角色。
 	sess.removeRoles(roles...)
 	// Persist updated session 持久化更新后的会话。
-	return m.saveToStorage(ctx, m.getSessionKey(loginID), *sess)
+	if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
+		return err
+	}
+
+	// Release lock before events 触发事件前释放锁。
+	unlock()
+	unlock = func() {}
+
+	// Trigger role change event 触发角色变更事件。
+	m.triggerEvent(listener.EventRoleChange, loginID, "", "", "", map[string]any{
+		listener.ExtraKeyRoles:  roles,
+		listener.ExtraKeyAction: listener.ActionRemove,
+	})
+	return nil
 }
 
 // RemoveRolesByToken removes roles from a user by token. RemoveRolesByToken 根据 Token 删除用户的指定角色。
@@ -112,7 +151,20 @@ func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, rol
 	// Remove roles from session 从会话移除角色。
 	sess.removeRoles(roles...)
 	// Persist updated session 持久化更新后的会话。
-	return m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess)
+	if err = m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
+		return err
+	}
+
+	// Release lock before events 触发事件前释放锁。
+	unlock()
+	unlock = func() {}
+
+	// Trigger role change event 触发角色变更事件。
+	m.triggerEvent(listener.EventRoleChange, sess.LoginID, tokenInfo.Device, tokenInfo.DeviceId, tokenValue, map[string]any{
+		listener.ExtraKeyRoles:  roles,
+		listener.ExtraKeyAction: listener.ActionRemove,
+	})
+	return nil
 }
 
 // GetRoles retrieves the role list for a user. GetRoles 获取用户的角色列表。

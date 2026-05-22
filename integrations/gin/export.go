@@ -20,6 +20,7 @@ func NewBuilder() *builder.Builder {
 var (
 	SetManager       = dtoken.SetManager
 	GetManager       = dtoken.GetManager
+	GetEventManager  = dtoken.GetEventManager
 	DeleteManager    = dtoken.DeleteManager
 	DeleteAllManager = dtoken.DeleteAllManager
 )

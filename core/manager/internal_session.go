@@ -11,7 +11,7 @@ import (
 )
 
 // getSession retrieves session information. getSession 获取会话信息。
-func (m *Manager) getSession(ctx context.Context, loginID string, autoCreate ...bool) (*Session, error) {
+func (m *Manager) getSession(ctx context.Context, loginID string) (*Session, error) {
 	// Load session data 加载会话数据。
 	sessData, err := m.storage.Get(ctx, m.getSessionKey(loginID))
 	if err != nil {
@@ -19,19 +19,6 @@ func (m *Manager) getSession(ctx context.Context, loginID string, autoCreate ...
 	}
 	// Handle missing session 处理会话不存在。
 	if sessData == nil {
-		// Auto-create session when requested 按需自动创建会话。
-		if len(autoCreate) > 0 && autoCreate[0] {
-			newSession := &Session{
-				AuthType:      m.config.AuthType,
-				LoginID:       loginID,
-				CreateTime:    time.Now().Unix(),
-				TerminalInfos: make([]TerminalInfo, 0),
-				Permissions:   make([]string, 0),
-				Roles:         make([]string, 0),
-			}
-			return newSession, nil
-		}
-
 		// Return session not found 返回会话不存在。
 		return nil, derror.ErrSessionNotFound
 	}
@@ -96,35 +83,6 @@ func (m *Manager) getTokenInfo(ctx context.Context, tokenValue string) (*TokenIn
 
 	// Return token info 返回 Token 信息。
 	return &tokenInfo, nil
-}
-
-// loginGetSession retrieves session for login operation. loginGetSession 获取登录操作的会话信息。
-func (m *Manager) loginGetSession(ctx context.Context, loginID string) (*Session, error) {
-	// Load session data 加载会话数据。
-	sessData, err := m.storage.Get(ctx, m.getSessionKey(loginID))
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-	}
-	// Return nil when session is absent 会话不存在时返回 nil。
-	if sessData == nil {
-		return nil, nil
-	}
-
-	// Convert storage value 转换存储值。
-	bytesData, err := utils.ToBytes(sessData)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
-	}
-
-	// Decode session data 解码会话数据。
-	var sess Session
-	err = m.serializer.Decode(bytesData, &sess)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
-	}
-
-	// Return session 返回会话。
-	return &sess, nil
 }
 
 // checkLoginInternal performs the core login validation logic. checkLoginInternal 执行登录状态的核心验证逻辑。
