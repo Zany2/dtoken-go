@@ -13,12 +13,15 @@ require (
 	github.com/Zany2/dtoken-go/com/log/dlog v0.0.0-20260522165342-e2983ea02616 // indirect
 	github.com/Zany2/dtoken-go/com/pool/ants v0.0.0-20260522165342-e2983ea02616 // indirect
 	github.com/Zany2/dtoken-go/com/storage/memory v0.0.0-20260522165342-e2983ea02616 // indirect
+	github.com/Zany2/dtoken-go/com/storage/redis v0.0.0 // indirect
 	github.com/Zany2/dtoken-go/defaults v0.0.0-20260522165342-e2983ea02616 // indirect
 	github.com/Zany2/dtoken-go/dtoken v0.0.0 // indirect
 	github.com/bytedance/sonic v1.11.6 // indirect
 	github.com/bytedance/sonic/loader v0.1.1 // indirect
+	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/cloudwego/base64x v0.1.4 // indirect
 	github.com/cloudwego/iasm v0.2.0 // indirect
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/gin-gonic/gin v1.10.0 // indirect
@@ -37,6 +40,7 @@ require (
 	github.com/panjf2000/ants/v2 v2.11.3 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
+	github.com/redis/go-redis/v9 v9.5.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	golang.org/x/arch v0.8.0 // indirect
@@ -66,3 +70,5 @@ replace github.com/Zany2/dtoken-go/com/log/dlog => ../../com/log/dlog
 replace github.com/Zany2/dtoken-go/com/pool/ants => ../../com/pool/ants
 
 replace github.com/Zany2/dtoken-go/com/storage/memory => ../../com/storage/memory
+
+replace github.com/Zany2/dtoken-go/com/storage/redis => ../../com/storage/redis
