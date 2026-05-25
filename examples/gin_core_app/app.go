@@ -7,6 +7,7 @@ import (
 
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/manager"
+	"github.com/Zany2/dtoken-go/core/oauth2"
 	"github.com/Zany2/dtoken-go/dtoken"
 	"github.com/gin-gonic/gin"
 )
@@ -55,6 +56,29 @@ type nonceRequest struct {
 	Nonce string `json:"nonce"`
 }
 
+type oauthCodeRequest struct {
+	ClientID    string   `json:"clientId"`
+	UserID      string   `json:"userId"`
+	RedirectURI string   `json:"redirectUri"`
+	Scopes      []string `json:"scopes"`
+}
+
+type oauthTokenRequest struct {
+	GrantType    string   `json:"grantType"`
+	ClientID     string   `json:"clientId"`
+	ClientSecret string   `json:"clientSecret"`
+	Code         string   `json:"code"`
+	RedirectURI  string   `json:"redirectUri"`
+	RefreshToken string   `json:"refreshToken"`
+	Username     string   `json:"username"`
+	Password     string   `json:"password"`
+	Scopes       []string `json:"scopes"`
+}
+
+type oauthRevokeRequest struct {
+	Token string `json:"token"`
+}
+
 // NewApp creates a runnable Gin demo app. NewApp 创建可运行的 Gin 示例应用。
 func NewApp(cfg Config) (*App, error) {
 	gin.SetMode(gin.ReleaseMode)
@@ -75,6 +99,10 @@ func NewApp(cfg Config) (*App, error) {
 	}
 
 	app := &App{auth: dtoken.New(mgr)}
+	if err = app.registerDemoOAuth2Client(); err != nil {
+		mgr.CloseManager()
+		return nil, err
+	}
 	app.router = app.buildRouter()
 	return app, nil
 }
@@ -125,6 +153,8 @@ func (a *App) buildRouter() *gin.Engine {
 	api.POST("/logout", a.handleLogout)
 	api.GET("/token/ttl", a.handleTokenTTL)
 	api.POST("/token/renew", a.handleTokenRenew)
+	api.POST("/token/kickout", a.handleTokenKickout)
+	api.POST("/token/replace", a.handleTokenReplace)
 	api.GET("/session", a.handleSession)
 	api.GET("/articles", a.requirePermission("article:read"), func(c *gin.Context) {
 		writeOK(c, []string{"article-a", "article-b"})
@@ -139,6 +169,14 @@ func (a *App) buildRouter() *gin.Engine {
 	api.POST("/roles", a.handleAddRole)
 	api.POST("/disable/account", a.handleDisableAccount)
 	api.POST("/disable/service/:service", a.handleDisableService)
+	api.POST("/disable/device/:device", a.handleDisableDevice)
+	api.POST("/disable/device/:device/:deviceId", a.handleDisableDevice)
+
+	oauth := r.Group("/oauth2")
+	oauth.POST("/authorize", a.handleOAuth2Authorize)
+	oauth.POST("/token", a.handleOAuth2Token)
+	oauth.POST("/revoke", a.handleOAuth2Revoke)
+	oauth.GET("/introspect", a.handleOAuth2Introspect)
 
 	return r
 }
@@ -210,6 +248,22 @@ func (a *App) handleTokenRenew(c *gin.Context) {
 		return
 	}
 	a.handleTokenTTL(c)
+}
+
+func (a *App) handleTokenKickout(c *gin.Context) {
+	if err := a.auth.Kickout(c.Request.Context(), dtoken.LogoutOptions{Token: tokenFromContext(c)}); err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	writeOK(c, nil)
+}
+
+func (a *App) handleTokenReplace(c *gin.Context) {
+	if err := a.auth.Replace(c.Request.Context(), dtoken.LogoutOptions{Token: tokenFromContext(c)}); err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	writeOK(c, nil)
 }
 
 func (a *App) handleSession(c *gin.Context) {
@@ -288,6 +342,22 @@ func (a *App) handleDisableService(c *gin.Context) {
 	writeOK(c, nil)
 }
 
+func (a *App) handleDisableDevice(c *gin.Context) {
+	var req disableRequest
+	_ = c.ShouldBindJSON(&req)
+	if err := a.auth.DisableDevice(c.Request.Context(), dtoken.DeviceDisableOptions{
+		LoginID:  loginIDFromContext(c),
+		Device:   c.Param("device"),
+		DeviceID: c.Param("deviceId"),
+		Duration: time.Minute,
+		Reason:   req.Reason,
+	}); err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	writeOK(c, nil)
+}
+
 func (a *App) handleNonce(c *gin.Context) {
 	nonce, err := a.auth.GenerateNonce(c.Request.Context())
 	if err != nil {
@@ -308,6 +378,84 @@ func (a *App) handleNonceVerify(c *gin.Context) {
 		return
 	}
 	writeOK(c, nil)
+}
+
+func (a *App) handleOAuth2Authorize(c *gin.Context) {
+	var req oauthCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.ClientID == "" || req.UserID == "" || req.RedirectURI == "" {
+		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "clientId, userId and redirectUri are required")
+		return
+	}
+	code, err := a.auth.Manager().GenerateOAuth2AuthorizationCode(c.Request.Context(), req.ClientID, req.UserID, req.RedirectURI, req.Scopes)
+	if err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	writeOK(c, gin.H{"code": code.Code})
+}
+
+func (a *App) handleOAuth2Token(c *gin.Context) {
+	var req oauthTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "invalid oauth2 token request")
+		return
+	}
+	token, err := a.auth.OAuth2Token(c.Request.Context(), &oauth2.TokenRequest{
+		GrantType:    oauth2.GrantType(req.GrantType),
+		ClientID:     req.ClientID,
+		ClientSecret: req.ClientSecret,
+		Code:         req.Code,
+		RedirectURI:  req.RedirectURI,
+		RefreshToken: req.RefreshToken,
+		Username:     req.Username,
+		Password:     req.Password,
+		Scopes:       req.Scopes,
+	}, demoOAuth2UserValidator)
+	if err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	writeOK(c, gin.H{
+		"accessToken":  token.Token,
+		"tokenType":    token.TokenType,
+		"expiresIn":    token.ExpiresIn,
+		"refreshToken": token.RefreshToken,
+		"scopes":       token.Scopes,
+		"userId":       token.UserID,
+		"clientId":     token.ClientID,
+	})
+}
+
+func (a *App) handleOAuth2Revoke(c *gin.Context) {
+	var req oauthRevokeRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.Token == "" {
+		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "token is required")
+		return
+	}
+	if err := a.auth.Manager().RevokeOAuth2Token(c.Request.Context(), req.Token); err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	writeOK(c, nil)
+}
+
+func (a *App) handleOAuth2Introspect(c *gin.Context) {
+	token := bearerToken(c.GetHeader("Authorization"))
+	if token == "" {
+		writeError(c, http.StatusUnauthorized, derror.CodeNotLogin, "missing oauth2 token")
+		return
+	}
+	info, err := a.auth.Manager().ValidateOAuth2AccessTokenAndGetInfo(c.Request.Context(), token)
+	if err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	writeOK(c, gin.H{
+		"active":   true,
+		"userId":   info.UserID,
+		"clientId": info.ClientID,
+		"scopes":   info.Scopes,
+	})
 }
 
 func (a *App) authMiddleware() gin.HandlerFunc {
@@ -422,15 +570,18 @@ func writeError(c *gin.Context, status, code int, message string) {
 func writeDTokenError(c *gin.Context, err error) {
 	status, code := http.StatusInternalServerError, derror.CodeServerError
 	switch {
-	case errors.Is(err, derror.ErrNotLogin), errors.Is(err, derror.ErrInvalidToken), errors.Is(err, derror.ErrTokenExpired):
+	case errors.Is(err, derror.ErrNotLogin), errors.Is(err, derror.ErrInvalidToken), errors.Is(err, derror.ErrTokenExpired),
+		errors.Is(err, derror.ErrTokenKickout), errors.Is(err, derror.ErrTokenReplaced), errors.Is(err, derror.ErrInvalidAccessToken):
 		status, code = http.StatusUnauthorized, derror.CodeNotLogin
 	case errors.Is(err, derror.ErrActiveTimeout):
 		status, code = http.StatusUnauthorized, derror.CodeActiveTimeout
-	case errors.Is(err, derror.ErrAccountDisabled):
+	case errors.Is(err, derror.ErrAccountDisabled), errors.Is(err, derror.ErrDeviceDisabled):
 		status, code = http.StatusForbidden, derror.CodeAccountDisabled
 	case errors.Is(err, derror.ErrPermissionDenied), errors.Is(err, derror.ErrRoleDenied), errors.Is(err, derror.ErrServiceDisabled):
 		status, code = http.StatusForbidden, derror.CodePermissionDenied
-	case errors.Is(err, derror.ErrInvalidParam), errors.Is(err, derror.ErrInvalidNonce):
+	case errors.Is(err, derror.ErrInvalidParam), errors.Is(err, derror.ErrInvalidNonce), errors.Is(err, derror.ErrInvalidClientCredentials),
+		errors.Is(err, derror.ErrInvalidGrantType), errors.Is(err, derror.ErrInvalidRedirectURI), errors.Is(err, derror.ErrInvalidScope),
+		errors.Is(err, derror.ErrInvalidAuthCode), errors.Is(err, derror.ErrInvalidRefreshToken), errors.Is(err, derror.ErrInvalidUserCredentials):
 		status, code = http.StatusBadRequest, derror.CodeBadRequest
 	}
 	c.JSON(status, Response{Code: code, Message: err.Error()})
@@ -442,4 +593,28 @@ func (a *App) Manager() *manager.Manager {
 		return nil
 	}
 	return a.auth.Manager()
+}
+
+func (a *App) registerDemoOAuth2Client() error {
+	return a.auth.RegisterOAuth2Client(&oauth2.Client{
+		ClientID:     "demo-client",
+		ClientSecret: "demo-secret",
+		RedirectURIs: []string{
+			"https://client.example/callback",
+		},
+		GrantTypes: []oauth2.GrantType{
+			oauth2.GrantTypeAuthorizationCode,
+			oauth2.GrantTypeClientCredentials,
+			oauth2.GrantTypePassword,
+			oauth2.GrantTypeRefreshToken,
+		},
+		Scopes: []string{"read", "write"},
+	})
+}
+
+func demoOAuth2UserValidator(username, password string) (string, error) {
+	if username == "" || password != "123456" {
+		return "", derror.ErrInvalidUserCredentials
+	}
+	return "user-" + username, nil
 }
