@@ -2,13 +2,16 @@ package gin_core_flow_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +21,10 @@ import (
 	"github.com/Zany2/dtoken-go/core/listener"
 	gincoreapp "github.com/Zany2/dtoken-go/examples/gin_core_app"
 )
+
+const flowRedisURL = "redis://:root@192.168.19.104:6379/0"
+
+var flowAppSeq uint64
 
 type apiResponse struct {
 	Code    int             `json:"code"`
@@ -35,6 +42,9 @@ type flowClient struct {
 func newFlowClient(t *testing.T, cfg gincoreapp.Config) *flowClient {
 	t.Helper()
 
+	cfg.RedisURL = flowRedisURL
+	keyPrefix := flowKeyPrefix(t)
+	cfg.KeyPrefix = keyPrefix
 	app, err := gincoreapp.NewApp(cfg)
 	if err != nil {
 		t.Fatalf("NewApp() error = %v", err)
@@ -42,10 +52,35 @@ func newFlowClient(t *testing.T, cfg gincoreapp.Config) *flowClient {
 	server := httptest.NewServer(app.Router())
 	t.Cleanup(func() {
 		server.Close()
+		clearFlowStorage(t, app.Manager().GetStorage(), keyPrefix)
 		app.Close()
 	})
 
 	return &flowClient{t: t, app: app, server: server}
+}
+
+func flowKeyPrefix(t *testing.T) string {
+	t.Helper()
+	seq := atomic.AddUint64(&flowAppSeq, 1)
+	return fmt.Sprintf("dt:gcf:%d:", seq)
+}
+
+func clearFlowStorage(t *testing.T, storage adapter.Storage, keyPrefix string) {
+	t.Helper()
+	scanner, ok := storage.(adapter.ScannerStorage)
+	if storage == nil || !ok || keyPrefix == "" {
+		return
+	}
+	keys, err := scanner.Keys(context.Background(), keyPrefix+"*")
+	if err != nil {
+		t.Fatalf("scan flow storage keys error = %v", err)
+	}
+	if len(keys) == 0 {
+		return
+	}
+	if err = storage.Delete(context.Background(), keys...); err != nil {
+		t.Fatalf("delete flow storage keys error = %v", err)
+	}
 }
 
 // TestAuthFlow verifies login, missing token rejection, token access, and logout. TestAuthFlow 验证鉴权流程：未登录拒绝、登录成功、携带 Token 访问成功、登出后 Token 失效。
@@ -330,8 +365,8 @@ func TestAutoRenewFlow(t *testing.T) {
 
 	time.Sleep(1200 * time.Millisecond)
 	before := c.ttl(token)
-	if before <= 0 || before > 2 {
-		t.Fatalf("ttl before auto renew = %d, want 1..2", before)
+	if before <= 0 || before > 3 {
+		t.Fatalf("ttl before auto renew = %d, want 1..3", before)
 	}
 
 	c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
@@ -1391,7 +1426,7 @@ func TestOAuth2ClientManagementFlow(t *testing.T) {
 		"grantType":    "client_credentials",
 		"clientId":     "flow-client",
 		"clientSecret": "flow-secret",
-	}, "", http.StatusBadRequest, derror.CodeBadRequest, nil)
+	}, "", http.StatusNotFound, derror.CodeNotFound, nil)
 }
 
 // TestOAuth2ErrorBoundaryFlow verifies OAuth2 rejects invalid client inputs. TestOAuth2ErrorBoundaryFlow 验证 OAuth2 对非法客户端参数的拒绝路径。

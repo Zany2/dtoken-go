@@ -28,6 +28,8 @@ type App struct {
 
 // Config controls the demo app auth timings. Config 控制示例应用认证时间配置。
 type Config struct {
+	// KeyPrefix isolates storage keys for a demo app instance. KeyPrefix 隔离示例应用实例的存储键。
+	KeyPrefix string
 	// TokenTimeout sets the default token lifetime. TokenTimeout 设置默认 Token 有效期。
 	TokenTimeout time.Duration
 	// ActiveTimeout sets the inactive timeout in seconds. ActiveTimeout 设置不活跃超时时间，单位秒。
@@ -228,6 +230,9 @@ func newDemoManager(cfg Config, authType string, storage adapter.Storage) (*mana
 		IsLog(false).
 		AsyncEvent(false).
 		SetStorage(storage)
+	if cfg.KeyPrefix != "" {
+		builder.KeyPrefix(cfg.KeyPrefix)
+	}
 	if cfg.IsConcurrent != nil {
 		builder.IsConcurrent(*cfg.IsConcurrent)
 	}
