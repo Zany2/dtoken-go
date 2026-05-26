@@ -126,6 +126,65 @@ dtoken.SetManager(
 
 Login state, session data, permissions, roles, nonce data, and OAuth2 tokens will then all use Redis.
 
+## Redis Key Structure
+
+Core storage keys use a unified format:
+
+```text
+KeyPrefix + AuthType + businessPrefix + businessID
+```
+
+With default configuration:
+
+```text
+KeyPrefix = dtoken:
+AuthType  = auth:
+```
+
+Common key examples:
+
+```text
+dtoken:auth:token:{token}                         -> token info
+dtoken:auth:session:{loginID}                     -> session info
+dtoken:auth:renew:{token}                         -> renew interval marker
+dtoken:auth:active:{token}                        -> active-timeout marker
+dtoken:auth:disable:{loginID}                     -> account disable info
+dtoken:auth:disable:service:{loginID}:{service}   -> service disable info
+dtoken:auth:disable:device:{loginID}:{device}     -> device disable info
+dtoken:auth:oauth2:client:{clientID}              -> OAuth2 client
+```
+
+### Multiple Auth Systems
+
+Multiple auth systems are isolated by `AuthType`. The same Redis DB may contain:
+
+```text
+dtoken:user-auth:token:{token}
+dtoken:user-auth:session:{loginID}
+
+dtoken:admin-auth:token:{token}
+dtoken:admin-auth:session:{loginID}
+```
+
+The same `loginID` under different `AuthType` values is independent. Tokens, sessions, permissions, roles, disable data, and OAuth2 data are all separated by auth type.
+
+### Test Prefix
+
+`tests/gin_core_flow` uses short prefixes to avoid polluting Redis:
+
+```text
+dt:gcf:1:
+dt:gcf:2:
+```
+
+During cleanup, it deletes only keys under the current prefix:
+
+```text
+dt:gcf:1:*
+```
+
+It does not clear the whole Redis DB.
+
 ## Current Storage Capabilities
 
 The Redis adapter currently implements:
@@ -196,3 +255,4 @@ _ = client
 - [Authentication Guide](authentication.md)
 - [JWT Guide](jwt.md)
 - [OAuth2 Guide](oauth2.md)
+- [Core Flow Testing](core-flow-testing.md)

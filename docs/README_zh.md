@@ -11,12 +11,15 @@
 ### 📖 使用指南
 
 - [登录认证](guide/authentication_zh.md) - 登录、登出、Token 管理
+- [Session 与终端管理](guide/session-terminal_zh.md) - Session、终端、多端和下线管理
+- [并发登录策略](guide/concurrency-login_zh.md) - Token 复用、最大登录数和多端策略
 - [权限验证](guide/permission_zh.md) - 权限系统详解、通配符使用
 - [注解使用](guide/annotation_zh.md) - 注解式中间件使用说明
 - [事件监听](guide/listener_zh.md) - 事件系统使用指南
 - [JWT 使用](guide/jwt_zh.md) - JWT Token 配置和使用
 - [Redis 存储](guide/redis-storage_zh.md) - Redis 存储配置详解
 - [框架集成](guide/framework-integration_zh.md) - 核心 API 与 integrations 中间件用法
+- [核心流程测试](guide/core-flow-testing_zh.md) - Gin 真实流程测试与 Redis 测试说明
 
 ### 🔒 安全特性
 
@@ -38,6 +41,7 @@
 
 - [quick_start](../examples/quick_start/) - 快速开始示例
 - [gin](../examples/gin/) - Gin 集成示例
+- [gin_core_app](../examples/gin_core_app/) - Gin 核心流程测试示例
 - [gf](../examples/gf/) - GoFrame 集成示例
 - [echo](../examples/echo/) - Echo 集成示例
 - [fiber](../examples/fiber/) - Fiber 集成示例

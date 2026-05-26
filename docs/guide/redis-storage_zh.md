@@ -126,6 +126,65 @@ dtoken.SetManager(
 
 这时登录态、Session、权限、角色、Nonce、OAuth2 Token 等数据都会走 Redis。
 
+## Redis Key 结构
+
+核心存储 key 使用统一格式：
+
+```text
+KeyPrefix + AuthType + 业务前缀 + 业务标识
+```
+
+默认配置下：
+
+```text
+KeyPrefix = dtoken:
+AuthType  = auth:
+```
+
+常见 key 示例：
+
+```text
+dtoken:auth:token:{token}                         -> Token 信息
+dtoken:auth:session:{loginID}                     -> Session 信息
+dtoken:auth:renew:{token}                         -> 续期间隔标记
+dtoken:auth:active:{token}                        -> 活跃超时标记
+dtoken:auth:disable:{loginID}                     -> 账号封禁信息
+dtoken:auth:disable:service:{loginID}:{service}   -> 服务封禁信息
+dtoken:auth:disable:device:{loginID}:{device}     -> 设备类型封禁信息
+dtoken:auth:oauth2:client:{clientID}              -> OAuth2 客户端
+```
+
+### 多认证体系
+
+多认证体系通过 `AuthType` 隔离。同一个 Redis DB 中可以同时存在：
+
+```text
+dtoken:user-auth:token:{token}
+dtoken:user-auth:session:{loginID}
+
+dtoken:admin-auth:token:{token}
+dtoken:admin-auth:session:{loginID}
+```
+
+同一个 `loginID` 在不同 `AuthType` 下互不影响，Token、Session、权限、角色、封禁和 OAuth2 数据都会按认证体系隔离。
+
+### 测试前缀
+
+`tests/gin_core_flow` 为了避免污染 Redis，会使用短前缀：
+
+```text
+dt:gcf:1:
+dt:gcf:2:
+```
+
+测试清理时只删除当前前缀下的 key，例如：
+
+```text
+dt:gcf:1:*
+```
+
+不会执行全库清空。
+
 ## 当前存储能力
 
 当前 Redis 适配器实现了这些基础操作：
@@ -196,3 +255,4 @@ _ = client
 - [登录认证](authentication_zh.md)
 - [JWT 指南](jwt_zh.md)
 - [OAuth2 指南](oauth2_zh.md)
+- [核心流程测试指南](core-flow-testing_zh.md)
