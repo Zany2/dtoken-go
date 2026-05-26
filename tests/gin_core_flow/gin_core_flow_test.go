@@ -2,18 +2,29 @@ package gin_core_flow_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
+	"github.com/Zany2/dtoken-go/core/listener"
 	gincoreapp "github.com/Zany2/dtoken-go/examples/gin_core_app"
 )
+
+const flowRedisURL = "redis://:root@192.168.19.104:6379/0"
+
+var flowAppSeq uint64
 
 type apiResponse struct {
 	Code    int             `json:"code"`
@@ -23,6 +34,7 @@ type apiResponse struct {
 
 type flowClient struct {
 	t      *testing.T
+	app    *gincoreapp.App
 	server *httptest.Server
 	token  string
 }
@@ -30,6 +42,9 @@ type flowClient struct {
 func newFlowClient(t *testing.T, cfg gincoreapp.Config) *flowClient {
 	t.Helper()
 
+	cfg.RedisURL = flowRedisURL
+	keyPrefix := flowKeyPrefix(t)
+	cfg.KeyPrefix = keyPrefix
 	app, err := gincoreapp.NewApp(cfg)
 	if err != nil {
 		t.Fatalf("NewApp() error = %v", err)
@@ -37,10 +52,35 @@ func newFlowClient(t *testing.T, cfg gincoreapp.Config) *flowClient {
 	server := httptest.NewServer(app.Router())
 	t.Cleanup(func() {
 		server.Close()
+		clearFlowStorage(t, app.Manager().GetStorage(), keyPrefix)
 		app.Close()
 	})
 
-	return &flowClient{t: t, server: server}
+	return &flowClient{t: t, app: app, server: server}
+}
+
+func flowKeyPrefix(t *testing.T) string {
+	t.Helper()
+	seq := atomic.AddUint64(&flowAppSeq, 1)
+	return fmt.Sprintf("dt:gcf:%d:", seq)
+}
+
+func clearFlowStorage(t *testing.T, storage adapter.Storage, keyPrefix string) {
+	t.Helper()
+	scanner, ok := storage.(adapter.ScannerStorage)
+	if storage == nil || !ok || keyPrefix == "" {
+		return
+	}
+	keys, err := scanner.Keys(context.Background(), keyPrefix+"*")
+	if err != nil {
+		t.Fatalf("scan flow storage keys error = %v", err)
+	}
+	if len(keys) == 0 {
+		return
+	}
+	if err = storage.Delete(context.Background(), keys...); err != nil {
+		t.Fatalf("delete flow storage keys error = %v", err)
+	}
 }
 
 // TestAuthFlow verifies login, missing token rejection, token access, and logout. TestAuthFlow 验证鉴权流程：未登录拒绝、登录成功、携带 Token 访问成功、登出后 Token 失效。
@@ -190,6 +230,62 @@ func TestAccessStatusFlow(t *testing.T) {
 	}
 }
 
+// TestAccessListFlow verifies permission and role list APIs by login ID and token. TestAccessListFlow 验证按 loginID 与 Token 获取权限和角色列表。
+func TestAccessListFlow(t *testing.T) {
+	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
+	token := c.login("access-list-user")
+
+	c.expect("POST", "/api/permissions/batch", map[string]any{"values": []string{"article:read", "article:write"}}, token, http.StatusOK, derror.CodeSuccess, nil)
+	c.expect("POST", "/api/roles/batch", map[string]any{"values": []string{"admin", "ops"}}, token, http.StatusOK, derror.CodeSuccess, nil)
+
+	var list struct {
+		PermissionsByLoginID []string `json:"permissionsByLoginId"`
+		PermissionsByToken   []string `json:"permissionsByToken"`
+		RolesByLoginID       []string `json:"rolesByLoginId"`
+		RolesByToken         []string `json:"rolesByToken"`
+	}
+	c.expect("GET", "/api/access/list", nil, token, http.StatusOK, derror.CodeSuccess, &list)
+	if !sameStringSet(list.PermissionsByLoginID, []string{"article:read", "article:write"}) ||
+		!sameStringSet(list.PermissionsByToken, []string{"article:read", "article:write"}) ||
+		!sameStringSet(list.RolesByLoginID, []string{"admin", "ops"}) ||
+		!sameStringSet(list.RolesByToken, []string{"admin", "ops"}) {
+		t.Fatalf("access list = %+v, want permissions article:read/write and roles admin/ops", list)
+	}
+}
+
+// TestAccessProviderFlow verifies external access provider overrides session permissions and roles. TestAccessProviderFlow 验证外部权限角色提供器会覆盖 Session 中的权限和角色。
+func TestAccessProviderFlow(t *testing.T) {
+	c := newFlowClient(t, gincoreapp.Config{
+		TokenTimeout:      30 * time.Second,
+		ActiveTimeout:     -1,
+		UseAccessProvider: true,
+	})
+
+	token := c.loginWithDevice("provider-user", "web", "browser-1")
+	c.expect("POST", "/api/permissions", map[string]any{"value": "article:read"}, token, http.StatusOK, derror.CodeSuccess, nil)
+	c.expect("POST", "/api/roles", map[string]any{"value": "admin"}, token, http.StatusOK, derror.CodeSuccess, nil)
+	c.expect("GET", "/api/articles", nil, token, http.StatusForbidden, derror.CodePermissionDenied, nil)
+	c.expect("GET", "/api/admin", nil, token, http.StatusForbidden, derror.CodePermissionDenied, nil)
+
+	var status struct {
+		HasPermissionByLoginID bool `json:"hasPermissionByLoginId"`
+		HasPermissionByToken   bool `json:"hasPermissionByToken"`
+		HasRoleByLoginID       bool `json:"hasRoleByLoginId"`
+		HasRoleByToken         bool `json:"hasRoleByToken"`
+	}
+	c.expect("GET", "/api/access/status?permission=provider:read&role=provider-role", nil, token, http.StatusOK, derror.CodeSuccess, &status)
+	if !status.HasPermissionByLoginID || !status.HasPermissionByToken || !status.HasRoleByLoginID || !status.HasRoleByToken {
+		t.Fatalf("provider access status = %+v, want all true", status)
+	}
+
+	web := c.loginWithDevice("provider-terminal-user", "web", "browser-1")
+	mobile := c.loginWithDevice("provider-terminal-user", "mobile", "phone-1")
+	c.expect("GET", "/api/articles", nil, web, http.StatusForbidden, derror.CodePermissionDenied, nil)
+	c.expect("GET", "/api/admin", nil, web, http.StatusForbidden, derror.CodePermissionDenied, nil)
+	c.expect("GET", "/api/articles", nil, mobile, http.StatusForbidden, derror.CodePermissionDenied, nil)
+	c.expect("GET", "/api/admin", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+}
+
 // TestRoleFlow verifies protected role route before and after granting role. TestRoleFlow 验证角色流程：无角色被拒绝、授予角色后访问成功。
 func TestRoleFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
@@ -252,6 +348,53 @@ func TestRenewFlow(t *testing.T) {
 	c.expect("POST", "/api/token/renew", map[string]any{"seconds": 5}, token, http.StatusOK, derror.CodeSuccess, &renewed)
 	if renewed.TTL < 4 || renewed.TTL > 5 {
 		t.Fatalf("renewed ttl = %d, want 4..5", renewed.TTL)
+	}
+}
+
+// TestAutoRenewFlow verifies check-login driven renewal threshold and interval. TestAutoRenewFlow 验证登录校验触发的自动续期阈值和最小续期间隔。
+func TestAutoRenewFlow(t *testing.T) {
+	autoRenew := true
+	c := newFlowClient(t, gincoreapp.Config{
+		TokenTimeout:    3 * time.Second,
+		ActiveTimeout:   -1,
+		AutoRenew:       &autoRenew,
+		RenewMaxRefresh: 2,
+		RenewInterval:   1,
+	})
+	token := c.login("auto-renew-user")
+
+	time.Sleep(1200 * time.Millisecond)
+	before := c.ttl(token)
+	if before <= 0 || before > 3 {
+		t.Fatalf("ttl before auto renew = %d, want 1..3", before)
+	}
+
+	c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+	time.Sleep(300 * time.Millisecond)
+	after := c.ttl(token)
+	if after < 2 || after > 3 {
+		t.Fatalf("ttl after auto renew = %d, want 2..3", after)
+	}
+
+	c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+	immediate := c.ttl(token)
+	if immediate > after {
+		t.Fatalf("ttl after immediate second check = %d, previous = %d, want renew interval to block growth", immediate, after)
+	}
+}
+
+// TestRenewBoundaryFlow verifies invalid and valid manual renewal behavior. TestRenewBoundaryFlow 验证手动续期的非法参数和有效续期行为。
+func TestRenewBoundaryFlow(t *testing.T) {
+	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 2 * time.Second, ActiveTimeout: -1})
+	token := c.login("renew-boundary-user")
+
+	c.expect("POST", "/api/token/renew", map[string]any{"seconds": 0}, token, http.StatusBadRequest, derror.CodeBadRequest, nil)
+	c.expect("POST", "/api/token/renew", map[string]any{"seconds": -1}, token, http.StatusBadRequest, derror.CodeBadRequest, nil)
+
+	c.expect("POST", "/api/token/renew", map[string]any{"seconds": 6}, token, http.StatusOK, derror.CodeSuccess, nil)
+	ttl := c.ttl(token)
+	if ttl < 5 || ttl > 6 {
+		t.Fatalf("ttl after valid renew = %d, want 5..6", ttl)
 	}
 }
 
@@ -461,6 +604,31 @@ func TestSessionQueryFlow(t *testing.T) {
 	}
 }
 
+// TestSessionAliveFilterFlow verifies token list alive filtering after a terminal is marked offline. TestSessionAliveFilterFlow 验证终端下线标记后 Token 列表的 alive 过滤行为。
+func TestSessionAliveFilterFlow(t *testing.T) {
+	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
+	web := c.loginWithDevice("session-alive-user", "web", "browser-1")
+	mobile := c.loginWithDevice("session-alive-user", "mobile", "phone-1")
+
+	c.expect("POST", "/api/kickout/device/web", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+
+	var tokenList struct {
+		Tokens []string `json:"tokens"`
+	}
+	c.expect("GET", "/api/session/tokens?alive=false", nil, mobile, http.StatusOK, derror.CodeSuccess, &tokenList)
+	if !sameStringSet(tokenList.Tokens, []string{mobile}) {
+		t.Fatalf("all session tokens after kickout = %v, want only mobile because kicked token is removed from session", tokenList.Tokens)
+	}
+	c.expect("GET", "/api/session/tokens?alive=true", nil, mobile, http.StatusOK, derror.CodeSuccess, &tokenList)
+	if !sameStringSet(tokenList.Tokens, []string{mobile}) {
+		t.Fatalf("alive session tokens after kickout = %v, want only mobile", tokenList.Tokens)
+	}
+	webResp := c.expectResponse("GET", "/api/me", nil, web, http.StatusUnauthorized, derror.CodeNotLogin)
+	if webResp.Message != derror.ErrTokenKickout.Error() {
+		t.Fatalf("kicked token message = %q, want token kicked out", webResp.Message)
+	}
+}
+
 // TestTerminalOperationFlow verifies device-specific logout, device kickout, and account replace. TestTerminalOperationFlow 验证按具体设备注销、按设备类型踢下线和按账号顶下线。
 func TestTerminalOperationFlow(t *testing.T) {
 	t.Run("logout-device", func(t *testing.T) {
@@ -494,6 +662,89 @@ func TestTerminalOperationFlow(t *testing.T) {
 	})
 }
 
+// TestTerminalOperationMatrixFlow verifies account, device, and concrete-device terminal operations. TestTerminalOperationMatrixFlow 验证账号、设备类型和具体设备维度的终端操作矩阵。
+func TestTerminalOperationMatrixFlow(t *testing.T) {
+	t.Run("logout-account-removes-all-terminals", func(t *testing.T) {
+		c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
+		web := c.loginWithDevice("logout-account-user", "web", "a")
+		mobile := c.loginWithDevice("logout-account-user", "mobile", "b")
+
+		c.expect("POST", "/api/logout/account", nil, web, http.StatusOK, derror.CodeSuccess, nil)
+		c.expect("GET", "/api/me", nil, web, http.StatusUnauthorized, derror.CodeNotLogin, nil)
+		c.expect("GET", "/api/me", nil, mobile, http.StatusUnauthorized, derror.CodeNotLogin, nil)
+	})
+
+	t.Run("logout-device-type-removes-all-matching-terminals", func(t *testing.T) {
+		c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
+		webA := c.loginWithDevice("logout-device-type-user", "web", "a")
+		webB := c.loginWithDevice("logout-device-type-user", "web", "b")
+		mobile := c.loginWithDevice("logout-device-type-user", "mobile", "a")
+
+		c.expect("POST", "/api/logout/device/web", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+		c.expect("GET", "/api/me", nil, webA, http.StatusUnauthorized, derror.CodeNotLogin, nil)
+		c.expect("GET", "/api/me", nil, webB, http.StatusUnauthorized, derror.CodeNotLogin, nil)
+		c.expect("GET", "/api/me", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+	})
+
+	t.Run("kickout-account-marks-all-terminals", func(t *testing.T) {
+		c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
+		web := c.loginWithDevice("kickout-account-user", "web", "a")
+		mobile := c.loginWithDevice("kickout-account-user", "mobile", "b")
+
+		c.expect("POST", "/api/kickout/account", nil, web, http.StatusOK, derror.CodeSuccess, nil)
+		webResp := c.expectResponse("GET", "/api/me", nil, web, http.StatusUnauthorized, derror.CodeNotLogin)
+		mobileResp := c.expectResponse("GET", "/api/me", nil, mobile, http.StatusUnauthorized, derror.CodeNotLogin)
+		if webResp.Message != derror.ErrTokenKickout.Error() || mobileResp.Message != derror.ErrTokenKickout.Error() {
+			t.Fatalf("kickout account messages = %q/%q, want token kicked out", webResp.Message, mobileResp.Message)
+		}
+	})
+
+	t.Run("kickout-concrete-device-keeps-siblings", func(t *testing.T) {
+		c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
+		webA := c.loginWithDevice("kickout-concrete-user", "web", "a")
+		webB := c.loginWithDevice("kickout-concrete-user", "web", "b")
+		mobile := c.loginWithDevice("kickout-concrete-user", "mobile", "a")
+
+		c.expect("POST", "/api/kickout/device/web/a", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+		webAResp := c.expectResponse("GET", "/api/me", nil, webA, http.StatusUnauthorized, derror.CodeNotLogin)
+		if webAResp.Message != derror.ErrTokenKickout.Error() {
+			t.Fatalf("kickout concrete message = %q, want token kicked out", webAResp.Message)
+		}
+		c.expect("GET", "/api/me", nil, webB, http.StatusOK, derror.CodeSuccess, nil)
+		c.expect("GET", "/api/me", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+	})
+
+	t.Run("replace-device-type-marks-matching-terminals", func(t *testing.T) {
+		c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
+		webA := c.loginWithDevice("replace-device-type-user", "web", "a")
+		webB := c.loginWithDevice("replace-device-type-user", "web", "b")
+		mobile := c.loginWithDevice("replace-device-type-user", "mobile", "a")
+
+		c.expect("POST", "/api/replace/device/web", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+		webAResp := c.expectResponse("GET", "/api/me", nil, webA, http.StatusUnauthorized, derror.CodeNotLogin)
+		webBResp := c.expectResponse("GET", "/api/me", nil, webB, http.StatusUnauthorized, derror.CodeNotLogin)
+		if webAResp.Message != derror.ErrTokenReplaced.Error() || webBResp.Message != derror.ErrTokenReplaced.Error() {
+			t.Fatalf("replace device messages = %q/%q, want token replaced", webAResp.Message, webBResp.Message)
+		}
+		c.expect("GET", "/api/me", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+	})
+
+	t.Run("replace-concrete-device-keeps-siblings", func(t *testing.T) {
+		c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
+		webA := c.loginWithDevice("replace-concrete-user", "web", "a")
+		webB := c.loginWithDevice("replace-concrete-user", "web", "b")
+		mobile := c.loginWithDevice("replace-concrete-user", "mobile", "a")
+
+		c.expect("POST", "/api/replace/device/web/a", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+		webAResp := c.expectResponse("GET", "/api/me", nil, webA, http.StatusUnauthorized, derror.CodeNotLogin)
+		if webAResp.Message != derror.ErrTokenReplaced.Error() {
+			t.Fatalf("replace concrete message = %q, want token replaced", webAResp.Message)
+		}
+		c.expect("GET", "/api/me", nil, webB, http.StatusOK, derror.CodeSuccess, nil)
+		c.expect("GET", "/api/me", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+	})
+}
+
 // TestConcurrencyPolicyFlow verifies shared token, overflow, and non-concurrent policies. TestConcurrencyPolicyFlow 验证共享 Token、超限下线和非并发登录策略。
 func TestConcurrencyPolicyFlow(t *testing.T) {
 	t.Run("share-same-device-token", func(t *testing.T) {
@@ -517,6 +768,41 @@ func TestConcurrencyPolicyFlow(t *testing.T) {
 		}
 	})
 
+	t.Run("share-different-device-id-creates-new-token", func(t *testing.T) {
+		share := true
+		c := newFlowClient(t, gincoreapp.Config{
+			TokenTimeout:  30 * time.Second,
+			ActiveTimeout: -1,
+			IsShare:       &share,
+		})
+		first := c.loginWithDevice("share-device-id-user", "web", "browser-1")
+		second := c.loginWithDevice("share-device-id-user", "web", "browser-2")
+		if first == second {
+			t.Fatal("different concrete device reused token, want a new token")
+		}
+		var session struct {
+			TerminalCount int `json:"terminalCount"`
+		}
+		c.expect("GET", "/api/session", nil, second, http.StatusOK, derror.CodeSuccess, &session)
+		if session.TerminalCount != 2 {
+			t.Fatalf("terminal count = %d, want 2", session.TerminalCount)
+		}
+	})
+
+	t.Run("share-account-token-when-device-empty", func(t *testing.T) {
+		share := true
+		c := newFlowClient(t, gincoreapp.Config{
+			TokenTimeout:  30 * time.Second,
+			ActiveTimeout: -1,
+			IsShare:       &share,
+		})
+		first := c.loginWithDevice("share-account-user", "", "")
+		second := c.loginWithDevice("share-account-user", "", "")
+		if first != second {
+			t.Fatalf("shared account token second = %q, want first token %q", second, first)
+		}
+	})
+
 	t.Run("account-overflow-kicks-oldest", func(t *testing.T) {
 		share := false
 		c := newFlowClient(t, gincoreapp.Config{
@@ -533,6 +819,63 @@ func TestConcurrencyPolicyFlow(t *testing.T) {
 		c.expect("GET", "/api/me", nil, first, http.StatusUnauthorized, derror.CodeNotLogin, nil)
 		c.expect("GET", "/api/me", nil, second, http.StatusOK, derror.CodeSuccess, nil)
 		c.expect("GET", "/api/me", nil, third, http.StatusOK, derror.CodeSuccess, nil)
+	})
+
+	t.Run("account-overflow-logout-deletes-oldest-token", func(t *testing.T) {
+		share := false
+		c := newFlowClient(t, gincoreapp.Config{
+			TokenTimeout:       30 * time.Second,
+			ActiveTimeout:      -1,
+			IsShare:            &share,
+			MaxLoginCount:      1,
+			OverflowLogoutMode: config.LogoutModeLogout,
+		})
+		first := c.loginWithDevice("overflow-logout-user", "web", "a")
+		second := c.loginWithDevice("overflow-logout-user", "mobile", "b")
+
+		firstResp := c.expectResponse("GET", "/api/me", nil, first, http.StatusUnauthorized, derror.CodeNotLogin)
+		if firstResp.Message != derror.ErrInvalidToken.Error() {
+			t.Fatalf("overflow logout message = %q, want invalid token", firstResp.Message)
+		}
+		c.expect("GET", "/api/me", nil, second, http.StatusOK, derror.CodeSuccess, nil)
+	})
+
+	t.Run("account-overflow-replaced-marks-oldest-token", func(t *testing.T) {
+		share := false
+		c := newFlowClient(t, gincoreapp.Config{
+			TokenTimeout:       30 * time.Second,
+			ActiveTimeout:      -1,
+			IsShare:            &share,
+			MaxLoginCount:      1,
+			OverflowLogoutMode: config.LogoutModeReplaced,
+		})
+		first := c.loginWithDevice("overflow-replaced-user", "web", "a")
+		second := c.loginWithDevice("overflow-replaced-user", "mobile", "b")
+
+		firstResp := c.expectResponse("GET", "/api/me", nil, first, http.StatusUnauthorized, derror.CodeNotLogin)
+		if firstResp.Message != derror.ErrTokenReplaced.Error() {
+			t.Fatalf("overflow replaced message = %q, want token replaced", firstResp.Message)
+		}
+		c.expect("GET", "/api/me", nil, second, http.StatusOK, derror.CodeSuccess, nil)
+	})
+
+	t.Run("account-scope-overflow-counts-all-devices", func(t *testing.T) {
+		share := false
+		c := newFlowClient(t, gincoreapp.Config{
+			TokenTimeout:       30 * time.Second,
+			ActiveTimeout:      -1,
+			IsShare:            &share,
+			MaxLoginCount:      2,
+			ConcurrencyScope:   config.ConcurrencyScopeAccount,
+			OverflowLogoutMode: config.LogoutModeKickout,
+		})
+		web := c.loginWithDevice("account-scope-user", "web", "a")
+		mobile := c.loginWithDevice("account-scope-user", "mobile", "b")
+		desktop := c.loginWithDevice("account-scope-user", "desktop", "c")
+
+		c.expect("GET", "/api/me", nil, web, http.StatusUnauthorized, derror.CodeNotLogin, nil)
+		c.expect("GET", "/api/me", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+		c.expect("GET", "/api/me", nil, desktop, http.StatusOK, derror.CodeSuccess, nil)
 	})
 
 	t.Run("device-scope-overflow-keeps-other-devices", func(t *testing.T) {
@@ -556,6 +899,28 @@ func TestConcurrencyPolicyFlow(t *testing.T) {
 		c.expect("GET", "/api/me", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
 	})
 
+	t.Run("device-scope-overflow-replaced-only-same-device", func(t *testing.T) {
+		share := false
+		c := newFlowClient(t, gincoreapp.Config{
+			TokenTimeout:       30 * time.Second,
+			ActiveTimeout:      -1,
+			IsShare:            &share,
+			MaxLoginCount:      1,
+			ConcurrencyScope:   config.ConcurrencyScopeDevice,
+			OverflowLogoutMode: config.LogoutModeReplaced,
+		})
+		webA := c.loginWithDevice("device-scope-replaced-user", "web", "a")
+		mobile := c.loginWithDevice("device-scope-replaced-user", "mobile", "a")
+		webB := c.loginWithDevice("device-scope-replaced-user", "web", "b")
+
+		webAResp := c.expectResponse("GET", "/api/me", nil, webA, http.StatusUnauthorized, derror.CodeNotLogin)
+		if webAResp.Message != derror.ErrTokenReplaced.Error() {
+			t.Fatalf("device overflow replaced message = %q, want token replaced", webAResp.Message)
+		}
+		c.expect("GET", "/api/me", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+		c.expect("GET", "/api/me", nil, webB, http.StatusOK, derror.CodeSuccess, nil)
+	})
+
 	t.Run("non-concurrent-replaces-old-account", func(t *testing.T) {
 		concurrent := false
 		c := newFlowClient(t, gincoreapp.Config{
@@ -572,6 +937,49 @@ func TestConcurrencyPolicyFlow(t *testing.T) {
 		}
 		c.expect("GET", "/api/me", nil, first, http.StatusUnauthorized, derror.CodeNotLogin, nil)
 		c.expect("GET", "/api/me", nil, second, http.StatusOK, derror.CodeSuccess, nil)
+	})
+
+	t.Run("non-concurrent-device-scope-replaces-same-device-only", func(t *testing.T) {
+		concurrent := false
+		c := newFlowClient(t, gincoreapp.Config{
+			TokenTimeout:          30 * time.Second,
+			ActiveTimeout:         -1,
+			IsConcurrent:          &concurrent,
+			ConcurrencyScope:      config.ConcurrencyScopeDevice,
+			ReplacedLoginExitMode: config.ReplacedLoginExitModeOldDevice,
+		})
+		webA := c.loginWithDevice("nonconcurrent-device-user", "web", "a")
+		mobile := c.loginWithDevice("nonconcurrent-device-user", "mobile", "b")
+		webB := c.loginWithDevice("nonconcurrent-device-user", "web", "c")
+
+		webAResp := c.expectResponse("GET", "/api/me", nil, webA, http.StatusUnauthorized, derror.CodeNotLogin)
+		if webAResp.Message != derror.ErrTokenReplaced.Error() {
+			t.Fatalf("device scope replaced message = %q, want token replaced", webAResp.Message)
+		}
+		c.expect("GET", "/api/me", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+		c.expect("GET", "/api/me", nil, webB, http.StatusOK, derror.CodeSuccess, nil)
+	})
+
+	t.Run("non-concurrent-device-scope-rejects-same-device-only", func(t *testing.T) {
+		concurrent := false
+		c := newFlowClient(t, gincoreapp.Config{
+			TokenTimeout:          30 * time.Second,
+			ActiveTimeout:         -1,
+			IsConcurrent:          &concurrent,
+			ConcurrencyScope:      config.ConcurrencyScopeDevice,
+			ReplacedLoginExitMode: config.ReplacedLoginExitModeNewDevice,
+		})
+		web := c.loginWithDevice("nonconcurrent-device-reject-user", "web", "a")
+		mobile := c.loginWithDevice("nonconcurrent-device-reject-user", "mobile", "b")
+
+		c.expect("POST", "/login", map[string]any{
+			"username": "nonconcurrent-device-reject-user",
+			"password": "123456",
+			"device":   "web",
+			"deviceId": "c",
+		}, "", http.StatusForbidden, derror.CodeMaxLoginCount, nil)
+		c.expect("GET", "/api/me", nil, web, http.StatusOK, derror.CodeSuccess, nil)
+		c.expect("GET", "/api/me", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
 	})
 
 	t.Run("non-concurrent-new-device-rejects-login", func(t *testing.T) {
@@ -644,6 +1052,50 @@ func TestDisableFlow(t *testing.T) {
 		// Step 3: payment API is rejected, while login state itself is still valid. 步骤 3：支付接口被拒绝，但不是整账号下线。
 		c.expect("GET", "/api/payment", nil, token, http.StatusForbidden, derror.CodePermissionDenied, nil)
 	})
+}
+
+// TestServiceDisableLevelFlow verifies service disable level comparison and untie behavior. TestServiceDisableLevelFlow 验证服务封禁等级比较和解除行为。
+func TestServiceDisableLevelFlow(t *testing.T) {
+	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
+	token := c.login("service-level-user")
+
+	c.expect("POST", "/api/disable/service/payment/level", map[string]any{"level": 3, "reason": "risk"}, token, http.StatusOK, derror.CodeSuccess, nil)
+
+	var info struct {
+		Disabled bool   `json:"disabled"`
+		Service  string `json:"service"`
+		Level    int    `json:"level"`
+		Reason   string `json:"reason"`
+		TTL      int64  `json:"ttl"`
+	}
+	c.expect("GET", "/operator/disable/service/service-level-user/payment", nil, "", http.StatusOK, derror.CodeSuccess, &info)
+	if !info.Disabled || info.Service != "payment" || info.Level != 3 || info.Reason != "risk" || info.TTL <= 0 || info.TTL > 60 {
+		t.Fatalf("service level disable info = %+v, want payment level 3 risk with ttl 1..60", info)
+	}
+
+	var status struct {
+		Disabled bool `json:"disabled"`
+		Level    int  `json:"level"`
+	}
+	c.expect("GET", "/api/disable/service/payment/level/2", nil, token, http.StatusOK, derror.CodeSuccess, &status)
+	if !status.Disabled || status.Level != 2 {
+		t.Fatalf("service level 2 status = %+v, want disabled", status)
+	}
+	c.expect("GET", "/api/disable/service/payment/level/3", nil, token, http.StatusOK, derror.CodeSuccess, &status)
+	if !status.Disabled || status.Level != 3 {
+		t.Fatalf("service level 3 status = %+v, want disabled", status)
+	}
+	c.expect("GET", "/api/disable/service/payment/level/4", nil, token, http.StatusOK, derror.CodeSuccess, &status)
+	if status.Disabled || status.Level != 4 {
+		t.Fatalf("service level 4 status = %+v, want not disabled", status)
+	}
+
+	c.expect("POST", "/api/untie/service/payment", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+	c.expect("GET", "/api/disable/service/payment/level/2", nil, token, http.StatusOK, derror.CodeSuccess, &status)
+	if status.Disabled {
+		t.Fatalf("service level after untie = %+v, want not disabled", status)
+	}
+	c.expect("GET", "/operator/disable/service/service-level-user/payment", nil, "", http.StatusInternalServerError, derror.CodeServerError, nil)
 }
 
 // TestUntieFlow verifies account, service, and device disable states can be removed. TestUntieFlow 验证账号、服务和设备封禁状态可以被解除。
@@ -792,6 +1244,35 @@ func TestNonceFlow(t *testing.T) {
 	}
 }
 
+// TestNonceTimeoutFlow verifies custom nonce TTL and expiration. TestNonceTimeoutFlow 验证自定义 Nonce TTL 和过期行为。
+func TestNonceTimeoutFlow(t *testing.T) {
+	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
+
+	var generated struct {
+		Nonce string `json:"nonce"`
+	}
+	c.expect("POST", "/nonce/timeout", map[string]any{"seconds": 1}, "", http.StatusOK, derror.CodeSuccess, &generated)
+	if generated.Nonce == "" {
+		t.Fatal("custom ttl nonce is empty")
+	}
+
+	var status struct {
+		Valid bool  `json:"valid"`
+		TTL   int64 `json:"ttl"`
+	}
+	c.expect("GET", "/nonce/status/"+generated.Nonce, nil, "", http.StatusOK, derror.CodeSuccess, &status)
+	if !status.Valid || status.TTL < 0 || status.TTL > 1 {
+		t.Fatalf("custom nonce status = %+v, want valid ttl 0..1", status)
+	}
+
+	time.Sleep(2200 * time.Millisecond)
+	c.expect("GET", "/nonce/status/"+generated.Nonce, nil, "", http.StatusOK, derror.CodeSuccess, &status)
+	if status.Valid {
+		t.Fatalf("custom nonce status after expiration = %+v, want invalid", status)
+	}
+	c.expect("POST", "/nonce/verify", map[string]any{"nonce": generated.Nonce}, "", http.StatusBadRequest, derror.CodeBadRequest, nil)
+}
+
 // TestOAuth2AuthorizationCodeFlow verifies code exchange, introspection, refresh, and revoke. TestOAuth2AuthorizationCodeFlow 验证 OAuth2 授权码流程：生成 code、换 token、查询 token、刷新、撤销。
 func TestOAuth2AuthorizationCodeFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
@@ -893,6 +1374,269 @@ func TestOAuth2PasswordAndClientCredentialsFlow(t *testing.T) {
 		"clientId":     "demo-client",
 		"clientSecret": "wrong-secret",
 	}, "", http.StatusBadRequest, derror.CodeBadRequest, nil)
+}
+
+// TestOAuth2ClientManagementFlow verifies OAuth2 client register, get, use, and unregister. TestOAuth2ClientManagementFlow 验证 OAuth2 客户端注册、查询、使用和注销流程。
+func TestOAuth2ClientManagementFlow(t *testing.T) {
+	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
+
+	c.expect("POST", "/oauth2/clients", map[string]any{
+		"clientId":     "flow-client",
+		"clientSecret": "flow-secret",
+		"redirectUris": []string{"https://flow.example/callback"},
+		"grantTypes":   []string{"client_credentials"},
+		"scopes":       []string{"flow:read"},
+	}, "", http.StatusOK, derror.CodeSuccess, nil)
+
+	var client struct {
+		ClientID     string   `json:"clientId"`
+		ClientSecret string   `json:"clientSecret"`
+		RedirectURIs []string `json:"redirectUris"`
+		GrantTypes   []string `json:"grantTypes"`
+		Scopes       []string `json:"scopes"`
+	}
+	c.expect("GET", "/oauth2/clients/flow-client", nil, "", http.StatusOK, derror.CodeSuccess, &client)
+	if client.ClientID != "flow-client" || client.ClientSecret != "flow-secret" ||
+		!sameStringSet(client.RedirectURIs, []string{"https://flow.example/callback"}) ||
+		!sameStringSet(client.GrantTypes, []string{"client_credentials"}) ||
+		!sameStringSet(client.Scopes, []string{"flow:read"}) {
+		t.Fatalf("oauth client = %+v, want registered client", client)
+	}
+
+	token := c.oauth2Token(map[string]any{
+		"grantType":    "client_credentials",
+		"clientId":     "flow-client",
+		"clientSecret": "flow-secret",
+		"scopes":       []string{"flow:read"},
+	})
+	if token.ClientID != "flow-client" || !sameStringSet(token.Scopes, []string{"flow:read"}) {
+		t.Fatalf("flow client token = %+v, want client flow-client scope flow:read", token)
+	}
+
+	c.expect("POST", "/oauth2/token", map[string]any{
+		"grantType":    "client_credentials",
+		"clientId":     "flow-client",
+		"clientSecret": "flow-secret",
+		"scopes":       []string{"flow:write"},
+	}, "", http.StatusBadRequest, derror.CodeBadRequest, nil)
+
+	c.expect("DELETE", "/oauth2/clients/flow-client", nil, "", http.StatusOK, derror.CodeSuccess, nil)
+	c.expect("GET", "/oauth2/clients/flow-client", nil, "", http.StatusNotFound, derror.CodeNotFound, nil)
+	c.expect("POST", "/oauth2/token", map[string]any{
+		"grantType":    "client_credentials",
+		"clientId":     "flow-client",
+		"clientSecret": "flow-secret",
+	}, "", http.StatusNotFound, derror.CodeNotFound, nil)
+}
+
+// TestOAuth2ErrorBoundaryFlow verifies OAuth2 rejects invalid client inputs. TestOAuth2ErrorBoundaryFlow 验证 OAuth2 对非法客户端参数的拒绝路径。
+func TestOAuth2ErrorBoundaryFlow(t *testing.T) {
+	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
+
+	// Step 1: authorization rejects unregistered redirect URI and scope. Step 1：授权端点拒绝未注册回调地址和越权 scope。
+	c.expect("POST", "/oauth2/authorize", map[string]any{
+		"clientId":    "demo-client",
+		"userId":      "oauth-user",
+		"redirectUri": "https://evil.example/callback",
+		"scopes":      []string{"read"},
+	}, "", http.StatusBadRequest, derror.CodeBadRequest, nil)
+	c.expect("POST", "/oauth2/authorize", map[string]any{
+		"clientId":    "demo-client",
+		"userId":      "oauth-user",
+		"redirectUri": "https://client.example/callback",
+		"scopes":      []string{"admin"},
+	}, "", http.StatusBadRequest, derror.CodeBadRequest, nil)
+
+	// Step 2: token endpoint rejects unsupported grant and invalid refresh token. Step 2：令牌端点拒绝未知授权类型和非法刷新令牌。
+	c.expect("POST", "/oauth2/token", map[string]any{
+		"grantType":    "unknown_grant",
+		"clientId":     "demo-client",
+		"clientSecret": "demo-secret",
+	}, "", http.StatusBadRequest, derror.CodeBadRequest, nil)
+	c.expect("POST", "/oauth2/token", map[string]any{
+		"grantType":    "refresh_token",
+		"clientId":     "demo-client",
+		"clientSecret": "demo-secret",
+		"refreshToken": "bad-refresh-token",
+	}, "", http.StatusBadRequest, derror.CodeBadRequest, nil)
+
+	// Step 3: introspection without a bearer token is not authenticated. Step 3：未携带访问令牌查询 introspect 会被拒绝。
+	c.expect("GET", "/oauth2/introspect", nil, "", http.StatusUnauthorized, derror.CodeNotLogin, nil)
+}
+
+// TestCoreEventFlow verifies core events emitted through real HTTP operations. TestCoreEventFlow 验证真实 HTTP 操作会触发核心事件。
+func TestCoreEventFlow(t *testing.T) {
+	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 60 * time.Second, ActiveTimeout: -1})
+	eventMgr := c.app.Manager().GetEventManager()
+	eventMgr.EnableStats(true)
+	eventMgr.ResetStats()
+
+	var (
+		capturedMu sync.Mutex
+		captured   []listener.Event
+	)
+	eventMgr.RegisterFuncWithConfig(listener.EventAll, func(data *listener.EventData) {
+		capturedMu.Lock()
+		defer capturedMu.Unlock()
+		captured = append(captured, data.Event)
+	}, listener.ListenerConfig{Async: false, ID: "gin-core-flow-events"})
+
+	// Step 1: login and access mutations should emit session, login, permission, and role events. Step 1：登录和访问变更应触发会话、登录、权限、角色事件。
+	token := c.loginWithDevice("event-user", "web", "event-browser")
+	c.expect("POST", "/api/permissions", map[string]any{"value": "article:read"}, token, http.StatusOK, derror.CodeSuccess, nil)
+	c.expect("GET", "/api/articles", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+	c.expect("POST", "/api/roles", map[string]any{"value": "admin"}, token, http.StatusOK, derror.CodeSuccess, nil)
+	c.expect("GET", "/api/admin", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+
+	// Step 2: renew, service disable, untie, and logout should emit their lifecycle events. Step 2：续期、服务封禁、解封和登出应触发生命周期事件。
+	c.expect("POST", "/api/token/renew", map[string]any{"seconds": 60}, token, http.StatusOK, derror.CodeSuccess, nil)
+	c.expect("POST", "/api/disable/service/payment", map[string]any{"reason": "risk"}, token, http.StatusOK, derror.CodeSuccess, nil)
+	c.expect("POST", "/api/untie/service/payment", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+	c.expect("POST", "/api/logout", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+	eventMgr.Wait()
+	capturedMu.Lock()
+	capturedSnapshot := append([]listener.Event(nil), captured...)
+	capturedMu.Unlock()
+
+	stats := eventMgr.GetStats()
+	wantEvents := []listener.Event{
+		listener.EventCreateSession,
+		listener.EventLogin,
+		listener.EventPermissionChange,
+		listener.EventPermissionCheck,
+		listener.EventRoleChange,
+		listener.EventRoleCheck,
+		listener.EventRenew,
+		listener.EventDisableService,
+		listener.EventUntieService,
+		listener.EventLogout,
+		listener.EventDestroySession,
+	}
+	for _, event := range wantEvents {
+		if stats.EventCounts[event] == 0 {
+			t.Fatalf("event %s count = 0, captured=%v, stats=%+v", event, capturedSnapshot, stats.EventCounts)
+		}
+		if !containsEvent(capturedSnapshot, event) {
+			t.Fatalf("event %s was not captured, captured=%v", event, capturedSnapshot)
+		}
+	}
+}
+
+// TestTokenStyleFlow verifies core token style configuration through login and auth checks. TestTokenStyleFlow 验证核心 Token 生成风格配置在登录和鉴权流程中生效。
+func TestTokenStyleFlow(t *testing.T) {
+	tests := []struct {
+		name      string
+		style     adapter.TokenStyle
+		secret    string
+		checkFunc func(t *testing.T, token string)
+	}{
+		{
+			name:  "uuid",
+			style: adapter.TokenStyleUUID,
+			checkFunc: func(t *testing.T, token string) {
+				t.Helper()
+				if len(token) != 36 || strings.Count(token, "-") != 4 {
+					t.Fatalf("uuid token = %q, want 36 chars with 4 hyphens", token)
+				}
+			},
+		},
+		{
+			name:  "simple",
+			style: adapter.TokenStyleSimple,
+			checkFunc: func(t *testing.T, token string) {
+				t.Helper()
+				if len(token) != 16 {
+					t.Fatalf("simple token len = %d, want 16", len(token))
+				}
+			},
+		},
+		{
+			name:  "random32",
+			style: adapter.TokenStyleRandom32,
+			checkFunc: func(t *testing.T, token string) {
+				t.Helper()
+				if len(token) != 32 {
+					t.Fatalf("random32 token len = %d, want 32", len(token))
+				}
+			},
+		},
+		{
+			name:  "random64",
+			style: adapter.TokenStyleRandom64,
+			checkFunc: func(t *testing.T, token string) {
+				t.Helper()
+				if len(token) != 64 {
+					t.Fatalf("random64 token len = %d, want 64", len(token))
+				}
+			},
+		},
+		{
+			name:  "random128",
+			style: adapter.TokenStyleRandom128,
+			checkFunc: func(t *testing.T, token string) {
+				t.Helper()
+				if len(token) != 128 {
+					t.Fatalf("random128 token len = %d, want 128", len(token))
+				}
+			},
+		},
+		{
+			name:  "hash",
+			style: adapter.TokenStyleHash,
+			checkFunc: func(t *testing.T, token string) {
+				t.Helper()
+				if len(token) != 64 {
+					t.Fatalf("hash token len = %d, want 64", len(token))
+				}
+			},
+		},
+		{
+			name:  "timestamp",
+			style: adapter.TokenStyleTimestamp,
+			checkFunc: func(t *testing.T, token string) {
+				t.Helper()
+				parts := strings.Split(token, "_")
+				if len(parts) != 3 || parts[1] != "token-style-timestamp" {
+					t.Fatalf("timestamp token = %q, want timestamp_loginID_random", token)
+				}
+			},
+		},
+		{
+			name:  "tik",
+			style: adapter.TokenStyleTik,
+			checkFunc: func(t *testing.T, token string) {
+				t.Helper()
+				if len(token) != 11 {
+					t.Fatalf("tik token len = %d, want 11", len(token))
+				}
+			},
+		},
+		{
+			name:   "jwt",
+			style:  adapter.TokenStyleJWT,
+			secret: "gin-core-flow-jwt-secret",
+			checkFunc: func(t *testing.T, token string) {
+				t.Helper()
+				if len(strings.Split(token, ".")) != 3 {
+					t.Fatalf("jwt token = %q, want three JWT segments", token)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newFlowClient(t, gincoreapp.Config{
+				TokenTimeout:  30 * time.Second,
+				ActiveTimeout: -1,
+				TokenStyle:    tt.style,
+				JwtSecretKey:  tt.secret,
+			})
+			token := c.loginWithDevice("token-style-"+tt.name, "web", tt.name+"-browser")
+			tt.checkFunc(t, token)
+			c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+		})
+	}
 }
 
 // TestMultiAuthIsolationFlow verifies independent auth systems do not share tokens or access data. TestMultiAuthIsolationFlow 验证多认证体系隔离：不同 AuthType 的 Token、权限、角色和 Session 互不串用。
@@ -1002,7 +1746,27 @@ func sameStringSet(got, want []string) bool {
 	return slices.Equal(got, want)
 }
 
+func containsEvent(events []listener.Event, want listener.Event) bool {
+	for _, event := range events {
+		if event == want {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *flowClient) expect(method, path string, body any, token string, wantStatus, wantCode int, data any) {
+	c.t.Helper()
+
+	decoded := c.expectResponse(method, path, body, token, wantStatus, wantCode)
+	if data != nil && len(decoded.Data) > 0 && string(decoded.Data) != "null" {
+		if err := json.Unmarshal(decoded.Data, data); err != nil {
+			c.t.Fatalf("%s %s decode data error = %v, data=%s", method, path, err, decoded.Data)
+		}
+	}
+}
+
+func (c *flowClient) expectResponse(method, path string, body any, token string, wantStatus, wantCode int) apiResponse {
 	c.t.Helper()
 
 	resp := c.do(method, path, body, token)
@@ -1022,11 +1786,7 @@ func (c *flowClient) expect(method, path string, body any, token string, wantSta
 	if decoded.Code != wantCode {
 		c.t.Fatalf("%s %s code = %d, want %d, body=%s", method, path, decoded.Code, wantCode, raw)
 	}
-	if data != nil && len(decoded.Data) > 0 && string(decoded.Data) != "null" {
-		if err = json.Unmarshal(decoded.Data, data); err != nil {
-			c.t.Fatalf("%s %s decode data error = %v, data=%s", method, path, err, decoded.Data)
-		}
-	}
+	return decoded
 }
 
 func (c *flowClient) do(method, path string, body any, token string) *http.Response {

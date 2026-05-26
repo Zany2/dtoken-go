@@ -33,6 +33,14 @@ This directory contains HTTP flow tests for `examples/gin_core_app`.
   - Verify HasPermission and HasRole by login ID.
   - Verify HasPermission and HasRole by token.
 
+- `TestAccessListFlow`: tests permission and role list APIs.
+  - Verify GetPermissions/GetRoles by login ID.
+  - Verify GetPermissionsByToken/GetRolesByToken.
+
+- `TestAccessProviderFlow`: tests external access provider behavior.
+  - Verify provider permissions and roles override session-stored values.
+  - Verify terminal-aware provider data can differ by device.
+
 - `TestRoleFlow`: tests role checks.
   - Login without `admin`.
   - Request `/api/admin`, expect forbidden.
@@ -49,6 +57,16 @@ This directory contains HTTP flow tests for `examples/gin_core_app`.
   - Read initial TTL through `/api/token/ttl`.
   - Wait until TTL decreases.
   - Renew through `/api/token/renew`, expect TTL extended.
+
+- `TestAutoRenewFlow`: tests automatic renewal.
+  - Enable AutoRenew with a refresh threshold and renew interval.
+  - Wait until token TTL enters the refresh window.
+  - Access a protected API and verify TTL is extended.
+  - Immediately access again and verify renew interval prevents repeated growth.
+
+- `TestRenewBoundaryFlow`: tests manual renewal boundaries.
+  - Reject zero and negative renewal values at the HTTP layer.
+  - Accept a valid renewal and verify the new TTL.
 
 - `TestTokenExpiredFlow`: tests token expiration.
   - Login with one-second timeout.
@@ -84,22 +102,42 @@ This directory contains HTTP flow tests for `examples/gin_core_app`.
   - Query terminal lists and traverse terminals.
   - Search token values and session IDs.
 
+- `TestSessionAliveFilterFlow`: tests alive token filtering.
+  - Mark one terminal offline.
+  - Verify token list queries return only live session tokens.
+  - Verify the offline token keeps its exact failure cause.
+
 - `TestTerminalOperationFlow`: tests terminal-scoped operations.
   - Logout one concrete device and keep another terminal online.
   - Kick out all terminals for a device type.
   - Replace all terminals for an account.
 
+- `TestTerminalOperationMatrixFlow`: tests account, device, and concrete-device operations.
+  - Logout all terminals for an account.
+  - Logout all terminals for a device type.
+  - Kick out account and concrete device terminals.
+  - Replace device type and concrete device terminals.
+
 - `TestConcurrencyPolicyFlow`: tests login concurrency policies.
   - Shared token reuse for the same device.
+  - New token creation for a different concrete device ID.
+  - Account-level token reuse when no device dimension is supplied.
   - Account-level max login count overflow.
+  - Overflow modes: logout, kickout, and replaced.
   - Device-level max login count overflow.
-  - Non-concurrent replacement and new-device rejection.
+  - Account and device concurrency scopes.
+  - Non-concurrent replacement and new-device rejection for account/device scopes.
 
 - `TestDisableFlow`: tests account and service disable.
   - Account disable rejects old token and new login.
   - Account disable info and TTL can be queried.
   - Service disable rejects only `/api/payment`.
   - Service disable info, level, and TTL can be queried.
+
+- `TestServiceDisableLevelFlow`: tests service disable levels.
+  - Disable a service at level 3.
+  - Verify lower/equal levels are blocked and higher level is allowed.
+  - Untie the service and verify the level check is clear.
 
 - `TestUntieFlow`: tests removing disable states.
   - Untie account disable and login again.
@@ -124,6 +162,11 @@ This directory contains HTTP flow tests for `examples/gin_core_app`.
   - Verify once through `/nonce/verify`, expect success.
   - Verify the same nonce again, expect failure.
 
+- `TestNonceTimeoutFlow`: tests nonce custom TTL.
+  - Generate a nonce with a one-second TTL.
+  - Verify it is initially valid.
+  - Wait for expiration and verify it cannot be consumed.
+
 - `TestOAuth2AuthorizationCodeFlow`: tests OAuth2 authorization code flow.
   - Generate authorization code.
   - Exchange code for access and refresh tokens.
@@ -136,6 +179,12 @@ This directory contains HTTP flow tests for `examples/gin_core_app`.
   - Password grant returns user token.
   - Client credentials grant returns client token.
   - Wrong client secret is rejected.
+
+- `TestOAuth2ClientManagementFlow`: tests OAuth2 client management.
+  - Register and query a client.
+  - Use the registered client for client credentials.
+  - Reject disallowed scopes.
+  - Unregister the client and verify it can no longer be used.
 
 - `TestMultiAuthIsolationFlow`: tests multiple auth systems.
   - Login the same ID into user-auth and admin-auth.

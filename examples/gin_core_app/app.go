@@ -1,6 +1,7 @@
 package gin_core_app
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -27,6 +28,8 @@ type App struct {
 
 // Config controls the demo app auth timings. Config 控制示例应用认证时间配置。
 type Config struct {
+	// KeyPrefix isolates storage keys for a demo app instance. KeyPrefix 隔离示例应用实例的存储键。
+	KeyPrefix string
 	// TokenTimeout sets the default token lifetime. TokenTimeout 设置默认 Token 有效期。
 	TokenTimeout time.Duration
 	// ActiveTimeout sets the inactive timeout in seconds. ActiveTimeout 设置不活跃超时时间，单位秒。
@@ -35,6 +38,8 @@ type Config struct {
 	RenewInterval int64
 	// RenewMaxRefresh sets the maximum refresh window in seconds. RenewMaxRefresh 设置最大可刷新窗口，单位秒。
 	RenewMaxRefresh int64
+	// AutoRenew controls whether login checks renew tokens automatically. AutoRenew 控制登录校验时是否自动续期 Token。
+	AutoRenew *bool
 	// IsConcurrent controls whether one account can hold multiple tokens. IsConcurrent 控制同账号是否允许多 Token 并存。
 	IsConcurrent *bool
 	// IsShare controls whether repeated login can share an existing token. IsShare 控制重复登录是否复用已有 Token。
@@ -47,8 +52,14 @@ type Config struct {
 	ReplacedLoginExitMode config.ReplacedLoginExitMode
 	// OverflowLogoutMode controls how overflowed tokens are marked. OverflowLogoutMode 控制超限下线 Token 的标记方式。
 	OverflowLogoutMode config.LogoutMode
+	// TokenStyle selects the core token generation strategy. TokenStyle 选择核心 Token 生成策略。
+	TokenStyle adapter.TokenStyle
+	// JwtSecretKey sets the secret used by JWT token style. JwtSecretKey 设置 JWT Token 风格使用的密钥。
+	JwtSecretKey string
 	// RedisURL enables Redis storage when non-empty. RedisURL 非空时启用 Redis 存储。
 	RedisURL string
+	// UseAccessProvider enables demo access provider overrides. UseAccessProvider 启用示例权限角色提供器覆盖。
+	UseAccessProvider bool
 }
 
 // Response is the unified HTTP response body. Response 是统一 HTTP 响应体。
@@ -92,8 +103,17 @@ type disableRequest struct {
 	Reason string `json:"reason"`
 }
 
+type serviceLevelDisableRequest struct {
+	Level  int    `json:"level"`
+	Reason string `json:"reason"`
+}
+
 type nonceRequest struct {
 	Nonce string `json:"nonce"`
+}
+
+type nonceTimeoutRequest struct {
+	Seconds int64 `json:"seconds"`
 }
 
 type oauthCodeRequest struct {
@@ -117,6 +137,14 @@ type oauthTokenRequest struct {
 
 type oauthRevokeRequest struct {
 	Token string `json:"token"`
+}
+
+type oauthClientRequest struct {
+	ClientID     string   `json:"clientId"`
+	ClientSecret string   `json:"clientSecret"`
+	RedirectURIs []string `json:"redirectUris"`
+	GrantTypes   []string `json:"grantTypes"`
+	Scopes       []string `json:"scopes"`
 }
 
 // NewApp creates a runnable Gin demo app. NewApp 创建可运行的 Gin 示例应用。
@@ -186,11 +214,15 @@ func newDemoStorageFactory(cfg Config) func() (adapter.Storage, error) {
 }
 
 func newDemoManager(cfg Config, authType string, storage adapter.Storage) (*manager.Manager, error) {
+	autoRenew := false
+	if cfg.AutoRenew != nil {
+		autoRenew = *cfg.AutoRenew
+	}
 	builder := dtoken.NewBuilder().
 		AuthType(authType).
 		TokenName("Authorization").
 		TimeoutDuration(defaultDuration(cfg.TokenTimeout, 30*time.Second)).
-		AutoRenew(false).
+		AutoRenew(autoRenew).
 		RenewInterval(defaultLimit(cfg.RenewInterval)).
 		RenewMaxRefresh(defaultLimit(cfg.RenewMaxRefresh)).
 		ActiveTimeout(cfg.ActiveTimeout).
@@ -198,6 +230,9 @@ func newDemoManager(cfg Config, authType string, storage adapter.Storage) (*mana
 		IsLog(false).
 		AsyncEvent(false).
 		SetStorage(storage)
+	if cfg.KeyPrefix != "" {
+		builder.KeyPrefix(cfg.KeyPrefix)
+	}
 	if cfg.IsConcurrent != nil {
 		builder.IsConcurrent(*cfg.IsConcurrent)
 	}
@@ -215,6 +250,15 @@ func newDemoManager(cfg Config, authType string, storage adapter.Storage) (*mana
 	}
 	if cfg.OverflowLogoutMode != "" {
 		builder.OverflowLogoutMode(cfg.OverflowLogoutMode)
+	}
+	if cfg.TokenStyle != "" {
+		builder.TokenStyle(cfg.TokenStyle)
+	}
+	if cfg.JwtSecretKey != "" {
+		builder.JwtSecretKey(cfg.JwtSecretKey)
+	}
+	if cfg.UseAccessProvider {
+		builder.SetAccessProvider(demoAccessProvider{})
 	}
 	return builder.Build()
 }
@@ -263,6 +307,7 @@ func (a *App) buildRouter() *gin.Engine {
 	r.POST("/login", a.handleLogin)
 	r.POST("/login/timeout", a.handleLoginWithTimeout)
 	r.GET("/nonce", a.handleNonce)
+	r.POST("/nonce/timeout", a.handleNonceWithTimeout)
 	r.GET("/nonce/status/:nonce", a.handleNonceStatus)
 	r.POST("/nonce/verify", a.handleNonceVerify)
 	r.GET("/token/status", a.handleTokenStatus)
@@ -284,9 +329,15 @@ func (a *App) buildRouter() *gin.Engine {
 	api.POST("/token/renew", a.handleTokenRenew)
 	api.POST("/token/kickout", a.handleTokenKickout)
 	api.POST("/token/replace", a.handleTokenReplace)
+	api.POST("/logout/account", a.handleLogoutAccount)
+	api.POST("/kickout/account", a.handleKickoutAccount)
 	api.POST("/logout/device/:device/:deviceId", a.handleLogoutDevice)
+	api.POST("/logout/device/:device", a.handleLogoutDevice)
 	api.POST("/kickout/device/:device", a.handleKickoutDevice)
+	api.POST("/kickout/device/:device/:deviceId", a.handleKickoutDevice)
 	api.POST("/replace/account", a.handleReplaceAccount)
+	api.POST("/replace/device/:device", a.handleReplaceDevice)
+	api.POST("/replace/device/:device/:deviceId", a.handleReplaceDevice)
 	api.GET("/session", a.handleSession)
 	api.GET("/terminal", a.handleTerminal)
 	api.GET("/session/tokens", a.handleSessionTokens)
@@ -294,6 +345,7 @@ func (a *App) buildRouter() *gin.Engine {
 	api.GET("/session/foreach", a.handleSessionForEach)
 	api.GET("/session/search", a.handleSessionSearch)
 	api.GET("/access/status", a.handleAccessStatus)
+	api.GET("/access/list", a.handleAccessList)
 	api.GET("/articles", a.requirePermission("article:read"), func(c *gin.Context) {
 		writeOK(c, []string{"article-a", "article-b"})
 	})
@@ -324,6 +376,8 @@ func (a *App) buildRouter() *gin.Engine {
 	api.POST("/disable/account", a.handleDisableAccount)
 	api.POST("/untie/account", a.handleUntieAccount)
 	api.POST("/disable/service/:service", a.handleDisableService)
+	api.POST("/disable/service/:service/level", a.handleDisableServiceLevel)
+	api.GET("/disable/service/:service/level/:level", a.handleServiceLevelStatus)
 	api.POST("/untie/service/:service", a.handleUntieService)
 	api.POST("/disable/device/:device", a.handleDisableDevice)
 	api.POST("/disable/device/:device/:deviceId", a.handleDisableDevice)
@@ -335,6 +389,9 @@ func (a *App) buildRouter() *gin.Engine {
 	oauth.POST("/token", a.handleOAuth2Token)
 	oauth.POST("/revoke", a.handleOAuth2Revoke)
 	oauth.GET("/introspect", a.handleOAuth2Introspect)
+	oauth.POST("/clients", a.handleOAuth2RegisterClient)
+	oauth.GET("/clients/:clientId", a.handleOAuth2GetClient)
+	oauth.DELETE("/clients/:clientId", a.handleOAuth2UnregisterClient)
 
 	multi := r.Group("/multi-auth")
 	multi.POST("/user/login", a.handleMultiAuthLogin(a.userAuth, "user"))
@@ -517,12 +574,36 @@ func (a *App) handleTokenReplace(c *gin.Context) {
 	writeOK(c, nil)
 }
 
+func (a *App) handleLogoutAccount(c *gin.Context) {
+	if err := a.auth.Logout(c.Request.Context(), dtoken.LogoutOptions{LoginID: loginIDFromContext(c)}); err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	writeOK(c, nil)
+}
+
+func (a *App) handleKickoutAccount(c *gin.Context) {
+	if err := a.auth.Kickout(c.Request.Context(), dtoken.LogoutOptions{LoginID: loginIDFromContext(c)}); err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	writeOK(c, nil)
+}
+
 func (a *App) handleLogoutDevice(c *gin.Context) {
-	if err := a.auth.Logout(c.Request.Context(), dtoken.LogoutOptions{
-		LoginID:  loginIDFromContext(c),
-		Device:   c.Param("device"),
-		DeviceID: c.Param("deviceId"),
-	}); err != nil {
+	device := c.Param("device")
+	deviceID := c.Param("deviceId")
+	var err error
+	if deviceID != "" {
+		err = a.auth.Logout(c.Request.Context(), dtoken.LogoutOptions{
+			LoginID:  loginIDFromContext(c),
+			Device:   device,
+			DeviceID: deviceID,
+		})
+	} else {
+		err = a.auth.Manager().LogoutByDevice(c.Request.Context(), loginIDFromContext(c), device)
+	}
+	if err != nil {
 		writeDTokenError(c, err)
 		return
 	}
@@ -530,7 +611,19 @@ func (a *App) handleLogoutDevice(c *gin.Context) {
 }
 
 func (a *App) handleKickoutDevice(c *gin.Context) {
-	if err := a.auth.Manager().KickoutByDevice(c.Request.Context(), loginIDFromContext(c), c.Param("device")); err != nil {
+	device := c.Param("device")
+	deviceID := c.Param("deviceId")
+	var err error
+	if deviceID != "" {
+		err = a.auth.Kickout(c.Request.Context(), dtoken.LogoutOptions{
+			LoginID:  loginIDFromContext(c),
+			Device:   device,
+			DeviceID: deviceID,
+		})
+	} else {
+		err = a.auth.Manager().KickoutByDevice(c.Request.Context(), loginIDFromContext(c), device)
+	}
+	if err != nil {
 		writeDTokenError(c, err)
 		return
 	}
@@ -539,6 +632,26 @@ func (a *App) handleKickoutDevice(c *gin.Context) {
 
 func (a *App) handleReplaceAccount(c *gin.Context) {
 	if err := a.auth.Replace(c.Request.Context(), dtoken.LogoutOptions{LoginID: loginIDFromContext(c)}); err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	writeOK(c, nil)
+}
+
+func (a *App) handleReplaceDevice(c *gin.Context) {
+	device := c.Param("device")
+	deviceID := c.Param("deviceId")
+	var err error
+	if deviceID != "" {
+		err = a.auth.Replace(c.Request.Context(), dtoken.LogoutOptions{
+			LoginID:  loginIDFromContext(c),
+			Device:   device,
+			DeviceID: deviceID,
+		})
+	} else {
+		err = a.auth.Manager().ReplaceByDevice(c.Request.Context(), loginIDFromContext(c), device)
+	}
+	if err != nil {
 		writeDTokenError(c, err)
 		return
 	}
@@ -696,6 +809,37 @@ func (a *App) handleAccessStatus(c *gin.Context) {
 	})
 }
 
+func (a *App) handleAccessList(c *gin.Context) {
+	token := tokenFromContext(c)
+	loginID := loginIDFromContext(c)
+	permissionsByLoginID, err := a.auth.GetPermissions(c.Request.Context(), loginID)
+	if err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	permissionsByToken, err := a.auth.Manager().GetPermissionsByToken(c.Request.Context(), token)
+	if err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	rolesByLoginID, err := a.auth.GetRoles(c.Request.Context(), loginID)
+	if err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	rolesByToken, err := a.auth.Manager().GetRolesByToken(c.Request.Context(), token)
+	if err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	writeOK(c, gin.H{
+		"permissionsByLoginId": permissionsByLoginID,
+		"permissionsByToken":   permissionsByToken,
+		"rolesByLoginId":       rolesByLoginID,
+		"rolesByToken":         rolesByToken,
+	})
+}
+
 func (a *App) handleAddPermission(c *gin.Context) {
 	var req accessRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.Value == "" {
@@ -830,6 +974,39 @@ func (a *App) handleDisableService(c *gin.Context) {
 		return
 	}
 	writeOK(c, nil)
+}
+
+func (a *App) handleDisableServiceLevel(c *gin.Context) {
+	var req serviceLevelDisableRequest
+	_ = c.ShouldBindJSON(&req)
+	if req.Level <= 0 {
+		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "level must be positive")
+		return
+	}
+	if err := a.auth.DisableService(c.Request.Context(), dtoken.ServiceDisableOptions{
+		LoginID:  loginIDFromContext(c),
+		Service:  c.Param("service"),
+		Level:    req.Level,
+		Duration: time.Minute,
+		Reason:   req.Reason,
+	}); err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	writeOK(c, nil)
+}
+
+func (a *App) handleServiceLevelStatus(c *gin.Context) {
+	level := parsePositiveInt(c.Param("level"))
+	if level <= 0 {
+		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "level must be positive")
+		return
+	}
+	err := a.auth.Manager().CheckDisableServiceLevel(c.Request.Context(), loginIDFromContext(c), c.Param("service"), level)
+	writeOK(c, gin.H{
+		"disabled": err != nil,
+		"level":    level,
+	})
 }
 
 func (a *App) handleUntieService(c *gin.Context) {
@@ -981,6 +1158,20 @@ func (a *App) handleNonce(c *gin.Context) {
 	writeOK(c, gin.H{"nonce": nonce})
 }
 
+func (a *App) handleNonceWithTimeout(c *gin.Context) {
+	var req nonceTimeoutRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.Seconds <= 0 {
+		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "seconds must be positive")
+		return
+	}
+	nonce, err := a.auth.GenerateNonceWithTimeout(c.Request.Context(), time.Duration(req.Seconds)*time.Second)
+	if err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	writeOK(c, gin.H{"nonce": nonce})
+}
+
 func (a *App) handleNonceStatus(c *gin.Context) {
 	nonceValue := c.Param("nonce")
 	ttl, err := a.auth.Manager().GetNonceTTL(c.Request.Context(), nonceValue)
@@ -1083,6 +1274,56 @@ func (a *App) handleOAuth2Introspect(c *gin.Context) {
 		"clientId": info.ClientID,
 		"scopes":   info.Scopes,
 	})
+}
+
+func (a *App) handleOAuth2RegisterClient(c *gin.Context) {
+	var req oauthClientRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.ClientID == "" {
+		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "clientId is required")
+		return
+	}
+	grantTypes := make([]oauth2.GrantType, len(req.GrantTypes))
+	for i, grantType := range req.GrantTypes {
+		grantTypes[i] = oauth2.GrantType(grantType)
+	}
+	if err := a.auth.RegisterOAuth2Client(&oauth2.Client{
+		ClientID:     req.ClientID,
+		ClientSecret: req.ClientSecret,
+		RedirectURIs: req.RedirectURIs,
+		GrantTypes:   grantTypes,
+		Scopes:       req.Scopes,
+	}); err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	writeOK(c, nil)
+}
+
+func (a *App) handleOAuth2GetClient(c *gin.Context) {
+	client, err := a.auth.Manager().GetOAuth2Client(c.Param("clientId"))
+	if err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	grantTypes := make([]string, len(client.GrantTypes))
+	for i, grantType := range client.GrantTypes {
+		grantTypes[i] = string(grantType)
+	}
+	writeOK(c, gin.H{
+		"clientId":     client.ClientID,
+		"clientSecret": client.ClientSecret,
+		"redirectUris": client.RedirectURIs,
+		"grantTypes":   grantTypes,
+		"scopes":       client.Scopes,
+	})
+}
+
+func (a *App) handleOAuth2UnregisterClient(c *gin.Context) {
+	if err := a.auth.Manager().UnregisterOAuth2Client(c.Param("clientId")); err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	writeOK(c, nil)
 }
 
 func (a *App) handleMultiAuthLogin(auth *dtoken.Auth, authName string) gin.HandlerFunc {
@@ -1370,6 +1611,8 @@ func writeDTokenError(c *gin.Context, err error) {
 		status, code = http.StatusForbidden, derror.CodePermissionDenied
 	case errors.Is(err, derror.ErrLoginLimitExceeded):
 		status, code = http.StatusForbidden, derror.CodeMaxLoginCount
+	case errors.Is(err, derror.ErrClientNotFound):
+		status, code = http.StatusNotFound, derror.CodeNotFound
 	case errors.Is(err, derror.ErrInvalidParam), errors.Is(err, derror.ErrInvalidNonce), errors.Is(err, derror.ErrInvalidClientCredentials),
 		errors.Is(err, derror.ErrInvalidGrantType), errors.Is(err, derror.ErrInvalidRedirectURI), errors.Is(err, derror.ErrInvalidScope),
 		errors.Is(err, derror.ErrInvalidAuthCode), errors.Is(err, derror.ErrAuthCodeUsed), errors.Is(err, derror.ErrAuthCodeExpired),
@@ -1409,4 +1652,34 @@ func demoOAuth2UserValidator(username, password string) (string, error) {
 		return "", derror.ErrInvalidUserCredentials
 	}
 	return "user-" + username, nil
+}
+
+type demoAccessProvider struct{}
+
+func (demoAccessProvider) Permissions(_ context.Context, subject manager.AccessSubject) ([]string, error) {
+	switch subject.LoginID {
+	case "provider-user":
+		return []string{"provider:read"}, nil
+	case "provider-terminal-user":
+		if subject.Device == "mobile" {
+			return []string{"profile:read"}, nil
+		}
+		return []string{}, nil
+	default:
+		return nil, nil
+	}
+}
+
+func (demoAccessProvider) Roles(_ context.Context, subject manager.AccessSubject) ([]string, error) {
+	switch subject.LoginID {
+	case "provider-user":
+		return []string{"provider-role"}, nil
+	case "provider-terminal-user":
+		if subject.Device == "mobile" {
+			return []string{"admin"}, nil
+		}
+		return []string{}, nil
+	default:
+		return nil, nil
+	}
 }
