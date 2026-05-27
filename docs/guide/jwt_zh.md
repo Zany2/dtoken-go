@@ -160,5 +160,6 @@ JWT 本身只是签名，不是加密，生产环境里仍然应该通过 HTTPS 
 ## 相关文档
 
 - [登录认证](authentication_zh.md)
+- [Token 风格](token-style_zh.md)
 - [Redis 存储](redis-storage_zh.md)
 - [框架集成](framework-integration_zh.md)

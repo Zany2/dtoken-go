@@ -1,4 +1,4 @@
-module github.com/Zany2/dtoken-go/examples/gin_core_app
+module github.com/Zany2/dtoken-go/tests/gin_core_app
 
 go 1.25.0
 

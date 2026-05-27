@@ -1,6 +1,6 @@
 # Gin Core Flow Tests
 
-This directory contains HTTP flow tests for `examples/gin_core_app`.
+This directory contains HTTP flow tests for `tests/gin_core_app`.
 
 这些测试不会手动请求外部端口，而是用 `httptest.NewServer` 在测试进程里启动 Gin app，然后按真实 HTTP 流程调用接口。
 
@@ -193,7 +193,7 @@ This directory contains HTTP flow tests for `examples/gin_core_app`.
 
 ## Run
 
-By default, `examples/gin_core_app` uses in-memory storage. To run the same Gin demo app with Redis, pass a Redis URL through `DTOKEN_REDIS_URL` when starting the example server, or set `gincoreapp.Config.RedisURL` from code.
+By default, `tests/gin_core_app` uses in-memory storage. To run the same Gin test app with Redis, pass a Redis URL through `DTOKEN_REDIS_URL` when starting the server, or set `gincoreapp.Config.RedisURL` from code.
 
 Example Redis URLs:
 

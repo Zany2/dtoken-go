@@ -152,5 +152,6 @@ JWT is signed, not encrypted. It should still be transported over HTTPS in produ
 ## Related Documentation
 
 - [Authentication Guide](authentication.md)
+- [Token Styles](token-style.md)
 - [Redis Storage](redis-storage.md)
 - [Framework Integration Guide](framework-integration.md)

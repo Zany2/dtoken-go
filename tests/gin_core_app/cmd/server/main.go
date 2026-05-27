@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	gincoreapp "github.com/Zany2/dtoken-go/examples/gin_core_app"
+	gincoreapp "github.com/Zany2/dtoken-go/tests/gin_core_app"
 )
 
 const defaultRedisURL = "redis://:root@192.168.19.104:6379/0"

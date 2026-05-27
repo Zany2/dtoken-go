@@ -9,7 +9,7 @@
 It does not start:
 
 ```text
-examples/gin_core_app/cmd/server/main.go
+tests/gin_core_app/cmd/server/main.go
 ```
 
 Instead it calls:
@@ -97,7 +97,7 @@ Redis returns TTL values in seconds, while memory storage can behave slightly di
 Only start it when you want to manually call APIs through Postman, a browser, or another client:
 
 ```powershell
-go run ./examples/gin_core_app/cmd/server
+go run ./tests/gin_core_app/cmd/server
 ```
 
 Automated flow tests do not need a separately started server.

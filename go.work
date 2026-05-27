@@ -26,7 +26,6 @@ use (
 	./examples/fiber
 	./examples/gf
 	./examples/gin
-	./examples/gin_core_app
 	./examples/hertz
 	./examples/kratos
 	./examples/quick_start
@@ -41,4 +40,5 @@ use (
 	./integrations/kratos
 
 	./tests/gin_core_flow
+	./tests/gin_core_app
 )

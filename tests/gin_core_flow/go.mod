@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/Zany2/dtoken-go/core v0.0.0
-	github.com/Zany2/dtoken-go/examples/gin_core_app v0.0.0
+	github.com/Zany2/dtoken-go/tests/gin_core_app v0.0.0
 )
 
 require (
@@ -57,7 +57,7 @@ replace github.com/Zany2/dtoken-go/core => ../../core
 
 replace github.com/Zany2/dtoken-go/dtoken => ../../dtoken
 
-replace github.com/Zany2/dtoken-go/examples/gin_core_app => ../../examples/gin_core_app
+replace github.com/Zany2/dtoken-go/tests/gin_core_app => ../gin_core_app
 
 replace github.com/Zany2/dtoken-go/defaults => ../../defaults
 

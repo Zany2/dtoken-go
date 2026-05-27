@@ -287,4 +287,6 @@ r.POST("/admin",
 
 - [Authentication Guide](authentication.md)
 - [Annotation Guide](annotation.md)
+- [AccessProvider](access-provider.md)
+- [Disable System](disable.md)
 - [JWT Guide](jwt.md)
