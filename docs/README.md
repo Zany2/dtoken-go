@@ -11,12 +11,15 @@ English | [中文文档](README_zh.md)
 ### 📖 User Guides
 
 - [Authentication](guide/authentication.md) - Login, logout, token management
+- [Session And Terminal Management](guide/session-terminal.md) - Session, terminals, multi-terminal login, and exit operations
+- [Concurrent Login Policy](guide/concurrency-login.md) - Token sharing, max login count, and multi-terminal policy
 - [Permission Verification](guide/permission.md) - Permission system, wildcard usage
 - [Annotations](guide/annotation.md) - Annotation-style middleware guide
 - [Event Listener](guide/listener.md) - Event system usage guide
 - [JWT Integration](guide/jwt.md) - JWT token configuration and usage
 - [Redis Storage](guide/redis-storage.md) - Redis storage configuration guide
 - [Framework Integration](guide/framework-integration.md) - core API plus `integrations/*` middleware usage
+- [Core Flow Testing](guide/core-flow-testing.md) - Gin real-flow tests and Redis-backed test notes
 
 ### 🔒 Security Features
 
@@ -38,6 +41,7 @@ English | [中文文档](README_zh.md)
 
 - [quick_start](../examples/quick_start/) - Quick start example
 - [gin](../examples/gin/) - Gin integration example
+- [gin_core_app](../examples/gin_core_app/) - Gin core flow testing example
 - [gf](../examples/gf/) - GoFrame integration example
 - [echo](../examples/echo/) - Echo integration example
 - [fiber](../examples/fiber/) - Fiber integration example
