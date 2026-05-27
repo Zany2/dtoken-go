@@ -13,9 +13,6 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue?style=flat-square" alt="License"></a>
   <a href="docs/README.md"><img src="https://img.shields.io/badge/Docs-English-brightgreen?style=flat-square" alt="Docs"></a>
   <a href="https://pkg.go.dev/github.com/Zany2/dtoken-go/dtoken"><img src="https://img.shields.io/badge/pkg.go.dev-dtoken-007D9C?style=flat-square&logo=go" alt="pkg.go.dev"></a>
-  <a href="https://goreportcard.com/report/github.com/Zany2/dtoken-go"><img src="https://goreportcard.com/badge/github.com/Zany2/dtoken-go?style=flat-square" alt="Go Report"></a>
-  <a href="docs/guide/redis-storage.md"><img src="https://img.shields.io/badge/Storage-Redis-DC382D?style=flat-square&logo=redis" alt="Redis"></a>
-  <a href="examples/gin/"><img src="https://img.shields.io/badge/Framework-Gin-00ADD8?style=flat-square" alt="Gin"></a>
 </p>
 
 <p align="center">
