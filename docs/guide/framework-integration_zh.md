@@ -106,6 +106,73 @@ r.Use(gindt.PermissionMiddleware(ctx, []string{"user:read"}))
 r.Use(gindt.RoleMiddleware(ctx, []string{"admin"}))
 ```
 
+## 中间件选项
+
+各框架集成包都提供类似的中间件选项，用来控制认证体系、权限逻辑和失败返回。
+
+### 自定义失败返回
+
+默认失败返回适合快速验证。正式项目通常建议通过 `WithFailFunc` 统一业务错误结构：
+
+```go
+failFunc := gindt.WithFailFunc(func(c *gin.Context, err error) {
+    c.JSON(http.StatusUnauthorized, gin.H{
+        "code":    401,
+        "message": err.Error(),
+    })
+})
+
+r.Use(gindt.AuthMiddleware(ctx, failFunc))
+```
+
+权限、角色中间件也可以使用同一个失败处理：
+
+```go
+r.GET("/admin",
+    gindt.RoleMiddleware(ctx, []string{"admin"}, failFunc),
+    adminHandler,
+)
+```
+
+### 指定认证体系
+
+多认证体系场景下，可以通过 `WithAuthType` 让不同路由组使用不同 Manager：
+
+```go
+userGroup := r.Group("/api")
+userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuthType("user")))
+
+adminGroup := r.Group("/admin")
+adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuthType("admin")))
+adminGroup.Use(gindt.PermissionMiddleware(ctx, []string{"admin:read"}, gindt.WithAuthType("admin")))
+```
+
+### 权限和角色逻辑
+
+权限、角色中间件支持不同逻辑类型。常见用法是：
+
+```go
+r.GET("/reports",
+    gindt.PermissionMiddleware(
+        ctx,
+        []string{"report:read", "report:export"},
+        gindt.WithLogicType(gindt.LogicAnd),
+    ),
+    reportHandler,
+)
+
+r.GET("/console",
+    gindt.RoleMiddleware(
+        ctx,
+        []string{"admin", "operator"},
+        gindt.WithLogicType(gindt.LogicOr),
+    ),
+    consoleHandler,
+)
+```
+
+`LogicAnd` 表示必须全部满足，`LogicOr` 表示满足任意一个即可。
+
 ## 推荐别名
 
 | 框架 | 导入路径 | 推荐别名 |
@@ -127,3 +194,5 @@ r.Use(gindt.RoleMiddleware(ctx, []string{"admin"}))
 - [DToken API](../api/dtoken_zh.md)
 - [登录认证](authentication_zh.md)
 - [注解使用](annotation_zh.md)
+- [多认证体系](multi-auth_zh.md)
+- [AccessProvider](access-provider_zh.md)

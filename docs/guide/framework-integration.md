@@ -106,6 +106,73 @@ r.Use(gindt.PermissionMiddleware(ctx, []string{"user:read"}))
 r.Use(gindt.RoleMiddleware(ctx, []string{"admin"}))
 ```
 
+## Middleware Options
+
+Each framework integration package provides similar middleware options for auth system selection, access logic, and failure responses.
+
+### Custom Failure Response
+
+The default failure response is useful for quick validation. Production projects usually define a unified business error shape with `WithFailFunc`:
+
+```go
+failFunc := gindt.WithFailFunc(func(c *gin.Context, err error) {
+    c.JSON(http.StatusUnauthorized, gin.H{
+        "code":    401,
+        "message": err.Error(),
+    })
+})
+
+r.Use(gindt.AuthMiddleware(ctx, failFunc))
+```
+
+Permission and role middleware can use the same failure handler:
+
+```go
+r.GET("/admin",
+    gindt.RoleMiddleware(ctx, []string{"admin"}, failFunc),
+    adminHandler,
+)
+```
+
+### Select Auth System
+
+In multi-auth scenarios, `WithAuthType` lets different route groups use different managers:
+
+```go
+userGroup := r.Group("/api")
+userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuthType("user")))
+
+adminGroup := r.Group("/admin")
+adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuthType("admin")))
+adminGroup.Use(gindt.PermissionMiddleware(ctx, []string{"admin:read"}, gindt.WithAuthType("admin")))
+```
+
+### Permission And Role Logic
+
+Permission and role middleware support different logic modes:
+
+```go
+r.GET("/reports",
+    gindt.PermissionMiddleware(
+        ctx,
+        []string{"report:read", "report:export"},
+        gindt.WithLogicType(gindt.LogicAnd),
+    ),
+    reportHandler,
+)
+
+r.GET("/console",
+    gindt.RoleMiddleware(
+        ctx,
+        []string{"admin", "operator"},
+        gindt.WithLogicType(gindt.LogicOr),
+    ),
+    consoleHandler,
+)
+```
+
+`LogicAnd` requires every item, while `LogicOr` requires any item.
+
 ## Package Aliases
 
 Recommended aliases:
@@ -129,3 +196,5 @@ Use `defaults`, `core/builder`, `core/manager`, or `dtoken` for framework-agnost
 - [DToken API](../api/dtoken.md)
 - [Authentication](authentication.md)
 - [Annotation Guide](annotation.md)
+- [Multi-Auth Systems](multi-auth.md)
+- [AccessProvider](access-provider.md)

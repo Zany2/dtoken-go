@@ -5,66 +5,60 @@
 <h1 align="center">DToken-Go</h1>
 
 <p align="center">
-  An authentication, authorization, session management, and SSO framework for Go applications.
+  A Go authentication, authorization, session management, and SSO framework.
 </p>
 
 <p align="center">
   <a href="https://github.com/Zany2/dtoken-go"><img src="https://img.shields.io/badge/Go-1.20+-00ADD8?style=flat-square&logo=go" alt="Go"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue?style=flat-square" alt="License"></a>
   <a href="docs/README.md"><img src="https://img.shields.io/badge/Docs-English-brightgreen?style=flat-square" alt="Docs"></a>
+  <a href="https://pkg.go.dev/github.com/Zany2/dtoken-go/dtoken"><img src="https://img.shields.io/badge/pkg.go.dev-dtoken-007D9C?style=flat-square&logo=go" alt="pkg.go.dev"></a>
+  <a href="https://goreportcard.com/report/github.com/Zany2/dtoken-go"><img src="https://goreportcard.com/badge/github.com/Zany2/dtoken-go?style=flat-square" alt="Go Report"></a>
+  <a href="docs/guide/redis-storage.md"><img src="https://img.shields.io/badge/Storage-Redis-DC382D?style=flat-square&logo=redis" alt="Redis"></a>
+  <a href="examples/gin/"><img src="https://img.shields.io/badge/Framework-Gin-00ADD8?style=flat-square" alt="Gin"></a>
 </p>
 
 <p align="center">
-  English | <a href="README_zh.md">中文</a>
+  English | <a href="README_zh.md">简体中文</a>
 </p>
 
 ---
 
 ## What Is DToken-Go
 
-DToken-Go is a modular and pluggable authentication and authorization framework for Go. It provides login authentication, token management, session management, terminal management, role and permission checks, account banning, SSO, short-key login, temporary ticket credentials, token introspection, refresh tokens, nonce anti-replay utilities, OAuth2 server capabilities, and event listeners.
+DToken-Go is a modular and pluggable Go authentication and authorization framework. It provides login authentication, Token management, Session management, terminal management, role and permission checks, account banning, SSO, short-key access credentials, temporary Ticket credentials, Token Introspection, Refresh Token, Nonce anti-replay, OAuth2 server capabilities, and event listeners. The framework supports pluggable component replacement and custom extensions, and integrates with mainstream Go Web frameworks, so it can be used as an independent auth core or quickly embedded into existing business projects.
 
 You can use it for:
 
-- Admin systems, user centers, and open platforms.
-- Gin, Echo, Fiber, Chi, GoFrame, Hertz, Kratos, and other Go web projects.
-- Microservice gateways, centralized authentication centers, and cross-system SSO.
-- App, mini-program, web, multi-device, and multi-terminal login-state management.
-- QR-code login, one-time login, temporary authorization, and third-party token verification.
-
-## Table Of Contents
-
-- [Core Features](#core-features)
-- [Installation](#installation)
-- [5-Minute Quick Start](#5-minute-quick-start)
-- [Web Framework Integration](#web-framework-integration)
-- [Core API Cheatsheet](#core-api-cheatsheet)
-- [Advanced Features](#advanced-features)
-- [Configuration Example](#configuration-example)
-- [Component Ecosystem](#component-ecosystem)
-- [Project Structure](#project-structure)
-- [Documentation And Examples](#documentation-and-examples)
+- Admin systems, user centers, open platforms, and other systems that need unified authentication and authorization.
+- Login and permission integration for Gin, Echo, Fiber, Chi, GoFrame, Hertz, Kratos, and other Go Web projects.
+- Microservice gateways, centralized authentication centers, cross-system SSO, and unified logout.
+- Login state and session management across apps, mini-programs, web clients, multiple devices, and multiple terminals.
+- QR confirmation, one-time access, temporary authorization, short-link credentials, and third-party Token validation.
 
 ## Core Features
 
 | Feature | Description |
 | --- | --- |
-| Login authentication | Login, continued login, logout, login-state checks, token info queries, TTL queries, manual renewal, and auto-renewal |
-| Session management | Query and manage login states by account, token, device, device ID, and application |
+| Login authentication | Login, continued login, logout, login-state checks, Token info queries, TTL queries, manual renewal, and auto-renewal |
+| Session management | Query and manage login state by account, Token, device, and device ID |
 | Terminal management | Multi-terminal login, terminal tracking, online terminal statistics, terminal cleanup, kickout, and replacement |
-| Roles and permissions | Add, remove, query, AND/OR checks, token-level checks, and wildcard permission matching |
-| Concurrency control | Concurrent login control for the same account, shared tokens, and maximum online terminal limits |
-| Account banning | Account banning, device banning, unbanning, ban reasons, and remaining ban time queries |
-| SSO | Centralized login, ticket exchange, shared cross-system login state, unified logout, and application-level management |
-| Temporary tickets | Ticket creation, validation, one-time consumption, revocation, TTL queries, and status identification |
-| Short-key login | Suitable for QR-code login, one-time login, temporary authorization, and system-to-system ticket exchange |
-| Token introspection | Standardized token validity, ownership, TTL, and invalid-reason queries |
-| Refresh tokens | Access-token refresh, refresh-token revocation, expiration, rotation, and security checks |
-| Nonce anti-replay | One-time nonce generation, verification, and consumption to prevent replay attacks |
-| OAuth2 | Authorization code, client credentials, password grant, refresh token, token validation, and revocation |
-| Event system | Event listeners for login, logout, renewal, tickets, short keys, SSO, and more |
-| Pluggable components | Replaceable storage, codec, logger, token generator, and goroutine pool |
-| Multiple frameworks | Middleware, context adapters, and API exports for mainstream Go web frameworks |
+| Roles and permissions | Role and permission mutation/query, AND/OR checks, Token-level checks, and wildcard permission matching |
+| Concurrency control | Same-account concurrent login control, shared Token, max online terminal limit, account/device scope |
+| Account and device banning | Account ban, service ban, device ban, unban, ban reason, and remaining ban time query |
+| Multi-auth systems | Isolate multiple auth systems by AuthType so Tokens, Sessions, permissions, and roles do not cross-use |
+| Nonce anti-replay | One-time random value generation, verification, and consumption to prevent replay attacks |
+| OAuth2 | Authorization code, client credentials, password grant, refresh token, Token validation, and revocation |
+| Event system | Listeners for login, logout, renewal, permissions, roles, bans, unbans, and other core lifecycle events |
+| Pluggable components | Storage, codec, logger, Token generator, goroutine pool, and other components can be replaced |
+| Framework integration | Middleware, context adapters, and API exports for mainstream Go Web frameworks |
+| SSO 🚧 | Unified login, ticket exchange, cross-system login-state sharing, unified logout, and application-level management |
+| Temporary Ticket 🚧 | Ticket creation, validation, one-time consumption, revocation, TTL query, and status identification |
+| Short-key access credential 🚧 | Generate random short keys for short-link access, QR confirmation, temporary authorization, and system-to-system ticket exchange |
+| Token Introspection 🚧 | Standardized query for Token validity, ownership information, TTL, and invalid reason |
+| Refresh Token 🚧 | Independent refresh token issuing, refreshing, revocation, expiration, rotation, and security checks |
+
+> 🚧 means the feature is under development.
 
 ## Installation
 
@@ -77,7 +71,7 @@ go get github.com/Zany2/dtoken-go/dtoken
 
 ### Web Framework Integration
 
-If your project already uses a web framework, it is recommended to import the corresponding integration package directly. Integration packages export the Builder, middleware, context adapters, and common DToken APIs.
+If your project already uses a Web framework, you can use the corresponding DToken integration package directly. Integration packages wrap the Builder, middleware, context adapters, and common DToken APIs, making it easy to add authentication, authorization, and login-state management inside a specific framework.
 
 ```bash
 go get github.com/Zany2/dtoken-go/integrations/gin
@@ -104,7 +98,7 @@ go get github.com/Zany2/dtoken-go/com/pool/ants
 
 ## 5-Minute Quick Start
 
-`defaults.NewBuilder()` wires memory storage, JSON codec, the default token generator, and logging components by default, making it suitable for quick experiments.
+`defaults.NewBuilder()` wires the default memory storage, JSON codec, Token generator, and logger, making it suitable for quick experiments.
 
 ```go
 package main
@@ -121,34 +115,38 @@ func main() {
 	ctx := context.Background()
 
 	mgr, err := defaults.NewBuilder().
-		TokenName("Authorization").
-		Timeout(7200).
-		ActiveTimeout(1800).
-		AutoRenew(true).
-		IsPrintBanner(false).
+		TokenName("Authorization"). // Read Token from Authorization
+		Timeout(7200).              // Token lifetime: 7200 seconds
+		AutoRenew(true).            // Auto-renew during login-state checks
+		IsPrintBanner(false).       // Hide banner in this example
 		Build()
 	if err != nil {
 		panic(err)
 	}
+
+	// Register the global Manager, then use dtoken global APIs.
 	dtoken.SetManager(mgr)
 
+	// Login and issue a Token.
 	token, err := dtoken.Login(ctx, "user-1001")
 	if err != nil {
 		panic(err)
 	}
 
+	// Bind roles and permissions to the user.
 	_ = dtoken.AddRoles(ctx, "user-1001", []string{"admin"})
-	_ = dtoken.AddPermissions(ctx, "user-1001", []string{"article:read", "article:write"})
+	_ = dtoken.AddPermissions(ctx, "user-1001", []string{"article:read"})
 
+	// Resolve login ID from Token and check access.
 	loginID, _ := dtoken.GetLoginID(ctx, token)
-	hasRole := dtoken.HasRole(ctx, loginID, "admin")
-	hasPermission := dtoken.HasPermission(ctx, loginID, "article:read")
 
 	fmt.Println("token:", token)
 	fmt.Println("loginID:", loginID)
-	fmt.Println("has role:", hasRole)
-	fmt.Println("has permission:", hasPermission)
+	fmt.Println("is login:", dtoken.IsLogin(ctx, token))
+	fmt.Println("is admin:", dtoken.HasRole(ctx, loginID, "admin"))
+	fmt.Println("can read article:", dtoken.HasPermission(ctx, loginID, "article:read"))
 
+	// Logout invalidates the Token.
 	_ = dtoken.Logout(ctx, token)
 }
 ```
@@ -157,7 +155,7 @@ See [examples/quick_start](examples/quick_start/) for a complete example.
 
 ## Web Framework Integration
 
-The following Gin example only imports `integrations/gin` in application code:
+The following Gin example only imports `integrations/gin`. Integration usually has three steps: initialize DToken, register middleware, and use login-state and permission capabilities in business routes.
 
 ```go
 package main
@@ -174,36 +172,60 @@ func main() {
 	ctx := context.Background()
 
 	mgr, err := gindt.NewBuilder().
-		TokenName("Authorization").
-		IsPrintBanner(false).
+		TokenName("Authorization"). // Read Token from Authorization Header
+		Timeout(7200).              // Token lifetime: 7200 seconds
+		AutoRenew(true).            // Auto-renew during login-state checks
+		IsPrintBanner(false).       // Hide banner in this example
 		Build()
 	if err != nil {
 		panic(err)
 	}
+
+	// Register the global Manager, then use APIs exported by gindt.
 	gindt.SetManager(mgr)
 
 	r := gin.Default()
+
+	// Register context middleware, then read request auth context with GetDTokenContext.
 	r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
 
+	// Customize response format for authentication or authorization failures.
+	failFunc := gindt.WithFailFunc(func(c *gin.Context, err error) {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    gindt.CodeNotLogin,
+			"message": err.Error(),
+		})
+	})
+
 	r.POST("/login", func(c *gin.Context) {
+		// Issue a Token after login. Client should send Authorization: Bearer <token>.
 		token, err := gindt.Login(c.Request.Context(), "user-1001")
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+
+		// Example only: normally roles come from your database or permission center.
+		_ = gindt.AddRoles(c.Request.Context(), "user-1001", []string{"admin"})
+
 		c.JSON(http.StatusOK, gin.H{"token": token})
 	})
 
 	user := r.Group("/user")
-	user.Use(gindt.AuthMiddleware(ctx))
+
+	// AuthMiddleware checks whether the request is logged in.
+	user.Use(gindt.AuthMiddleware(ctx, failFunc))
 	user.GET("/me", func(c *gin.Context) {
+		// Resolve the current login account from request context.
 		dCtx, _ := gindt.GetDTokenContext(c)
 		loginID, _ := dCtx.GetLoginID(c.Request.Context())
 		c.JSON(http.StatusOK, gin.H{"loginId": loginID})
 	})
 
 	admin := r.Group("/admin")
-	admin.Use(gindt.AuthMiddleware(ctx), gindt.RoleMiddleware(ctx, []string{"admin"}))
+
+	// RoleMiddleware checks roles after login validation.
+	admin.Use(gindt.AuthMiddleware(ctx, failFunc), gindt.RoleMiddleware(ctx, []string{"admin"}, failFunc))
 	admin.GET("/dashboard", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "ok"})
 	})
@@ -222,217 +244,48 @@ func main() {
 | Hertz | [examples/hertz](examples/hertz/) | `github.com/Zany2/dtoken-go/integrations/hertz` |
 | Kratos | [examples/kratos](examples/kratos/) | `github.com/Zany2/dtoken-go/integrations/kratos` |
 
-## Core API Cheatsheet
+## Deep Reading
 
-### Login Authentication
+README keeps only the minimal getting-started path. For more API, configuration, and component details, see:
 
-```go
-token, err := dtoken.Login(ctx, "user-1001")
-token, err = dtoken.Login(ctx, "user-1001", "web", "browser-001", "user")
-
-isLogin := dtoken.IsLogin(ctx, token)
-loginID, err := dtoken.GetLoginID(ctx, token)
-tokenInfo, err := dtoken.GetTokenInfo(ctx, token)
-ttl, err := dtoken.GetTokenTTL(ctx, token)
-
-err = dtoken.RenewTimeout(ctx, token, 7200)
-err = dtoken.Logout(ctx, token)
-err = dtoken.LogoutByLoginID(ctx, "user-1001")
-```
-
-### Roles And Permissions
-
-```go
-_ = dtoken.AddRoles(ctx, "user-1001", []string{"admin", "auditor"})
-_ = dtoken.AddPermissions(ctx, "user-1001", []string{"order:read", "order:*"})
-
-hasRole := dtoken.HasRole(ctx, "user-1001", "admin")
-hasAnyRole := dtoken.HasRolesOr(ctx, "user-1001", []string{"admin", "owner"})
-hasPermission := dtoken.HasPermission(ctx, "user-1001", "order:read")
-hasAllPermission := dtoken.HasPermissionsAnd(ctx, "user-1001", []string{"order:read", "order:write"})
-
-_, _, _, _ = hasRole, hasAnyRole, hasPermission, hasAllPermission
-```
-
-### Online State Control
-
-```go
-_ = dtoken.Kickout(ctx, token)
-_ = dtoken.KickoutByLoginID(ctx, "user-1001")
-_ = dtoken.Replace(ctx, token)
-_ = dtoken.ReplaceByLoginID(ctx, "user-1001")
-```
-
-### Account Banning
-
-```go
-_ = dtoken.Disable(ctx, "user-1001", 3600, "risk_control")
-disabled := dtoken.IsDisable(ctx, "user-1001")
-disableInfo, err := dtoken.GetDisableInfo(ctx, "user-1001")
-_ = dtoken.Untie(ctx, "user-1001")
-
-_, _ = disabled, disableInfo
-```
-
-## Advanced Features
-
-### Token Introspection
-
-```go
-info, err := dtoken.IntrospectToken(ctx, token)
-if err != nil {
-	return err
-}
-if !info.Active {
-	fmt.Println("invalid reason:", info.Reason)
-}
-```
-
-### Refresh Token
-
-```go
-pair, err := dtoken.LoginWithRefreshToken(ctx, "user-1001")
-if err != nil {
-	return err
-}
-
-nextPair, err := dtoken.RefreshToken(ctx, pair.RefreshToken)
-if err != nil {
-	return err
-}
-_ = dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
-```
-
-### Temporary Ticket
-
-```go
-ticket, err := dtoken.CreateTicket(ctx, "user-1001")
-if err != nil {
-	return err
-}
-
-token, err := dtoken.ConsumeTicket(ctx, ticket)
-if err != nil {
-	return err
-}
-fmt.Println(token)
-```
-
-### Short-Key Login
-
-```go
-shortKey, err := dtoken.CreateShortKey(ctx, "user-1001")
-if err != nil {
-	return err
-}
-
-token, err := dtoken.ConsumeShortKey(ctx, shortKey)
-if err != nil {
-	return err
-}
-fmt.Println(token)
-```
-
-### SSO
-
-```go
-ssoTicket, err := dtoken.CreateSSOTicket(ctx, "user-1001")
-if err != nil {
-	return err
-}
-
-token, err := dtoken.ExchangeSSOTicket(ctx, ssoTicket)
-if err != nil {
-	return err
-}
-
-_ = dtoken.LogoutAllApps(ctx, "user-1001")
-```
-
-### Nonce Anti-Replay
-
-```go
-nonce, err := dtoken.GenerateNonce(ctx)
-if err != nil {
-	return err
-}
-
-ok, err := dtoken.VerifyAndConsumeNonce(ctx, nonce)
-_, _ = ok, err
-```
-
-### Event Listener
-
-```go
-mgr.AddListener(func(event dtoken.Event) {
-	fmt.Println(event.Type, event.LoginID, event.TokenValue)
-})
-```
-
-## Configuration Example
-
-```go
-mgr, err := defaults.NewBuilder().
-	AuthType("user").
-	KeyPrefix("dtoken").
-	TokenName("Authorization").
-	Timeout(7200).
-	ActiveTimeout(1800).
-	AutoRenew(true).
-	RenewMaxRefresh(3600).
-	RenewInterval(60).
-	IsConcurrent(true).
-	IsShare(false).
-	MaxLoginCount(5).
-	IsReadHeader(true).
-	IsReadCookie(false).
-	IsReadBody(false).
-	IsLog(false).
-	IsPrintBanner(false).
-	SetStorage(storage).
-	Build()
-```
-
-| Option | Description |
-| --- | --- |
-| `AuthType` | Authentication system identifier for running multiple auth systems in parallel |
-| `KeyPrefix` | Storage key prefix |
-| `TokenName` | Token name, usually corresponding to a header or cookie name |
-| `Timeout` | Absolute token expiration time, in seconds |
-| `ActiveTimeout` | Maximum inactive duration, in seconds |
-| `AutoRenew` | Whether to enable automatic renewal |
-| `RenewMaxRefresh` | Renewal trigger threshold |
-| `RenewInterval` | Minimum renewal interval |
-| `IsConcurrent` | Whether to allow concurrent login for the same account |
-| `IsShare` | Whether to share a token during concurrent login |
-| `MaxLoginCount` | Maximum number of online terminals |
-| `IsReadHeader` | Whether to read token from HTTP headers |
-| `IsReadCookie` | Whether to read token from cookies |
-| `IsReadBody` | Whether to read token from request body |
-| `SetStorage` | Sets a custom storage adapter |
-
-## Component Ecosystem
-
-| Type | Implementations | Module |
-| --- | --- | --- |
-| Storage | Memory, Redis, PostgreSQL | `com/storage/*` |
-| Codec | JSON, JSON v2, MessagePack, Base64 | `com/codec/*` |
-| Logger | DLog, GoFrame, Nop | `com/log/*` |
-| Token generator | UUID, JWT | `com/generator/dgenerator` |
-| Goroutine pool | Ants | `com/pool/ants` |
+- [Core API Cheatsheet](docs/guide/core-api-cheatsheet.md)
+- [Advanced Features](docs/guide/advanced-features.md)
+- [Configuration Example](docs/guide/configuration.md)
+- [Component Ecosystem](docs/guide/component-ecosystem.md)
+- [Multi-Auth Systems](docs/guide/multi-auth.md)
+- [Disable System](docs/guide/disable.md)
+- [Token Styles](docs/guide/token-style.md)
+- [AccessProvider](docs/guide/access-provider.md)
 
 ## Project Structure
 
 ```text
 dtoken-go/
-├── com/              # Pluggable component implementations
-├── core/             # Core interfaces, config, Manager, context, nonce, OAuth2
-├── defaults/         # Default Builder and default component wiring
-├── docs/             # Detailed documentation and image assets
-├── dtoken/           # Global API facade
-├── examples/         # Quick-start and framework integration examples
-├── integrations/     # Web framework integration packages
-└── go.work           # Go workspace
+├── core/                         # Framework core: config, Manager, Session, events, Nonce, OAuth2
+├── dtoken/                       # Global and instance API facade
+├── defaults/                     # Default Builder and default component wiring
+├── com/                          # Pluggable component implementations
+│   ├── codec/                    # Codec components, such as JSON, MessagePack, Base64
+│   ├── generator/                # Token generators
+│   ├── log/                      # Logger components
+│   ├── pool/                     # Goroutine pool components
+│   └── storage/                  # Storage components, such as Memory and Redis
+├── integrations/                 # Web framework integration packages
+│   ├── gin/                      # Gin middleware, context adapter, and API exports
+│   ├── echo/                     # Echo integration
+│   ├── fiber/                    # Fiber integration
+│   ├── chi/                      # Chi integration
+│   ├── gf/                       # GoFrame integration
+│   ├── hertz/                    # Hertz integration
+│   └── kratos/                   # Kratos integration
+├── examples/                     # Quick-start and framework integration examples
+├── tests/                        # Flow tests and test applications
+│   ├── gin_core_app/             # Gin core flow test application
+│   └── gin_core_flow/            # HTTP flow tests for core features
+├── docs/                         # Guides, API references, and design docs
+├── README_zh.md                  # Chinese project README
+├── README.md                     # English project README
+└── go.work                       # Go workspace
 ```
 
 ## Documentation And Examples
@@ -443,6 +296,10 @@ dtoken-go/
 - [Quick Start](docs/tutorial/quick-start.md)
 - [Authentication](docs/guide/authentication.md)
 - [Permission Management](docs/guide/permission.md)
+- [Multi-Auth Systems](docs/guide/multi-auth.md)
+- [Disable System](docs/guide/disable.md)
+- [Token Styles](docs/guide/token-style.md)
+- [AccessProvider](docs/guide/access-provider.md)
 - [Framework Integration](docs/guide/framework-integration.md)
 - [Event Listener](docs/guide/listener.md)
 - [Nonce Anti-Replay](docs/guide/nonce.md)
@@ -468,6 +325,23 @@ dtoken-go/
 ## Contributing
 
 Issues, pull requests, and feedback are welcome. Please keep changes focused and follow the existing module boundaries and coding style.
+
+## Star History
+
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="https://api.star-history.com/svg?repos=Zany2/dtoken-go&type=Date&theme=dark"
+  />
+  <source
+    media="(prefers-color-scheme: light)"
+    srcset="https://api.star-history.com/svg?repos=Zany2/dtoken-go&type=Date"
+  />
+  <img
+    alt="Star History Chart"
+    src="https://api.star-history.com/svg?repos=Zany2/dtoken-go&type=Date"
+  />
+</picture>
 
 ## License
 

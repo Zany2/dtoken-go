@@ -14,6 +14,13 @@
 - [Session 与终端管理](guide/session-terminal_zh.md) - Session、终端、多端和下线管理
 - [并发登录策略](guide/concurrency-login_zh.md) - Token 复用、最大登录数和多端策略
 - [权限验证](guide/permission_zh.md) - 权限系统详解、通配符使用
+- [AccessProvider](guide/access-provider_zh.md) - 动态权限和角色解析
+- [封禁体系](guide/disable_zh.md) - 账号、服务、等级、设备封禁
+- [多认证体系](guide/multi-auth_zh.md) - AuthType 隔离多套认证系统
+- [Token 风格](guide/token-style_zh.md) - UUID、随机串、JWT 等 Token 生成方式
+- [Core API 速查](guide/core-api-cheatsheet_zh.md) - 常用全局 API 调用方式
+- [配置示例](guide/configuration_zh.md) - Builder 常用配置说明
+- [组件生态](guide/component-ecosystem_zh.md) - 存储、编解码、日志、Token 生成器和协程池
 - [注解使用](guide/annotation_zh.md) - 注解式中间件使用说明
 - [事件监听](guide/listener_zh.md) - 事件系统使用指南
 - [JWT 使用](guide/jwt_zh.md) - JWT Token 配置和使用
@@ -24,6 +31,7 @@
 ### 🔒 安全特性
 
 - [Nonce 防重放](guide/nonce_zh.md) - 防止请求重放攻击
+- [高级能力](guide/advanced-features_zh.md) - SSO、Ticket、短 Key、Token Introspection 等能力入口
 - [Refresh Token](guide/refresh-token_zh.md) - 刷新令牌机制
 - [OAuth2 授权](guide/oauth2_zh.md) - OAuth2 授权码模式
 
@@ -41,7 +49,7 @@
 
 - [quick_start](../examples/quick_start/) - 快速开始示例
 - [gin](../examples/gin/) - Gin 集成示例
-- [gin_core_app](../examples/gin_core_app/) - Gin 核心流程测试示例
+- [gin_core_app](../tests/gin_core_app/) - Gin 核心流程测试应用
 - [gf](../examples/gf/) - GoFrame 集成示例
 - [echo](../examples/echo/) - Echo 集成示例
 - [fiber](../examples/fiber/) - Fiber 集成示例

@@ -287,4 +287,6 @@ r.POST("/admin",
 
 - [登录认证](authentication_zh.md)
 - [注解鉴权](annotation_zh.md)
+- [AccessProvider](access-provider_zh.md)
+- [封禁体系](disable_zh.md)
 - [JWT 指南](jwt_zh.md)

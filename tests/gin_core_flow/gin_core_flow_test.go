@@ -19,7 +19,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/listener"
-	gincoreapp "github.com/Zany2/dtoken-go/examples/gin_core_app"
+	gincoreapp "github.com/Zany2/dtoken-go/tests/gin_core_app"
 )
 
 const flowRedisURL = "redis://:root@192.168.19.104:6379/0"
@@ -381,6 +381,92 @@ func TestAutoRenewFlow(t *testing.T) {
 	if immediate > after {
 		t.Fatalf("ttl after immediate second check = %d, previous = %d, want renew interval to block growth", immediate, after)
 	}
+}
+
+// TestRenewConfigurationMatrixFlow verifies automatic renewal config combinations. TestRenewConfigurationMatrixFlow 验证自动续期开关、触发阈值和续期间隔的配置组合。
+func TestRenewConfigurationMatrixFlow(t *testing.T) {
+	t.Run("auto-renew-disabled-keeps-counting-down", func(t *testing.T) {
+		autoRenew := false
+		c := newFlowClient(t, gincoreapp.Config{
+			TokenTimeout:  4 * time.Second,
+			ActiveTimeout: -1,
+			AutoRenew:     &autoRenew,
+		})
+		token := c.login("renew-disabled-user")
+
+		time.Sleep(1200 * time.Millisecond)
+		before := c.ttl(token)
+		if before <= 0 || before > 4 {
+			t.Fatalf("ttl before disabled auto renew check = %d, want 1..4", before)
+		}
+
+		c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+		time.Sleep(300 * time.Millisecond)
+		after := c.ttl(token)
+		if after > before {
+			t.Fatalf("ttl after disabled auto renew check = %d, previous = %d, want no growth", after, before)
+		}
+	})
+
+	t.Run("auto-renew-waits-for-threshold", func(t *testing.T) {
+		autoRenew := true
+		c := newFlowClient(t, gincoreapp.Config{
+			TokenTimeout:    6 * time.Second,
+			ActiveTimeout:   -1,
+			AutoRenew:       &autoRenew,
+			RenewMaxRefresh: 3,
+			RenewInterval:   -1,
+		})
+		token := c.login("renew-threshold-user")
+
+		c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+		time.Sleep(300 * time.Millisecond)
+		early := c.ttl(token)
+		if early > 6 {
+			t.Fatalf("ttl after early check = %d, want not above configured timeout", early)
+		}
+
+		time.Sleep(3200 * time.Millisecond)
+		before := c.ttl(token)
+		if before <= 0 || before > 3 {
+			t.Fatalf("ttl before threshold renew = %d, want 1..3", before)
+		}
+
+		c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+		time.Sleep(300 * time.Millisecond)
+		after := c.ttl(token)
+		if after < 4 || after > 6 {
+			t.Fatalf("ttl after threshold renew = %d, want 4..6", after)
+		}
+	})
+
+	t.Run("auto-renew-without-interval-can-refresh-repeatedly", func(t *testing.T) {
+		autoRenew := true
+		c := newFlowClient(t, gincoreapp.Config{
+			TokenTimeout:    3 * time.Second,
+			ActiveTimeout:   -1,
+			AutoRenew:       &autoRenew,
+			RenewMaxRefresh: 3,
+			RenewInterval:   -1,
+		})
+		token := c.login("renew-no-interval-user")
+
+		time.Sleep(1200 * time.Millisecond)
+		c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+		time.Sleep(300 * time.Millisecond)
+		first := c.ttl(token)
+		if first < 2 || first > 3 {
+			t.Fatalf("ttl after first no-interval renew = %d, want 2..3", first)
+		}
+
+		time.Sleep(1200 * time.Millisecond)
+		c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+		time.Sleep(300 * time.Millisecond)
+		second := c.ttl(token)
+		if second < 2 || second > 3 {
+			t.Fatalf("ttl after second no-interval renew = %d, want 2..3", second)
+		}
+	})
 }
 
 // TestRenewBoundaryFlow verifies invalid and valid manual renewal behavior. TestRenewBoundaryFlow 验证手动续期的非法参数和有效续期行为。
@@ -998,6 +1084,313 @@ func TestConcurrencyPolicyFlow(t *testing.T) {
 			"deviceId": "b",
 		}, "", http.StatusForbidden, derror.CodeMaxLoginCount, nil)
 		c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+	})
+}
+
+// TestConcurrencyConfigurationMatrixFlow verifies representative combinations of scope, overflow, and replacement policies. TestConcurrencyConfigurationMatrixFlow 验证并发作用域、溢出模式和非并发替换策略的代表性组合。
+func TestConcurrencyConfigurationMatrixFlow(t *testing.T) {
+	t.Run("account-scope-overflow-mode-matrix", func(t *testing.T) {
+		tests := []struct {
+			name        string
+			mode        config.LogoutMode
+			wantMessage string
+		}{
+			{name: "logout", mode: config.LogoutModeLogout, wantMessage: derror.ErrInvalidToken.Error()},
+			{name: "kickout", mode: config.LogoutModeKickout, wantMessage: derror.ErrTokenKickout.Error()},
+			{name: "replaced", mode: config.LogoutModeReplaced, wantMessage: derror.ErrTokenReplaced.Error()},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				share := false
+				c := newFlowClient(t, gincoreapp.Config{
+					TokenTimeout:       30 * time.Second,
+					ActiveTimeout:      -1,
+					IsShare:            &share,
+					MaxLoginCount:      1,
+					ConcurrencyScope:   config.ConcurrencyScopeAccount,
+					OverflowLogoutMode: tt.mode,
+				})
+
+				first := c.loginWithDevice("matrix-account-overflow-"+tt.name, "web", "a")
+				second := c.loginWithDevice("matrix-account-overflow-"+tt.name, "mobile", "b")
+
+				firstResp := c.expectResponse("GET", "/api/me", nil, first, http.StatusUnauthorized, derror.CodeNotLogin)
+				if firstResp.Message != tt.wantMessage {
+					t.Fatalf("account overflow mode %s message = %q, want %q", tt.mode, firstResp.Message, tt.wantMessage)
+				}
+				c.expect("GET", "/api/me", nil, second, http.StatusOK, derror.CodeSuccess, nil)
+			})
+		}
+	})
+
+	t.Run("device-scope-overflow-mode-matrix", func(t *testing.T) {
+		tests := []struct {
+			name        string
+			mode        config.LogoutMode
+			wantMessage string
+		}{
+			{name: "logout", mode: config.LogoutModeLogout, wantMessage: derror.ErrInvalidToken.Error()},
+			{name: "kickout", mode: config.LogoutModeKickout, wantMessage: derror.ErrTokenKickout.Error()},
+			{name: "replaced", mode: config.LogoutModeReplaced, wantMessage: derror.ErrTokenReplaced.Error()},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				share := false
+				c := newFlowClient(t, gincoreapp.Config{
+					TokenTimeout:       30 * time.Second,
+					ActiveTimeout:      -1,
+					IsShare:            &share,
+					MaxLoginCount:      1,
+					ConcurrencyScope:   config.ConcurrencyScopeDevice,
+					OverflowLogoutMode: tt.mode,
+				})
+
+				webA := c.loginWithDevice("matrix-device-overflow-"+tt.name, "web", "a")
+				mobile := c.loginWithDevice("matrix-device-overflow-"+tt.name, "mobile", "a")
+				webB := c.loginWithDevice("matrix-device-overflow-"+tt.name, "web", "b")
+
+				webAResp := c.expectResponse("GET", "/api/me", nil, webA, http.StatusUnauthorized, derror.CodeNotLogin)
+				if webAResp.Message != tt.wantMessage {
+					t.Fatalf("device overflow mode %s message = %q, want %q", tt.mode, webAResp.Message, tt.wantMessage)
+				}
+				c.expect("GET", "/api/me", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+				c.expect("GET", "/api/me", nil, webB, http.StatusOK, derror.CodeSuccess, nil)
+			})
+		}
+	})
+
+	t.Run("non-concurrent-replacement-mode-matrix", func(t *testing.T) {
+		t.Run("account-old-device-replaces-all-old-terminals", func(t *testing.T) {
+			concurrent := false
+			c := newFlowClient(t, gincoreapp.Config{
+				TokenTimeout:          30 * time.Second,
+				ActiveTimeout:         -1,
+				IsConcurrent:          &concurrent,
+				ConcurrencyScope:      config.ConcurrencyScopeAccount,
+				ReplacedLoginExitMode: config.ReplacedLoginExitModeOldDevice,
+			})
+
+			web := c.loginWithDevice("matrix-nonconcurrent-account-old", "web", "a")
+			mobile := c.loginWithDevice("matrix-nonconcurrent-account-old", "mobile", "b")
+			webResp := c.expectResponse("GET", "/api/me", nil, web, http.StatusUnauthorized, derror.CodeNotLogin)
+			if webResp.Message != derror.ErrTokenReplaced.Error() {
+				t.Fatalf("account old-device mode message = %q, want replaced", webResp.Message)
+			}
+			c.expect("GET", "/api/me", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+		})
+
+		t.Run("account-new-device-rejects-new-login", func(t *testing.T) {
+			concurrent := false
+			c := newFlowClient(t, gincoreapp.Config{
+				TokenTimeout:          30 * time.Second,
+				ActiveTimeout:         -1,
+				IsConcurrent:          &concurrent,
+				ConcurrencyScope:      config.ConcurrencyScopeAccount,
+				ReplacedLoginExitMode: config.ReplacedLoginExitModeNewDevice,
+			})
+
+			web := c.loginWithDevice("matrix-nonconcurrent-account-new", "web", "a")
+			c.expect("POST", "/login", map[string]any{
+				"username": "matrix-nonconcurrent-account-new",
+				"password": "123456",
+				"device":   "mobile",
+				"deviceId": "b",
+			}, "", http.StatusForbidden, derror.CodeMaxLoginCount, nil)
+			c.expect("GET", "/api/me", nil, web, http.StatusOK, derror.CodeSuccess, nil)
+		})
+
+		t.Run("device-old-device-replaces-only-same-device-scope", func(t *testing.T) {
+			concurrent := false
+			c := newFlowClient(t, gincoreapp.Config{
+				TokenTimeout:          30 * time.Second,
+				ActiveTimeout:         -1,
+				IsConcurrent:          &concurrent,
+				ConcurrencyScope:      config.ConcurrencyScopeDevice,
+				ReplacedLoginExitMode: config.ReplacedLoginExitModeOldDevice,
+			})
+
+			webA := c.loginWithDevice("matrix-nonconcurrent-device-old", "web", "a")
+			mobile := c.loginWithDevice("matrix-nonconcurrent-device-old", "mobile", "b")
+			webB := c.loginWithDevice("matrix-nonconcurrent-device-old", "web", "c")
+
+			webAResp := c.expectResponse("GET", "/api/me", nil, webA, http.StatusUnauthorized, derror.CodeNotLogin)
+			if webAResp.Message != derror.ErrTokenReplaced.Error() {
+				t.Fatalf("device old-device mode message = %q, want replaced", webAResp.Message)
+			}
+			c.expect("GET", "/api/me", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+			c.expect("GET", "/api/me", nil, webB, http.StatusOK, derror.CodeSuccess, nil)
+		})
+
+		t.Run("device-new-device-rejects-only-same-device-scope", func(t *testing.T) {
+			concurrent := false
+			c := newFlowClient(t, gincoreapp.Config{
+				TokenTimeout:          30 * time.Second,
+				ActiveTimeout:         -1,
+				IsConcurrent:          &concurrent,
+				ConcurrencyScope:      config.ConcurrencyScopeDevice,
+				ReplacedLoginExitMode: config.ReplacedLoginExitModeNewDevice,
+			})
+
+			web := c.loginWithDevice("matrix-nonconcurrent-device-new", "web", "a")
+			mobile := c.loginWithDevice("matrix-nonconcurrent-device-new", "mobile", "b")
+			c.expect("POST", "/login", map[string]any{
+				"username": "matrix-nonconcurrent-device-new",
+				"password": "123456",
+				"device":   "web",
+				"deviceId": "c",
+			}, "", http.StatusForbidden, derror.CodeMaxLoginCount, nil)
+			c.expect("GET", "/api/me", nil, web, http.StatusOK, derror.CodeSuccess, nil)
+			c.expect("GET", "/api/me", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+		})
+	})
+}
+
+// TestLoginLimitConfigurationMatrixFlow verifies max-login, share, and no-limit boundary configs. TestLoginLimitConfigurationMatrixFlow 验证最大登录数、Token 共享和无限制边界配置。
+func TestLoginLimitConfigurationMatrixFlow(t *testing.T) {
+	t.Run("default-share-reuses-same-concrete-device", func(t *testing.T) {
+		c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
+
+		first := c.loginWithDevice("default-share-user", "web", "browser-1")
+		second := c.loginWithDevice("default-share-user", "web", "browser-1")
+		if first != second {
+			t.Fatalf("default shared token second = %q, want first token %q", second, first)
+		}
+
+		var session struct {
+			TerminalCount int `json:"terminalCount"`
+		}
+		c.expect("GET", "/api/session", nil, first, http.StatusOK, derror.CodeSuccess, &session)
+		if session.TerminalCount != 1 {
+			t.Fatalf("default shared terminal count = %d, want 1", session.TerminalCount)
+		}
+	})
+
+	t.Run("share-disabled-creates-new-token-for-same-concrete-device", func(t *testing.T) {
+		share := false
+		c := newFlowClient(t, gincoreapp.Config{
+			TokenTimeout:  30 * time.Second,
+			ActiveTimeout: -1,
+			IsShare:       &share,
+		})
+
+		first := c.loginWithDevice("share-disabled-user", "web", "browser-1")
+		second := c.loginWithDevice("share-disabled-user", "web", "browser-1")
+		if first == second {
+			t.Fatal("share-disabled login reused token, want a new token")
+		}
+
+		var session struct {
+			TerminalCount int `json:"terminalCount"`
+		}
+		c.expect("GET", "/api/session", nil, second, http.StatusOK, derror.CodeSuccess, &session)
+		if session.TerminalCount != 2 {
+			t.Fatalf("share-disabled terminal count = %d, want 2", session.TerminalCount)
+		}
+		c.expect("GET", "/api/me", nil, first, http.StatusOK, derror.CodeSuccess, nil)
+		c.expect("GET", "/api/me", nil, second, http.StatusOK, derror.CodeSuccess, nil)
+	})
+
+	t.Run("max-login-unlimited-account-scope-keeps-all-terminals", func(t *testing.T) {
+		share := false
+		c := newFlowClient(t, gincoreapp.Config{
+			TokenTimeout:     30 * time.Second,
+			ActiveTimeout:    -1,
+			IsShare:          &share,
+			MaxLoginCount:    config.NoLimit,
+			ConcurrencyScope: config.ConcurrencyScopeAccount,
+		})
+
+		tokens := []string{
+			c.loginWithDevice("unlimited-account-user", "web", "a"),
+			c.loginWithDevice("unlimited-account-user", "mobile", "b"),
+			c.loginWithDevice("unlimited-account-user", "desktop", "c"),
+			c.loginWithDevice("unlimited-account-user", "tablet", "d"),
+		}
+		for _, token := range tokens {
+			c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+		}
+
+		var session struct {
+			TerminalCount int `json:"terminalCount"`
+		}
+		c.expect("GET", "/api/session", nil, tokens[len(tokens)-1], http.StatusOK, derror.CodeSuccess, &session)
+		if session.TerminalCount != len(tokens) {
+			t.Fatalf("unlimited account terminal count = %d, want %d", session.TerminalCount, len(tokens))
+		}
+	})
+
+	t.Run("max-login-unlimited-device-scope-keeps-same-device-terminals", func(t *testing.T) {
+		share := false
+		c := newFlowClient(t, gincoreapp.Config{
+			TokenTimeout:     30 * time.Second,
+			ActiveTimeout:    -1,
+			IsShare:          &share,
+			MaxLoginCount:    config.NoLimit,
+			ConcurrencyScope: config.ConcurrencyScopeDevice,
+		})
+
+		tokens := []string{
+			c.loginWithDevice("unlimited-device-user", "web", "a"),
+			c.loginWithDevice("unlimited-device-user", "web", "b"),
+			c.loginWithDevice("unlimited-device-user", "web", "c"),
+			c.loginWithDevice("unlimited-device-user", "mobile", "d"),
+		}
+		for _, token := range tokens {
+			c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+		}
+
+		var terminal struct {
+			OnlineCount int `json:"onlineCount"`
+			DeviceCount int `json:"deviceCount"`
+		}
+		c.expect("GET", "/api/terminal", nil, tokens[2], http.StatusOK, derror.CodeSuccess, &terminal)
+		if terminal.OnlineCount != len(tokens) || terminal.DeviceCount != 3 {
+			t.Fatalf("unlimited device terminal = %+v, want online %d and web device count 3", terminal, len(tokens))
+		}
+	})
+
+	t.Run("max-login-one-account-scope-overflows-across-devices", func(t *testing.T) {
+		share := false
+		c := newFlowClient(t, gincoreapp.Config{
+			TokenTimeout:       30 * time.Second,
+			ActiveTimeout:      -1,
+			IsShare:            &share,
+			MaxLoginCount:      1,
+			ConcurrencyScope:   config.ConcurrencyScopeAccount,
+			OverflowLogoutMode: config.LogoutModeKickout,
+		})
+
+		first := c.loginWithDevice("limit-one-account-user", "web", "a")
+		second := c.loginWithDevice("limit-one-account-user", "mobile", "b")
+		firstResp := c.expectResponse("GET", "/api/me", nil, first, http.StatusUnauthorized, derror.CodeNotLogin)
+		if firstResp.Message != derror.ErrTokenKickout.Error() {
+			t.Fatalf("limit-one account message = %q, want token kickout", firstResp.Message)
+		}
+		c.expect("GET", "/api/me", nil, second, http.StatusOK, derror.CodeSuccess, nil)
+	})
+
+	t.Run("max-login-one-device-scope-allows-other-device-types", func(t *testing.T) {
+		share := false
+		c := newFlowClient(t, gincoreapp.Config{
+			TokenTimeout:       30 * time.Second,
+			ActiveTimeout:      -1,
+			IsShare:            &share,
+			MaxLoginCount:      1,
+			ConcurrencyScope:   config.ConcurrencyScopeDevice,
+			OverflowLogoutMode: config.LogoutModeKickout,
+		})
+
+		webA := c.loginWithDevice("limit-one-device-user", "web", "a")
+		mobile := c.loginWithDevice("limit-one-device-user", "mobile", "a")
+		webB := c.loginWithDevice("limit-one-device-user", "web", "b")
+		webAResp := c.expectResponse("GET", "/api/me", nil, webA, http.StatusUnauthorized, derror.CodeNotLogin)
+		if webAResp.Message != derror.ErrTokenKickout.Error() {
+			t.Fatalf("limit-one device message = %q, want token kickout", webAResp.Message)
+		}
+		c.expect("GET", "/api/me", nil, mobile, http.StatusOK, derror.CodeSuccess, nil)
+		c.expect("GET", "/api/me", nil, webB, http.StatusOK, derror.CodeSuccess, nil)
 	})
 }
 
