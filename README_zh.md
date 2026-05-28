@@ -5,7 +5,7 @@
 <h1 align="center">DToken-Go</h1>
 
 <p align="center">
-  一个面向 Go 应用的认证、授权、会话管理与单点登录框架。
+  一个面向 Go 应用的认证、授权、会话管理与 Token 生命周期管理框架。
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
 
 ## DToken-Go 是什么
 
-DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，提供登录认证、Token 管理、Session 管理、终端管理、角色权限校验、账号封禁、SSO 单点登录、短 Key 访问凭证、Ticket 临时凭证、Token Introspection、Refresh Token、Nonce 防重放、OAuth2 服务端和事件监听等能力。框架支持插件化组件替换与自定义扩展，并适配主流 Go Web 框架，既可以作为独立认证核心使用，也可以快速接入现有业务项目。
+DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，已提供登录认证、Token 管理、Session 管理、终端管理、角色权限校验、账号与设备封禁、Nonce 防重放、OAuth2 服务端、SSO Ticket 模式和事件监听等核心能力；短 Key 访问凭证、Token Introspection、独立 Refresh Token 和更多 SSO 模式等能力正在持续开发中。框架支持插件化组件替换与自定义扩展，并适配主流 Go Web 框架，既可以作为独立认证核心使用，也可以快速接入现有业务项目。
 
 你可以把它用于：
 
@@ -49,8 +49,8 @@ DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，提供登录
 | 事件系统 | 登录、登出、续期、权限、角色、封禁、解封等核心生命周期事件监听 |
 | 可插拔组件 | 存储、编解码、日志、Token 生成器、协程池等组件可替换 |
 | 多框架集成 | 为主流 Go Web 框架提供中间件、上下文适配和 API 导出 |
-| SSO 单点登录 🚧 | 统一登录、票据交换、跨系统登录态共享、统一登出、应用维度管理 |
-| Ticket 临时凭证 🚧 | Ticket 创建、校验、一次性消费、撤销、TTL 查询和状态识别 |
+| SSO 单点登录 | Ticket 模式、统一登录、票据交换、子系统换取本地登录态，更多模式开发中 |
+| Ticket 临时凭证 | SSO Ticket 创建、校验、一次性消费、撤销、TTL 查询和状态识别 |
 | 短 Key 访问凭证 🚧 | 生成随机短 Key，用于短链接访问、扫码确认、临时授权和系统间换票 |
 | Token Introspection 🚧 | 标准化查询 Token 是否有效、归属信息、TTL 和失效原因 |
 | Refresh Token 🚧 | 独立刷新令牌签发、刷新、撤销、过期、轮换和安全校验 |
@@ -245,14 +245,14 @@ func main() {
 
 README 只保留最小上手路径，更多 API、配置和组件说明可以查看下面的专题文档：
 
-- [Core API 速查](docs/guide/core-api-cheatsheet_zh.md)
-- [高级能力](docs/guide/advanced-features_zh.md)
-- [配置示例](docs/guide/configuration_zh.md)
-- [组件生态](docs/guide/component-ecosystem_zh.md)
-- [多认证体系](docs/guide/multi-auth_zh.md)
-- [封禁体系](docs/guide/disable_zh.md)
-- [Token 风格](docs/guide/token-style_zh.md)
-- [AccessProvider](docs/guide/access-provider_zh.md)
+- [Core API 速查](docs/guide/reference/core-api-cheatsheet_zh.md)
+- [高级能力](docs/guide/security/advanced-features_zh.md)
+- [配置示例](docs/guide/reference/configuration_zh.md)
+- [组件生态](docs/guide/integration/component-ecosystem_zh.md)
+- [多认证体系](docs/guide/core/multi-auth_zh.md)
+- [封禁体系](docs/guide/core/disable_zh.md)
+- [Token 风格](docs/guide/core/token-style_zh.md)
+- [AccessProvider](docs/guide/core/access-provider_zh.md)
 
 ## 项目结构
 
@@ -280,6 +280,13 @@ dtoken-go/
 │   ├── gin_core_app/             # Gin 核心流程测试应用
 │   └── gin_core_flow/            # 基于 HTTP 流程的核心功能测试
 ├── docs/                         # 文档、指南、API 参考和设计说明
+│   ├── guide/core/               # 登录、权限、Session、终端、封禁等核心能力
+│   ├── guide/security/           # Nonce、OAuth2、SSO、JWT、Refresh Token 等安全与协议能力
+│   ├── guide/integration/        # Web 框架、注解、组件、Redis、流程测试
+│   ├── guide/reference/          # 配置示例和 Core API 速查
+│   ├── api/                      # API 参考
+│   ├── design/                   # 架构与设计文档
+│   └── tutorial/                 # 快速开始教程
 ├── README_zh.md                  # 中文项目说明
 ├── README.md                     # 英文项目说明
 └── go.work                       # Go workspace
@@ -291,19 +298,19 @@ dtoken-go/
 
 - [文档中心](docs/README_zh.md)
 - [快速开始](docs/tutorial/quick-start_zh.md)
-- [登录认证](docs/guide/authentication_zh.md)
-- [权限管理](docs/guide/permission_zh.md)
-- [多认证体系](docs/guide/multi-auth_zh.md)
-- [封禁体系](docs/guide/disable_zh.md)
-- [Token 风格](docs/guide/token-style_zh.md)
-- [AccessProvider](docs/guide/access-provider_zh.md)
-- [框架集成](docs/guide/framework-integration_zh.md)
-- [事件监听](docs/guide/listener_zh.md)
-- [Nonce 防重放](docs/guide/nonce_zh.md)
-- [JWT 集成](docs/guide/jwt_zh.md)
-- [Redis 存储](docs/guide/redis-storage_zh.md)
-- [OAuth2](docs/guide/oauth2_zh.md)
-- [Refresh Token](docs/guide/refresh-token_zh.md)
+- [登录认证](docs/guide/core/authentication_zh.md)
+- [权限管理](docs/guide/core/permission_zh.md)
+- [多认证体系](docs/guide/core/multi-auth_zh.md)
+- [封禁体系](docs/guide/core/disable_zh.md)
+- [Token 风格](docs/guide/core/token-style_zh.md)
+- [AccessProvider](docs/guide/core/access-provider_zh.md)
+- [框架集成](docs/guide/integration/framework-integration_zh.md)
+- [事件监听](docs/guide/core/listener_zh.md)
+- [Nonce 防重放](docs/guide/security/nonce_zh.md)
+- [JWT 集成](docs/guide/security/jwt_zh.md)
+- [Redis 存储](docs/guide/integration/redis-storage_zh.md)
+- [OAuth2](docs/guide/security/oauth2_zh.md)
+- [Refresh Token](docs/guide/security/refresh-token_zh.md)
 - [API 参考](docs/api/dtoken_zh.md)
 
 ### 示例项目

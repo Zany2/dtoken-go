@@ -125,7 +125,7 @@ After these steps, you already understand the most basic usage of the current DT
 
 ## Next Steps
 
-- [Authentication Guide](../guide/authentication.md)
-- [Permission Guide](../guide/permission.md)
-- [Annotation Guide](../guide/annotation.md)
-- [Framework Integration Guide](../guide/framework-integration.md)
+- [Authentication Guide](../guide/core/authentication.md)
+- [Permission Guide](../guide/core/permission.md)
+- [Annotation Guide](../guide/integration/annotation.md)
+- [Framework Integration Guide](../guide/integration/framework-integration.md)

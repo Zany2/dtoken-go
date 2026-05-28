@@ -143,4 +143,13 @@ var (
 	ValidateOAuth2AccessToken                 = dtoken.ValidateOAuth2AccessToken
 	ValidateOAuth2AccessTokenAndGetInfo       = dtoken.ValidateOAuth2AccessTokenAndGetInfo
 	RevokeOAuth2Token                         = dtoken.RevokeOAuth2Token
+	RegisterSSOClient                         = dtoken.RegisterSSOClient
+	UnregisterSSOClient                       = dtoken.UnregisterSSOClient
+	GetSSOClient                              = dtoken.GetSSOClient
+	GenerateSSOTicket                         = dtoken.GenerateSSOTicket
+	GenerateSSOTicketWithTimeout              = dtoken.GenerateSSOTicketWithTimeout
+	ValidateSSOTicket                         = dtoken.ValidateSSOTicket
+	ConsumeSSOTicket                          = dtoken.ConsumeSSOTicket
+	RevokeSSOTicket                           = dtoken.RevokeSSOTicket
+	GetSSOTicketTTL                           = dtoken.GetSSOTicketTTL
 )

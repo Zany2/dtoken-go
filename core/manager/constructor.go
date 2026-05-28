@@ -7,6 +7,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/listener"
 	"github.com/Zany2/dtoken-go/core/nonce"
 	"github.com/Zany2/dtoken-go/core/oauth2"
+	"github.com/Zany2/dtoken-go/core/sso"
 )
 
 // Option configures optional manager modules Option 配置 Manager 的可选模块
@@ -28,6 +29,16 @@ func WithOAuth2Manager(oauth2Manager *oauth2.OAuth2Server) Option {
 		// Replace OAuth2 manager when provided 提供时替换 OAuth2 管理器。
 		if oauth2Manager != nil {
 			m.oauth2Manager = oauth2Manager
+		}
+	}
+}
+
+// WithSSOManager replaces the default SSO server. WithSSOManager 替换默认 SSO 服务端。
+func WithSSOManager(ssoManager *sso.Server) Option {
+	return func(m *Manager) {
+		// Replace SSO manager when provided. 提供时替换 SSO 管理器。
+		if ssoManager != nil {
+			m.ssoManager = ssoManager
 		}
 	}
 }
@@ -62,6 +73,7 @@ func NewManager(
 		pool:           pool,
 		nonceManager:   nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, storage),
 		oauth2Manager:  oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, storage, serializer),
+		ssoManager:     sso.NewDefaultServer(cfg.AuthType, cfg.KeyPrefix, storage, serializer),
 		eventManager:   listener.NewManager(logger),
 		accessProvider: accessProvider,
 	}

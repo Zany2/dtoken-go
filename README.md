@@ -5,7 +5,7 @@
 <h1 align="center">DToken-Go</h1>
 
 <p align="center">
-  A Go authentication, authorization, session management, and SSO framework.
+  A Go authentication, authorization, session management, and token lifecycle framework.
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
 
 ## What Is DToken-Go
 
-DToken-Go is a modular and pluggable Go authentication and authorization framework. It provides login authentication, Token management, Session management, terminal management, role and permission checks, account banning, SSO, short-key access credentials, temporary Ticket credentials, Token Introspection, Refresh Token, Nonce anti-replay, OAuth2 server capabilities, and event listeners. The framework supports pluggable component replacement and custom extensions, and integrates with mainstream Go Web frameworks, so it can be used as an independent auth core or quickly embedded into existing business projects.
+DToken-Go is a modular and pluggable Go authentication and authorization framework. It already provides login authentication, Token management, Session management, terminal management, role and permission checks, account and device banning, Nonce anti-replay, OAuth2 server support, SSO Ticket mode, and event listeners. Short-key access credentials, Token Introspection, standalone Refresh Token, and more SSO modes are under active development. The framework supports pluggable component replacement and custom extensions, and integrates with mainstream Go Web frameworks, so it can be used as an independent auth core or quickly embedded into existing business projects.
 
 You can use it for:
 
@@ -49,8 +49,8 @@ You can use it for:
 | Event system | Listeners for login, logout, renewal, permissions, roles, bans, unbans, and other core lifecycle events |
 | Pluggable components | Storage, codec, logger, Token generator, goroutine pool, and other components can be replaced |
 | Framework integration | Middleware, context adapters, and API exports for mainstream Go Web frameworks |
-| SSO 🚧 | Unified login, ticket exchange, cross-system login-state sharing, unified logout, and application-level management |
-| Temporary Ticket 🚧 | Ticket creation, validation, one-time consumption, revocation, TTL query, and status identification |
+| SSO | Ticket mode, unified login, ticket exchange, and local login-state creation in business applications; more modes under development |
+| Temporary Ticket | SSO Ticket creation, validation, one-time consumption, revocation, TTL query, and status identification |
 | Short-key access credential 🚧 | Generate random short keys for short-link access, QR confirmation, temporary authorization, and system-to-system ticket exchange |
 | Token Introspection 🚧 | Standardized query for Token validity, ownership information, TTL, and invalid reason |
 | Refresh Token 🚧 | Independent refresh token issuing, refreshing, revocation, expiration, rotation, and security checks |
@@ -245,14 +245,14 @@ func main() {
 
 README keeps only the minimal getting-started path. For more API, configuration, and component details, see:
 
-- [Core API Cheatsheet](docs/guide/core-api-cheatsheet.md)
-- [Advanced Features](docs/guide/advanced-features.md)
-- [Configuration Example](docs/guide/configuration.md)
-- [Component Ecosystem](docs/guide/component-ecosystem.md)
-- [Multi-Auth Systems](docs/guide/multi-auth.md)
-- [Disable System](docs/guide/disable.md)
-- [Token Styles](docs/guide/token-style.md)
-- [AccessProvider](docs/guide/access-provider.md)
+- [Core API Cheatsheet](docs/guide/reference/core-api-cheatsheet.md)
+- [Advanced Features](docs/guide/security/advanced-features.md)
+- [Configuration Example](docs/guide/reference/configuration.md)
+- [Component Ecosystem](docs/guide/integration/component-ecosystem.md)
+- [Multi-Auth Systems](docs/guide/core/multi-auth.md)
+- [Disable System](docs/guide/core/disable.md)
+- [Token Styles](docs/guide/core/token-style.md)
+- [AccessProvider](docs/guide/core/access-provider.md)
 
 ## Project Structure
 
@@ -280,6 +280,13 @@ dtoken-go/
 │   ├── gin_core_app/             # Gin core flow test application
 │   └── gin_core_flow/            # HTTP flow tests for core features
 ├── docs/                         # Guides, API references, and design docs
+│   ├── guide/core/               # Core capabilities such as login, permissions, Session, terminals, and disable
+│   ├── guide/security/           # Security and protocol features such as Nonce, OAuth2, SSO, JWT, and Refresh Token
+│   ├── guide/integration/        # Web frameworks, annotations, components, Redis, and flow tests
+│   ├── guide/reference/          # Configuration examples and Core API cheatsheet
+│   ├── api/                      # API references
+│   ├── design/                   # Architecture and design docs
+│   └── tutorial/                 # Quick-start tutorials
 ├── README_zh.md                  # Chinese project README
 ├── README.md                     # English project README
 └── go.work                       # Go workspace
@@ -291,19 +298,19 @@ dtoken-go/
 
 - [Documentation Center](docs/README.md)
 - [Quick Start](docs/tutorial/quick-start.md)
-- [Authentication](docs/guide/authentication.md)
-- [Permission Management](docs/guide/permission.md)
-- [Multi-Auth Systems](docs/guide/multi-auth.md)
-- [Disable System](docs/guide/disable.md)
-- [Token Styles](docs/guide/token-style.md)
-- [AccessProvider](docs/guide/access-provider.md)
-- [Framework Integration](docs/guide/framework-integration.md)
-- [Event Listener](docs/guide/listener.md)
-- [Nonce Anti-Replay](docs/guide/nonce.md)
-- [JWT Integration](docs/guide/jwt.md)
-- [Redis Storage](docs/guide/redis-storage.md)
-- [OAuth2](docs/guide/oauth2.md)
-- [Refresh Token](docs/guide/refresh-token.md)
+- [Authentication](docs/guide/core/authentication.md)
+- [Permission Management](docs/guide/core/permission.md)
+- [Multi-Auth Systems](docs/guide/core/multi-auth.md)
+- [Disable System](docs/guide/core/disable.md)
+- [Token Styles](docs/guide/core/token-style.md)
+- [AccessProvider](docs/guide/core/access-provider.md)
+- [Framework Integration](docs/guide/integration/framework-integration.md)
+- [Event Listener](docs/guide/core/listener.md)
+- [Nonce Anti-Replay](docs/guide/security/nonce.md)
+- [JWT Integration](docs/guide/security/jwt.md)
+- [Redis Storage](docs/guide/integration/redis-storage.md)
+- [OAuth2](docs/guide/security/oauth2.md)
+- [Refresh Token](docs/guide/security/refresh-token.md)
 - [API Reference](docs/api/dtoken.md)
 
 ### Example Projects
