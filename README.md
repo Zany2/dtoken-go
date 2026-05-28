@@ -258,9 +258,20 @@ README keeps only the minimal getting-started path. For more API, configuration,
 
 ```text
 dtoken-go/
-├── core/                         # Framework core: config, Manager, Session, events, Nonce, OAuth2
-├── dtoken/                       # Global and instance API facade
-├── defaults/                     # Default Builder and default component wiring
+├── core/                         # Framework core modules, split by capability as independent Go modules
+│   ├── adapter/                  # Contracts for storage, codec, logger, Token generator, and request context
+│   ├── builder/                  # Manager builder, component wiring, and configuration validation
+│   ├── config/                   # Core configuration, defaults, and validation
+│   ├── context/                  # Request-scoped DTokenContext for Token and Manager access
+│   ├── derror/                   # Unified errors, error codes, and core error definitions
+│   ├── listener/                 # Event model, event manager, and listener callbacks
+│   ├── manager/                  # Login, Session, terminal, permission, role, and disable logic
+│   ├── nonce/                    # Nonce anti-replay capability
+│   ├── oauth2/                   # OAuth2 server capability
+│   ├── sso/                      # SSO and Ticket experimental implementation
+│   └── utils/                    # Internal shared utilities
+├── dtoken/                       # Public facade APIs for global mode, instance mode, and feature groups
+├── defaults/                     # Default Builder with bundled storage, codec, logger, and Token generator wiring
 ├── com/                          # Pluggable component implementations
 │   ├── codec/                    # Codec components, such as JSON, MessagePack, Base64
 │   ├── generator/                # Token generators
@@ -269,13 +280,21 @@ dtoken-go/
 │   └── storage/                  # Storage components, such as Memory and Redis
 ├── integrations/                 # Web framework integration packages
 │   ├── gin/                      # Gin middleware, context adapter, and API exports
-│   ├── echo/                     # Echo integration
-│   ├── fiber/                    # Fiber integration
-│   ├── chi/                      # Chi integration
-│   ├── gf/                       # GoFrame integration
-│   ├── hertz/                    # Hertz integration
-│   └── kratos/                   # Kratos integration
+│   ├── echo/                     # Echo middleware, context adapter, and API exports
+│   ├── fiber/                    # Fiber middleware, context adapter, and API exports
+│   ├── chi/                      # Chi middleware, context adapter, and API exports
+│   ├── gf/                       # GoFrame middleware, context adapter, and API exports
+│   ├── hertz/                    # Hertz middleware, context adapter, and API exports
+│   └── kratos/                   # Kratos middleware, context adapter, and API exports
 ├── examples/                     # Quick-start and framework integration examples
+│   ├── quick_start/              # Minimal example with the default Builder and global API
+│   ├── gin/                      # Gin example
+│   ├── echo/                     # Echo example
+│   ├── fiber/                    # Fiber example
+│   ├── chi/                      # Chi example
+│   ├── gf/                       # GoFrame example
+│   ├── hertz/                    # Hertz example
+│   └── kratos/                   # Kratos example
 ├── tests/                        # Flow tests and test applications
 │   ├── gin_core_app/             # Gin core flow test application
 │   └── gin_core_flow/            # HTTP flow tests for core features
@@ -287,9 +306,12 @@ dtoken-go/
 │   ├── api/                      # API references
 │   ├── design/                   # Architecture and design docs
 │   └── tutorial/                 # Quick-start tutorials
+├── FEATURE.md                    # Feature roadmap and planned capability notes
+├── LICENSE                       # Apache-2.0 license
 ├── README_zh.md                  # Chinese project README
 ├── README.md                     # English project README
-└── go.work                       # Go workspace
+├── go.work                       # Go workspace for all modules
+└── go.work.sum                   # Workspace dependency checksum file
 ```
 
 ## Documentation And Examples

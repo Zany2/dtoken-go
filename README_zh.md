@@ -258,9 +258,20 @@ README 只保留最小上手路径，更多 API、配置和组件说明可以查
 
 ```text
 dtoken-go/
-├── core/                         # 框架核心：配置、Manager、Session、事件、Nonce、OAuth2
-├── dtoken/                       # 全局 API 与实例 API 门面
-├── defaults/                     # 默认 Builder 与默认组件装配
+├── core/                         # 框架核心模块，按能力拆分为独立 Go module
+│   ├── adapter/                  # 存储、编解码、日志、Token 生成器、请求上下文等接口契约
+│   ├── builder/                  # Manager 构建器、组件装配和配置校验入口
+│   ├── config/                   # 核心配置项、默认值和配置校验
+│   ├── context/                  # 请求级 DTokenContext，承载当前请求的 Token 和 Manager
+│   ├── derror/                   # 统一错误、错误码和核心错误定义
+│   ├── listener/                 # 事件模型、事件管理器和监听回调
+│   ├── manager/                  # 登录、Session、终端、权限、角色、封禁等核心逻辑
+│   ├── nonce/                    # Nonce 防重放能力
+│   ├── oauth2/                   # OAuth2 服务端能力
+│   ├── sso/                      # SSO 与 Ticket 能力预研实现
+│   └── utils/                    # 内部通用工具
+├── dtoken/                       # 对外门面 API：全局模式、实例模式和能力分组封装
+├── defaults/                     # 默认 Builder，内置默认存储、编解码、日志和 Token 生成器装配
 ├── com/                          # 可插拔组件实现
 │   ├── codec/                    # 编解码组件，如 JSON、MessagePack、Base64
 │   ├── generator/                # Token 生成器
@@ -269,13 +280,21 @@ dtoken-go/
 │   └── storage/                  # 存储组件，如 Memory、Redis
 ├── integrations/                 # Web 框架集成包
 │   ├── gin/                      # Gin 中间件、上下文适配和 API 导出
-│   ├── echo/                     # Echo 集成
-│   ├── fiber/                    # Fiber 集成
-│   ├── chi/                      # Chi 集成
-│   ├── gf/                       # GoFrame 集成
-│   ├── hertz/                    # Hertz 集成
-│   └── kratos/                   # Kratos 集成
+│   ├── echo/                     # Echo 中间件、上下文适配和 API 导出
+│   ├── fiber/                    # Fiber 中间件、上下文适配和 API 导出
+│   ├── chi/                      # Chi 中间件、上下文适配和 API 导出
+│   ├── gf/                       # GoFrame 中间件、上下文适配和 API 导出
+│   ├── hertz/                    # Hertz 中间件、上下文适配和 API 导出
+│   └── kratos/                   # Kratos 中间件、上下文适配和 API 导出
 ├── examples/                     # 快速开始与框架接入示例
+│   ├── quick_start/              # 默认 Builder + 全局 API 最小示例
+│   ├── gin/                      # Gin 示例
+│   ├── echo/                     # Echo 示例
+│   ├── fiber/                    # Fiber 示例
+│   ├── chi/                      # Chi 示例
+│   ├── gf/                       # GoFrame 示例
+│   ├── hertz/                    # Hertz 示例
+│   └── kratos/                   # Kratos 示例
 ├── tests/                        # 流程测试与测试应用
 │   ├── gin_core_app/             # Gin 核心流程测试应用
 │   └── gin_core_flow/            # 基于 HTTP 流程的核心功能测试
@@ -287,9 +306,12 @@ dtoken-go/
 │   ├── api/                      # API 参考
 │   ├── design/                   # 架构与设计文档
 │   └── tutorial/                 # 快速开始教程
+├── FEATURE.md                    # 功能规划和待完善能力记录
+├── LICENSE                       # Apache-2.0 开源协议
 ├── README_zh.md                  # 中文项目说明
 ├── README.md                     # 英文项目说明
-└── go.work                       # Go workspace
+├── go.work                       # Go workspace，统一管理多模块
+└── go.work.sum                   # Workspace 依赖校验文件
 ```
 
 ## 文档与示例
