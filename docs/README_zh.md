@@ -24,7 +24,7 @@
 
 - [Nonce 防重放](guide/security/nonce_zh.md) - 防止请求重放攻击
 - [OAuth2 授权](guide/security/oauth2_zh.md) - OAuth2 授权码模式
-- [SSO 单点登录](guide/security/sso_zh.md) - Ticket 模式 SSO 接入与后续模式说明
+- [SSO 单点登录](../sso/README_zh.md) - 独立 SSO 模块、Ticket、共享 Token 和远程会话模式说明
 - [Refresh Token](guide/security/refresh-token_zh.md) - 刷新令牌机制
 - [JWT 使用](guide/security/jwt_zh.md) - JWT Token 配置和使用
 - [高级能力](guide/security/advanced-features_zh.md) - SSO、Ticket、短 Key、Token Introspection 等能力入口

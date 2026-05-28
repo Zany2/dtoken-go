@@ -20,6 +20,7 @@ use (
 	./core
 	./defaults
 	./dtoken
+	./sso
 
 	./examples/chi
 	./examples/echo

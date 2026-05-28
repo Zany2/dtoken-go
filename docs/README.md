@@ -24,7 +24,7 @@ English | [中文文档](README_zh.md)
 
 - [Nonce Anti-Replay](guide/security/nonce.md) - Prevent replay attacks
 - [OAuth2 Authorization](guide/security/oauth2.md) - OAuth2 authorization code flow
-- [SSO](guide/security/sso.md) - Ticket-mode SSO integration and future mode notes
+- [SSO](../sso/README.md) - Optional SSO module, Ticket, shared token, and remote session modes
 - [Refresh Token](guide/security/refresh-token.md) - Token refresh mechanism
 - [JWT Integration](guide/security/jwt.md) - JWT token configuration and usage
 - [Advanced Features](guide/security/advanced-features.md) - SSO, Ticket, short key, Token Introspection, and more

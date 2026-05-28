@@ -9,7 +9,6 @@ import (
 	"github.com/Zany2/dtoken-go/core/listener"
 	"github.com/Zany2/dtoken-go/core/nonce"
 	"github.com/Zany2/dtoken-go/core/oauth2"
-	"github.com/Zany2/dtoken-go/core/sso"
 )
 
 // Manager is the core auth facade. Manager 是鉴权核心门面。
@@ -24,7 +23,6 @@ type Manager struct {
 
 	nonceManager   *nonce.NonceManager        // nonceManager handles one-time nonce values. nonceManager 管理一次性 nonce。
 	oauth2Manager  *oauth2.OAuth2Server       // oauth2Manager handles OAuth2 flows. oauth2Manager 处理 OAuth2 流程。
-	ssoManager     *sso.Server                // ssoManager handles SSO flows. ssoManager 处理 SSO 流程。
 	eventManager   *listener.Manager          // eventManager dispatches auth events. eventManager 分发鉴权事件。
 	loginLocksMu   sync.Mutex                 // loginLocksMu protects the login lock registry. loginLocksMu 保护登录锁注册表。
 	loginLocks     map[string]*loginLockEntry // loginLocks serializes writes per login ID. loginLocks 按登录 ID 串行化写操作。

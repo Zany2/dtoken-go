@@ -168,16 +168,3 @@ var (
 	ValidateOAuth2AccessTokenAndGetInfo = dtoken.ValidateOAuth2AccessTokenAndGetInfo
 	RevokeOAuth2Token                   = dtoken.RevokeOAuth2Token
 )
-
-// DToken SSO operations DToken SSO 操作。
-var (
-	RegisterSSOClient            = dtoken.RegisterSSOClient
-	UnregisterSSOClient          = dtoken.UnregisterSSOClient
-	GetSSOClient                 = dtoken.GetSSOClient
-	GenerateSSOTicket            = dtoken.GenerateSSOTicket
-	GenerateSSOTicketWithTimeout = dtoken.GenerateSSOTicketWithTimeout
-	ValidateSSOTicket            = dtoken.ValidateSSOTicket
-	ConsumeSSOTicket             = dtoken.ConsumeSSOTicket
-	RevokeSSOTicket              = dtoken.RevokeSSOTicket
-	GetSSOTicketTTL              = dtoken.GetSSOTicketTTL
-)

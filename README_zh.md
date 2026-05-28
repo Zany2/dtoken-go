@@ -268,9 +268,9 @@ dtoken-go/
 │   ├── manager/                  # 登录、Session、终端、权限、角色、封禁等核心逻辑
 │   ├── nonce/                    # Nonce 防重放能力
 │   ├── oauth2/                   # OAuth2 服务端能力
-│   ├── sso/                      # SSO 与 Ticket 能力预研实现
 │   └── utils/                    # 内部通用工具
 ├── dtoken/                       # 对外门面 API：全局模式、实例模式和能力分组封装
+├── sso/                          # 可选 SSO 模块：Ticket、共享 Token、远程会话和授权码模式
 ├── defaults/                     # 默认 Builder，内置默认存储、编解码、日志和 Token 生成器装配
 ├── com/                          # 可插拔组件实现
 │   ├── codec/                    # 编解码组件，如 JSON、MessagePack、Base64

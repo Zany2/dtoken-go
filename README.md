@@ -268,9 +268,9 @@ dtoken-go/
 │   ├── manager/                  # Login, Session, terminal, permission, role, and disable logic
 │   ├── nonce/                    # Nonce anti-replay capability
 │   ├── oauth2/                   # OAuth2 server capability
-│   ├── sso/                      # SSO and Ticket experimental implementation
 │   └── utils/                    # Internal shared utilities
 ├── dtoken/                       # Public facade APIs for global mode, instance mode, and feature groups
+├── sso/                          # Optional SSO module: Ticket, shared token, remote session, and authorization-code modes
 ├── defaults/                     # Default Builder with bundled storage, codec, logger, and Token generator wiring
 ├── com/                          # Pluggable component implementations
 │   ├── codec/                    # Codec components, such as JSON, MessagePack, Base64
