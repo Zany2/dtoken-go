@@ -21,6 +21,7 @@ use (
 	./defaults
 	./dtoken
 	./sso
+	./sso/storage/redis
 
 	./examples/chi
 	./examples/echo
@@ -30,6 +31,10 @@ use (
 	./examples/hertz
 	./examples/kratos
 	./examples/quick_start
+	./examples/sso_client
+	./examples/sso_gin_client
+	./examples/sso_gin_server
+	./examples/sso_server
 
 	./integrations/chi
 	./integrations/echo

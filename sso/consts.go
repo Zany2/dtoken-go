@@ -32,6 +32,8 @@ const (
 	RemoteSessionKeySuffix = "sso:remote-session:"
 	// OAuth2CodeKeySuffix stores SSO OAuth2 code key suffix. OAuth2CodeKeySuffix 存储 SSO OAuth2 授权码键后缀。
 	OAuth2CodeKeySuffix = "sso:oauth2:code:"
+	// ClientSessionKeySuffix stores SSO client session key suffix. ClientSessionKeySuffix 存储 SSO 客户端会话键后缀。
+	ClientSessionKeySuffix = "sso:client-session:"
 )
 
 // Mode defines SSO implementation mode for current and future flows. Mode 定义当前和未来 SSO 流程的实现模式。

@@ -2,11 +2,14 @@
 package sso
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -48,6 +51,9 @@ func NewHTTPServer(server *Server, options HTTPOptions) *HTTPServer {
 	if options.ServerOptions.Mode == "" {
 		options.ServerOptions.Mode = defaults.ServerOptions.Mode
 	}
+	if options.ServerOptions.LogoutCallbackTimeout <= 0 {
+		options.ServerOptions.LogoutCallbackTimeout = defaults.ServerOptions.LogoutCallbackTimeout
+	}
 	options.Cookie = normalizeCookieOptions(options.Cookie)
 	if options.LoginIDResolver == nil {
 		options.LoginIDResolver = LoginIDFromCookie(options.Cookie)
@@ -66,6 +72,9 @@ func (h *HTTPServer) Register(mux *http.ServeMux) {
 	endpoints := h.options.ServerOptions.Endpoints
 	mux.HandleFunc(endpoints.Authorize, h.HandleAuthorize)
 	mux.HandleFunc(endpoints.Token, h.HandleToken)
+	mux.HandleFunc(endpoints.Introspect, h.HandleIntrospect)
+	mux.HandleFunc(endpoints.UserInfo, h.HandleUserInfo)
+	mux.HandleFunc(endpoints.Revoke, h.HandleRevoke)
 	mux.HandleFunc(endpoints.Logout, h.HandleLogout)
 }
 
@@ -108,6 +117,12 @@ func (h *HTTPServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, statusFromError(err), ErrorResponse(statusFromError(err), err.Error()))
 		return
 	}
+	if h.options.ServerOptions.EnableSLO && values.Get(params.Callback) != "" {
+		if _, err = h.server.RegisterClientSession(r.Context(), loginID, clientID, values.Get(params.Callback)); err != nil {
+			writeJSON(w, statusFromError(err), ErrorResponse(statusFromError(err), err.Error()))
+			return
+		}
+	}
 
 	target, err := url.Parse(redirectURI)
 	if err != nil {
@@ -123,7 +138,7 @@ func (h *HTTPServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, target.String(), http.StatusFound)
 }
 
-// HandleToken handles ticket exchange and returns user identity JSON. HandleToken 处理 Ticket 交换并返回用户身份 JSON。
+// HandleToken handles ticket or code exchange and returns user identity JSON. HandleToken 处理 Ticket 或授权码交换并返回用户身份 JSON。
 func (h *HTTPServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 	if h == nil || h.server == nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, ErrServerNotInitialized.Error()))
@@ -142,7 +157,118 @@ func (h *HTTPServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, ErrorResponse(http.StatusUnauthorized, err.Error()))
 		return
 	}
+	result, err := h.exchangeCredential(r, values)
+	if err != nil {
+		writeJSON(w, statusFromError(err), ErrorResponse(statusFromError(err), err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, OKResponse(result))
+}
+
+// HandleIntrospect checks a credential without consuming it when possible. HandleIntrospect 尽量在不消费凭证的情况下检查凭证。
+func (h *HTTPServer) HandleIntrospect(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.server == nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, ErrServerNotInitialized.Error()))
+		return
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse(http.StatusMethodNotAllowed, "method not allowed"))
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse(http.StatusBadRequest, err.Error()))
+		return
+	}
+	values := r.Form
+	if err := h.verifySign(values); err != nil {
+		writeJSON(w, http.StatusUnauthorized, ErrorResponse(http.StatusUnauthorized, err.Error()))
+		return
+	}
+	info, err := h.introspectCredential(r, values)
+	if err != nil {
+		writeJSON(w, statusFromError(err), ErrorResponse(statusFromError(err), err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, OKResponse(info))
+}
+
+// HandleUserInfo returns user info for a valid credential. HandleUserInfo 返回有效凭证对应的用户信息。
+func (h *HTTPServer) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.server == nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, ErrServerNotInitialized.Error()))
+		return
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse(http.StatusMethodNotAllowed, "method not allowed"))
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse(http.StatusBadRequest, err.Error()))
+		return
+	}
+	values := r.Form
+	if err := h.verifySign(values); err != nil {
+		writeJSON(w, http.StatusUnauthorized, ErrorResponse(http.StatusUnauthorized, err.Error()))
+		return
+	}
+	info, err := h.introspectCredential(r, values)
+	if err != nil {
+		writeJSON(w, statusFromError(err), ErrorResponse(statusFromError(err), err.Error()))
+		return
+	}
+	if !info.Active {
+		writeJSON(w, http.StatusUnauthorized, ErrorResponse(http.StatusUnauthorized, "inactive credential"))
+		return
+	}
+	writeJSON(w, http.StatusOK, OKResponse(map[string]any{
+		"loginId":  info.LoginID,
+		"clientId": info.ClientID,
+		"scopes":   info.Scopes,
+		"extra":    info.Extra,
+	}))
+}
+
+// HandleRevoke revokes a supported SSO credential. HandleRevoke 撤销支持的 SSO 凭证。
+func (h *HTTPServer) HandleRevoke(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.server == nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, ErrServerNotInitialized.Error()))
+		return
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse(http.StatusMethodNotAllowed, "method not allowed"))
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse(http.StatusBadRequest, err.Error()))
+		return
+	}
+	values := r.Form
+	if err := h.verifySign(values); err != nil {
+		writeJSON(w, http.StatusUnauthorized, ErrorResponse(http.StatusUnauthorized, err.Error()))
+		return
+	}
+	if err := h.revokeCredential(r, values); err != nil {
+		writeJSON(w, statusFromError(err), ErrorResponse(statusFromError(err), err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, OKResponse(map[string]string{"result": ResultOK}))
+}
+
+func (h *HTTPServer) exchangeCredential(r *http.Request, values url.Values) (any, error) {
 	params := h.options.ServerOptions.Params
+	if codeValue := values.Get(params.Code); codeValue != "" {
+		code, err := h.server.ConsumeOAuth2Code(
+			r.Context(),
+			codeValue,
+			values.Get(params.Client),
+			values.Get(params.ClientSecret),
+			values.Get(params.Redirect),
+		)
+		if err != nil {
+			return nil, err
+		}
+		return OAuth2CodeResult(code), nil
+	}
 	ticket, err := h.server.ConsumeTicket(
 		r.Context(),
 		values.Get(params.Ticket),
@@ -151,13 +277,81 @@ func (h *HTTPServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 		values.Get(params.Redirect),
 	)
 	if err != nil {
-		writeJSON(w, statusFromError(err), ErrorResponse(statusFromError(err), err.Error()))
-		return
+		return nil, err
 	}
-	writeJSON(w, http.StatusOK, OKResponse(TicketResult(ticket)))
+	return TicketResult(ticket), nil
 }
 
-// HandleLogout clears optional shared cookie and returns success. HandleLogout 清除可选共享 Cookie 并返回成功。
+func (h *HTTPServer) introspectCredential(r *http.Request, values url.Values) (*CredentialInfo, error) {
+	params := h.options.ServerOptions.Params
+	clientID := values.Get(params.Client)
+	switch mode := Mode(values.Get(params.Mode)); mode {
+	case "", ModeTicket:
+		ticket, err := h.server.ValidateTicket(r.Context(), values.Get(params.Ticket))
+		if err != nil {
+			return inactiveCredential(), nil
+		}
+		return TicketCredentialInfo(ticket, h.ticketTTL(r, ticket.Ticket)), nil
+	case ModeSharedToken:
+		token, err := h.server.ValidateSharedToken(r.Context(), values.Get(params.TokenValue), clientID)
+		if err != nil {
+			return inactiveCredential(), nil
+		}
+		return SharedTokenCredentialInfo(token, h.sharedTokenTTL(r, token.Token)), nil
+	case ModeRemoteSession:
+		session, err := h.server.ValidateRemoteSession(r.Context(), values.Get(params.SessionID), clientID)
+		if err != nil {
+			return inactiveCredential(), nil
+		}
+		return RemoteSessionCredentialInfo(session, h.remoteSessionTTL(r, session.SessionID)), nil
+	case ModeOAuth2:
+		code, err := h.server.getOAuth2Code(r.Context(), values.Get(params.Code))
+		if err != nil || code.ClientID != clientID || h.server.checkOAuth2CodeAlive(code) != nil {
+			return inactiveCredential(), nil
+		}
+		return OAuth2CodeCredentialInfo(code, h.oauth2CodeTTL(r, code.Code)), nil
+	default:
+		return nil, ErrModeUnsupported
+	}
+}
+
+func (h *HTTPServer) revokeCredential(r *http.Request, values url.Values) error {
+	params := h.options.ServerOptions.Params
+	switch mode := Mode(values.Get(params.Mode)); mode {
+	case "", ModeTicket:
+		return h.server.RevokeTicket(r.Context(), values.Get(params.Ticket))
+	case ModeSharedToken:
+		return h.server.RevokeSharedToken(r.Context(), values.Get(params.TokenValue))
+	case ModeRemoteSession:
+		return h.server.RevokeRemoteSession(r.Context(), values.Get(params.SessionID))
+	case ModeOAuth2:
+		return h.server.RevokeOAuth2Code(r.Context(), values.Get(params.Code))
+	default:
+		return ErrModeUnsupported
+	}
+}
+
+func (h *HTTPServer) ticketTTL(r *http.Request, value string) int64 {
+	ttl, _ := h.server.GetTicketTTL(r.Context(), value)
+	return ttl
+}
+
+func (h *HTTPServer) sharedTokenTTL(r *http.Request, value string) int64 {
+	ttl, _ := h.server.GetSharedTokenTTL(r.Context(), value)
+	return ttl
+}
+
+func (h *HTTPServer) remoteSessionTTL(r *http.Request, value string) int64 {
+	ttl, _ := h.server.GetRemoteSessionTTL(r.Context(), value)
+	return ttl
+}
+
+func (h *HTTPServer) oauth2CodeTTL(r *http.Request, value string) int64 {
+	ttl, _ := h.server.GetOAuth2CodeTTL(r.Context(), value)
+	return ttl
+}
+
+// HandleLogout clears optional shared cookie, pushes logout callbacks, and returns success. HandleLogout 清除共享 Cookie、推送注销回调并返回成功。
 func (h *HTTPServer) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	if h == nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, ErrServerNotInitialized.Error()))
@@ -167,8 +361,84 @@ func (h *HTTPServer) HandleLogout(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse(http.StatusMethodNotAllowed, "method not allowed"))
 		return
 	}
+	if err := r.ParseForm(); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse(http.StatusBadRequest, err.Error()))
+		return
+	}
+	loginID := r.FormValue(h.options.ServerOptions.Params.LoginID)
+	if loginID == "" {
+		loginID, _ = h.options.LoginIDResolver(r)
+	}
+	if loginID != "" && h.options.ServerOptions.EnableSLO {
+		if err := h.pushLogoutCallbacks(r, loginID); err != nil {
+			writeJSON(w, statusFromError(err), ErrorResponse(statusFromError(err), err.Error()))
+			return
+		}
+	}
 	ClearLoginIDCookie(w, h.options.Cookie)
 	writeJSON(w, http.StatusOK, OKResponse(map[string]string{"result": ResultOK}))
+}
+
+func (h *HTTPServer) pushLogoutCallbacks(r *http.Request, loginID string) error {
+	sessions, err := h.server.GetClientSessions(r.Context(), loginID)
+	if err != nil {
+		return err
+	}
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(sessions))
+	for _, session := range sessions {
+		if session.LogoutCallbackURL == "" {
+			continue
+		}
+		session := session
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := h.postLogoutCallback(r, session); err != nil {
+				errCh <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	if len(errCh) > 0 && !h.options.ServerOptions.LogoutCallbackBestEffort {
+		return <-errCh
+	}
+	return h.server.ClearClientSessions(r.Context(), loginID)
+}
+
+func (h *HTTPServer) postLogoutCallback(r *http.Request, session ClientSession) error {
+	ctx := r.Context()
+	if h.options.ServerOptions.LogoutCallbackTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, h.options.ServerOptions.LogoutCallbackTimeout)
+		defer cancel()
+	}
+	values := url.Values{}
+	values.Set(h.options.ServerOptions.Params.LoginID, session.LoginID)
+	values.Set(h.options.ServerOptions.Params.Client, session.ClientID)
+	values.Set(h.options.ServerOptions.Params.Timestamp, time.Now().Format(time.RFC3339))
+	if h.options.ServerOptions.CheckSign && h.options.ServerOptions.SecretKey != "" {
+		values = NewSignerWithParams(h.options.ServerOptions.SecretKey, h.options.ServerOptions.Params).AttachSign(values)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, session.LogoutCallbackURL, strings.NewReader(values.Encode()))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	client := h.options.ServerOptions.LogoutHTTPClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("logout callback failed with status %d", response.StatusCode)
+	}
+	return nil
 }
 
 func (h *HTTPServer) verifySign(values url.Values) error {
@@ -179,7 +449,7 @@ func (h *HTTPServer) verifySign(values url.Values) error {
 		return nil
 	}
 	if !NewSignerWithParams(h.options.ServerOptions.SecretKey, h.options.ServerOptions.Params).Verify(values) {
-		return errors.New("invalid sign")
+		return ErrInvalidSign
 	}
 	return nil
 }
@@ -234,11 +504,21 @@ func statusFromError(err error) int {
 		errors.Is(err, ErrInvalidTicket),
 		errors.Is(err, ErrTicketUsed),
 		errors.Is(err, ErrTicketExpired),
+		errors.Is(err, ErrInvalidSharedToken),
+		errors.Is(err, ErrSharedTokenExpired),
+		errors.Is(err, ErrInvalidRemoteSession),
+		errors.Is(err, ErrRemoteSessionExpired),
+		errors.Is(err, ErrInvalidOAuth2Code),
+		errors.Is(err, ErrOAuth2CodeUsed),
+		errors.Is(err, ErrOAuth2CodeExpired),
 		errors.Is(err, ErrModeUnsupported),
 		errors.Is(err, ErrStorageCapabilityUnsupported):
 		return http.StatusBadRequest
-	case errors.Is(err, ErrInvalidClientCredentials):
+	case errors.Is(err, ErrInvalidClientCredentials),
+		errors.Is(err, ErrInvalidSign):
 		return http.StatusUnauthorized
+	case errors.Is(err, ErrMethodNotAllowed):
+		return http.StatusMethodNotAllowed
 	case errors.Is(err, ErrClientNotFound):
 		return http.StatusNotFound
 	default:

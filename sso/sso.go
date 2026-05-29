@@ -61,6 +61,12 @@ var (
 	ErrOAuth2CodeUsed = errors.New("SSO OAuth2 code has been used")
 	// ErrOAuth2CodeExpired indicates an expired SSO OAuth2 code. ErrOAuth2CodeExpired 表示 SSO OAuth2 授权码已过期。
 	ErrOAuth2CodeExpired = errors.New("SSO OAuth2 code has expired")
+	// ErrClientSessionNotFound indicates there is no SSO client session record. ErrClientSessionNotFound 表示 SSO 客户端会话记录不存在。
+	ErrClientSessionNotFound = errors.New("client session not found")
+	// ErrInvalidSign indicates the request signature is invalid. ErrInvalidSign 表示请求签名无效。
+	ErrInvalidSign = errors.New("invalid sign")
+	// ErrMethodNotAllowed indicates the request method is not allowed. ErrMethodNotAllowed 表示请求方法不允许。
+	ErrMethodNotAllowed = errors.New("method not allowed")
 )
 
 // Config defines SSO server config. Config 定义 SSO 服务端配置。
@@ -176,6 +182,15 @@ type OAuth2Code struct {
 	ExpiresIn   int64          `json:"expiresIn"`        // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
 	Used        bool           `json:"used"`             // Used stores consume state after exchange. Used 存储换取后的消费状态。
 	Extra       map[string]any `json:"extra,omitempty"`  // Extra stores extension data. Extra 存储扩展数据。
+}
+
+// ClientSession stores one client login binding for single logout. ClientSession 存储用于单点注销的客户端登录绑定。
+type ClientSession struct {
+	LoginID           string `json:"loginId"`                     // LoginID stores subject id at the login center. LoginID 存储认证中心登录主体 ID。
+	ClientID          string `json:"clientId"`                    // ClientID stores client application id. ClientID 存储客户端应用 ID。
+	LogoutCallbackURL string `json:"logoutCallbackUrl,omitempty"` // LogoutCallbackURL stores client logout callback URL. LogoutCallbackURL 存储客户端注销回调地址。
+	CreateTime        int64  `json:"createTime"`                  // CreateTime stores creation unix time. CreateTime 存储创建时间戳。
+	UpdateTime        int64  `json:"updateTime"`                  // UpdateTime stores update unix time. UpdateTime 存储更新时间戳。
 }
 
 // Server handles SSO client registration and ticket operations. Server 处理 SSO 客户端注册与 Ticket 操作。
@@ -713,6 +728,62 @@ func (s *Server) GetOAuth2CodeTTL(ctx context.Context, codeValue string) (int64,
 	return s.getTTLSeconds(ctx, s.getOAuth2CodeKey(codeValue), codeValue)
 }
 
+// RegisterClientSession records a client login binding for single logout. RegisterClientSession 记录用于单点注销的客户端登录绑定。
+func (s *Server) RegisterClientSession(ctx context.Context, loginID, clientID, logoutCallbackURL string) (*ClientSession, error) {
+	if loginID == "" {
+		return nil, ErrUserIDEmpty
+	}
+	if clientID == "" {
+		return nil, ErrClientOrClientIDEmpty
+	}
+	now := time.Now().Unix()
+	session := &ClientSession{
+		LoginID:           loginID,
+		ClientID:          clientID,
+		LogoutCallbackURL: logoutCallbackURL,
+		CreateTime:        now,
+		UpdateTime:        now,
+	}
+	if existing, err := s.getClientSession(ctx, loginID, clientID); err == nil && existing != nil {
+		session.CreateTime = existing.CreateTime
+	}
+	if err := s.saveClientSession(ctx, session); err != nil {
+		return nil, err
+	}
+	return session, nil
+}
+
+// GetClientSessions returns recorded client sessions for login id. GetClientSessions 返回指定登录主体的客户端会话记录。
+func (s *Server) GetClientSessions(ctx context.Context, loginID string) ([]ClientSession, error) {
+	if loginID == "" {
+		return nil, ErrUserIDEmpty
+	}
+	data, err := s.storage.Get(ctx, s.getClientSessionIndexKey(loginID))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
+	}
+	if data == nil {
+		return nil, nil
+	}
+	rawData, err := toBytes(data)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrTypeConvert, err)
+	}
+	var sessions []ClientSession
+	if err = s.serializer.Decode(rawData, &sessions); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrSerializeFailed, err)
+	}
+	return sessions, nil
+}
+
+// ClearClientSessions removes recorded client sessions for login id. ClearClientSessions 删除指定登录主体的客户端会话记录。
+func (s *Server) ClearClientSessions(ctx context.Context, loginID string) error {
+	if loginID == "" {
+		return ErrUserIDEmpty
+	}
+	return s.deleteClientSessionIndex(ctx, loginID)
+}
+
 // getClientKey builds the storage key for an SSO client. getClientKey 构建 SSO 客户端的存储键。
 func (s *Server) getClientKey(clientID string) string {
 	return s.keyPrefix + s.authType + ClientKeySuffix + clientID
@@ -736,6 +807,11 @@ func (s *Server) getRemoteSessionKey(sessionID string) string {
 // getOAuth2CodeKey builds the storage key for an SSO OAuth2 code. getOAuth2CodeKey 构建 SSO OAuth2 授权码的存储键。
 func (s *Server) getOAuth2CodeKey(code string) string {
 	return s.keyPrefix + s.authType + OAuth2CodeKeySuffix + code
+}
+
+// getClientSessionIndexKey builds the storage key for SSO client sessions. getClientSessionIndexKey 构建 SSO 客户端会话索引键。
+func (s *Server) getClientSessionIndexKey(loginID string) string {
+	return s.keyPrefix + s.authType + ClientSessionKeySuffix + loginID
 }
 
 // saveClient serializes and persists a client without expiration. saveClient 序列化并永久保存客户端配置。
@@ -821,6 +897,55 @@ func (s *Server) saveOAuth2Code(ctx context.Context, code *OAuth2Code, timeout t
 		return fmt.Errorf("%w: %v", ErrSerializeFailed, err)
 	}
 	if err = s.storage.Set(ctx, s.getOAuth2CodeKey(code.Code), encodeData, timeout); err != nil {
+		return fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
+	}
+	return nil
+}
+
+// saveClientSession serializes and stores a client session in the login index. saveClientSession 将客户端会话序列化并保存到登录索引。
+func (s *Server) saveClientSession(ctx context.Context, session *ClientSession) error {
+	sessions, err := s.GetClientSessions(ctx, session.LoginID)
+	if err != nil {
+		return err
+	}
+	replaced := false
+	for i := range sessions {
+		if sessions[i].ClientID == session.ClientID {
+			sessions[i] = *session
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		sessions = append(sessions, *session)
+	}
+	encodeData, err := s.serializer.Encode(sessions)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrSerializeFailed, err)
+	}
+	if err = s.storage.Set(ctx, s.getClientSessionIndexKey(session.LoginID), encodeData, 0); err != nil {
+		return fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
+	}
+	return nil
+}
+
+// getClientSession loads one client session from the login index. getClientSession 从登录索引加载单个客户端会话。
+func (s *Server) getClientSession(ctx context.Context, loginID, clientID string) (*ClientSession, error) {
+	sessions, err := s.GetClientSessions(ctx, loginID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range sessions {
+		if sessions[i].ClientID == clientID {
+			return &sessions[i], nil
+		}
+	}
+	return nil, ErrClientSessionNotFound
+}
+
+// deleteClientSessionIndex removes all client session records for a login id. deleteClientSessionIndex 删除指定登录主体的全部客户端会话记录。
+func (s *Server) deleteClientSessionIndex(ctx context.Context, loginID string) error {
+	if err := s.storage.Delete(ctx, s.getClientSessionIndexKey(loginID)); err != nil {
 		return fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
 	}
 	return nil

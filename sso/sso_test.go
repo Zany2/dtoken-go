@@ -185,6 +185,61 @@ func TestSSOModeCompatibility(t *testing.T) {
 	}
 }
 
+func TestSSOClientSessionFlow(t *testing.T) {
+	ctx := context.Background()
+	server := newTestServer()
+
+	session, err := server.RegisterClientSession(ctx, "user-1001", "app-a", "https://app.example.com/sso/logout-callback")
+	if err != nil {
+		t.Fatalf("RegisterClientSession() error = %v", err)
+	}
+	if session.LoginID != "user-1001" || session.ClientID != "app-a" || session.LogoutCallbackURL == "" {
+		t.Fatalf("RegisterClientSession() = %+v, want user app-a callback", session)
+	}
+
+	sessions, err := server.GetClientSessions(ctx, "user-1001")
+	if err != nil {
+		t.Fatalf("GetClientSessions() error = %v", err)
+	}
+	if len(sessions) != 1 || sessions[0].ClientID != "app-a" {
+		t.Fatalf("GetClientSessions() = %+v, want one app-a session", sessions)
+	}
+
+	updated, err := server.RegisterClientSession(ctx, "user-1001", "app-a", "https://app.example.com/sso/logout-callback-2")
+	if err != nil {
+		t.Fatalf("RegisterClientSession() update error = %v", err)
+	}
+	if updated.CreateTime != session.CreateTime {
+		t.Fatalf("RegisterClientSession() update createTime = %d, want %d", updated.CreateTime, session.CreateTime)
+	}
+
+	sessions, err = server.GetClientSessions(ctx, "user-1001")
+	if err != nil {
+		t.Fatalf("GetClientSessions() after update error = %v", err)
+	}
+	if len(sessions) != 1 || sessions[0].LogoutCallbackURL != "https://app.example.com/sso/logout-callback-2" {
+		t.Fatalf("GetClientSessions() after update = %+v, want one updated session", sessions)
+	}
+
+	if _, err = server.RegisterClientSession(ctx, "", "app-a", "https://app.example.com/sso/logout-callback"); !errors.Is(err, ErrUserIDEmpty) {
+		t.Fatalf("RegisterClientSession() empty login error = %v, want ErrUserIDEmpty", err)
+	}
+	if _, err = server.RegisterClientSession(ctx, "user-1001", "", "https://app.example.com/sso/logout-callback"); !errors.Is(err, ErrClientOrClientIDEmpty) {
+		t.Fatalf("RegisterClientSession() empty client error = %v, want ErrClientOrClientIDEmpty", err)
+	}
+
+	if err = server.ClearClientSessions(ctx, "user-1001"); err != nil {
+		t.Fatalf("ClearClientSessions() error = %v", err)
+	}
+	sessions, err = server.GetClientSessions(ctx, "user-1001")
+	if err != nil {
+		t.Fatalf("GetClientSessions() after clear error = %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("GetClientSessions() after clear = %+v, want empty", sessions)
+	}
+}
+
 func TestSSOSharedTokenFlow(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()

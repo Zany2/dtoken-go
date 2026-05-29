@@ -89,6 +89,8 @@ func (e Endpoints) ReplacePrefix(prefix string) Endpoints {
 type ParamNames struct {
 	Redirect             string // Redirect stores callback parameter name. Redirect 存储回调地址参数名。
 	Ticket               string // Ticket stores ticket parameter name. Ticket 存储 Ticket 参数名。
+	Code                 string // Code stores OAuth2 authorization code parameter name. Code 存储 OAuth2 授权码参数名。
+	SessionID            string // SessionID stores remote session id parameter name. SessionID 存储远程会话 ID 参数名。
 	Back                 string // Back stores back-url parameter name. Back 存储返回地址参数名。
 	Mode                 string // Mode stores mode parameter name. Mode 存储模式参数名。
 	Scope                string // Scope stores requested scope parameter name. Scope 存储请求授权范围参数名。
@@ -115,6 +117,8 @@ func DefaultParamNames() ParamNames {
 	return ParamNames{
 		Redirect:             "redirect",
 		Ticket:               "ticket",
+		Code:                 "code",
+		SessionID:            "sessionId",
 		Back:                 "back",
 		Mode:                 "mode",
 		Scope:                "scope",
@@ -147,6 +151,17 @@ type TicketExchangeResult struct {
 	CenterID             string         `json:"centerId,omitempty"`             // CenterID stores center-side subject id. CenterID 存储认证中心主体 ID。
 	Scopes               []string       `json:"scopes,omitempty"`               // Scopes stores granted scopes. Scopes 存储授权范围。
 	Extra                map[string]any `json:"extra,omitempty"`                // Extra stores extension data. Extra 存储扩展数据。
+}
+
+// CredentialInfo stores a normalized SSO credential inspection result. CredentialInfo 存储标准化 SSO 凭证检查结果。
+type CredentialInfo struct {
+	Active    bool           `json:"active"`              // Active stores whether credential is valid. Active 存储凭证是否有效。
+	Mode      Mode           `json:"mode,omitempty"`      // Mode stores SSO mode. Mode 存储 SSO 模式。
+	LoginID   string         `json:"loginId,omitempty"`   // LoginID stores subject id. LoginID 存储登录主体 ID。
+	ClientID  string         `json:"clientId,omitempty"`  // ClientID stores client id. ClientID 存储客户端 ID。
+	Scopes    []string       `json:"scopes,omitempty"`    // Scopes stores granted scopes. Scopes 存储授权范围。
+	ExpiresIn int64          `json:"expiresIn,omitempty"` // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
+	Extra     map[string]any `json:"extra,omitempty"`     // Extra stores extension data. Extra 存储扩展数据。
 }
 
 // Response is the conventional SSO transport response. Response 是 SSO 传输层约定响应。

@@ -1,6 +1,6 @@
 # SSO 单点登录
 
-SSO 用于把多个业务系统接入同一个统一登录中心。SSO 能力位于独立模块 `github.com/Zany2/dtoken-go/sso`，不会默认绑定到基础认证鉴权架构中；默认构造器已经内置 JSON 编解码和内存存储，也可以通过选项替换为 Redis、数据库或自定义组件。当前已经提供 Ticket、共享 Token、远程会话和 OAuth2 授权码四类模式原语：用户在统一登录中心完成登录后，服务端可以按目标应用配置生成对应凭证，子应用再通过校验、消费或远程会话检查创建自己的本地登录态。
+SSO 用于把多个业务系统接入同一个统一登录中心。SSO 能力位于独立模块 `github.com/Zany2/dtoken-go/sso`，不会默认绑定到基础认证鉴权架构中；默认构造器已经内置 JSON 编解码和内存存储，适合本地验证和单元测试，生产环境推荐使用 `github.com/Zany2/dtoken-go/sso/storage/redis` 或自定义持久化存储。当前已经提供 Ticket、共享 Token、远程会话和 OAuth2 授权码四类模式原语：用户在统一登录中心完成登录后，服务端可以按目标应用配置生成对应凭证，子应用再通过校验、消费或远程会话检查创建自己的本地登录态。
 
 模块内已提供协议端点、参数名、签名工具、Server 选项、Client URL 构建辅助和基于 `net/http` 的基础服务端路由。Gin、Fiber、Echo 等框架可以直接挂载标准库 Handler，后续也可以继续补充更贴近各框架的集成封装。
 
@@ -13,6 +13,18 @@ SSO 用于把多个业务系统接入同一个统一登录中心。SSO 能力位
 - `CookieOptions`：同域共享 Cookie 辅助配置，适合统一主域下的轻量 SSO。
 - `Endpoints` / `ParamNames`：统一维护 SSO HTTP 端点和参数名。
 - `Signer`：基于 HMAC-SHA256 的请求参数签名工具。
+
+## 子包结构
+
+| 子包 | 说明 |
+| --- | --- |
+| `sso` | 核心协议、凭证模型、服务端 API 和向后兼容入口 |
+| `sso/httpserver` | 标准库 `net/http` 接入外观，适合新项目按模块引入 |
+| `sso/codec/json` | 内置 JSON 编解码器 |
+| `sso/storage/memory` | 内置内存存储，仅建议本地验证和单元测试使用 |
+| `sso/storage/redis` | Redis 生产存储组件 |
+
+根包会继续保留 `sso.NewServer()`、`sso.NewHTTPServer()`、`sso.JSONCodec`、`sso.MemoryStorage` 等旧入口，已有代码无需修改。
 
 ## 适用场景
 
@@ -90,13 +102,25 @@ if err != nil {
 fmt.Println(info.LoginID)
 ```
 
-生产环境通常会替换为 Redis、数据库或项目自己的存储实现：
+生产环境推荐使用 Redis 默认组件：
+
+```go
+import ssoredis "github.com/Zany2/dtoken-go/sso/storage/redis"
+
+server, err := ssoredis.NewServer(
+	"redis://:password@127.0.0.1:6379/0",
+	sso.WithConfig(sso.DefaultConfig()),
+)
+if err != nil {
+	return err
+}
+```
+
+也可以显式注入已有存储：
 
 ```go
 server := sso.NewServer(
-	sso.WithStorage(redisStorage),
-	sso.WithCodec(codec),
-	sso.WithConfig(sso.DefaultConfig()),
+	sso.WithStorage(storage),
 )
 ```
 
@@ -126,7 +150,50 @@ if err != nil {
 }
 
 fmt.Println(exchangeURL)
+
+result, err := app.ExchangeTicket(ctx, "ticket-value", callbackURL)
+if err != nil {
+	return err
+}
+
+fmt.Println(result.LoginID)
 ```
+
+如果子系统需要接收统一登出通知，可以开启回调注册：
+
+```go
+app := sso.NewClientApp(sso.ClientConfig{
+	ClientID:           "app-a",
+	ClientSecret:       "secret-a",
+	ServerURL:          "https://sso.example.com",
+	SecretKey:          "sign-secret",
+	CheckSign:          true,
+	RegisterCallback:  true,
+	LogoutCallbackURL: "https://app.example.com/sso/logout-callback",
+})
+```
+
+`ClientApp` 构建授权地址时会把 `callback` 参数带到 SSO Server。SSO Server 在授权成功后记录当前登录主体与子系统回调地址，后续中心执行 `/sso/logout` 时会向已登记的子系统推送注销回调。
+
+子系统可以直接使用内置 Handler 处理回调，框架会完成 POST、表单和签名校验：
+
+```go
+mux.HandleFunc("/sso/logout-callback", app.LogoutCallbackHandler(func(r *http.Request, callback sso.LogoutCallback) error {
+	// 在这里删除子系统本地 Session、Cookie 或 Token。
+	deleteLocalSessionsByLoginID(callback.LoginID)
+	return nil
+}))
+```
+
+`ClientApp` 也可以直接调用 SSO Server 的 HTTP 接口：
+
+| API | 说明 |
+| --- | --- |
+| `ExchangeTicket` | 使用 Ticket 换取登录主体信息 |
+| `ExchangeOAuth2Code` | 使用 OAuth2 Code 换取登录主体信息 |
+| `Introspect` | 检查 Ticket、共享 Token、远程会话或 OAuth2 Code 是否有效 |
+| `UserInfo` | 使用有效凭证读取登录主体信息 |
+| `Revoke` | 撤销 Ticket、共享 Token、远程会话或 OAuth2 Code |
 
 ## HTTP 重定向接入
 
@@ -145,6 +212,9 @@ server.RegisterClient(&sso.Client{
 
 httpSSO := sso.NewHTTPServer(server, sso.HTTPOptions{
 	ServerOptions: sso.ServerOptions{
+		EnableSLO: true,
+		LogoutCallbackTimeout:    3 * time.Second,
+		LogoutCallbackBestEffort: false,
 		CheckSign: false,
 		Endpoints: sso.DefaultEndpoints(),
 		Params:    sso.DefaultParamNames(),
@@ -164,8 +234,52 @@ httpSSO.Register(mux)
 | 路由 | 说明 |
 | --- | --- |
 | `GET /sso/authorize` | 校验中心登录态，生成 Ticket，并重定向回子系统 |
-| `GET/POST /sso/token` | 子系统使用 Ticket 换取登录主体信息 |
-| `GET/POST /sso/logout` | 清除共享 Cookie，并返回注销结果 |
+| `GET/POST /sso/token` | 子系统使用 Ticket 或 OAuth2 Code 换取登录主体信息 |
+| `GET/POST /sso/introspect` | 检查 Ticket、共享 Token、远程会话或 OAuth2 Code 是否有效 |
+| `GET/POST /sso/userinfo` | 使用有效凭证读取登录主体、客户端和授权范围 |
+| `GET/POST /sso/revoke` | 撤销 Ticket、共享 Token、远程会话或 OAuth2 Code |
+| `GET/POST /sso/logout` | 清除共享 Cookie，推送已登记的子系统注销回调，并返回注销结果 |
+
+## 单点注销
+
+`EnableSLO` 默认开启。子系统在跳转登录时携带注销回调地址，登录中心会保存一条客户端会话记录：
+
+```text
+/sso/authorize?client=app-a&redirect=https://app.example.com/sso/callback&callback=https://app.example.com/sso/logout-callback
+```
+
+当用户从登录中心退出时，`HTTPServer` 会向该用户已登录的子系统并发发送 `POST` 回调，请求表单包含：
+
+| 参数 | 说明 |
+| --- | --- |
+| `loginId` | 登录主体 ID |
+| `client` | 子系统客户端 ID |
+| `timestamp` | 回调发起时间 |
+| `sign` | 开启签名校验时携带的签名 |
+
+子系统收到回调后应删除自己的本地 Session、Cookie 或 Token。所有回调成功后，登录中心会清理该登录主体的客户端会话记录。
+
+`LogoutCallbackBestEffort` 用于控制失败策略：为 `false` 时任意子系统回调失败会让本次中心注销返回错误；为 `true` 时会尽量推送全部回调，并继续清理中心侧客户端会话记录。`LogoutHTTPClient` 可用于注入自定义 HTTP Client，例如统一代理、TLS 配置或更细的超时控制。
+
+## Redis 存储
+
+生产环境建议把 SSO Server 切换到 Redis 存储。Ticket、OAuth2 Code 这类一次性凭证依赖原子读删，Redis 组件已经提供对应能力；ClientSession 这类单点注销记录也可以跨多实例共享。
+
+```go
+import ssoredis "github.com/Zany2/dtoken-go/sso/storage/redis"
+
+server, err := ssoredis.NewServer(
+	"redis://:password@127.0.0.1:6379/0",
+	sso.WithKeyPrefix("dtoken:"),
+	sso.WithAuthType("sso:"),
+	sso.WithConfig(sso.DefaultConfig()),
+)
+if err != nil {
+	return err
+}
+```
+
+Redis 下建议重点验证四条链路：Ticket 生成与消费、OAuth2 Code 生成与消费、`RegisterClientSession` 写入客户端会话、`/sso/logout` 推送回调后清理客户端会话。
 
 ## 共享 Cookie
 
@@ -226,14 +340,27 @@ if !signer.Verify(signedValues) {
 | `RenewRemoteSession` / `RevokeRemoteSession` | 续期或撤销远程会话 |
 | `GenerateOAuth2Code` / `ConsumeOAuth2Code` | 生成并消费 SSO OAuth2 授权码 |
 | `RevokeOAuth2Code` / `GetOAuth2CodeTTL` | 撤销授权码并查询剩余有效期 |
+| `RegisterClientSession` | 记录子系统登录绑定，用于单点注销回调推送 |
+| `GetClientSessions` | 查询指定登录主体已登记的子系统会话 |
+| `ClearClientSessions` | 清理指定登录主体的子系统会话记录 |
 
 ## 注意事项
 
 - Ticket 是一次性凭证，成功消费后会从存储中删除。
 - `ConsumeTicket` 会校验客户端密钥、目标客户端、回调地址、过期状态和允许的 SSO 模式。
+- `sso.NewServer()` 内置的 `MemoryStorage` 只适合本地调试和测试，进程重启后数据会丢失，也不适合多实例部署。
+- 生产环境建议使用 `sso/storage/redis`，Redis 存储已经实现原子读删能力，适合一次性 Ticket 和 OAuth2 Code 消费场景。
 - 如果使用自定义存储，Ticket 和 SSO OAuth2 授权码消费需要存储实现 `adapter.AtomicStorage`，保证读取并删除是原子操作。
 - `ModeSharedToken` 适合可信系统内部复用短期凭证，默认按客户端维度校验。
 - `ModeRemoteSession` 适合子系统不保存完整登录态、每次向统一登录中心远程校验的场景。
 - `ModeOAuth2` 是 SSO 场景下的授权码原语，不等同于完整 OAuth2 Token Server。
 - `Signer` 默认忽略 `sign` 字段本身，并按参数名和值排序后签名，适合 Server 与 Client 之间做请求防篡改。
-- 当前 HTTP 路由优先覆盖 `ModeTicket` 的重定向换票流程；共享 Token、远程会话和 OAuth2 的完整 HTTP 封装可以在后续版本继续扩展。
+- 当前 HTTP 路由已覆盖 `ModeTicket` 重定向换票、OAuth2 Code 换取、凭证检查、凭证撤销、用户信息读取和统一登出回调推送。
+
+## 测试与示例
+
+- [SSO 测试说明](./TESTING_zh.md)
+- [Gin SSO Server 示例](../examples/sso_gin_server/README_zh.md)
+- [Gin SSO Client 示例](../examples/sso_gin_client/README_zh.md)
+- [标准库 SSO Server 示例](../examples/sso_server/README_zh.md)
+- [标准库 SSO Client 示例](../examples/sso_client/README_zh.md)
