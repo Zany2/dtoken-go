@@ -188,6 +188,7 @@ func TestSSOModeCompatibility(t *testing.T) {
 func TestSSOClientSessionFlow(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
+	registerTestClient(t, server)
 
 	session, err := server.RegisterClientSession(ctx, "user-1001", "app-a", "https://app.example.com/sso/logout-callback")
 	if err != nil {
@@ -227,6 +228,9 @@ func TestSSOClientSessionFlow(t *testing.T) {
 	if _, err = server.RegisterClientSession(ctx, "user-1001", "", "https://app.example.com/sso/logout-callback"); !errors.Is(err, ErrClientOrClientIDEmpty) {
 		t.Fatalf("RegisterClientSession() empty client error = %v, want ErrClientOrClientIDEmpty", err)
 	}
+	if _, err = server.RegisterClientSession(ctx, "user-1001", "app-a", "https://evil.example.com/sso/logout-callback"); !errors.Is(err, ErrInvalidCallbackURL) {
+		t.Fatalf("RegisterClientSession() invalid callback error = %v, want ErrInvalidCallbackURL", err)
+	}
 
 	if err = server.ClearClientSessions(ctx, "user-1001"); err != nil {
 		t.Fatalf("ClearClientSessions() error = %v", err)
@@ -237,6 +241,24 @@ func TestSSOClientSessionFlow(t *testing.T) {
 	}
 	if len(sessions) != 0 {
 		t.Fatalf("GetClientSessions() after clear = %+v, want empty", sessions)
+	}
+}
+
+func TestSSOClientSessionAllowOrigin(t *testing.T) {
+	ctx := context.Background()
+	server := newTestServer()
+	client := newTestClient()
+	client.AllowOrigins = []string{"https://logout.example.com"}
+	if err := server.RegisterClient(client); err != nil {
+		t.Fatalf("RegisterClient() error = %v", err)
+	}
+
+	session, err := server.RegisterClientSession(ctx, "user-1001", "app-a", "https://logout.example.com/sso/logout-callback")
+	if err != nil {
+		t.Fatalf("RegisterClientSession() allow origin error = %v", err)
+	}
+	if session.LogoutCallbackURL != "https://logout.example.com/sso/logout-callback" {
+		t.Fatalf("RegisterClientSession() callback = %q, want allow-origin callback", session.LogoutCallbackURL)
 	}
 }
 

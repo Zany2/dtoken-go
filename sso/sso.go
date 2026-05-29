@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
@@ -67,6 +68,10 @@ var (
 	ErrInvalidSign = errors.New("invalid sign")
 	// ErrMethodNotAllowed indicates the request method is not allowed. ErrMethodNotAllowed 表示请求方法不允许。
 	ErrMethodNotAllowed = errors.New("method not allowed")
+	// ErrInvalidCallbackURL indicates logout callback URL is not allowed. ErrInvalidCallbackURL 表示注销回调地址不被允许。
+	ErrInvalidCallbackURL = errors.New("invalid callback URL")
+	// ErrCallbackExpired indicates logout callback timestamp is outside allowed window. ErrCallbackExpired 表示注销回调时间戳超过允许窗口。
+	ErrCallbackExpired = errors.New("logout callback expired")
 )
 
 // Config defines SSO server config. Config 定义 SSO 服务端配置。
@@ -736,6 +741,13 @@ func (s *Server) RegisterClientSession(ctx context.Context, loginID, clientID, l
 	if clientID == "" {
 		return nil, ErrClientOrClientIDEmpty
 	}
+	client, err := s.getClient(ctx, clientID)
+	if err != nil {
+		return nil, err
+	}
+	if !s.isValidLogoutCallbackURL(client, logoutCallbackURL) {
+		return nil, ErrInvalidCallbackURL
+	}
 	now := time.Now().Unix()
 	session := &ClientSession{
 		LoginID:           loginID,
@@ -1175,6 +1187,47 @@ func (s *Server) isValidRedirectURI(client *Client, redirectURI string) bool {
 		}
 	}
 	return false
+}
+
+// isValidLogoutCallbackURL checks whether logout callback URL belongs to the registered client. isValidLogoutCallbackURL 检查注销回调地址是否属于已注册客户端。
+func (s *Server) isValidLogoutCallbackURL(client *Client, callbackURL string) bool {
+	if client == nil || callbackURL == "" {
+		return false
+	}
+	if s.isValidRedirectURI(client, callbackURL) {
+		return true
+	}
+	callback, err := url.Parse(callbackURL)
+	if err != nil || callback.Scheme == "" || callback.Host == "" {
+		return false
+	}
+	for _, origin := range client.AllowOrigins {
+		if originMatchesURL(origin, callback) {
+			return true
+		}
+	}
+	for _, redirectURI := range client.RedirectURIs {
+		redirect, err := url.Parse(redirectURI)
+		if err == nil && sameURLOrigin(redirect, callback) {
+			return true
+		}
+	}
+	return false
+}
+
+func originMatchesURL(origin string, target *url.URL) bool {
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	return sameURLOrigin(parsed, target)
+}
+
+func sameURLOrigin(a, b *url.URL) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	return a.Scheme != "" && b.Scheme != "" && a.Host != "" && b.Host != "" && a.Scheme == b.Scheme && a.Host == b.Host
 }
 
 // isValidScopes checks requested scopes against the client's allow-list. isValidScopes 根据客户端允许范围校验请求 scopes。

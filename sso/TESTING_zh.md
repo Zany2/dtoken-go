@@ -65,6 +65,8 @@ http://localhost:9100/sso/logout?loginId=user-1001
 
 如果开启签名，把 Server 和 Client 的 `SecretKey` 设置一致，并将 `CheckSign` 设为 `true`。Client 侧 `LogoutCallbackHandler` 会自动校验回调签名。
 
+`LogoutCallbackHandler` 还会校验回调时间戳，默认只接受 5 分钟以内的回调，避免旧请求被重复发送。
+
 ## Redis 模式验证
 
 生产部署建议使用 Redis 存储：
@@ -96,6 +98,23 @@ Redis 下建议重点观察以下 key 类型：
 2. 发起登录后，观察 Ticket key 短暂出现。
 3. 子系统换票成功后，Ticket key 应被删除。
 4. 登录中心执行 `/sso/logout` 后，`sso:client-session:` 对应 key 应被删除。
+
+可选集成测试：
+
+```powershell
+$env:DTOKEN_SSO_REDIS="redis://:password@127.0.0.1:6379/0"
+go test ./sso/storage/redis/... -v
+```
+
+没有设置 `DTOKEN_SSO_REDIS` 时，该测试会自动跳过。
+
+## 安全边界
+
+- 生产环境建议开启 `CheckSign` 并设置 `SecretKey`。
+- Ticket 和 OAuth2 Code 的 `redirect` 必须完整匹配客户端 `RedirectURIs`。
+- 统一登出 `callback` 必须属于当前客户端：完整匹配 `RedirectURIs`、与某个 `RedirectURIs` 同源，或匹配 `AllowOrigins`。
+- 不建议把过宽的域名加入 `AllowOrigins`，避免恶意回调地址造成 SSRF 风险。
+- 注销回调默认 5 分钟有效，超出窗口会被 Client 侧拒绝。
 
 ## API 命名稳定性
 

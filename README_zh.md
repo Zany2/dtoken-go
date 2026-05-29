@@ -23,7 +23,7 @@
 
 ## DToken-Go 是什么
 
-DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，已提供登录认证、Token 管理、Session 管理、终端管理、角色权限校验、账号与设备封禁、Nonce 防重放、OAuth2 服务端和事件监听等核心能力；SSO 单点登录、Ticket 临时凭证、短 Key 访问凭证、Token Introspection 和独立 Refresh Token 等能力正在持续开发中。框架支持插件化组件替换与自定义扩展，并适配主流 Go Web 框架，既可以作为独立认证核心使用，也可以快速接入现有业务项目。
+DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，已提供登录认证、Token 管理、Session 管理、终端管理、角色权限校验、账号与设备封禁、Nonce 防重放、OAuth2 服务端、SSO 单点登录和事件监听等核心能力；短 Key 访问凭证、Token Introspection 和独立 Refresh Token 等能力正在持续开发中。框架支持插件化组件替换与自定义扩展，并适配主流 Go Web 框架，既可以作为独立认证核心使用，也可以快速接入现有业务项目。
 
 你可以把它用于：
 
@@ -49,7 +49,7 @@ DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，已提供登
 | 事件系统 | 登录、登出、续期、权限、角色、封禁、解封等核心生命周期事件监听 |
 | 可插拔组件 | 存储、编解码、日志、Token 生成器、协程池等组件可替换 |
 | 多框架集成 | 为主流 Go Web 框架提供中间件、上下文适配和 API 导出 |
-| SSO 单点登录 🚧 | 统一登录、票据交换、跨系统登录态共享、统一登出、应用维度管理 |
+| SSO 单点登录 | 统一登录、票据交换、跨系统登录态共享、统一登出、应用维度管理 |
 | Ticket 临时凭证 🚧 | Ticket 创建、校验、一次性消费、撤销、TTL 查询和状态识别 |
 | 短 Key 访问凭证 🚧 | 生成随机短 Key，用于短链接访问、扫码确认、临时授权和系统间换票 |
 | Token Introspection 🚧 | 标准化查询 Token 是否有效、归属信息、TTL 和失效原因 |
@@ -289,6 +289,10 @@ dtoken-go/
 ├── examples/                     # 快速开始与框架接入示例
 │   ├── quick_start/              # 默认 Builder + 全局 API 最小示例
 │   ├── gin/                      # Gin 示例
+│   ├── sso_gin_server/           # Gin SSO 统一登录中心示例
+│   ├── sso_gin_client/           # Gin SSO 子系统接入示例
+│   ├── sso_server/               # 标准库 SSO 统一登录中心示例
+│   ├── sso_client/               # 标准库 SSO 子系统接入示例
 │   ├── echo/                     # Echo 示例
 │   ├── fiber/                    # Fiber 示例
 │   ├── chi/                      # Chi 示例
@@ -332,6 +336,8 @@ dtoken-go/
 - [JWT 集成](docs/guide/security/jwt_zh.md)
 - [Redis 存储](docs/guide/integration/redis-storage_zh.md)
 - [OAuth2](docs/guide/security/oauth2_zh.md)
+- [SSO 单点登录](sso/README_zh.md)
+- [SSO 测试说明](sso/TESTING_zh.md)
 - [Refresh Token](docs/guide/security/refresh-token_zh.md)
 - [API 参考](docs/api/dtoken_zh.md)
 
@@ -341,6 +347,10 @@ dtoken-go/
 | --- | --- |
 | [examples/quick_start](examples/quick_start/) | 默认 Builder + 全局 API 最小使用方式 |
 | [examples/gin](examples/gin/) | Gin 中间件、登录校验和角色校验 |
+| [examples/sso_gin_server](examples/sso_gin_server/) | Gin SSO 统一登录中心示例 |
+| [examples/sso_gin_client](examples/sso_gin_client/) | Gin SSO 子系统接入示例 |
+| [examples/sso_server](examples/sso_server/) | 标准库 SSO 统一登录中心示例 |
+| [examples/sso_client](examples/sso_client/) | 标准库 SSO 子系统接入示例 |
 | [examples/echo](examples/echo/) | Echo 框架接入示例 |
 | [examples/fiber](examples/fiber/) | Fiber 框架接入示例 |
 | [examples/chi](examples/chi/) | Chi 框架接入示例 |

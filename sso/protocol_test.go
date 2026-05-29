@@ -3,11 +3,13 @@ package sso
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestEndpointsPrefixHelpers(t *testing.T) {
@@ -184,7 +186,7 @@ func TestClientAppVerifiesLogoutCallback(t *testing.T) {
 	values := url.Values{}
 	values.Set("loginId", "user-1001")
 	values.Set("client", "app-a")
-	values.Set("timestamp", "2026-05-29T00:00:00Z")
+	values.Set("timestamp", time.Now().Format(time.RFC3339))
 	values = NewSigner("sign-secret").AttachSign(values)
 
 	req := httptest.NewRequest(http.MethodPost, "/sso/logout-callback", strings.NewReader(values.Encode()))
@@ -202,6 +204,25 @@ func TestClientAppVerifiesLogoutCallback(t *testing.T) {
 	badReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	if _, err = app.VerifyLogoutCallback(badReq); err == nil {
 		t.Fatal("VerifyLogoutCallback() tampered request error = nil, want error")
+	}
+}
+
+func TestClientAppRejectsExpiredLogoutCallback(t *testing.T) {
+	app := NewClientApp(ClientConfig{
+		ClientID:             "app-a",
+		CheckSign:            false,
+		LogoutCallbackMaxAge: time.Minute,
+		Params:               DefaultParamNames(),
+	})
+	values := url.Values{}
+	values.Set("loginId", "user-1001")
+	values.Set("client", "app-a")
+	values.Set("timestamp", time.Now().Add(-2*time.Minute).Format(time.RFC3339))
+
+	req := httptest.NewRequest(http.MethodPost, "/sso/logout-callback", strings.NewReader(values.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if _, err := app.VerifyLogoutCallback(req); !errors.Is(err, ErrCallbackExpired) {
+		t.Fatalf("VerifyLogoutCallback() expired error = %v, want ErrCallbackExpired", err)
 	}
 }
 

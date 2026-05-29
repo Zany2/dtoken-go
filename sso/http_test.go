@@ -200,7 +200,6 @@ func TestHTTPServerRevokeRemoteSession(t *testing.T) {
 
 func TestHTTPServerSingleLogoutCallback(t *testing.T) {
 	server := NewServer()
-	registerTestClient(t, server)
 
 	var callbackCalled atomic.Bool
 	callbackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -223,6 +222,12 @@ func TestHTTPServerSingleLogoutCallback(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer callbackServer.Close()
+
+	client := newTestClient()
+	client.AllowOrigins = []string{callbackServer.URL}
+	if err := server.RegisterClient(client); err != nil {
+		t.Fatalf("RegisterClient() error = %v", err)
+	}
 
 	handler := NewHTTPServer(server, HTTPOptions{
 		ServerOptions: ServerOptions{
@@ -276,7 +281,11 @@ func TestHTTPServerSingleLogoutCallback(t *testing.T) {
 
 func TestHTTPServerSingleLogoutBestEffortClearsSessions(t *testing.T) {
 	server := NewServer()
-	registerTestClient(t, server)
+	client := newTestClient()
+	client.AllowOrigins = []string{"http://127.0.0.1:1"}
+	if err := server.RegisterClient(client); err != nil {
+		t.Fatalf("RegisterClient() error = %v", err)
+	}
 	if _, err := server.RegisterClientSession(context.Background(), "user-1001", "app-a", "http://127.0.0.1:1/logout"); err != nil {
 		t.Fatalf("RegisterClientSession() error = %v", err)
 	}

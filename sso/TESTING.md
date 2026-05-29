@@ -65,6 +65,8 @@ Expected result:
 
 If signing is enabled, set the same `SecretKey` on both Server and Client and set `CheckSign` to `true`. Client-side `LogoutCallbackHandler` verifies callback signatures automatically.
 
+`LogoutCallbackHandler` also validates callback timestamps. By default, only callbacks within 5 minutes are accepted, which helps prevent replayed old requests.
+
 ## Redis Mode Verification
 
 Production deployments should use Redis storage:
@@ -96,6 +98,23 @@ Verification checklist:
 2. During login, observe the Ticket key appear briefly.
 3. After client ticket exchange succeeds, the Ticket key should be deleted.
 4. After `/sso/logout`, the matching `sso:client-session:` key should be deleted.
+
+Optional integration test:
+
+```powershell
+$env:DTOKEN_SSO_REDIS="redis://:password@127.0.0.1:6379/0"
+go test ./sso/storage/redis/... -v
+```
+
+When `DTOKEN_SSO_REDIS` is not set, this test is skipped automatically.
+
+## Security Boundaries
+
+- Production deployments should enable `CheckSign` and configure `SecretKey`.
+- Ticket and OAuth2 Code `redirect` values must exactly match the client's `RedirectURIs`.
+- Single logout `callback` values must belong to the current client: exact `RedirectURIs` match, same origin as a registered redirect URI, or explicit `AllowOrigins` match.
+- Avoid adding overly broad origins to `AllowOrigins`, otherwise malicious callback URLs can increase SSRF risk.
+- Logout callbacks are valid for 5 minutes by default and are rejected by the Client after that window.
 
 ## API Naming Stability
 

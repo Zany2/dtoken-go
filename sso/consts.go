@@ -12,6 +12,8 @@ const (
 	DefaultRemoteSessionExpiration = 2 * time.Hour
 	// DefaultOAuth2CodeExpiration stores the default SSO OAuth2 code TTL. DefaultOAuth2CodeExpiration 存储默认 SSO OAuth2 授权码有效期。
 	DefaultOAuth2CodeExpiration = 10 * time.Minute
+	// DefaultLogoutCallbackMaxAge stores max age for SSO logout callback verification. DefaultLogoutCallbackMaxAge 存储 SSO 注销回调校验最大时间差。
+	DefaultLogoutCallbackMaxAge = 5 * time.Minute
 
 	// TicketLength stores ticket random byte length before hex encoding. TicketLength 存储十六进制编码前的 Ticket 随机字节长度。
 	TicketLength = 32

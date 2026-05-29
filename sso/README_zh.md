@@ -185,6 +185,8 @@ mux.HandleFunc("/sso/logout-callback", app.LogoutCallbackHandler(func(r *http.Re
 }))
 ```
 
+`LogoutCallbackMaxAge` 默认 5 分钟，用于拒绝过旧或明显超前的注销回调时间戳，降低回调重放风险。
+
 `ClientApp` 也可以直接调用 SSO Server 的 HTTP 接口：
 
 | API | 说明 |
@@ -261,6 +263,8 @@ httpSSO.Register(mux)
 
 `LogoutCallbackBestEffort` 用于控制失败策略：为 `false` 时任意子系统回调失败会让本次中心注销返回错误；为 `true` 时会尽量推送全部回调，并继续清理中心侧客户端会话记录。`LogoutHTTPClient` 可用于注入自定义 HTTP Client，例如统一代理、TLS 配置或更细的超时控制。
 
+为了避免恶意 `callback` 造成 SSRF，登录中心只会登记属于当前客户端的注销回调地址：完整匹配 `RedirectURIs`、与某个 `RedirectURIs` 同源，或匹配 `AllowOrigins` 中配置的来源。
+
 ## Redis 存储
 
 生产环境建议把 SSO Server 切换到 Redis 存储。Ticket、OAuth2 Code 这类一次性凭证依赖原子读删，Redis 组件已经提供对应能力；ClientSession 这类单点注销记录也可以跨多实例共享。
@@ -280,6 +284,13 @@ if err != nil {
 ```
 
 Redis 下建议重点验证四条链路：Ticket 生成与消费、OAuth2 Code 生成与消费、`RegisterClientSession` 写入客户端会话、`/sso/logout` 推送回调后清理客户端会话。
+
+也可以通过环境变量运行 Redis 可选集成测试：
+
+```powershell
+$env:DTOKEN_SSO_REDIS="redis://:password@127.0.0.1:6379/0"
+go test ./sso/storage/redis/... -v
+```
 
 ## 共享 Cookie
 
@@ -350,6 +361,8 @@ if !signer.Verify(signedValues) {
 - `ConsumeTicket` 会校验客户端密钥、目标客户端、回调地址、过期状态和允许的 SSO 模式。
 - `sso.NewServer()` 内置的 `MemoryStorage` 只适合本地调试和测试，进程重启后数据会丢失，也不适合多实例部署。
 - 生产环境建议使用 `sso/storage/redis`，Redis 存储已经实现原子读删能力，适合一次性 Ticket 和 OAuth2 Code 消费场景。
+- 生产环境建议开启 `CheckSign` 并配置 `SecretKey`，让 Server 与 Client 之间的换票、检查和注销回调都具备防篡改能力。
+- 注销回调地址会按客户端注册信息校验来源，不建议把过宽的域名加入 `AllowOrigins`。
 - 如果使用自定义存储，Ticket 和 SSO OAuth2 授权码消费需要存储实现 `adapter.AtomicStorage`，保证读取并删除是原子操作。
 - `ModeSharedToken` 适合可信系统内部复用短期凭证，默认按客户端维度校验。
 - `ModeRemoteSession` 适合子系统不保存完整登录态、每次向统一登录中心远程校验的场景。

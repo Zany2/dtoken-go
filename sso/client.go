@@ -11,34 +11,37 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // ClientConfig defines SSO client-side integration config. ClientConfig 定义 SSO 子应用接入配置。
 type ClientConfig struct {
-	Mode              Mode         // Mode stores preferred SSO mode. Mode 存储首选 SSO 模式。
-	ClientID          string       // ClientID stores current application id. ClientID 存储当前应用 ID。
-	ClientSecret      string       // ClientSecret stores current application secret. ClientSecret 存储当前应用密钥。
-	ServerURL         string       // ServerURL stores SSO server base URL. ServerURL 存储 SSO 服务端根地址。
-	LoginURL          string       // LoginURL stores current client login URL. LoginURL 存储当前客户端登录地址。
-	LogoutCallbackURL string       // LogoutCallbackURL stores current client logout callback URL. LogoutCallbackURL 存储当前客户端注销回调地址。
-	UseHTTPCheck      bool         // UseHTTPCheck enables remote ticket validation mode. UseHTTPCheck 启用远程 Ticket 校验模式。
-	EnableSLO         bool         // EnableSLO enables single logout. EnableSLO 启用单点注销。
-	RegisterCallback  bool         // RegisterCallback sends logout callback URL during login. RegisterCallback 登录时注册注销回调地址。
-	CheckSign         bool         // CheckSign enables request signature checks. CheckSign 启用请求签名校验。
-	SecretKey         string       // SecretKey stores request signing secret. SecretKey 存储请求签名密钥。
-	HTTPClient        *http.Client // HTTPClient stores optional transport client. HTTPClient 存储可选 HTTP 客户端。
-	Endpoints         Endpoints    // Endpoints stores server/client protocol paths. Endpoints 存储服务端/客户端协议路径。
-	Params            ParamNames   // Params stores protocol parameter names. Params 存储协议参数名。
+	Mode                 Mode          // Mode stores preferred SSO mode. Mode 存储首选 SSO 模式。
+	ClientID             string        // ClientID stores current application id. ClientID 存储当前应用 ID。
+	ClientSecret         string        // ClientSecret stores current application secret. ClientSecret 存储当前应用密钥。
+	ServerURL            string        // ServerURL stores SSO server base URL. ServerURL 存储 SSO 服务端根地址。
+	LoginURL             string        // LoginURL stores current client login URL. LoginURL 存储当前客户端登录地址。
+	LogoutCallbackURL    string        // LogoutCallbackURL stores current client logout callback URL. LogoutCallbackURL 存储当前客户端注销回调地址。
+	UseHTTPCheck         bool          // UseHTTPCheck enables remote ticket validation mode. UseHTTPCheck 启用远程 Ticket 校验模式。
+	EnableSLO            bool          // EnableSLO enables single logout. EnableSLO 启用单点注销。
+	RegisterCallback     bool          // RegisterCallback sends logout callback URL during login. RegisterCallback 登录时注册注销回调地址。
+	CheckSign            bool          // CheckSign enables request signature checks. CheckSign 启用请求签名校验。
+	SecretKey            string        // SecretKey stores request signing secret. SecretKey 存储请求签名密钥。
+	LogoutCallbackMaxAge time.Duration // LogoutCallbackMaxAge stores accepted logout callback clock skew. LogoutCallbackMaxAge 存储注销回调允许时间差。
+	HTTPClient           *http.Client  // HTTPClient stores optional transport client. HTTPClient 存储可选 HTTP 客户端。
+	Endpoints            Endpoints     // Endpoints stores server/client protocol paths. Endpoints 存储服务端/客户端协议路径。
+	Params               ParamNames    // Params stores protocol parameter names. Params 存储协议参数名。
 }
 
 // DefaultClientConfig returns default SSO client config. DefaultClientConfig 返回默认 SSO 客户端配置。
 func DefaultClientConfig() ClientConfig {
 	return ClientConfig{
-		Mode:      ModeTicket,
-		EnableSLO: true,
-		CheckSign: true,
-		Endpoints: DefaultEndpoints(),
-		Params:    DefaultParamNames(),
+		Mode:                 ModeTicket,
+		EnableSLO:            true,
+		CheckSign:            true,
+		LogoutCallbackMaxAge: DefaultLogoutCallbackMaxAge,
+		Endpoints:            DefaultEndpoints(),
+		Params:               DefaultParamNames(),
 	}
 }
 
@@ -79,6 +82,9 @@ func NewClientApp(cfg ClientConfig) *ClientApp {
 	}
 	if cfg.Params == (ParamNames{}) {
 		cfg.Params = defaults.Params
+	}
+	if cfg.LogoutCallbackMaxAge <= 0 {
+		cfg.LogoutCallbackMaxAge = defaults.LogoutCallbackMaxAge
 	}
 	return &ClientApp{config: cfg}
 }
@@ -242,6 +248,9 @@ func (c *ClientApp) VerifyLogoutCallback(r *http.Request) (*LogoutCallback, erro
 	if c.config.ClientID != "" && callback.ClientID != "" && callback.ClientID != c.config.ClientID {
 		return nil, ErrClientMismatch
 	}
+	if err := c.verifyLogoutCallbackTime(callback.Timestamp); err != nil {
+		return nil, err
+	}
 	return callback, nil
 }
 
@@ -273,6 +282,21 @@ func (c *ClientApp) buildServerURL(path string, values url.Values) (string, erro
 	}
 	base.RawQuery = values.Encode()
 	return base.String(), nil
+}
+
+func (c *ClientApp) verifyLogoutCallbackTime(value string) error {
+	if value == "" || c.config.LogoutCallbackMaxAge <= 0 {
+		return nil
+	}
+	timestamp, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return ErrCallbackExpired
+	}
+	now := time.Now()
+	if timestamp.After(now.Add(c.config.LogoutCallbackMaxAge)) || timestamp.Before(now.Add(-c.config.LogoutCallbackMaxAge)) {
+		return ErrCallbackExpired
+	}
+	return nil
 }
 
 func (c *ClientApp) credentialValues(req CredentialRequest) url.Values {

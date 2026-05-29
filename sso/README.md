@@ -185,6 +185,8 @@ mux.HandleFunc("/sso/logout-callback", app.LogoutCallbackHandler(func(r *http.Re
 }))
 ```
 
+`LogoutCallbackMaxAge` defaults to 5 minutes and rejects stale or clearly future logout callback timestamps to reduce replay risk.
+
 `ClientApp` can also call SSO Server HTTP APIs directly:
 
 | API | Description |
@@ -261,6 +263,8 @@ After receiving the callback, the client application should delete its local Ses
 
 `LogoutCallbackBestEffort` controls failure behavior. When it is `false`, any failed client callback makes the center logout return an error. When it is `true`, the server still attempts all callbacks and clears center-side client session records. `LogoutHTTPClient` can inject a custom HTTP client for proxy, TLS, or stricter timeout control.
 
+To reduce SSRF risk from malicious `callback` values, the login center only records logout callback URLs that belong to the current client: exact `RedirectURIs` matches, same-origin URLs as a registered redirect URI, or origins explicitly configured in `AllowOrigins`.
+
 ## Redis Storage
 
 Production deployments should use Redis storage for the SSO Server. One-time credentials such as Ticket and OAuth2 Code require atomic get-and-delete behavior, which the Redis component provides. ClientSession records used by single logout can also be shared across multiple SSO Server instances.
@@ -280,6 +284,13 @@ if err != nil {
 ```
 
 For Redis verification, focus on four flows: Ticket issue and consume, OAuth2 Code issue and consume, `RegisterClientSession` storing client sessions, and `/sso/logout` pushing callbacks before clearing client sessions.
+
+You can also run the optional Redis integration test with an environment variable:
+
+```powershell
+$env:DTOKEN_SSO_REDIS="redis://:password@127.0.0.1:6379/0"
+go test ./sso/storage/redis/... -v
+```
 
 ## Shared Cookie
 
@@ -350,6 +361,8 @@ if !signer.Verify(signedValues) {
 - `ConsumeTicket` validates the client secret, target client, callback URL, expiration state, and allowed SSO mode.
 - The built-in `MemoryStorage` used by `sso.NewServer()` is intended for local debugging and tests only. Data is lost after process restart and it is not suitable for multi-instance deployments.
 - Production deployments should use `sso/storage/redis`. Redis storage implements atomic get-and-delete, which is required by one-time Ticket and OAuth2 Code consumption.
+- Production deployments should enable `CheckSign` and configure `SecretKey` so Server and Client traffic, including logout callbacks, is protected against tampering.
+- Logout callback URLs are checked against client registration data. Avoid adding overly broad origins to `AllowOrigins`.
 - Custom storage must implement `adapter.AtomicStorage` so Ticket and SSO OAuth2 code consumption can read and delete atomically.
 - `ModeSharedToken` is for trusted internal systems that reuse a short-lived credential and is client-scoped by default.
 - `ModeRemoteSession` is for applications that remotely check login state at the SSO center.

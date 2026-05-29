@@ -512,7 +512,9 @@ func statusFromError(err error) int {
 		errors.Is(err, ErrOAuth2CodeUsed),
 		errors.Is(err, ErrOAuth2CodeExpired),
 		errors.Is(err, ErrModeUnsupported),
-		errors.Is(err, ErrStorageCapabilityUnsupported):
+		errors.Is(err, ErrStorageCapabilityUnsupported),
+		errors.Is(err, ErrInvalidCallbackURL),
+		errors.Is(err, ErrCallbackExpired):
 		return http.StatusBadRequest
 	case errors.Is(err, ErrInvalidClientCredentials),
 		errors.Is(err, ErrInvalidSign):
