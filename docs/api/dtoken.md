@@ -574,6 +574,6 @@ func DeleteAllManager()
 
 ## Next Steps
 
-- [Authentication Guide](../guide/authentication.md)
-- [Permission Guide](../guide/permission.md)
-- [OAuth2 Guide](../guide/oauth2.md)
+- [Authentication Guide](../guide/core/authentication.md)
+- [Permission Guide](../guide/core/permission.md)
+- [OAuth2 Guide](../guide/security/oauth2.md)

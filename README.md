@@ -5,7 +5,7 @@
 <h1 align="center">DToken-Go</h1>
 
 <p align="center">
-  A Go authentication, authorization, session management, and SSO framework.
+  A Go authentication, authorization, session management, and token lifecycle framework.
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
 
 ## What Is DToken-Go
 
-DToken-Go is a modular and pluggable Go authentication and authorization framework. It provides login authentication, Token management, Session management, terminal management, role and permission checks, account banning, SSO, short-key access credentials, temporary Ticket credentials, Token Introspection, Refresh Token, Nonce anti-replay, OAuth2 server capabilities, and event listeners. The framework supports pluggable component replacement and custom extensions, and integrates with mainstream Go Web frameworks, so it can be used as an independent auth core or quickly embedded into existing business projects.
+DToken-Go is a modular and pluggable Go authentication and authorization framework. It already provides login authentication, Token management, Session management, terminal management, role and permission checks, account and device banning, Nonce anti-replay, OAuth2 server support, SSO, and event listeners. Short-key access credentials, Token Introspection, and standalone Refresh Token capabilities are under active development. The framework supports pluggable component replacement and custom extensions, and integrates with mainstream Go Web frameworks, so it can be used as an independent auth core or quickly embedded into existing business projects.
 
 You can use it for:
 
@@ -49,7 +49,7 @@ You can use it for:
 | Event system | Listeners for login, logout, renewal, permissions, roles, bans, unbans, and other core lifecycle events |
 | Pluggable components | Storage, codec, logger, Token generator, goroutine pool, and other components can be replaced |
 | Framework integration | Middleware, context adapters, and API exports for mainstream Go Web frameworks |
-| SSO 🚧 | Unified login, ticket exchange, cross-system login-state sharing, unified logout, and application-level management |
+| SSO | Unified login, ticket exchange, cross-system login-state sharing, unified logout, and application-level management |
 | Temporary Ticket 🚧 | Ticket creation, validation, one-time consumption, revocation, TTL query, and status identification |
 | Short-key access credential 🚧 | Generate random short keys for short-link access, QR confirmation, temporary authorization, and system-to-system ticket exchange |
 | Token Introspection 🚧 | Standardized query for Token validity, ownership information, TTL, and invalid reason |
@@ -245,22 +245,33 @@ func main() {
 
 README keeps only the minimal getting-started path. For more API, configuration, and component details, see:
 
-- [Core API Cheatsheet](docs/guide/core-api-cheatsheet.md)
-- [Advanced Features](docs/guide/advanced-features.md)
-- [Configuration Example](docs/guide/configuration.md)
-- [Component Ecosystem](docs/guide/component-ecosystem.md)
-- [Multi-Auth Systems](docs/guide/multi-auth.md)
-- [Disable System](docs/guide/disable.md)
-- [Token Styles](docs/guide/token-style.md)
-- [AccessProvider](docs/guide/access-provider.md)
+- [Core API Cheatsheet](docs/guide/reference/core-api-cheatsheet.md)
+- [Advanced Features](docs/guide/security/advanced-features.md)
+- [Configuration Example](docs/guide/reference/configuration.md)
+- [Component Ecosystem](docs/guide/integration/component-ecosystem.md)
+- [Multi-Auth Systems](docs/guide/core/multi-auth.md)
+- [Disable System](docs/guide/core/disable.md)
+- [Token Styles](docs/guide/core/token-style.md)
+- [AccessProvider](docs/guide/core/access-provider.md)
 
 ## Project Structure
 
 ```text
 dtoken-go/
-├── core/                         # Framework core: config, Manager, Session, events, Nonce, OAuth2
-├── dtoken/                       # Global and instance API facade
-├── defaults/                     # Default Builder and default component wiring
+├── core/                         # Framework core modules, split by capability as independent Go modules
+│   ├── adapter/                  # Contracts for storage, codec, logger, Token generator, and request context
+│   ├── builder/                  # Manager builder, component wiring, and configuration validation
+│   ├── config/                   # Core configuration, defaults, and validation
+│   ├── context/                  # Request-scoped DTokenContext for Token and Manager access
+│   ├── derror/                   # Unified errors, error codes, and core error definitions
+│   ├── listener/                 # Event model, event manager, and listener callbacks
+│   ├── manager/                  # Login, Session, terminal, permission, role, and disable logic
+│   ├── nonce/                    # Nonce anti-replay capability
+│   ├── oauth2/                   # OAuth2 server capability
+│   └── utils/                    # Internal shared utilities
+├── dtoken/                       # Public facade APIs for global mode, instance mode, and feature groups
+├── sso/                          # Optional SSO module: Ticket, shared token, remote session, and authorization-code modes
+├── defaults/                     # Default Builder with bundled storage, codec, logger, and Token generator wiring
 ├── com/                          # Pluggable component implementations
 │   ├── codec/                    # Codec components, such as JSON, MessagePack, Base64
 │   ├── generator/                # Token generators
@@ -269,20 +280,42 @@ dtoken-go/
 │   └── storage/                  # Storage components, such as Memory and Redis
 ├── integrations/                 # Web framework integration packages
 │   ├── gin/                      # Gin middleware, context adapter, and API exports
-│   ├── echo/                     # Echo integration
-│   ├── fiber/                    # Fiber integration
-│   ├── chi/                      # Chi integration
-│   ├── gf/                       # GoFrame integration
-│   ├── hertz/                    # Hertz integration
-│   └── kratos/                   # Kratos integration
+│   ├── echo/                     # Echo middleware, context adapter, and API exports
+│   ├── fiber/                    # Fiber middleware, context adapter, and API exports
+│   ├── chi/                      # Chi middleware, context adapter, and API exports
+│   ├── gf/                       # GoFrame middleware, context adapter, and API exports
+│   ├── hertz/                    # Hertz middleware, context adapter, and API exports
+│   └── kratos/                   # Kratos middleware, context adapter, and API exports
 ├── examples/                     # Quick-start and framework integration examples
+│   ├── quick_start/              # Minimal example with the default Builder and global API
+│   ├── gin/                      # Gin example
+│   ├── sso_gin_server/           # Gin SSO login-center example
+│   ├── sso_gin_client/           # Gin SSO client-app example
+│   ├── sso_server/               # net/http SSO login-center example
+│   ├── sso_client/               # net/http SSO client-app example
+│   ├── echo/                     # Echo example
+│   ├── fiber/                    # Fiber example
+│   ├── chi/                      # Chi example
+│   ├── gf/                       # GoFrame example
+│   ├── hertz/                    # Hertz example
+│   └── kratos/                   # Kratos example
 ├── tests/                        # Flow tests and test applications
 │   ├── gin_core_app/             # Gin core flow test application
 │   └── gin_core_flow/            # HTTP flow tests for core features
 ├── docs/                         # Guides, API references, and design docs
+│   ├── guide/core/               # Core capabilities such as login, permissions, Session, terminals, and disable
+│   ├── guide/security/           # Security and protocol features such as Nonce, OAuth2, SSO, JWT, and Refresh Token
+│   ├── guide/integration/        # Web frameworks, annotations, components, Redis, and flow tests
+│   ├── guide/reference/          # Configuration examples and Core API cheatsheet
+│   ├── api/                      # API references
+│   ├── design/                   # Architecture and design docs
+│   └── tutorial/                 # Quick-start tutorials
+├── FEATURE.md                    # Feature roadmap and planned capability notes
+├── LICENSE                       # Apache-2.0 license
 ├── README_zh.md                  # Chinese project README
 ├── README.md                     # English project README
-└── go.work                       # Go workspace
+├── go.work                       # Go workspace for all modules
+└── go.work.sum                   # Workspace dependency checksum file
 ```
 
 ## Documentation And Examples
@@ -291,19 +324,21 @@ dtoken-go/
 
 - [Documentation Center](docs/README.md)
 - [Quick Start](docs/tutorial/quick-start.md)
-- [Authentication](docs/guide/authentication.md)
-- [Permission Management](docs/guide/permission.md)
-- [Multi-Auth Systems](docs/guide/multi-auth.md)
-- [Disable System](docs/guide/disable.md)
-- [Token Styles](docs/guide/token-style.md)
-- [AccessProvider](docs/guide/access-provider.md)
-- [Framework Integration](docs/guide/framework-integration.md)
-- [Event Listener](docs/guide/listener.md)
-- [Nonce Anti-Replay](docs/guide/nonce.md)
-- [JWT Integration](docs/guide/jwt.md)
-- [Redis Storage](docs/guide/redis-storage.md)
-- [OAuth2](docs/guide/oauth2.md)
-- [Refresh Token](docs/guide/refresh-token.md)
+- [Authentication](docs/guide/core/authentication.md)
+- [Permission Management](docs/guide/core/permission.md)
+- [Multi-Auth Systems](docs/guide/core/multi-auth.md)
+- [Disable System](docs/guide/core/disable.md)
+- [Token Styles](docs/guide/core/token-style.md)
+- [AccessProvider](docs/guide/core/access-provider.md)
+- [Framework Integration](docs/guide/integration/framework-integration.md)
+- [Event Listener](docs/guide/core/listener.md)
+- [Nonce Anti-Replay](docs/guide/security/nonce.md)
+- [JWT Integration](docs/guide/security/jwt.md)
+- [Redis Storage](docs/guide/integration/redis-storage.md)
+- [OAuth2](docs/guide/security/oauth2.md)
+- [SSO](sso/README.md)
+- [SSO Testing](sso/TESTING.md)
+- [Refresh Token](docs/guide/security/refresh-token.md)
 - [API Reference](docs/api/dtoken.md)
 
 ### Example Projects
@@ -312,6 +347,10 @@ dtoken-go/
 | --- | --- |
 | [examples/quick_start](examples/quick_start/) | Minimal usage with the default Builder and global API |
 | [examples/gin](examples/gin/) | Gin middleware, login checks, and role checks |
+| [examples/sso_gin_server](examples/sso_gin_server/) | Gin SSO login-center example |
+| [examples/sso_gin_client](examples/sso_gin_client/) | Gin SSO client-app example |
+| [examples/sso_server](examples/sso_server/) | net/http SSO login-center example |
+| [examples/sso_client](examples/sso_client/) | net/http SSO client-app example |
 | [examples/echo](examples/echo/) | Echo framework integration example |
 | [examples/fiber](examples/fiber/) | Fiber framework integration example |
 | [examples/chi](examples/chi/) | Chi framework integration example |

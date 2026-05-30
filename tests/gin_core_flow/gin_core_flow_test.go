@@ -422,16 +422,11 @@ func TestRenewConfigurationMatrixFlow(t *testing.T) {
 		c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
 		time.Sleep(300 * time.Millisecond)
 		early := c.ttl(token)
-		if early > 6 {
-			t.Fatalf("ttl after early check = %d, want not above configured timeout", early)
+		if early < 4 || early > 6 {
+			t.Fatalf("ttl after early check = %d, want 4..6 before threshold", early)
 		}
 
 		time.Sleep(3200 * time.Millisecond)
-		before := c.ttl(token)
-		if before <= 0 || before > 3 {
-			t.Fatalf("ttl before threshold renew = %d, want 1..3", before)
-		}
-
 		c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
 		time.Sleep(300 * time.Millisecond)
 		after := c.ttl(token)

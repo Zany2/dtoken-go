@@ -5,7 +5,7 @@
 <h1 align="center">DToken-Go</h1>
 
 <p align="center">
-  一个面向 Go 应用的认证、授权、会话管理与单点登录框架。
+  一个面向 Go 应用的认证、授权、会话管理与 Token 生命周期管理框架。
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
 
 ## DToken-Go 是什么
 
-DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，提供登录认证、Token 管理、Session 管理、终端管理、角色权限校验、账号封禁、SSO 单点登录、短 Key 访问凭证、Ticket 临时凭证、Token Introspection、Refresh Token、Nonce 防重放、OAuth2 服务端和事件监听等能力。框架支持插件化组件替换与自定义扩展，并适配主流 Go Web 框架，既可以作为独立认证核心使用，也可以快速接入现有业务项目。
+DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，已提供登录认证、Token 管理、Session 管理、终端管理、角色权限校验、账号与设备封禁、Nonce 防重放、OAuth2 服务端、SSO 单点登录和事件监听等核心能力；短 Key 访问凭证、Token Introspection 和独立 Refresh Token 等能力正在持续开发中。框架支持插件化组件替换与自定义扩展，并适配主流 Go Web 框架，既可以作为独立认证核心使用，也可以快速接入现有业务项目。
 
 你可以把它用于：
 
@@ -49,7 +49,7 @@ DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，提供登录
 | 事件系统 | 登录、登出、续期、权限、角色、封禁、解封等核心生命周期事件监听 |
 | 可插拔组件 | 存储、编解码、日志、Token 生成器、协程池等组件可替换 |
 | 多框架集成 | 为主流 Go Web 框架提供中间件、上下文适配和 API 导出 |
-| SSO 单点登录 🚧 | 统一登录、票据交换、跨系统登录态共享、统一登出、应用维度管理 |
+| SSO 单点登录 | 统一登录、票据交换、跨系统登录态共享、统一登出、应用维度管理 |
 | Ticket 临时凭证 🚧 | Ticket 创建、校验、一次性消费、撤销、TTL 查询和状态识别 |
 | 短 Key 访问凭证 🚧 | 生成随机短 Key，用于短链接访问、扫码确认、临时授权和系统间换票 |
 | Token Introspection 🚧 | 标准化查询 Token 是否有效、归属信息、TTL 和失效原因 |
@@ -245,22 +245,33 @@ func main() {
 
 README 只保留最小上手路径，更多 API、配置和组件说明可以查看下面的专题文档：
 
-- [Core API 速查](docs/guide/core-api-cheatsheet_zh.md)
-- [高级能力](docs/guide/advanced-features_zh.md)
-- [配置示例](docs/guide/configuration_zh.md)
-- [组件生态](docs/guide/component-ecosystem_zh.md)
-- [多认证体系](docs/guide/multi-auth_zh.md)
-- [封禁体系](docs/guide/disable_zh.md)
-- [Token 风格](docs/guide/token-style_zh.md)
-- [AccessProvider](docs/guide/access-provider_zh.md)
+- [Core API 速查](docs/guide/reference/core-api-cheatsheet_zh.md)
+- [高级能力](docs/guide/security/advanced-features_zh.md)
+- [配置示例](docs/guide/reference/configuration_zh.md)
+- [组件生态](docs/guide/integration/component-ecosystem_zh.md)
+- [多认证体系](docs/guide/core/multi-auth_zh.md)
+- [封禁体系](docs/guide/core/disable_zh.md)
+- [Token 风格](docs/guide/core/token-style_zh.md)
+- [AccessProvider](docs/guide/core/access-provider_zh.md)
 
 ## 项目结构
 
 ```text
 dtoken-go/
-├── core/                         # 框架核心：配置、Manager、Session、事件、Nonce、OAuth2
-├── dtoken/                       # 全局 API 与实例 API 门面
-├── defaults/                     # 默认 Builder 与默认组件装配
+├── core/                         # 框架核心模块，按能力拆分为独立 Go module
+│   ├── adapter/                  # 存储、编解码、日志、Token 生成器、请求上下文等接口契约
+│   ├── builder/                  # Manager 构建器、组件装配和配置校验入口
+│   ├── config/                   # 核心配置项、默认值和配置校验
+│   ├── context/                  # 请求级 DTokenContext，承载当前请求的 Token 和 Manager
+│   ├── derror/                   # 统一错误、错误码和核心错误定义
+│   ├── listener/                 # 事件模型、事件管理器和监听回调
+│   ├── manager/                  # 登录、Session、终端、权限、角色、封禁等核心逻辑
+│   ├── nonce/                    # Nonce 防重放能力
+│   ├── oauth2/                   # OAuth2 服务端能力
+│   └── utils/                    # 内部通用工具
+├── dtoken/                       # 对外门面 API：全局模式、实例模式和能力分组封装
+├── sso/                          # 可选 SSO 模块：Ticket、共享 Token、远程会话和授权码模式
+├── defaults/                     # 默认 Builder，内置默认存储、编解码、日志和 Token 生成器装配
 ├── com/                          # 可插拔组件实现
 │   ├── codec/                    # 编解码组件，如 JSON、MessagePack、Base64
 │   ├── generator/                # Token 生成器
@@ -269,20 +280,42 @@ dtoken-go/
 │   └── storage/                  # 存储组件，如 Memory、Redis
 ├── integrations/                 # Web 框架集成包
 │   ├── gin/                      # Gin 中间件、上下文适配和 API 导出
-│   ├── echo/                     # Echo 集成
-│   ├── fiber/                    # Fiber 集成
-│   ├── chi/                      # Chi 集成
-│   ├── gf/                       # GoFrame 集成
-│   ├── hertz/                    # Hertz 集成
-│   └── kratos/                   # Kratos 集成
+│   ├── echo/                     # Echo 中间件、上下文适配和 API 导出
+│   ├── fiber/                    # Fiber 中间件、上下文适配和 API 导出
+│   ├── chi/                      # Chi 中间件、上下文适配和 API 导出
+│   ├── gf/                       # GoFrame 中间件、上下文适配和 API 导出
+│   ├── hertz/                    # Hertz 中间件、上下文适配和 API 导出
+│   └── kratos/                   # Kratos 中间件、上下文适配和 API 导出
 ├── examples/                     # 快速开始与框架接入示例
+│   ├── quick_start/              # 默认 Builder + 全局 API 最小示例
+│   ├── gin/                      # Gin 示例
+│   ├── sso_gin_server/           # Gin SSO 统一登录中心示例
+│   ├── sso_gin_client/           # Gin SSO 子系统接入示例
+│   ├── sso_server/               # 标准库 SSO 统一登录中心示例
+│   ├── sso_client/               # 标准库 SSO 子系统接入示例
+│   ├── echo/                     # Echo 示例
+│   ├── fiber/                    # Fiber 示例
+│   ├── chi/                      # Chi 示例
+│   ├── gf/                       # GoFrame 示例
+│   ├── hertz/                    # Hertz 示例
+│   └── kratos/                   # Kratos 示例
 ├── tests/                        # 流程测试与测试应用
 │   ├── gin_core_app/             # Gin 核心流程测试应用
 │   └── gin_core_flow/            # 基于 HTTP 流程的核心功能测试
 ├── docs/                         # 文档、指南、API 参考和设计说明
+│   ├── guide/core/               # 登录、权限、Session、终端、封禁等核心能力
+│   ├── guide/security/           # Nonce、OAuth2、SSO、JWT、Refresh Token 等安全与协议能力
+│   ├── guide/integration/        # Web 框架、注解、组件、Redis、流程测试
+│   ├── guide/reference/          # 配置示例和 Core API 速查
+│   ├── api/                      # API 参考
+│   ├── design/                   # 架构与设计文档
+│   └── tutorial/                 # 快速开始教程
+├── FEATURE.md                    # 功能规划和待完善能力记录
+├── LICENSE                       # Apache-2.0 开源协议
 ├── README_zh.md                  # 中文项目说明
 ├── README.md                     # 英文项目说明
-└── go.work                       # Go workspace
+├── go.work                       # Go workspace，统一管理多模块
+└── go.work.sum                   # Workspace 依赖校验文件
 ```
 
 ## 文档与示例
@@ -291,19 +324,21 @@ dtoken-go/
 
 - [文档中心](docs/README_zh.md)
 - [快速开始](docs/tutorial/quick-start_zh.md)
-- [登录认证](docs/guide/authentication_zh.md)
-- [权限管理](docs/guide/permission_zh.md)
-- [多认证体系](docs/guide/multi-auth_zh.md)
-- [封禁体系](docs/guide/disable_zh.md)
-- [Token 风格](docs/guide/token-style_zh.md)
-- [AccessProvider](docs/guide/access-provider_zh.md)
-- [框架集成](docs/guide/framework-integration_zh.md)
-- [事件监听](docs/guide/listener_zh.md)
-- [Nonce 防重放](docs/guide/nonce_zh.md)
-- [JWT 集成](docs/guide/jwt_zh.md)
-- [Redis 存储](docs/guide/redis-storage_zh.md)
-- [OAuth2](docs/guide/oauth2_zh.md)
-- [Refresh Token](docs/guide/refresh-token_zh.md)
+- [登录认证](docs/guide/core/authentication_zh.md)
+- [权限管理](docs/guide/core/permission_zh.md)
+- [多认证体系](docs/guide/core/multi-auth_zh.md)
+- [封禁体系](docs/guide/core/disable_zh.md)
+- [Token 风格](docs/guide/core/token-style_zh.md)
+- [AccessProvider](docs/guide/core/access-provider_zh.md)
+- [框架集成](docs/guide/integration/framework-integration_zh.md)
+- [事件监听](docs/guide/core/listener_zh.md)
+- [Nonce 防重放](docs/guide/security/nonce_zh.md)
+- [JWT 集成](docs/guide/security/jwt_zh.md)
+- [Redis 存储](docs/guide/integration/redis-storage_zh.md)
+- [OAuth2](docs/guide/security/oauth2_zh.md)
+- [SSO 单点登录](sso/README_zh.md)
+- [SSO 测试说明](sso/TESTING_zh.md)
+- [Refresh Token](docs/guide/security/refresh-token_zh.md)
 - [API 参考](docs/api/dtoken_zh.md)
 
 ### 示例项目
@@ -312,6 +347,10 @@ dtoken-go/
 | --- | --- |
 | [examples/quick_start](examples/quick_start/) | 默认 Builder + 全局 API 最小使用方式 |
 | [examples/gin](examples/gin/) | Gin 中间件、登录校验和角色校验 |
+| [examples/sso_gin_server](examples/sso_gin_server/) | Gin SSO 统一登录中心示例 |
+| [examples/sso_gin_client](examples/sso_gin_client/) | Gin SSO 子系统接入示例 |
+| [examples/sso_server](examples/sso_server/) | 标准库 SSO 统一登录中心示例 |
+| [examples/sso_client](examples/sso_client/) | 标准库 SSO 子系统接入示例 |
 | [examples/echo](examples/echo/) | Echo 框架接入示例 |
 | [examples/fiber](examples/fiber/) | Fiber 框架接入示例 |
 | [examples/chi](examples/chi/) | Chi 框架接入示例 |

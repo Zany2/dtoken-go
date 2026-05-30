@@ -125,7 +125,7 @@ dtoken.SetManager(mgr)
 
 ## 下一步
 
-- [登录认证详解](../guide/authentication_zh.md)
-- [权限验证详解](../guide/permission_zh.md)
-- [注解使用](../guide/annotation_zh.md)
-- [框架集成](../guide/framework-integration_zh.md)
+- [登录认证详解](../guide/core/authentication_zh.md)
+- [权限验证详解](../guide/core/permission_zh.md)
+- [注解使用](../guide/integration/annotation_zh.md)
+- [框架集成](../guide/integration/framework-integration_zh.md)

@@ -574,6 +574,6 @@ func DeleteAllManager()
 
 ## 下一步
 
-- [登录认证指南](../guide/authentication_zh.md)
-- [权限验证指南](../guide/permission_zh.md)
-- [OAuth2 指南](../guide/oauth2_zh.md)
+- [登录认证指南](../guide/core/authentication_zh.md)
+- [权限验证指南](../guide/core/permission_zh.md)
+- [OAuth2 指南](../guide/security/oauth2_zh.md)

@@ -2,7 +2,10 @@ module github.com/Zany2/dtoken-go/com/codec/msgpack
 
 go 1.25.0
 
-require github.com/vmihailenco/msgpack/v5 v5.4.1
+require (
+	github.com/Zany2/dtoken-go/core v0.0.2
+	github.com/vmihailenco/msgpack/v5 v5.4.1
+)
 
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
