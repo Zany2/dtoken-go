@@ -9,7 +9,7 @@ import (
 	DContext "github.com/Zany2/dtoken-go/core/context"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/integrations/internal/authcheck"
+	"github.com/Zany2/dtoken-go/integrations/authcheck"
 )
 
 // LogicType defines middleware logic type LogicType 定义中间件逻辑类型

@@ -9,7 +9,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 
 	DContext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/integrations/internal/authcheck"
+	"github.com/Zany2/dtoken-go/integrations/authcheck"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
 )

@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/integrations/internal/authcheck"
+	"github.com/Zany2/dtoken-go/integrations/authcheck"
 	chiRouter "github.com/go-chi/chi/v5"
 )
 

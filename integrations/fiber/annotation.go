@@ -5,7 +5,7 @@ import (
 	"context"
 
 	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/integrations/internal/authcheck"
+	"github.com/Zany2/dtoken-go/integrations/authcheck"
 	gofiber "github.com/gofiber/fiber/v2"
 )
 

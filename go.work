@@ -42,7 +42,7 @@ use (
 	./integrations/gf
 	./integrations/gin
 	./integrations/hertz
-	./integrations/internal/authcheck
+	./integrations/authcheck
 	./integrations/kratos
 
 	./tests/gin_core_flow
