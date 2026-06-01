@@ -14,8 +14,7 @@ github.com/Zany2/dtoken-go/com/codec/base64 v0.0.1/go.mod h1:h4LfQ+Dlc8Q+FFpxfz4
 github.com/Zany2/dtoken-go/com/codec/msgpack v0.0.1/go.mod h1:+yWvGLrs1/Fvgpq4LjMzGhnA39xR35MKp09EEt3b7xM=
 github.com/Zany2/dtoken-go/com/log/gf v0.0.1/go.mod h1:nEZfiP2zBMzyea2g95Thx+RrBoaQJi8muzLLDIBJX88=
 github.com/Zany2/dtoken-go/com/log/nop v0.0.1/go.mod h1:dodgEmA8WQaetC4HTSqx5Nc5d4F/piVo2nrjLAql810=
-github.com/Zany2/dtoken-go/integrations/authcheck v0.0.1/go.mod h1:eTSuOJazPUqP2sYAw1zywKJtQiMtlqo491sSnZc+5lc=
-github.com/Zany2/dtoken-go/integrations/authcheck v0.0.3/go.mod h1:gtcYNaeogE+/B63u/aI6KRRP4D5Y2CfWNkuAx6TGGDM=
+github.com/Zany2/dtoken-go/integrations/authcheck v0.0.1/go.mod h1:cxLE9E+elS/wpU0gFnRfbW8h7ELv496xVQXb7hvwINY=
 github.com/andybalholm/brotli v1.0.5/go.mod h1:fO7iG3H7G2nSZ7m0zPUDn85XEX2GTukHGRSepvi9Eig=
 github.com/bsm/ginkgo/v2 v2.12.0/go.mod h1:SwYbGRRDovPVboqFv0tPTcG1sN61LM1Z4ARdbAV9g4c=
 github.com/bsm/gomega v1.27.10/go.mod h1:JyEr/xRbxbtgWNi8tIEVPUYZ5Dzef52k01W3YH0H+O0=
