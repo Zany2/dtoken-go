@@ -3,7 +3,7 @@ module github.com/Zany2/dtoken-go/com/storage/redis
 go 1.25.0
 
 require (
-	github.com/Zany2/dtoken-go/core v0.0.3
+	github.com/Zany2/dtoken-go/core v0.0.1
 	github.com/redis/go-redis/v9 v9.5.1
 )
 

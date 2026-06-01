@@ -19,21 +19,25 @@ type (
 
 // Instance and typed global operations.
 var (
-	New                          = dtoken.New
-	Default                      = dtoken.Default
-	MustDefault                  = dtoken.MustDefault
-	NewByAuthType                = dtoken.NewByAuthType
-	LoginWithOptions             = dtoken.LoginWithOptions
-	LogoutWithOptions            = dtoken.LogoutWithOptions
-	KickoutWithOptions           = dtoken.KickoutWithOptions
-	ReplaceWithOptions           = dtoken.ReplaceWithOptions
-	DisableWithOptions           = dtoken.DisableWithOptions
-	DisableServiceWithOptions    = dtoken.DisableServiceWithOptions
-	DisableDeviceWithOptions     = dtoken.DisableDeviceWithOptions
-	AddPermissionsWithOptions    = dtoken.AddPermissionsWithOptions
-	RemovePermissionsWithOptions = dtoken.RemovePermissionsWithOptions
-	CheckPermissionWithOptions   = dtoken.CheckPermissionWithOptions
-	AddRolesWithOptions          = dtoken.AddRolesWithOptions
-	RemoveRolesWithOptions       = dtoken.RemoveRolesWithOptions
-	CheckRoleWithOptions         = dtoken.CheckRoleWithOptions
+	New                            = dtoken.New
+	Default                        = dtoken.Default
+	MustDefault                    = dtoken.MustDefault
+	NewByAuthType                  = dtoken.NewByAuthType
+	LoginWithOptions               = dtoken.LoginWithOptions
+	LogoutWithOptions              = dtoken.LogoutWithOptions
+	KickoutWithOptions             = dtoken.KickoutWithOptions
+	ReplaceWithOptions             = dtoken.ReplaceWithOptions
+	DisableWithOptions             = dtoken.DisableWithOptions
+	DisableServiceWithOptions      = dtoken.DisableServiceWithOptions
+	DisableDeviceWithOptions       = dtoken.DisableDeviceWithOptions
+	AddPermissionsWithOptions      = dtoken.AddPermissionsWithOptions
+	RemovePermissionsWithOptions   = dtoken.RemovePermissionsWithOptions
+	CheckPermissionWithOptions     = dtoken.CheckPermissionWithOptions
+	CheckPermissionsAndWithOptions = dtoken.CheckPermissionsAndWithOptions
+	CheckPermissionsOrWithOptions  = dtoken.CheckPermissionsOrWithOptions
+	AddRolesWithOptions            = dtoken.AddRolesWithOptions
+	RemoveRolesWithOptions         = dtoken.RemoveRolesWithOptions
+	CheckRoleWithOptions           = dtoken.CheckRoleWithOptions
+	CheckRolesAndWithOptions       = dtoken.CheckRolesAndWithOptions
+	CheckRolesOrWithOptions        = dtoken.CheckRolesOrWithOptions
 )

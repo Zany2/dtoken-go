@@ -2,4 +2,4 @@
 package core
 
 // Version version 全局版本号
-const Version = "0.0.3"
+const Version = "0.0.1"
