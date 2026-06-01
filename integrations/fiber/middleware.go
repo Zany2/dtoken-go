@@ -26,11 +26,47 @@ const (
 // AuthOption defines auth option setter AuthOption 定义认证选项设置器
 type AuthOption func(*AuthOptions)
 
+// BeforeAuthHandler handles request before dtoken checks BeforeAuthHandler 在 dtoken 校验前处理请求
+type BeforeAuthHandler func(ctx context.Context, c *gofiber.Ctx, req *AuthHandleRequest)
+
+// AuthHandleRequest carries auth check metadata AuthHandleRequest 携带认证校验元数据
+type AuthHandleRequest struct {
+	AuthType     string
+	CheckLogin   bool
+	CheckDisable bool
+	Permissions  []string
+	Roles        []string
+	LogicType    LogicType
+
+	next    func() error
+	result  error
+	handled bool
+}
+
+// Next continues request and stops dtoken checks Next 放行请求并停止 dtoken 校验
+func (req *AuthHandleRequest) Next() {
+	req.handled = true
+	if req.next != nil {
+		req.result = req.next()
+	}
+}
+
+// Exit stops dtoken checks after custom handling Exit 自定义处理后停止 dtoken 校验
+func (req *AuthHandleRequest) Exit() {
+	req.handled = true
+}
+
+// IsHandled reports whether request has been handled IsHandled 判断请求是否已处理
+func (req *AuthHandleRequest) IsHandled() bool {
+	return req.handled
+}
+
 // AuthOptions carries middleware auth options AuthOptions 保存中间件认证选项。
 type AuthOptions struct {
-	AuthType  string
-	LogicType LogicType
-	FailFunc  func(c *gofiber.Ctx, err error)
+	AuthType          string
+	LogicType         LogicType
+	FailFunc          func(c *gofiber.Ctx, err error)
+	BeforeAuthHandler BeforeAuthHandler
 }
 
 // defaultAuthOptions returns default middleware options defaultAuthOptions 返回默认中间件选项。
@@ -56,6 +92,13 @@ func WithLogicType(logicType LogicType) AuthOption {
 func WithFailFunc(fn func(c *gofiber.Ctx, err error)) AuthOption {
 	return func(o *AuthOptions) {
 		o.FailFunc = fn
+	}
+}
+
+// WithBeforeAuthHandler sets pre auth handler WithBeforeAuthHandler 设置认证前置处理器
+func WithBeforeAuthHandler(fn BeforeAuthHandler) AuthOption {
+	return func(o *AuthOptions) {
+		o.BeforeAuthHandler = fn
 	}
 }
 
@@ -89,6 +132,14 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) gofiber.Handler {
 	}
 
 	return func(c *gofiber.Ctx) error {
+		authReq := newAuthHandleRequest(options, func() error {
+			return c.Next()
+		})
+		authReq.CheckLogin = true
+		if runBeforeAuthHandler(ctx, c, options, authReq) {
+			return authReq.result
+		}
+
 		mgr, err := authcheck.GetManager(options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
@@ -130,6 +181,14 @@ func PermissionMiddleware(
 	}
 
 	return func(c *gofiber.Ctx) error {
+		authReq := newAuthHandleRequest(options, func() error {
+			return c.Next()
+		})
+		authReq.Permissions = append([]string{}, permissions...)
+		if runBeforeAuthHandler(ctx, c, options, authReq) {
+			return authReq.result
+		}
+
 		if len(permissions) == 0 {
 			return c.Next()
 		}
@@ -175,6 +234,14 @@ func RoleMiddleware(
 	}
 
 	return func(c *gofiber.Ctx) error {
+		authReq := newAuthHandleRequest(options, func() error {
+			return c.Next()
+		})
+		authReq.Roles = append([]string{}, roles...)
+		if runBeforeAuthHandler(ctx, c, options, authReq) {
+			return authReq.result
+		}
+
 		if len(roles) == 0 {
 			return c.Next()
 		}
@@ -206,6 +273,25 @@ func RoleMiddleware(
 
 		return c.Next()
 	}
+}
+
+// newAuthHandleRequest creates auth handle request newAuthHandleRequest 创建认证处理请求
+func newAuthHandleRequest(options *AuthOptions, next func() error) *AuthHandleRequest {
+	return &AuthHandleRequest{
+		AuthType:  options.AuthType,
+		LogicType: options.LogicType,
+		next:      next,
+	}
+}
+
+// runBeforeAuthHandler executes pre auth handler runBeforeAuthHandler 执行认证前置处理器
+func runBeforeAuthHandler(ctx context.Context, c *gofiber.Ctx, options *AuthOptions, req *AuthHandleRequest) bool {
+	if options.BeforeAuthHandler == nil {
+		return false
+	}
+
+	options.BeforeAuthHandler(ctx, c, req)
+	return req.IsHandled()
 }
 
 // GetDTokenContext gets cached DToken context from Fiber request GetDTokenContext 从 Fiber 请求中获取缓存的 DToken 上下文。

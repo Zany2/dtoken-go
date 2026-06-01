@@ -30,11 +30,50 @@ const (
 // AuthOption defines auth option setter AuthOption 定义认证选项设置器
 type AuthOption func(*AuthOptions)
 
+// BeforeAuthHandler handles request before dtoken checks BeforeAuthHandler 在 dtoken 校验前处理请求
+type BeforeAuthHandler func(ctx context.Context, r *ghttp.Request, req *AuthHandleRequest)
+
+// AuthHandleRequest carries auth check metadata AuthHandleRequest 携带认证校验元数据
+type AuthHandleRequest struct {
+	AuthType     string
+	CheckLogin   bool
+	CheckDisable bool
+	Permissions  []string
+	Roles        []string
+	LogicType    LogicType
+
+	next    func()
+	exit    func()
+	handled bool
+}
+
+// Next continues request and stops dtoken checks Next 放行请求并停止 dtoken 校验
+func (req *AuthHandleRequest) Next() {
+	req.handled = true
+	if req.next != nil {
+		req.next()
+	}
+}
+
+// Exit stops dtoken checks after custom handling Exit 自定义处理后停止 dtoken 校验
+func (req *AuthHandleRequest) Exit() {
+	req.handled = true
+	if req.exit != nil {
+		req.exit()
+	}
+}
+
+// IsHandled reports whether request has been handled IsHandled 判断请求是否已处理
+func (req *AuthHandleRequest) IsHandled() bool {
+	return req.handled
+}
+
 // AuthOptions defines middleware auth options AuthOptions 定义中间件认证选项
 type AuthOptions struct {
-	AuthType  string
-	LogicType LogicType
-	FailFunc  func(r *ghttp.Request, err error)
+	AuthType          string
+	LogicType         LogicType
+	FailFunc          func(r *ghttp.Request, err error)
+	BeforeAuthHandler BeforeAuthHandler
 }
 
 // defaultAuthOptions returns default auth options defaultAuthOptions 返回默认认证选项
@@ -60,6 +99,13 @@ func WithLogicType(logicType LogicType) AuthOption {
 func WithFailFunc(fn func(r *ghttp.Request, err error)) AuthOption {
 	return func(o *AuthOptions) {
 		o.FailFunc = fn
+	}
+}
+
+// WithBeforeAuthHandler sets pre auth handler WithBeforeAuthHandler 设置认证前置处理器
+func WithBeforeAuthHandler(fn BeforeAuthHandler) AuthOption {
+	return func(o *AuthOptions) {
+		o.BeforeAuthHandler = fn
 	}
 }
 
@@ -94,6 +140,16 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) ghttp.HandlerFunc {
 	}
 
 	return func(r *ghttp.Request) {
+		authReq := newAuthHandleRequest(options, func() {
+			r.Middleware.Next()
+		}, func() {
+			r.Exit()
+		})
+		authReq.CheckLogin = true
+		if runBeforeAuthHandler(ctx, r, options, authReq) {
+			return
+		}
+
 		mgr, err := authcheck.GetManager(options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
@@ -138,6 +194,16 @@ func PermissionMiddleware(
 	}
 
 	return func(r *ghttp.Request) {
+		authReq := newAuthHandleRequest(options, func() {
+			r.Middleware.Next()
+		}, func() {
+			r.Exit()
+		})
+		authReq.Permissions = append([]string{}, permissions...)
+		if runBeforeAuthHandler(ctx, r, options, authReq) {
+			return
+		}
+
 		if len(permissions) == 0 {
 			r.Middleware.Next()
 			return
@@ -190,6 +256,16 @@ func PermissionPathMiddleware(
 		reqPermissions := append([]string{}, permissions...)
 		reqPermissions = append(reqPermissions, r.URL.Path)
 
+		authReq := newAuthHandleRequest(options, func() {
+			r.Middleware.Next()
+		}, func() {
+			r.Exit()
+		})
+		authReq.Permissions = append([]string{}, reqPermissions...)
+		if runBeforeAuthHandler(ctx, r, options, authReq) {
+			return
+		}
+
 		if len(reqPermissions) == 0 {
 			r.Middleware.Next()
 			return
@@ -239,6 +315,16 @@ func RoleMiddleware(
 	}
 
 	return func(r *ghttp.Request) {
+		authReq := newAuthHandleRequest(options, func() {
+			r.Middleware.Next()
+		}, func() {
+			r.Exit()
+		})
+		authReq.Roles = append([]string{}, roles...)
+		if runBeforeAuthHandler(ctx, r, options, authReq) {
+			return
+		}
+
 		if len(roles) == 0 {
 			r.Middleware.Next()
 			return
@@ -273,6 +359,26 @@ func RoleMiddleware(
 
 		r.Middleware.Next()
 	}
+}
+
+// newAuthHandleRequest creates auth handle request newAuthHandleRequest 创建认证处理请求
+func newAuthHandleRequest(options *AuthOptions, next func(), exit func()) *AuthHandleRequest {
+	return &AuthHandleRequest{
+		AuthType:  options.AuthType,
+		LogicType: options.LogicType,
+		next:      next,
+		exit:      exit,
+	}
+}
+
+// runBeforeAuthHandler executes pre auth handler runBeforeAuthHandler 执行认证前置处理器
+func runBeforeAuthHandler(ctx context.Context, r *ghttp.Request, options *AuthOptions, req *AuthHandleRequest) bool {
+	if options.BeforeAuthHandler == nil {
+		return false
+	}
+
+	options.BeforeAuthHandler(ctx, r, req)
+	return req.IsHandled()
 }
 
 // GetDTokenContext gets cached DToken context GetDTokenContext 获取缓存的 DToken 上下文

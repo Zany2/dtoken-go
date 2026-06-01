@@ -32,11 +32,48 @@ type FailFunc func(ctx context.Context, err error) error
 // AuthOption defines auth option setter AuthOption 定义认证选项设置器
 type AuthOption func(*AuthOptions)
 
+// BeforeAuthHandler handles request before dtoken checks BeforeAuthHandler 在 dtoken 校验前处理请求
+type BeforeAuthHandler func(ctx context.Context, req any, authReq *AuthHandleRequest)
+
+// AuthHandleRequest carries auth check metadata AuthHandleRequest 携带认证校验元数据
+type AuthHandleRequest struct {
+	AuthType     string
+	CheckLogin   bool
+	CheckDisable bool
+	Permissions  []string
+	Roles        []string
+	LogicType    LogicType
+
+	next    func() (any, error)
+	result  any
+	err     error
+	handled bool
+}
+
+// Next continues request and stops dtoken checks Next 放行请求并停止 dtoken 校验
+func (req *AuthHandleRequest) Next() {
+	req.handled = true
+	if req.next != nil {
+		req.result, req.err = req.next()
+	}
+}
+
+// Exit stops dtoken checks after custom handling Exit 自定义处理后停止 dtoken 校验
+func (req *AuthHandleRequest) Exit() {
+	req.handled = true
+}
+
+// IsHandled reports whether request has been handled IsHandled 判断请求是否已处理
+func (req *AuthHandleRequest) IsHandled() bool {
+	return req.handled
+}
+
 // AuthOptions defines middleware auth options AuthOptions 定义中间件认证选项
 type AuthOptions struct {
-	AuthType  string
-	LogicType LogicType
-	FailFunc  FailFunc
+	AuthType          string
+	LogicType         LogicType
+	FailFunc          FailFunc
+	BeforeAuthHandler BeforeAuthHandler
 }
 
 // defaultAuthOptions returns default auth options defaultAuthOptions 返回默认认证选项
@@ -62,6 +99,13 @@ func WithLogicType(logicType LogicType) AuthOption {
 func WithFailFunc(fn FailFunc) AuthOption {
 	return func(o *AuthOptions) {
 		o.FailFunc = fn
+	}
+}
+
+// WithBeforeAuthHandler sets pre auth handler WithBeforeAuthHandler 设置认证前置处理器
+func WithBeforeAuthHandler(fn BeforeAuthHandler) AuthOption {
+	return func(o *AuthOptions) {
+		o.BeforeAuthHandler = fn
 	}
 }
 
@@ -94,6 +138,14 @@ func AuthMiddleware(opts ...AuthOption) middleware.Middleware {
 
 	return func(next middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req any) (any, error) {
+			authReq := newAuthHandleRequest(options, func() (any, error) {
+				return next(ctx, req)
+			})
+			authReq.CheckLogin = true
+			if runBeforeAuthHandler(ctx, req, options, authReq) {
+				return authReq.result, authReq.err
+			}
+
 			mgr, err := authcheck.GetManager(options.AuthType)
 			if err != nil {
 				return nil, dispatchFail(ctx, options.FailFunc, err)
@@ -123,6 +175,14 @@ func PermissionMiddleware(permissions []string, opts ...AuthOption) middleware.M
 
 	return func(next middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req any) (any, error) {
+			authReq := newAuthHandleRequest(options, func() (any, error) {
+				return next(ctx, req)
+			})
+			authReq.Permissions = append([]string{}, permissions...)
+			if runBeforeAuthHandler(ctx, req, options, authReq) {
+				return authReq.result, authReq.err
+			}
+
 			if len(permissions) == 0 {
 				return next(ctx, req)
 			}
@@ -163,6 +223,14 @@ func PermissionPathMiddleware(permissions []string, opts ...AuthOption) middlewa
 				reqPermissions = append(reqPermissions, path)
 			}
 
+			authReq := newAuthHandleRequest(options, func() (any, error) {
+				return next(ctx, req)
+			})
+			authReq.Permissions = append([]string{}, reqPermissions...)
+			if runBeforeAuthHandler(ctx, req, options, authReq) {
+				return authReq.result, authReq.err
+			}
+
 			if len(reqPermissions) == 0 {
 				return next(ctx, req)
 			}
@@ -198,6 +266,14 @@ func RoleMiddleware(roles []string, opts ...AuthOption) middleware.Middleware {
 
 	return func(next middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req any) (any, error) {
+			authReq := newAuthHandleRequest(options, func() (any, error) {
+				return next(ctx, req)
+			})
+			authReq.Roles = append([]string{}, roles...)
+			if runBeforeAuthHandler(ctx, req, options, authReq) {
+				return authReq.result, authReq.err
+			}
+
 			if len(roles) == 0 {
 				return next(ctx, req)
 			}
@@ -222,6 +298,25 @@ func RoleMiddleware(roles []string, opts ...AuthOption) middleware.Middleware {
 			return next(ctx, req)
 		}
 	}
+}
+
+// newAuthHandleRequest creates auth handle request newAuthHandleRequest 创建认证处理请求
+func newAuthHandleRequest(options *AuthOptions, next func() (any, error)) *AuthHandleRequest {
+	return &AuthHandleRequest{
+		AuthType:  options.AuthType,
+		LogicType: options.LogicType,
+		next:      next,
+	}
+}
+
+// runBeforeAuthHandler executes pre auth handler runBeforeAuthHandler 执行认证前置处理器
+func runBeforeAuthHandler(ctx context.Context, req any, options *AuthOptions, authReq *AuthHandleRequest) bool {
+	if options.BeforeAuthHandler == nil {
+		return false
+	}
+
+	options.BeforeAuthHandler(ctx, req, authReq)
+	return authReq.IsHandled()
 }
 
 // GetDTokenContext gets cached DToken context GetDTokenContext 获取缓存的 DToken 上下文
