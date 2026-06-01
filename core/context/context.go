@@ -39,7 +39,7 @@ func (c *DTokenContext) GetTokenValue() string {
 	if cfg.IsReadHeader {
 		// Try configured token header 优先读取配置的 Token Header
 		if token := strings.TrimSpace(c.reqCtx.GetHeader(cfg.TokenName)); token != "" {
-			return token
+			return extractBearerToken(token)
 		}
 
 		// Try authorization bearer token 其次尝试 Authorization Bearer Token

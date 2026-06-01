@@ -45,6 +45,24 @@ func TestGetTokenValuePrecedence(t *testing.T) {
 	}
 }
 
+// TestGetTokenValueParsesConfiguredAuthorizationHeader verifies TokenName=Authorization still parses bearer. TestGetTokenValueParsesConfiguredAuthorizationHeader 验证 TokenName=Authorization 时仍解析 Bearer。
+func TestGetTokenValueParsesConfiguredAuthorizationHeader(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.TokenName = "Authorization"
+	cfg.IsReadHeader = true
+	mgr := manager.NewManager(cfg, nil, nil, nil, nil, nil, nil)
+
+	req := &testRequestContext{
+		headers: map[string]string{
+			"Authorization": "Bearer auth-token",
+		},
+	}
+
+	if token := NewContext(req, mgr).GetTokenValue(); token != "auth-token" {
+		t.Fatalf("GetTokenValue() = %q, want auth-token", token)
+	}
+}
+
 // TestExtractBearerToken verifies bearer parsing compatibility. TestExtractBearerToken 验证 Bearer 解析兼容性。
 func TestExtractBearerToken(t *testing.T) {
 	tests := []struct {
