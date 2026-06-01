@@ -20,8 +20,6 @@ use (
 	./core
 	./defaults
 	./dtoken
-	./sso
-	./sso/storage/redis
 
 	./examples/chi
 	./examples/echo
@@ -35,6 +33,7 @@ use (
 	./examples/sso_gin_client
 	./examples/sso_gin_server
 	./examples/sso_server
+	./integrations/authcheck
 
 	./integrations/chi
 	./integrations/echo
@@ -42,9 +41,10 @@ use (
 	./integrations/gf
 	./integrations/gin
 	./integrations/hertz
-	./integrations/authcheck
 	./integrations/kratos
+	./sso
+	./sso/storage/redis
+	./tests/gin_core_app
 
 	./tests/gin_core_flow
-	./tests/gin_core_app
 )

@@ -1,4 +1,8 @@
+github.com/Zany2/dtoken-go/com/storage/redis v0.0.1 h1:4h2JMulLt+NOArxpp+LhdbrVYDXO97ibyJ1PiVSw4OE=
+github.com/Zany2/dtoken-go/com/storage/redis v0.0.1/go.mod h1:FTvNf+O7vIJStcvnHOOBbaJbZ9BuTfFDSclnjbUEJ/g=
 github.com/Zany2/dtoken-go/core v0.0.1 h1:0PismuGCuy91W6m/2Ff7P78NF6mINKungaCEBZRL1rY=
+github.com/Zany2/dtoken-go/sso v0.0.1 h1:34tmcnusmng4UadReVkLo1S4spPxyQ5qlStOUG2TTHE=
+github.com/Zany2/dtoken-go/sso v0.0.1/go.mod h1:ChQiDixFmYfThWpZaSLWFMDvue2KsqTvUgzQEcuXIYQ=
 github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=
 github.com/bsm/gomega v1.27.10 h1:yeMWxP2pV2fG3FgAODIY8EiRE3dy0aeFYt4l7wh6yKA=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
