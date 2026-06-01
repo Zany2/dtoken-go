@@ -33,6 +33,9 @@ type AuthOption func(*AuthOptions)
 // BeforeAuthHandler handles request before dtoken checks BeforeAuthHandler 在 dtoken 校验前处理请求
 type BeforeAuthHandler func(ctx context.Context, r *ghttp.Request, req *AuthHandleRequest)
 
+// RouteAccessHandler resolves route auth, permission, and role rules RouteAccessHandler 解析路由认证、权限、角色规则
+type RouteAccessHandler func(ctx context.Context, r *ghttp.Request, req *RouteAccessRequest)
+
 // AuthHandleRequest carries auth check metadata AuthHandleRequest 携带认证校验元数据
 type AuthHandleRequest struct {
 	AuthType     string
@@ -68,12 +71,53 @@ func (req *AuthHandleRequest) IsHandled() bool {
 	return req.handled
 }
 
+// RouteAccessRequest carries route access rules RouteAccessRequest 携带路由访问规则
+type RouteAccessRequest struct {
+	AuthType    string
+	LogicType   LogicType
+	Permissions []string
+	Roles       []string
+
+	skipAuth       bool
+	skipPermission bool
+}
+
+// SkipAuth skips login, permission, and role checks SkipAuth 跳过登录、权限、角色校验
+func (req *RouteAccessRequest) SkipAuth() {
+	req.skipAuth = true
+}
+
+// SkipPermission skips permission and role checks after login SkipPermission 登录后跳过权限和角色校验
+func (req *RouteAccessRequest) SkipPermission() {
+	req.skipPermission = true
+	req.Permissions = nil
+	req.Roles = nil
+}
+
+// RequirePermissions appends required permissions RequirePermissions 追加当前路由所需权限
+func (req *RouteAccessRequest) RequirePermissions(permissions ...string) {
+	req.skipPermission = false
+	req.Permissions = append(req.Permissions, permissions...)
+}
+
+// RequireRoles appends required roles RequireRoles 追加当前路由所需角色
+func (req *RouteAccessRequest) RequireRoles(roles ...string) {
+	req.skipPermission = false
+	req.Roles = append(req.Roles, roles...)
+}
+
+// SetLogicType sets permission and role logic type SetLogicType 设置权限和角色逻辑类型
+func (req *RouteAccessRequest) SetLogicType(logicType LogicType) {
+	req.LogicType = logicType
+}
+
 // AuthOptions defines middleware auth options AuthOptions 定义中间件认证选项
 type AuthOptions struct {
-	AuthType          string
-	LogicType         LogicType
-	FailFunc          func(r *ghttp.Request, err error)
-	BeforeAuthHandler BeforeAuthHandler
+	AuthType           string
+	LogicType          LogicType
+	FailFunc           func(r *ghttp.Request, err error)
+	BeforeAuthHandler  BeforeAuthHandler
+	RouteAccessHandler RouteAccessHandler
 }
 
 // defaultAuthOptions returns default auth options defaultAuthOptions 返回默认认证选项
@@ -109,6 +153,13 @@ func WithBeforeAuthHandler(fn BeforeAuthHandler) AuthOption {
 	}
 }
 
+// WithRouteAccessHandler sets route access handler WithRouteAccessHandler 设置路由访问处理器
+func WithRouteAccessHandler(fn RouteAccessHandler) AuthOption {
+	return func(o *AuthOptions) {
+		o.RouteAccessHandler = fn
+	}
+}
+
 // RegisterDTokenContextMiddleware registers DToken context middleware RegisterDTokenContextMiddleware 注册 DToken 上下文中间件
 func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) ghttp.HandlerFunc {
 	options := defaultAuthOptions()
@@ -119,11 +170,7 @@ func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) gh
 	return func(r *ghttp.Request) {
 		mgr, err := authcheck.GetManager(options.AuthType)
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(r, err)
-			} else {
-				writeErrorResponse(r, err)
-			}
+			dispatchFail(r, options, err)
 			return
 		}
 
@@ -152,11 +199,7 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) ghttp.HandlerFunc {
 
 		mgr, err := authcheck.GetManager(options.AuthType)
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(r, err)
-			} else {
-				writeErrorResponse(r, err)
-			}
+			dispatchFail(r, options, err)
 			return
 		}
 
@@ -169,11 +212,56 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) ghttp.HandlerFunc {
 			LoginError: derror.ErrTokenExpired,
 		})
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(r, err)
-			} else {
-				writeErrorResponse(r, err)
-			}
+			dispatchFail(r, options, err)
+			return
+		}
+
+		r.Middleware.Next()
+	}
+}
+
+// AccessMiddleware resolves route rules and checks login, permissions, and roles AccessMiddleware 解析路由规则并校验登录、权限、角色
+func AccessMiddleware(ctx context.Context, opts ...AuthOption) ghttp.HandlerFunc {
+	options := defaultAuthOptions()
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	return func(r *ghttp.Request) {
+		accessReq := newRouteAccessRequest(options)
+		if options.RouteAccessHandler != nil {
+			options.RouteAccessHandler(ctx, r, accessReq)
+		}
+
+		if accessReq.skipAuth {
+			r.Middleware.Next()
+			return
+		}
+
+		mgr, err := authcheck.GetManager(options.AuthType)
+		if err != nil {
+			dispatchFail(r, options, err)
+			return
+		}
+
+		dCtx := getDContext(r, mgr)
+		tokenValue := dCtx.GetTokenValue()
+
+		req := authcheck.Request{
+			TokenValue: tokenValue,
+			CheckLogin: true,
+			LoginError: derror.ErrTokenExpired,
+		}
+
+		if !accessReq.skipPermission {
+			req.Permissions = append([]string{}, accessReq.Permissions...)
+			req.Roles = append([]string{}, accessReq.Roles...)
+			req.LogicType = accessReq.LogicType
+		}
+
+		_, err = authcheck.Check(ctx, mgr, req)
+		if err != nil {
+			dispatchFail(r, options, err)
 			return
 		}
 
@@ -182,12 +270,7 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) ghttp.HandlerFunc {
 }
 
 // PermissionMiddleware checks permissions PermissionMiddleware 校验权限
-func PermissionMiddleware(
-	ctx context.Context,
-	permissions []string,
-	opts ...AuthOption,
-) ghttp.HandlerFunc {
-
+func PermissionMiddleware(ctx context.Context, permissions []string, opts ...AuthOption) ghttp.HandlerFunc {
 	options := defaultAuthOptions()
 	for _, opt := range opts {
 		opt(options)
@@ -211,11 +294,7 @@ func PermissionMiddleware(
 
 		mgr, err := authcheck.GetManager(options.AuthType)
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(r, err)
-			} else {
-				writeErrorResponse(r, err)
-			}
+			dispatchFail(r, options, err)
 			return
 		}
 
@@ -228,11 +307,7 @@ func PermissionMiddleware(
 			LogicType:   options.LogicType,
 		})
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(r, err)
-			} else {
-				writeErrorResponse(r, err)
-			}
+			dispatchFail(r, options, err)
 			return
 		}
 
@@ -241,12 +316,7 @@ func PermissionMiddleware(
 }
 
 // PermissionPathMiddleware checks path permissions PermissionPathMiddleware 基于路径校验权限
-func PermissionPathMiddleware(
-	ctx context.Context,
-	permissions []string,
-	opts ...AuthOption,
-) ghttp.HandlerFunc {
-
+func PermissionPathMiddleware(ctx context.Context, permissions []string, opts ...AuthOption) ghttp.HandlerFunc {
 	options := defaultAuthOptions()
 	for _, opt := range opts {
 		opt(options)
@@ -273,11 +343,7 @@ func PermissionPathMiddleware(
 
 		mgr, err := authcheck.GetManager(options.AuthType)
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(r, err)
-			} else {
-				writeErrorResponse(r, err)
-			}
+			dispatchFail(r, options, err)
 			return
 		}
 
@@ -290,11 +356,7 @@ func PermissionPathMiddleware(
 			LogicType:   options.LogicType,
 		})
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(r, err)
-			} else {
-				writeErrorResponse(r, err)
-			}
+			dispatchFail(r, options, err)
 			return
 		}
 
@@ -303,12 +365,7 @@ func PermissionPathMiddleware(
 }
 
 // RoleMiddleware checks roles RoleMiddleware 校验角色
-func RoleMiddleware(
-	ctx context.Context,
-	roles []string,
-	opts ...AuthOption,
-) ghttp.HandlerFunc {
-
+func RoleMiddleware(ctx context.Context, roles []string, opts ...AuthOption) ghttp.HandlerFunc {
 	options := defaultAuthOptions()
 	for _, opt := range opts {
 		opt(options)
@@ -332,11 +389,7 @@ func RoleMiddleware(
 
 		mgr, err := authcheck.GetManager(options.AuthType)
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(r, err)
-			} else {
-				writeErrorResponse(r, err)
-			}
+			dispatchFail(r, options, err)
 			return
 		}
 
@@ -349,11 +402,7 @@ func RoleMiddleware(
 			LogicType:  options.LogicType,
 		})
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(r, err)
-			} else {
-				writeErrorResponse(r, err)
-			}
+			dispatchFail(r, options, err)
 			return
 		}
 
@@ -371,6 +420,14 @@ func newAuthHandleRequest(options *AuthOptions, next func(), exit func()) *AuthH
 	}
 }
 
+// newRouteAccessRequest creates route access request newRouteAccessRequest 创建路由访问请求
+func newRouteAccessRequest(options *AuthOptions) *RouteAccessRequest {
+	return &RouteAccessRequest{
+		AuthType:  options.AuthType,
+		LogicType: options.LogicType,
+	}
+}
+
 // runBeforeAuthHandler executes pre auth handler runBeforeAuthHandler 执行认证前置处理器
 func runBeforeAuthHandler(ctx context.Context, r *ghttp.Request, options *AuthOptions, req *AuthHandleRequest) bool {
 	if options.BeforeAuthHandler == nil {
@@ -379,6 +436,15 @@ func runBeforeAuthHandler(ctx context.Context, r *ghttp.Request, options *AuthOp
 
 	options.BeforeAuthHandler(ctx, r, req)
 	return req.IsHandled()
+}
+
+// dispatchFail writes or dispatches auth failure dispatchFail 写入或分发认证失败响应
+func dispatchFail(r *ghttp.Request, options *AuthOptions, err error) {
+	if options.FailFunc != nil {
+		options.FailFunc(r, err)
+		return
+	}
+	writeErrorResponse(r, err)
 }
 
 // GetDTokenContext gets cached DToken context GetDTokenContext 获取缓存的 DToken 上下文
