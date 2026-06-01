@@ -406,14 +406,6 @@ func getHTTPStatusFromCode(code int) int {
 	}
 }
 
-// firstAuthType returns the first optional auth type firstAuthType 返回第一个可选认证类型
-func firstAuthType(authType ...string) string {
-	if len(authType) == 0 {
-		return ""
-	}
-	return authType[0]
-}
-
 // getReasonFromCode maps error code to reason getReasonFromCode 映射错误码到错误原因
 func getReasonFromCode(code int) string {
 	switch code {
