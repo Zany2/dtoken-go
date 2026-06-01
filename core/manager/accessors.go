@@ -7,6 +7,8 @@ import (
 	"github.com/Zany2/dtoken-go/core/listener"
 	"github.com/Zany2/dtoken-go/core/nonce"
 	"github.com/Zany2/dtoken-go/core/oauth2"
+	"github.com/Zany2/dtoken-go/core/shortkey"
+	"github.com/Zany2/dtoken-go/core/ticket"
 )
 
 // GetConfig retrieves the manager configuration. GetConfig 获取管理器配置。
@@ -52,6 +54,16 @@ func (m *Manager) GetNonceManager() *nonce.NonceManager {
 // GetOAuth2Manager retrieves the OAuth2 manager. GetOAuth2Manager 获取 OAuth2 管理器。
 func (m *Manager) GetOAuth2Manager() *oauth2.OAuth2Server {
 	return m.oauth2Manager
+}
+
+// GetTicketManager retrieves the ticket manager. GetTicketManager 获取 Ticket 管理器。
+func (m *Manager) GetTicketManager() *ticket.Manager {
+	return m.ticketManager
+}
+
+// GetShortKeyManager retrieves the short key manager. GetShortKeyManager 获取短 Key 管理器。
+func (m *Manager) GetShortKeyManager() *shortkey.Manager {
+	return m.shortKeyManager
 }
 
 // GetEventManager retrieves the event manager. GetEventManager 获取事件监听管理器。

@@ -2,10 +2,13 @@
 package dtoken
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/config"
+	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/manager"
 	"github.com/Zany2/dtoken-go/core/nonce"
 )
@@ -14,6 +17,25 @@ import (
 func TestNewBuilderReturnsDefaultBuilder(t *testing.T) {
 	if NewBuilder() == nil {
 		t.Fatal("NewBuilder() returned nil")
+	}
+}
+
+// TestBuilderBuildsCoreOnlyByDefault verifies optional modules are opt-in TestBuilderBuildsCoreOnlyByDefault 验证默认只装配核心能力。
+func TestBuilderBuildsCoreOnlyByDefault(t *testing.T) {
+	mgr, err := NewBuilder().
+		IsPrintBanner(false).
+		AutoRenew(false).
+		Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	defer mgr.CloseManager()
+
+	if mgr.GetNonceManager() != nil || mgr.GetOAuth2Manager() != nil || mgr.GetTicketManager() != nil || mgr.GetShortKeyManager() != nil {
+		t.Fatal("Build() should not attach optional managers by default")
+	}
+	if _, err = mgr.GenerateNonce(context.Background()); !errors.Is(err, derror.ErrModuleNotEnabled) {
+		t.Fatalf("GenerateNonce() error = %v, want ErrModuleNotEnabled", err)
 	}
 }
 
@@ -56,8 +78,8 @@ func TestBuilderRejectsInvalidModuleConfig(t *testing.T) {
 	}
 }
 
-// TestBuilderKeepsDefaultModulesWithExtraOption verifies generic options do not disable configured modules TestBuilderKeepsDefaultModulesWithExtraOption 验证通用选项不会关闭已配置的默认模块
-func TestBuilderKeepsDefaultModulesWithExtraOption(t *testing.T) {
+// TestBuilderKeepsEnabledModulesWithExtraOption verifies generic options do not disable enabled modules TestBuilderKeepsEnabledModulesWithExtraOption 验证通用选项不会关闭已启用模块
+func TestBuilderKeepsEnabledModulesWithExtraOption(t *testing.T) {
 	mgr, err := NewBuilder().
 		IsPrintBanner(false).
 		AutoRenew(false).
@@ -71,12 +93,12 @@ func TestBuilderKeepsDefaultModulesWithExtraOption(t *testing.T) {
 	defer mgr.CloseManager()
 
 	if mgr.GetNonceManager() == nil || mgr.GetOAuth2Manager() == nil {
-		t.Fatal("Build() should keep default nonce and OAuth2 managers when extra options are used")
+		t.Fatal("Build() should keep enabled nonce and OAuth2 managers when extra options are used")
 	}
 }
 
-// TestBuilderAppliesUserOptionsAfterDefaultModules verifies user options can still override defaults TestBuilderAppliesUserOptionsAfterDefaultModules 验证用户选项仍可覆盖默认模块
-func TestBuilderAppliesUserOptionsAfterDefaultModules(t *testing.T) {
+// TestBuilderAppliesUserOptionsAfterEnabledModules verifies user options can still override enabled defaults TestBuilderAppliesUserOptionsAfterEnabledModules 验证用户选项仍可覆盖已启用模块
+func TestBuilderAppliesUserOptionsAfterEnabledModules(t *testing.T) {
 	customNonce := nonce.NewNonceManager(
 		config.DefaultAuthType,
 		config.DefaultKeyPrefix,
@@ -87,6 +109,7 @@ func TestBuilderAppliesUserOptionsAfterDefaultModules(t *testing.T) {
 	mgr, err := NewBuilder().
 		IsPrintBanner(false).
 		AutoRenew(false).
+		EnableNonce().
 		UseManagerOption(manager.WithNonceManager(customNonce)).
 		Build()
 	if err != nil {
@@ -95,6 +118,6 @@ func TestBuilderAppliesUserOptionsAfterDefaultModules(t *testing.T) {
 	defer mgr.CloseManager()
 
 	if mgr.GetNonceManager() != customNonce {
-		t.Fatal("Build() should apply user manager options after configured defaults")
+		t.Fatal("Build() should apply user manager options after enabled defaults")
 	}
 }

@@ -11,6 +11,8 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 	"github.com/Zany2/dtoken-go/core/nonce"
 	"github.com/Zany2/dtoken-go/core/oauth2"
+	"github.com/Zany2/dtoken-go/core/shortkey"
+	"github.com/Zany2/dtoken-go/core/ticket"
 )
 
 // GeneratorFactory creates a token generator from config GeneratorFactory 根据配置创建 Token 生成器
@@ -353,6 +355,16 @@ func (b *Builder) SetNonceManager(nonceManager *nonce.NonceManager) *Builder {
 // SetOAuth2Manager sets optional OAuth2 manager SetOAuth2Manager 设置可选 OAuth2 管理器
 func (b *Builder) SetOAuth2Manager(oauth2Manager *oauth2.OAuth2Server) *Builder {
 	return b.UseManagerOption(manager.WithOAuth2Manager(oauth2Manager))
+}
+
+// SetTicketManager sets optional ticket manager. SetTicketManager 设置可选 Ticket 管理器。
+func (b *Builder) SetTicketManager(ticketManager *ticket.Manager) *Builder {
+	return b.UseManagerOption(manager.WithTicketManager(ticketManager))
+}
+
+// SetShortKeyManager sets optional short key manager. SetShortKeyManager 设置可选短 Key 管理器。
+func (b *Builder) SetShortKeyManager(shortKeyManager *shortkey.Manager) *Builder {
+	return b.UseManagerOption(manager.WithShortKeyManager(shortKeyManager))
 }
 
 // UseManagerOption appends optional manager assembly option UseManagerOption 添加 Manager 可选模块装配项

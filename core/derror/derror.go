@@ -81,6 +81,8 @@ var (
 	ErrInvalidParam = errors.New("invalid parameter")
 	// ErrStorageCapabilityUnsupported indicates required storage capability is missing.
 	ErrStorageCapabilityUnsupported = errors.New("storage capability unsupported")
+	// ErrModuleNotEnabled indicates an optional module was not enabled. ErrModuleNotEnabled 表示可选模块未启用。
+	ErrModuleNotEnabled = errors.New("module not enabled")
 )
 
 var (
@@ -139,6 +141,34 @@ var (
 var (
 	// ErrInvalidNonce indicates invalid nonce ErrInvalidNonce 表示 nonce 无效或已过期
 	ErrInvalidNonce = errors.New("invalid or expired nonce")
+)
+
+var (
+	// ErrInvalidTicket indicates an invalid or missing ticket. ErrInvalidTicket 表示 Ticket 无效或不存在。
+	ErrInvalidTicket = errors.New("invalid ticket")
+	// ErrTicketConsumed indicates a consumed ticket. ErrTicketConsumed 表示 Ticket 已消费。
+	ErrTicketConsumed = errors.New("ticket has been consumed")
+	// ErrTicketRevoked indicates a revoked ticket. ErrTicketRevoked 表示 Ticket 已撤销。
+	ErrTicketRevoked = errors.New("ticket has been revoked")
+	// ErrTicketExpired indicates an expired ticket. ErrTicketExpired 表示 Ticket 已过期。
+	ErrTicketExpired = errors.New("ticket has expired")
+	// ErrTicketMismatch indicates ticket constraints do not match. ErrTicketMismatch 表示 Ticket 约束不匹配。
+	ErrTicketMismatch = errors.New("ticket mismatch")
+)
+
+var (
+	// ErrInvalidShortKey indicates an invalid or missing short key. ErrInvalidShortKey 表示短 Key 无效或不存在。
+	ErrInvalidShortKey = errors.New("invalid short key")
+	// ErrShortKeyPending indicates the short key is not confirmed yet. ErrShortKeyPending 表示短 Key 尚未确认。
+	ErrShortKeyPending = errors.New("short key is pending")
+	// ErrShortKeyConsumed indicates a consumed short key. ErrShortKeyConsumed 表示短 Key 已消费。
+	ErrShortKeyConsumed = errors.New("short key has been consumed")
+	// ErrShortKeyRevoked indicates a revoked short key. ErrShortKeyRevoked 表示短 Key 已撤销。
+	ErrShortKeyRevoked = errors.New("short key has been revoked")
+	// ErrShortKeyExpired indicates an expired short key. ErrShortKeyExpired 表示短 Key 已过期。
+	ErrShortKeyExpired = errors.New("short key has expired")
+	// ErrShortKeyMismatch indicates short key constraints do not match. ErrShortKeyMismatch 表示短 Key 约束不匹配。
+	ErrShortKeyMismatch = errors.New("short key mismatch")
 )
 
 var (

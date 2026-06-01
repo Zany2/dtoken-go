@@ -9,6 +9,8 @@ import (
 	"github.com/Zany2/dtoken-go/core/listener"
 	"github.com/Zany2/dtoken-go/core/nonce"
 	"github.com/Zany2/dtoken-go/core/oauth2"
+	"github.com/Zany2/dtoken-go/core/shortkey"
+	"github.com/Zany2/dtoken-go/core/ticket"
 )
 
 // Manager is the core auth facade. Manager 是鉴权核心门面。
@@ -21,12 +23,14 @@ type Manager struct {
 	logger     adapter.Log       // logger writes framework logs. logger 写入框架日志。
 	pool       adapter.Pool      // pool runs asynchronous tasks. pool 执行异步任务。
 
-	nonceManager   *nonce.NonceManager        // nonceManager handles one-time nonce values. nonceManager 管理一次性 nonce。
-	oauth2Manager  *oauth2.OAuth2Server       // oauth2Manager handles OAuth2 flows. oauth2Manager 处理 OAuth2 流程。
-	eventManager   *listener.Manager          // eventManager dispatches auth events. eventManager 分发鉴权事件。
-	loginLocksMu   sync.Mutex                 // loginLocksMu protects the login lock registry. loginLocksMu 保护登录锁注册表。
-	loginLocks     map[string]*loginLockEntry // loginLocks serializes writes per login ID. loginLocks 按登录 ID 串行化写操作。
-	accessProvider AccessProvider             // accessProvider resolves roles and permissions. accessProvider 解析角色和权限。
+	nonceManager    *nonce.NonceManager        // nonceManager handles one-time nonce values. nonceManager 管理一次性 nonce。
+	oauth2Manager   *oauth2.OAuth2Server       // oauth2Manager handles OAuth2 flows. oauth2Manager 处理 OAuth2 流程。
+	ticketManager   *ticket.Manager            // ticketManager handles temporary tickets. ticketManager 管理临时 Ticket。
+	shortKeyManager *shortkey.Manager          // shortKeyManager handles short key credentials. shortKeyManager 管理短 Key 凭证。
+	eventManager    *listener.Manager          // eventManager dispatches auth events. eventManager 分发鉴权事件。
+	loginLocksMu    sync.Mutex                 // loginLocksMu protects the login lock registry. loginLocksMu 保护登录锁注册表。
+	loginLocks      map[string]*loginLockEntry // loginLocks serializes writes per login ID. loginLocks 按登录 ID 串行化写操作。
+	accessProvider  AccessProvider             // accessProvider resolves roles and permissions. accessProvider 解析角色和权限。
 }
 
 // TokenInfo defines token info. TokenInfo 定义 Token 信息。

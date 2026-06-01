@@ -13,6 +13,8 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 	"github.com/Zany2/dtoken-go/core/nonce"
 	"github.com/Zany2/dtoken-go/core/oauth2"
+	"github.com/Zany2/dtoken-go/core/shortkey"
+	"github.com/Zany2/dtoken-go/core/ticket"
 	"github.com/Zany2/dtoken-go/defaults"
 )
 
@@ -24,12 +26,20 @@ type Builder struct {
 	loggerConfig    *dlog.LoggerConfig    // loggerConfig stores logger config loggerConfig 存储日志配置
 	nonceConfig     *nonce.Config         // nonceConfig stores nonce config nonceConfig 存储 Nonce 配置
 	oauth2Config    *oauth2.Config        // oauth2Config stores OAuth2 config oauth2Config 存储 OAuth2 配置
+	ticketConfig    *ticket.Config        // ticketConfig stores Ticket config. ticketConfig 存储 Ticket 配置。
+	shortKeyConfig  *shortkey.Config      // shortKeyConfig stores short key config. shortKeyConfig 存储短 Key 配置。
 
 	customLogFactory  bool             // customLogFactory marks user logger factory customLogFactory 标记用户自定义日志工厂
 	customPoolFactory bool             // customPoolFactory marks user pool factory customPoolFactory 标记用户自定义续期池工厂
 	customNonce       bool             // customNonce marks user nonce manager customNonce 标记用户自定义 Nonce 管理器
 	customOAuth2      bool             // customOAuth2 marks user OAuth2 manager customOAuth2 标记用户自定义 OAuth2 管理器
+	customTicket      bool             // customTicket marks user ticket manager. customTicket 标记用户自定义 Ticket 管理器。
+	customShortKey    bool             // customShortKey marks user short key manager. customShortKey 标记用户自定义短 Key 管理器。
 	managerOptions    []manager.Option // managerOptions stores delayed user options managerOptions 存储延迟执行的用户装配选项
+	enableNonce       bool
+	enableOAuth2      bool
+	enableTicket      bool
+	enableShortKey    bool
 }
 
 // NewBuilder creates a high-level builder with bundled default configs NewBuilder 创建高层默认配置构建器
@@ -40,6 +50,8 @@ func NewBuilder() *Builder {
 		loggerConfig:    dlog.DefaultLoggerConfig(),
 		nonceConfig:     nonce.DefaultConfig(),
 		oauth2Config:    oauth2.DefaultConfig(),
+		ticketConfig:    ticket.DefaultConfig(),
+		shortKeyConfig:  shortkey.DefaultConfig(),
 	}
 }
 
@@ -453,6 +465,7 @@ func (b *Builder) LoggerRotateBackupDays(days int) *Builder {
 // NonceConfig replaces nonce config NonceConfig 替换 Nonce 配置
 func (b *Builder) NonceConfig(cfg *nonce.Config) *Builder {
 	b.ensureBuilder()
+	b.enableNonce = true
 	if cfg == nil {
 		b.nonceConfig = nonce.DefaultConfig()
 		return b
@@ -464,12 +477,14 @@ func (b *Builder) NonceConfig(cfg *nonce.Config) *Builder {
 // GetNonceConfig returns mutable nonce config GetNonceConfig 返回可变 Nonce 配置
 func (b *Builder) GetNonceConfig() *nonce.Config {
 	b.ensureBuilder()
+	b.enableNonce = true
 	return b.nonceConfig
 }
 
 // NonceTTL sets nonce ttl NonceTTL 设置 Nonce 有效期
 func (b *Builder) NonceTTL(ttl time.Duration) *Builder {
 	b.ensureBuilder()
+	b.enableNonce = true
 	b.nonceConfig.TTL = ttl
 	return b
 }
@@ -477,6 +492,7 @@ func (b *Builder) NonceTTL(ttl time.Duration) *Builder {
 // OAuth2Config replaces OAuth2 config OAuth2Config 替换 OAuth2 配置
 func (b *Builder) OAuth2Config(cfg *oauth2.Config) *Builder {
 	b.ensureBuilder()
+	b.enableOAuth2 = true
 	if cfg == nil {
 		b.oauth2Config = oauth2.DefaultConfig()
 		return b
@@ -488,12 +504,14 @@ func (b *Builder) OAuth2Config(cfg *oauth2.Config) *Builder {
 // GetOAuth2Config returns mutable OAuth2 config GetOAuth2Config 返回可变 OAuth2 配置
 func (b *Builder) GetOAuth2Config() *oauth2.Config {
 	b.ensureBuilder()
+	b.enableOAuth2 = true
 	return b.oauth2Config
 }
 
 // OAuth2CodeExpiration sets OAuth2 code expiration OAuth2CodeExpiration 设置授权码有效期
 func (b *Builder) OAuth2CodeExpiration(expiration time.Duration) *Builder {
 	b.ensureBuilder()
+	b.enableOAuth2 = true
 	b.oauth2Config.CodeExpiration = expiration
 	return b
 }
@@ -501,6 +519,7 @@ func (b *Builder) OAuth2CodeExpiration(expiration time.Duration) *Builder {
 // OAuth2TokenExpiration sets OAuth2 token expiration OAuth2TokenExpiration 设置访问令牌有效期
 func (b *Builder) OAuth2TokenExpiration(expiration time.Duration) *Builder {
 	b.ensureBuilder()
+	b.enableOAuth2 = true
 	b.oauth2Config.TokenExpiration = expiration
 	return b
 }
@@ -508,7 +527,98 @@ func (b *Builder) OAuth2TokenExpiration(expiration time.Duration) *Builder {
 // OAuth2RefreshExpiration sets OAuth2 refresh expiration OAuth2RefreshExpiration 设置刷新令牌有效期
 func (b *Builder) OAuth2RefreshExpiration(expiration time.Duration) *Builder {
 	b.ensureBuilder()
+	b.enableOAuth2 = true
 	b.oauth2Config.RefreshExpiration = expiration
+	return b
+}
+
+// TicketConfig replaces ticket config. TicketConfig 替换 Ticket 配置。
+func (b *Builder) TicketConfig(cfg *ticket.Config) *Builder {
+	b.ensureBuilder()
+	b.enableTicket = true
+	if cfg == nil {
+		b.ticketConfig = ticket.DefaultConfig()
+		return b
+	}
+	b.ticketConfig = cfg.Clone()
+	return b
+}
+
+// GetTicketConfig returns mutable ticket config. GetTicketConfig 返回可变 Ticket 配置。
+func (b *Builder) GetTicketConfig() *ticket.Config {
+	b.ensureBuilder()
+	b.enableTicket = true
+	return b.ticketConfig
+}
+
+// TicketTTL sets ticket ttl. TicketTTL 设置 Ticket 有效期。
+func (b *Builder) TicketTTL(ttl time.Duration) *Builder {
+	b.ensureBuilder()
+	b.enableTicket = true
+	b.ticketConfig.TTL = ttl
+	return b
+}
+
+// ShortKeyConfig replaces short key config. ShortKeyConfig 替换短 Key 配置。
+func (b *Builder) ShortKeyConfig(cfg *shortkey.Config) *Builder {
+	b.ensureBuilder()
+	b.enableShortKey = true
+	if cfg == nil {
+		b.shortKeyConfig = shortkey.DefaultConfig()
+		return b
+	}
+	b.shortKeyConfig = cfg.Clone()
+	return b
+}
+
+// GetShortKeyConfig returns mutable short key config. GetShortKeyConfig 返回可变短 Key 配置。
+func (b *Builder) GetShortKeyConfig() *shortkey.Config {
+	b.ensureBuilder()
+	b.enableShortKey = true
+	return b.shortKeyConfig
+}
+
+// ShortKeyTTL sets short key ttl. ShortKeyTTL 设置短 Key 有效期。
+func (b *Builder) ShortKeyTTL(ttl time.Duration) *Builder {
+	b.ensureBuilder()
+	b.enableShortKey = true
+	b.shortKeyConfig.TTL = ttl
+	return b
+}
+
+// ShortKeyLength sets generated short key length. ShortKeyLength 设置生成的短 Key 长度。
+func (b *Builder) ShortKeyLength(length int) *Builder {
+	b.ensureBuilder()
+	b.enableShortKey = true
+	b.shortKeyConfig.Length = length
+	return b
+}
+
+// EnableNonce enables the optional nonce module. EnableNonce 启用可选 Nonce 模块。
+func (b *Builder) EnableNonce() *Builder {
+	b.ensureBuilder()
+	b.enableNonce = true
+	return b
+}
+
+// EnableOAuth2 enables the optional OAuth2 module. EnableOAuth2 启用可选 OAuth2 模块。
+func (b *Builder) EnableOAuth2() *Builder {
+	b.ensureBuilder()
+	b.enableOAuth2 = true
+	return b
+}
+
+// EnableTicket enables the optional ticket module. EnableTicket 启用可选 Ticket 模块。
+func (b *Builder) EnableTicket() *Builder {
+	b.ensureBuilder()
+	b.enableTicket = true
+	return b
+}
+
+// EnableShortKey enables the optional short key module. EnableShortKey 启用可选短 Key 模块。
+func (b *Builder) EnableShortKey() *Builder {
+	b.ensureBuilder()
+	b.enableShortKey = true
 	return b
 }
 
@@ -552,6 +662,7 @@ func (b *Builder) SetNonceManager(nonceManager *nonce.NonceManager) *Builder {
 	b.ensureBuilder()
 	if nonceManager != nil {
 		b.customNonce = true
+		b.enableNonce = true
 	}
 	b.inner.SetNonceManager(nonceManager)
 	return b
@@ -562,8 +673,31 @@ func (b *Builder) SetOAuth2Manager(oauth2Manager *oauth2.OAuth2Server) *Builder 
 	b.ensureBuilder()
 	if oauth2Manager != nil {
 		b.customOAuth2 = true
+		b.enableOAuth2 = true
 	}
 	b.inner.SetOAuth2Manager(oauth2Manager)
+	return b
+}
+
+// SetTicketManager sets optional ticket manager. SetTicketManager 设置可选 Ticket 管理器。
+func (b *Builder) SetTicketManager(ticketManager *ticket.Manager) *Builder {
+	b.ensureBuilder()
+	if ticketManager != nil {
+		b.customTicket = true
+		b.enableTicket = true
+	}
+	b.inner.SetTicketManager(ticketManager)
+	return b
+}
+
+// SetShortKeyManager sets optional short key manager. SetShortKeyManager 设置可选短 Key 管理器。
+func (b *Builder) SetShortKeyManager(shortKeyManager *shortkey.Manager) *Builder {
+	b.ensureBuilder()
+	if shortKeyManager != nil {
+		b.customShortKey = true
+		b.enableShortKey = true
+	}
+	b.inner.SetShortKeyManager(shortKeyManager)
 	return b
 }
 
@@ -664,6 +798,8 @@ func (b *Builder) Clone() *Builder {
 	clone.loggerConfig = b.loggerConfig.Clone()
 	clone.nonceConfig = b.nonceConfig.Clone()
 	clone.oauth2Config = b.oauth2Config.Clone()
+	clone.ticketConfig = b.ticketConfig.Clone()
+	clone.shortKeyConfig = b.shortKeyConfig.Clone()
 	if len(b.managerOptions) > 0 {
 		clone.managerOptions = append([]manager.Option(nil), b.managerOptions...)
 	}
@@ -679,6 +815,8 @@ func (b *Builder) Build() (*manager.Manager, error) {
 	loggerConfig := b.loggerConfig.Clone()
 	nonceConfig := b.nonceConfig.Clone()
 	oauth2Config := b.oauth2Config.Clone()
+	ticketConfig := b.ticketConfig.Clone()
+	shortKeyConfig := b.shortKeyConfig.Clone()
 
 	if err := coreConfig.Validate(); err != nil {
 		return nil, fmt.Errorf("构建 Manager 失败，核心配置无效：%w", err)
@@ -695,10 +833,16 @@ func (b *Builder) Build() (*manager.Manager, error) {
 	if err := oauth2Config.Validate(); err != nil {
 		return nil, fmt.Errorf("构建 Manager 失败，OAuth2 配置无效：%w", err)
 	}
+	if err := ticketConfig.Validate(); err != nil {
+		return nil, fmt.Errorf("构建 Manager 失败，Ticket 配置无效：%w", err)
+	}
+	if err := shortKeyConfig.Validate(); err != nil {
+		return nil, fmt.Errorf("构建 Manager 失败，短 Key 配置无效：%w", err)
+	}
 
 	coreBuilder := b.inner.Clone().Config(coreConfig)
 	b.applyDefaultFactories(coreBuilder, renewPoolConfig, loggerConfig)
-	b.applyDefaultModules(coreBuilder, nonceConfig, oauth2Config)
+	b.applyEnabledModules(coreBuilder, nonceConfig, oauth2Config, ticketConfig, shortKeyConfig)
 	b.applyUserManagerOptions(coreBuilder)
 
 	return coreBuilder.Build()
@@ -727,9 +871,9 @@ func (b *Builder) applyDefaultFactories(coreBuilder *builder.Builder, renewPoolC
 	}
 }
 
-// applyDefaultModules wires config-aware optional modules applyDefaultModules 装配读取配置的默认可选模块
-func (b *Builder) applyDefaultModules(coreBuilder *builder.Builder, nonceConfig *nonce.Config, oauth2Config *oauth2.Config) {
-	if !b.customNonce {
+// applyEnabledModules wires config-aware optional modules applyEnabledModules 装配已启用的可选模块。
+func (b *Builder) applyEnabledModules(coreBuilder *builder.Builder, nonceConfig *nonce.Config, oauth2Config *oauth2.Config, ticketConfig *ticket.Config, shortKeyConfig *shortkey.Config) {
+	if b.enableNonce && !b.customNonce {
 		coreBuilder.UseManagerOption(func(m *manager.Manager) {
 			manager.WithNonceManager(nonce.NewNonceManagerWithConfig(
 				m.GetConfig().AuthType,
@@ -739,7 +883,7 @@ func (b *Builder) applyDefaultModules(coreBuilder *builder.Builder, nonceConfig 
 			))(m)
 		})
 	}
-	if !b.customOAuth2 {
+	if b.enableOAuth2 && !b.customOAuth2 {
 		coreBuilder.UseManagerOption(func(m *manager.Manager) {
 			manager.WithOAuth2Manager(oauth2.NewOAuth2ServerWithConfig(
 				m.GetConfig().AuthType,
@@ -750,9 +894,31 @@ func (b *Builder) applyDefaultModules(coreBuilder *builder.Builder, nonceConfig 
 			))(m)
 		})
 	}
+	if b.enableTicket && !b.customTicket {
+		coreBuilder.UseManagerOption(func(m *manager.Manager) {
+			manager.WithTicketManager(ticket.NewManagerWithConfig(
+				m.GetConfig().AuthType,
+				m.GetConfig().KeyPrefix,
+				m.GetStorage(),
+				m.GetSerializer(),
+				ticketConfig.Clone(),
+			))(m)
+		})
+	}
+	if b.enableShortKey && !b.customShortKey {
+		coreBuilder.UseManagerOption(func(m *manager.Manager) {
+			manager.WithShortKeyManager(shortkey.NewManagerWithConfig(
+				m.GetConfig().AuthType,
+				m.GetConfig().KeyPrefix,
+				m.GetStorage(),
+				m.GetSerializer(),
+				shortKeyConfig.Clone(),
+			))(m)
+		})
+	}
 }
 
-// applyUserManagerOptions appends user options after configured defaults applyUserManagerOptions 在配置化默认模块之后追加用户装配选项
+// applyUserManagerOptions appends user options after enabled modules applyUserManagerOptions 在已启用模块之后追加用户装配选项。
 func (b *Builder) applyUserManagerOptions(coreBuilder *builder.Builder) {
 	for _, option := range b.managerOptions {
 		coreBuilder.UseManagerOption(option)
@@ -775,5 +941,11 @@ func (b *Builder) ensureBuilder() {
 	}
 	if b.oauth2Config == nil {
 		b.oauth2Config = oauth2.DefaultConfig()
+	}
+	if b.ticketConfig == nil {
+		b.ticketConfig = ticket.DefaultConfig()
+	}
+	if b.shortKeyConfig == nil {
+		b.shortKeyConfig = shortkey.DefaultConfig()
 	}
 }

@@ -7,27 +7,49 @@ import (
 	"github.com/Zany2/dtoken-go/core/listener"
 	"github.com/Zany2/dtoken-go/core/nonce"
 	"github.com/Zany2/dtoken-go/core/oauth2"
+	"github.com/Zany2/dtoken-go/core/shortkey"
+	"github.com/Zany2/dtoken-go/core/ticket"
 )
 
 // Option configures optional manager modules Option 配置 Manager 的可选模块
 type Option func(m *Manager)
 
-// WithNonceManager replaces the default nonce manager WithNonceManager 替换默认 Nonce 管理器
+// WithNonceManager sets the optional nonce manager WithNonceManager 设置可选 Nonce 管理器
 func WithNonceManager(nonceManager *nonce.NonceManager) Option {
 	return func(m *Manager) {
-		// Replace nonce manager when provided 提供时替换 Nonce 管理器。
+		// Set nonce manager when provided 提供时设置 Nonce 管理器。
 		if nonceManager != nil {
 			m.nonceManager = nonceManager
 		}
 	}
 }
 
-// WithOAuth2Manager replaces the default OAuth2 server WithOAuth2Manager 替换默认 OAuth2 服务端
+// WithOAuth2Manager sets the optional OAuth2 server WithOAuth2Manager 设置可选 OAuth2 服务端
 func WithOAuth2Manager(oauth2Manager *oauth2.OAuth2Server) Option {
 	return func(m *Manager) {
-		// Replace OAuth2 manager when provided 提供时替换 OAuth2 管理器。
+		// Set OAuth2 manager when provided 提供时设置 OAuth2 管理器。
 		if oauth2Manager != nil {
 			m.oauth2Manager = oauth2Manager
+		}
+	}
+}
+
+// WithTicketManager sets the optional ticket manager. WithTicketManager 设置可选 Ticket 管理器。
+func WithTicketManager(ticketManager *ticket.Manager) Option {
+	return func(m *Manager) {
+		// Set ticket manager when provided. 提供时设置 Ticket 管理器。
+		if ticketManager != nil {
+			m.ticketManager = ticketManager
+		}
+	}
+}
+
+// WithShortKeyManager sets the optional short key manager. WithShortKeyManager 设置可选短 Key 管理器。
+func WithShortKeyManager(shortKeyManager *shortkey.Manager) Option {
+	return func(m *Manager) {
+		// Set short key manager when provided. 提供时设置短 Key 管理器。
+		if shortKeyManager != nil {
+			m.shortKeyManager = shortKeyManager
 		}
 	}
 }
@@ -52,7 +74,7 @@ func NewManager(
 		logger = adapter.NewNopLogger()
 	}
 
-	// Build manager with default modules 构建带默认模块的管理器。
+	// Build manager with core components 构建只包含核心组件的管理器。
 	mgr := &Manager{
 		config:         cfg,
 		generator:      generator,
@@ -60,13 +82,11 @@ func NewManager(
 		serializer:     serializer,
 		logger:         logger,
 		pool:           pool,
-		nonceManager:   nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, storage),
-		oauth2Manager:  oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, storage, serializer),
 		eventManager:   listener.NewManager(logger),
 		accessProvider: accessProvider,
 	}
 
-	// Apply optional module overrides after defaults are ready 默认模块初始化完成后应用外部覆盖
+	// Apply optional module assembly options 应用可选模块装配项。
 	for _, option := range options {
 		// Apply non-nil option 应用非空选项。
 		if option != nil {
