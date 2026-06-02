@@ -124,6 +124,33 @@ func GetTerminalInfoByToken(ctx context.Context, tokenValue string, authType ...
 	return mgr.GetTerminalInfoByToken(ctx, tokenValue)
 }
 
+// SetSessionValue sets one session data value. SetSessionValue 设置一个会话扩展数据。
+func SetSessionValue(ctx context.Context, loginID, key string, value any, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.SetSessionValue(ctx, loginID, key, value)
+}
+
+// GetSessionValue gets one session data value. GetSessionValue 获取一个会话扩展数据。
+func GetSessionValue(ctx context.Context, loginID, key string, authType ...string) (any, bool, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return nil, false, err
+	}
+	return mgr.GetSessionValue(ctx, loginID, key)
+}
+
+// DeleteSessionValue deletes one session data value. DeleteSessionValue 删除一个会话扩展数据。
+func DeleteSessionValue(ctx context.Context, loginID, key string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.DeleteSessionValue(ctx, loginID, key)
+}
+
 // GetTokenValueByLoginID returns the latest token for a login ID. GetTokenValueByLoginID 获取账号最新 token。
 func GetTokenValueByLoginID(ctx context.Context, loginID string, authType ...string) (string, error) {
 	mgr, err := GetManager(authType...)

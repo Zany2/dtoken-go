@@ -14,35 +14,51 @@ import (
 // Login performs user login and returns a token. Login 执行用户登录并返回 token。
 func (m *Manager) Login(ctx context.Context, loginID string, deviceAndDeviceId ...string) (string, error) {
 	// Delegate to default timeout login 委托默认过期时间登录。
-	return m.LoginWithTimeout(ctx, loginID, 0, deviceAndDeviceId...)
+	device, deviceId := m.getDeviceAndDeviceId(deviceAndDeviceId...)
+	return m.LoginWithOptions(ctx, LoginOptions{
+		LoginID:  loginID,
+		Device:   device,
+		DeviceID: deviceId,
+	})
 }
 
 // LoginWithTimeout performs user login with a custom token timeout and returns a token. LoginWithTimeout 执行用户登录并返回 token，使用指定的过期时间（0 或负数则使用全局配置）。
 func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, deviceAndDeviceId ...string) (string, error) {
+	device, deviceId := m.getDeviceAndDeviceId(deviceAndDeviceId...)
+	return m.LoginWithOptions(ctx, LoginOptions{
+		LoginID:  loginID,
+		Device:   device,
+		DeviceID: deviceId,
+		Timeout:  timeout,
+	})
+}
+
+// LoginWithOptions performs user login with per-call options. LoginWithOptions 使用单次登录选项执行登录。
+func (m *Manager) LoginWithOptions(ctx context.Context, opts LoginOptions) (string, error) {
 	// Validate login ID 校验登录 ID。
-	if loginID == "" {
+	if opts.LoginID == "" {
 		return "", derror.ErrIDIsEmpty
 	}
 
 	// Lock account writes 锁定账号写操作。
-	unlock := m.lockLoginWrite(loginID)
+	unlock := m.lockLoginWrite(opts.LoginID)
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
 	// Reject disabled account 拒绝已封禁账号。
-	if m.isDisable(ctx, loginID) {
+	if m.isDisable(ctx, opts.LoginID) {
 		return "", derror.ErrAccountDisabled
 	}
 
 	// Parse device fields 解析设备字段。
-	device, deviceId := m.getDeviceAndDeviceId(deviceAndDeviceId...)
+	device, deviceId := opts.Device, opts.DeviceID
 	// Reject disabled device 拒绝已封禁设备。
-	if m.isDisableDeviceMatch(ctx, loginID, device, deviceId) {
+	if m.isDisableDeviceMatch(ctx, opts.LoginID, device, deviceId) {
 		return "", derror.ErrDeviceDisabled
 	}
 
 	// Load existing session 尝试加载现有 session
-	sess, err := m.getSession(ctx, loginID)
+	sess, err := m.getSession(ctx, opts.LoginID)
 	if errors.Is(err, derror.ErrSessionNotFound) {
 		sess = nil
 		err = nil
@@ -55,7 +71,7 @@ func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout 
 
 	// Handle concurrency strategy 处理并发策略
 	if sess != nil {
-		token, handled, sessionDestroyed, handleErr := m.handleConcurrency(ctx, sess, loginID, device, deviceId)
+		token, handled, sessionDestroyed, handleErr := m.handleConcurrency(ctx, sess, opts.LoginID, device, deviceId, m.resolveLoginPolicy(opts))
 		if handleErr != nil {
 			return "", handleErr
 		}
@@ -69,7 +85,7 @@ func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout 
 				unlock = func() {}
 
 				// Trigger shared login event 触发共享 Token 登录事件。
-				m.triggerEvent(listener.EventLogin, loginID, device, deviceId, token, map[string]any{
+				m.triggerEvent(listener.EventLogin, opts.LoginID, device, deviceId, token, map[string]any{
 					listener.ExtraKeyShared: true,
 				})
 				return token, nil // 复用 token
@@ -78,9 +94,12 @@ func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout 
 	}
 
 	// Generate new token 生成新 token
-	token, err := m.generator.Generate(loginID, device, deviceId)
-	if err != nil {
-		return "", err
+	token := opts.Token
+	if token == "" {
+		token, err = m.generator.Generate(opts.LoginID, device, deviceId)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	// Record create time 记录创建时间
@@ -89,14 +108,7 @@ func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout 
 	createdSession := sess == nil || destroyedSession // createdSession records whether this login creates a new session createdSession 记录本次登录是否创建新会话
 	if createdSession {
 		// Initialize new session 初始化新会话。
-		sess = &Session{
-			AuthType:      m.config.AuthType,
-			LoginID:       loginID,
-			CreateTime:    createTime,
-			TerminalInfos: make([]TerminalInfo, 0),
-			Permissions:   make([]string, 0),
-			Roles:         make([]string, 0),
-		}
+		sess = m.strategy.normalize().CreateSession(m.config.AuthType, opts.LoginID, createTime)
 	}
 
 	// Increase history terminal count 递增历史终端计数
@@ -105,35 +117,38 @@ func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout 
 	// Append terminal info 添加终端信息
 	sess.TerminalInfos = append(sess.TerminalInfos, TerminalInfo{
 		Token:      token,
-		LoginID:    loginID,
+		LoginID:    opts.LoginID,
 		Device:     device,
 		DeviceId:   deviceId,
 		CreateTime: createTime,
+		Extra:      opts.TerminalExtra,
 		Index:      sess.HistoryTerminalCount, // 设置历史登录顺序索引
 	})
 
 	// Calculate expiration duration 计算过期时长
 	expiration := m.getExpiration()
 	// Override expiration when specified 指定时覆盖过期时间。
-	if timeout > 0 {
-		expiration = timeout
+	if opts.Timeout > 0 {
+		expiration = opts.Timeout
 	}
 
 	// Save session without shortening existing TTL 保存 session，避免缩短已有 TTL
-	if err = m.saveSessionWithMinTTL(ctx, m.getSessionKey(loginID), *sess, expiration); err != nil {
+	if err = m.saveSessionWithMinTTL(ctx, m.getSessionKey(opts.LoginID), *sess, expiration); err != nil {
 		return "", err
 	}
 
 	// Save token info 保存 token info
 	if err = m.saveToStorage(ctx, m.getTokenKey(token), TokenInfo{
-		AuthType:   m.config.AuthType,
-		LoginID:    loginID,
-		Device:     device,
-		DeviceId:   deviceId,
-		CreateTime: createTime,
-		Timeout:    m.timeoutToSeconds(expiration),
+		AuthType:      m.config.AuthType,
+		LoginID:       opts.LoginID,
+		Device:        device,
+		DeviceId:      deviceId,
+		CreateTime:    createTime,
+		Timeout:       m.timeoutToSeconds(expiration),
+		ActiveTimeout: m.activeTimeoutToSeconds(opts.ActiveTimeout),
+		Extra:         opts.Extra,
 	}, expiration); err != nil {
-		m.rollbackLogin(ctx, sess, loginID, token, expiration)
+		m.rollbackLogin(ctx, sess, opts.LoginID, token, expiration)
 		return "", err
 	}
 
@@ -141,14 +156,14 @@ func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout 
 	if m.config.RenewInterval > 0 {
 		// Initialize renew marker 初始化续期标记。
 		if err = m.storage.Set(ctx, m.getRenewKey(token), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {
-			m.rollbackLogin(ctx, sess, loginID, token, expiration)
+			m.rollbackLogin(ctx, sess, opts.LoginID, token, expiration)
 			return "", fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
 	}
-	if m.config.ActiveTimeout > 0 {
+	if m.resolveActiveTimeoutFromSeconds(m.activeTimeoutToSeconds(opts.ActiveTimeout)) > 0 {
 		// Initialize active marker 初始化活跃标记。
 		if err = m.storage.Set(ctx, m.getActiveKey(token), time.Now().Unix(), expiration); err != nil {
-			m.rollbackLogin(ctx, sess, loginID, token, expiration)
+			m.rollbackLogin(ctx, sess, opts.LoginID, token, expiration)
 			return "", fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
 	}
@@ -159,15 +174,15 @@ func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout 
 
 	if destroyedSession {
 		// Trigger session destroy event after lock release 释放账号写锁后触发销毁 Session 事件
-		m.triggerEvent(listener.EventDestroySession, loginID, "", "", "", nil)
+		m.triggerEvent(listener.EventDestroySession, opts.LoginID, "", "", "", nil)
 	}
 	if createdSession {
 		// Trigger session create event after successful persistence 持久化成功后触发创建 Session 事件
-		m.triggerEvent(listener.EventCreateSession, loginID, "", "", "", nil)
+		m.triggerEvent(listener.EventCreateSession, opts.LoginID, "", "", "", nil)
 	}
 
 	// Trigger login event 触发登录事件
-	m.triggerEvent(listener.EventLogin, loginID, device, deviceId, token, nil)
+	m.triggerEvent(listener.EventLogin, opts.LoginID, device, deviceId, token, nil)
 
 	return token, nil
 }

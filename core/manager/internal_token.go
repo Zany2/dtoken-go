@@ -29,6 +29,28 @@ func tokenStateError(state TokenState) error {
 	}
 }
 
+// resolveActiveTimeoutFromSeconds resolves token active timeout. resolveActiveTimeoutFromSeconds 解析 Token 活跃超时秒数。
+func (m *Manager) resolveActiveTimeoutFromSeconds(activeTimeout int64) int64 {
+	if activeTimeout > 0 {
+		return activeTimeout
+	}
+	if activeTimeout == config.NoLimit {
+		return 0
+	}
+	return m.config.ActiveTimeout
+}
+
+// activeTimeoutToSeconds stores explicit active timeout override. activeTimeoutToSeconds 存储显式活跃超时覆盖值。
+func (m *Manager) activeTimeoutToSeconds(activeTimeout time.Duration) int64 {
+	if activeTimeout > 0 {
+		return m.timeoutToSeconds(activeTimeout)
+	}
+	if activeTimeout < 0 {
+		return config.NoLimit
+	}
+	return 0
+}
+
 // setTokenState marks token logical state. setTokenState 标记 Token 逻辑状态。
 func (m *Manager) setTokenState(ctx context.Context, tokenValue string, state TokenState, expiration time.Duration) error {
 	// Save logical token state 保存 Token 逻辑状态。
@@ -181,7 +203,8 @@ func (m *Manager) checkTerminalTokenAlive(ctx context.Context, tokenValue string
 	}
 
 	// Skip active timeout when disabled 未启用活跃超时时直接通过。
-	if m.config.ActiveTimeout <= 0 {
+	activeTimeout := m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout)
+	if activeTimeout <= 0 {
 		return true, nil
 	}
 
@@ -200,5 +223,5 @@ func (m *Manager) checkTerminalTokenAlive(ctx context.Context, tokenValue string
 		return false, nil
 	}
 	// Compare active timeout 比较活跃超时。
-	return time.Now().Unix()-timeStamp <= m.config.ActiveTimeout, nil
+	return time.Now().Unix()-timeStamp <= activeTimeout, nil
 }

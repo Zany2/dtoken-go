@@ -4,7 +4,6 @@ package manager
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/listener"
@@ -558,39 +557,7 @@ func (m *Manager) CheckPermissionOrByToken(ctx context.Context, tokenValue strin
 
 // matchPermission matches permission with wildcard support. matchPermission 支持通配符权限匹配。
 func (m *Manager) matchPermission(pattern, permission string) bool {
-	// Accept full match or wildcard 完全匹配或通配符直接通过。
-	if pattern == PermissionWildcard || pattern == permission {
-		return true
-	}
-	// Reject non-wildcard mismatch 非通配符直接拒绝。
-	if !strings.Contains(pattern, PermissionWildcard) {
-		return false
-	}
-
-	// Choose separator by pattern 根据模式选择分隔符。
-	separator := PermissionSeparator
-	if strings.Contains(pattern, "/") {
-		separator = "/"
-	}
-
-	// Split pattern and permission 拆分模式和权限。
-	patternParts := strings.Split(pattern, separator)
-	permParts := strings.Split(permission, separator)
-	// Reject different segment count 段数不同直接拒绝。
-	if len(patternParts) != len(permParts) {
-		return false
-	}
-
-	// Compare each segment 逐段比较。
-	for i := range patternParts {
-		if patternParts[i] == PermissionWildcard {
-			continue
-		}
-		if patternParts[i] != permParts[i] {
-			return false
-		}
-	}
-	return true
+	return m.strategy.normalize().PermissionMatcher(pattern, permission)
 }
 
 // hasPermissionInList checks if permission exists in permission list. hasPermissionInList 判断权限是否存在。

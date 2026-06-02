@@ -13,6 +13,7 @@ func (m *Manager) handleConcurrency(
 	ctx context.Context,
 	sess *Session,
 	loginID, device, deviceId string,
+	policy loginPolicy,
 ) (reuseToken string, handled bool, destroyedSession bool, err error) {
 	// Clean expired tokens 清理已过期的 token
 	if err = m.cleanExpiredTerminals(ctx, sess); err != nil {
@@ -20,9 +21,9 @@ func (m *Manager) handleConcurrency(
 	}
 
 	// Handle non-concurrent login 处理不允许并发登录。
-	if !m.config.IsConcurrent {
+	if !policy.isConcurrent {
 		// Reject new device when configured 配置为拒绝新设备时直接校验。
-		if m.config.ReplacedLoginExitMode == config.ReplacedLoginExitModeNewDevice {
+		if policy.replacedLoginExitMode == config.ReplacedLoginExitModeNewDevice {
 			// Reject new login only when an active terminal exists 仅在存在有效终端时拒绝新登录
 			// Select terminals by concurrency scope 按并发作用域选择终端。
 			var terminals []TerminalInfo
@@ -59,7 +60,7 @@ func (m *Manager) handleConcurrency(
 	}
 
 	// Try token sharing when enabled 开启共享时尝试复用 Token。
-	if m.config.IsShare {
+	if policy.isShare {
 		// Try token sharing reuse only within the same device dimension. 仅在相同设备维度内尝试复用 Token。
 		token, shareErr := m.getTokenAndShare(ctx, sess, device, deviceId)
 		if shareErr != nil {
@@ -73,8 +74,8 @@ func (m *Manager) handleConcurrency(
 	// Enforce account-level max login count 执行账号级最大登录数限制。
 	if m.config.ConcurrencyScope == config.ConcurrencyScopeAccount {
 		removedOverflow := false
-		for m.config.MaxLoginCount > 0 && int64(len(sess.TerminalInfos)) >= m.config.MaxLoginCount {
-			if err := m.removeOldestTerminalInfoAndToken(ctx, sess, m.config.OverflowLogoutMode); err != nil {
+		for policy.maxLoginCount > 0 && int64(len(sess.TerminalInfos)) >= policy.maxLoginCount {
+			if err := m.removeOldestTerminalInfoAndToken(ctx, sess, policy.overflowLogoutMode); err != nil {
 				return "", false, false, err
 			}
 			removedOverflow = true
@@ -85,8 +86,8 @@ func (m *Manager) handleConcurrency(
 	} else if m.config.ConcurrencyScope == config.ConcurrencyScopeDevice {
 		// Enforce device-level max login count 执行设备级最大登录数限制。
 		removedOverflow := false
-		for m.config.MaxLoginCount > 0 && int64(len(sess.getTerminalsByDevice(device))) >= m.config.MaxLoginCount {
-			if err := m.removeOldestTerminalInfoAndToken(ctx, sess, m.config.OverflowLogoutMode, device); err != nil {
+		for policy.maxLoginCount > 0 && int64(len(sess.getTerminalsByDevice(device))) >= policy.maxLoginCount {
+			if err := m.removeOldestTerminalInfoAndToken(ctx, sess, policy.overflowLogoutMode, device); err != nil {
 				return "", false, false, err
 			}
 			removedOverflow = true
@@ -160,12 +161,14 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 	// Renew token by original timeout 按原始有效期续期 Token
 	// Rebuild token info 重建 Token 信息。
 	updatedTokenInfo := TokenInfo{
-		AuthType:   m.config.AuthType,
-		LoginID:    terminalInfo.LoginID,
-		Device:     terminalInfo.Device,
-		DeviceId:   terminalInfo.DeviceId,
-		CreateTime: terminalInfo.CreateTime,
-		Timeout:    tokenTimeout,
+		AuthType:      m.config.AuthType,
+		LoginID:       terminalInfo.LoginID,
+		Device:        terminalInfo.Device,
+		DeviceId:      terminalInfo.DeviceId,
+		CreateTime:    terminalInfo.CreateTime,
+		Timeout:       tokenTimeout,
+		ActiveTimeout: tokenInfo.ActiveTimeout,
+		Extra:         tokenInfo.Extra,
 	}
 	// Persist reused token info 持久化复用 Token 信息。
 	if err := m.saveToStorage(ctx, m.getTokenKey(terminalInfo.Token), updatedTokenInfo, expiration); err != nil {

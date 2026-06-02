@@ -46,6 +46,11 @@ func (m *Manager) GetAccessProvider() AccessProvider {
 	return m.accessProvider
 }
 
+// GetStrategy retrieves the manager strategy. GetStrategy 获取管理器策略。
+func (m *Manager) GetStrategy() *Strategy {
+	return m.strategy.normalize()
+}
+
 // GetNonceManager retrieves the nonce manager. GetNonceManager 获取 nonce 管理器。
 func (m *Manager) GetNonceManager() *nonce.NonceManager {
 	return m.nonceManager

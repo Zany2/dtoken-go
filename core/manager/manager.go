@@ -15,8 +15,7 @@ import (
 
 // Manager is the core auth facade. Manager 是鉴权核心门面。
 type Manager struct {
-	config *config.Config // config stores runtime configuration. config 存储运行时配置。
-
+	config     *config.Config    // config stores runtime configuration. config 存储运行时配置。
 	generator  adapter.Generator // generator creates token values. generator 负责生成 Token 值。
 	storage    adapter.Storage   // storage persists auth data. storage 持久化鉴权数据。
 	serializer adapter.Codec     // serializer encodes and decodes storage payloads. serializer 编解码存储数据。
@@ -31,16 +30,19 @@ type Manager struct {
 	loginLocksMu    sync.Mutex                 // loginLocksMu protects the login lock registry. loginLocksMu 保护登录锁注册表。
 	loginLocks      map[string]*loginLockEntry // loginLocks serializes writes per login ID. loginLocks 按登录 ID 串行化写操作。
 	accessProvider  AccessProvider             // accessProvider resolves roles and permissions. accessProvider 解析角色和权限。
+	strategy        *Strategy                  // strategy stores replaceable algorithms. strategy 存储可替换算法。
 }
 
 // TokenInfo defines token info. TokenInfo 定义 Token 信息。
 type TokenInfo struct {
-	AuthType   string `json:"authType"`   // AuthType stores auth namespace. AuthType 存储认证命名空间。
-	LoginID    string `json:"loginId"`    // LoginID stores subject identifier. LoginID 存储主体标识。
-	Device     string `json:"device"`     // Device stores device type. Device 存储设备类型。
-	DeviceId   string `json:"deviceId"`   // DeviceId stores concrete device ID. DeviceId 存储具体设备 ID。
-	CreateTime int64  `json:"createTime"` // CreateTime stores token creation time. CreateTime 存储 Token 创建时间。
-	Timeout    int64  `json:"timeout"`    // Timeout stores token timeout seconds. Timeout 存储 Token 过期秒数。
+	AuthType      string         `json:"authType"`                // AuthType stores auth namespace. AuthType 存储认证命名空间。
+	LoginID       string         `json:"loginId"`                 // LoginID stores subject identifier. LoginID 存储主体标识。
+	Device        string         `json:"device"`                  // Device stores device type. Device 存储设备类型。
+	DeviceId      string         `json:"deviceId"`                // DeviceId stores concrete device ID. DeviceId 存储具体设备 ID。
+	CreateTime    int64          `json:"createTime"`              // CreateTime stores token creation time. CreateTime 存储 Token 创建时间。
+	Timeout       int64          `json:"timeout"`                 // Timeout stores token timeout seconds. Timeout 存储 Token 过期秒数。
+	ActiveTimeout int64          `json:"activeTimeout,omitempty"` // ActiveTimeout stores inactive timeout seconds. ActiveTimeout 存储不活跃超时秒数。
+	Extra         map[string]any `json:"extra,omitempty"`         // Extra stores token extension data. Extra 存储 Token 扩展数据。
 }
 
 // Session defines session object. Session 定义会话对象。
@@ -51,17 +53,19 @@ type Session struct {
 	TerminalInfos        []TerminalInfo `json:"terminalInfos,omitempty"`        // TerminalInfos stores online terminals. TerminalInfos 存储在线终端。
 	Permissions          []string       `json:"permissions,omitempty"`          // Permissions stores cached permissions. Permissions 存储缓存权限。
 	Roles                []string       `json:"roles,omitempty"`                // Roles stores cached roles. Roles 存储缓存角色。
+	Data                 map[string]any `json:"data,omitempty"`                 // Data stores user session extension data. Data 存储用户会话扩展数据。
 	HistoryTerminalCount int64          `json:"historyTerminalCount,omitempty"` // HistoryTerminalCount stores terminal sequence count. HistoryTerminalCount 存储终端历史序号。
 }
 
 // TerminalInfo defines terminal info. TerminalInfo 定义终端信息。
 type TerminalInfo struct {
-	Token      string `json:"token"`      // Token stores terminal token. Token 存储终端 Token。
-	LoginID    string `json:"loginId"`    // LoginID stores subject identifier. LoginID 存储主体标识。
-	Device     string `json:"device"`     // Device stores device type. Device 存储设备类型。
-	DeviceId   string `json:"deviceId"`   // DeviceId stores concrete device ID. DeviceId 存储具体设备 ID。
-	CreateTime int64  `json:"createTime"` // CreateTime stores terminal creation time. CreateTime 存储终端创建时间。
-	Index      int64  `json:"index"`      // Index stores terminal sequence. Index 存储终端序号。
+	Token      string         `json:"token"`           // Token stores terminal token. Token 存储终端 Token。
+	LoginID    string         `json:"loginId"`         // LoginID stores subject identifier. LoginID 存储主体标识。
+	Device     string         `json:"device"`          // Device stores device type. Device 存储设备类型。
+	DeviceId   string         `json:"deviceId"`        // DeviceId stores concrete device ID. DeviceId 存储具体设备 ID。
+	CreateTime int64          `json:"createTime"`      // CreateTime stores terminal creation time. CreateTime 存储终端创建时间。
+	Index      int64          `json:"index"`           // Index stores terminal sequence. Index 存储终端序号。
+	Extra      map[string]any `json:"extra,omitempty"` // Extra stores terminal extension data. Extra 存储终端扩展数据。
 }
 
 // DisableInfo defines account disable info. DisableInfo 定义账号封禁信息。

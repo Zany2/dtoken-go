@@ -117,7 +117,8 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 	}
 
 	// Check max inactive timeout 检查最大不活跃时长
-	if m.config.ActiveTimeout > 0 {
+	activeTimeout := m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout)
+	if activeTimeout > 0 {
 		// Load active timestamp 加载活跃时间戳。
 		timeStampAny, err := m.storage.Get(ctx, m.getActiveKey(tokenValue))
 		if err != nil {
@@ -134,7 +135,7 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 			return derror.ErrInvalidToken
 		}
 		// Handle inactive timeout 处理不活跃超时。
-		if time.Now().Unix()-timeStamp > m.config.ActiveTimeout {
+		if time.Now().Unix()-timeStamp > activeTimeout {
 			// Mark inactive timeout separately so later checks keep the exact cause. 单独标记不活跃超时以保留精确原因。
 			if err = m.processTerminals(ctx, tokenInfo.LoginID, func(sess *Session) []TerminalInfo {
 				if info, ok := sess.removeTerminalByToken(tokenValue); ok {
@@ -170,7 +171,7 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 	}
 
 	// Update active timeout asynchronously 异步活跃时长
-	if m.config.ActiveTimeout > 0 {
+	if activeTimeout > 0 {
 		// Build async active refresh task 构建异步活跃刷新任务。
 		activeFunc := func() {
 			bg := context.Background()

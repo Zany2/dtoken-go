@@ -14,10 +14,21 @@ func (a *Auth) Login(ctx context.Context, opts LoginOptions) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if opts.Timeout > 0 {
-		return mgr.LoginWithTimeout(ctx, opts.LoginID, opts.Timeout, opts.Device, opts.DeviceID)
-	}
-	return mgr.Login(ctx, opts.LoginID, opts.Device, opts.DeviceID)
+	return mgr.LoginWithOptions(ctx, manager.LoginOptions{
+		LoginID:               opts.LoginID,
+		Device:                opts.Device,
+		DeviceID:              opts.DeviceID,
+		Timeout:               opts.Timeout,
+		ActiveTimeout:         opts.ActiveTimeout,
+		Token:                 opts.Token,
+		Extra:                 opts.Extra,
+		TerminalExtra:         opts.TerminalExtra,
+		IsConcurrent:          opts.IsConcurrent,
+		IsShare:               opts.IsShare,
+		MaxLoginCount:         opts.MaxLoginCount,
+		ReplacedLoginExitMode: opts.ReplacedLoginExitMode,
+		OverflowLogoutMode:    opts.OverflowLogoutMode,
+	})
 }
 
 // LoginID logs in with only a subject id. LoginID 仅使用主体 ID 登录。
@@ -54,13 +65,13 @@ func (a *Auth) Logout(ctx context.Context, opts LogoutOptions) error {
 	if err != nil {
 		return err
 	}
-	if opts.Token != "" {
-		return mgr.Logout(ctx, opts.Token)
-	}
-	if opts.Device != "" || opts.DeviceID != "" {
-		return mgr.LogoutByDeviceAndDeviceId(ctx, opts.LoginID, opts.Device, opts.DeviceID)
-	}
-	return mgr.LogoutByLoginID(ctx, opts.LoginID)
+	return mgr.Terminate(ctx, manager.TerminateOptions{
+		Action:   manager.TerminateActionLogout,
+		LoginID:  opts.LoginID,
+		Token:    opts.Token,
+		Device:   opts.Device,
+		DeviceID: opts.DeviceID,
+	})
 }
 
 // Kickout kicks out by typed terminal options. Kickout 根据类型化终端选项踢人下线。
@@ -69,13 +80,13 @@ func (a *Auth) Kickout(ctx context.Context, opts LogoutOptions) error {
 	if err != nil {
 		return err
 	}
-	if opts.Token != "" {
-		return mgr.Kickout(ctx, opts.Token)
-	}
-	if opts.Device != "" || opts.DeviceID != "" {
-		return mgr.KickoutByDeviceAndDeviceId(ctx, opts.LoginID, opts.Device, opts.DeviceID)
-	}
-	return mgr.KickoutByLoginID(ctx, opts.LoginID)
+	return mgr.Terminate(ctx, manager.TerminateOptions{
+		Action:   manager.TerminateActionKickout,
+		LoginID:  opts.LoginID,
+		Token:    opts.Token,
+		Device:   opts.Device,
+		DeviceID: opts.DeviceID,
+	})
 }
 
 // Replace replaces login state by typed terminal options. Replace 根据类型化终端选项顶人下线。
@@ -84,13 +95,13 @@ func (a *Auth) Replace(ctx context.Context, opts LogoutOptions) error {
 	if err != nil {
 		return err
 	}
-	if opts.Token != "" {
-		return mgr.Replace(ctx, opts.Token)
-	}
-	if opts.Device != "" || opts.DeviceID != "" {
-		return mgr.ReplaceByDeviceAndDeviceId(ctx, opts.LoginID, opts.Device, opts.DeviceID)
-	}
-	return mgr.ReplaceByLoginID(ctx, opts.LoginID)
+	return mgr.Terminate(ctx, manager.TerminateOptions{
+		Action:   manager.TerminateActionReplace,
+		LoginID:  opts.LoginID,
+		Token:    opts.Token,
+		Device:   opts.Device,
+		DeviceID: opts.DeviceID,
+	})
 }
 
 // IsLogin checks login status by token. IsLogin 根据 Token 检查登录状态。

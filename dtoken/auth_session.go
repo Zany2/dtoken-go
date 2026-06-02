@@ -33,3 +33,30 @@ func (a *Auth) GetTerminalInfoByToken(ctx context.Context, token string) (*manag
 	}
 	return mgr.GetTerminalInfoByToken(ctx, token)
 }
+
+// SetSessionValue sets one session data value. SetSessionValue 设置一个会话扩展数据。
+func (a *Auth) SetSessionValue(ctx context.Context, loginID, key string, value any) error {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return err
+	}
+	return mgr.SetSessionValue(ctx, loginID, key, value)
+}
+
+// GetSessionValue gets one session data value. GetSessionValue 获取一个会话扩展数据。
+func (a *Auth) GetSessionValue(ctx context.Context, loginID, key string) (any, bool, error) {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return nil, false, err
+	}
+	return mgr.GetSessionValue(ctx, loginID, key)
+}
+
+// DeleteSessionValue deletes one session data value. DeleteSessionValue 删除一个会话扩展数据。
+func (a *Auth) DeleteSessionValue(ctx context.Context, loginID, key string) error {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return err
+	}
+	return mgr.DeleteSessionValue(ctx, loginID, key)
+}
