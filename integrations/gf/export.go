@@ -25,6 +25,11 @@ var (
 	DeleteAllManager                          = dtoken.DeleteAllManager
 	Login                                     = dtoken.Login
 	LoginWithTimeout                          = dtoken.LoginWithTimeout
+	LoginWithRefreshToken                     = dtoken.LoginWithRefreshToken
+	RefreshToken                              = dtoken.RefreshToken
+	RevokeRefreshToken                        = dtoken.RevokeRefreshToken
+	GetRefreshTokenTTL                        = dtoken.GetRefreshTokenTTL
+	IntrospectToken                           = dtoken.IntrospectToken
 	LoginByToken                              = dtoken.LoginByToken
 	Logout                                    = dtoken.Logout
 	LogoutByDeviceAndDeviceId                 = dtoken.LogoutByDeviceAndDeviceId

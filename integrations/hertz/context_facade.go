@@ -122,6 +122,15 @@ func GetTokenInfoByContext(ctx *hertzapp.RequestContext) (*manager.TokenInfo, er
 	return dCtx.GetTokenInfo(requestContext(ctx))
 }
 
+// IntrospectTokenByContext inspects current token without renewal side effects IntrospectTokenByContext 无续期副作用地检查当前 token 状态
+func IntrospectTokenByContext(ctx *hertzapp.RequestContext) (*manager.TokenIntrospection, error) {
+	dCtx, err := requireDTokenContextByContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return dCtx.IntrospectToken(requestContext(ctx))
+}
+
 // GetDeviceByContext gets current token device GetDeviceByContext 获取当前 token 设备类型
 func GetDeviceByContext(ctx *hertzapp.RequestContext) (string, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)

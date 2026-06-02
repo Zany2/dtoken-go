@@ -16,6 +16,10 @@ const (
 	RenewKeyPrefix = "renew:"
 	// ActivePrefix stores active key prefix. ActivePrefix 存储 Token 活跃时间键前缀。
 	ActivePrefix = "active:"
+	// RefreshTokenKeyPrefix stores refresh token key prefix RefreshTokenKeyPrefix 存储刷新令牌键前缀
+	RefreshTokenKeyPrefix = "refresh:"
+	// TokenRefreshKeyPrefix stores access token to refresh token key prefix TokenRefreshKeyPrefix 存储访问令牌到刷新令牌的键前缀
+	TokenRefreshKeyPrefix = "refresh:token:"
 
 	// SessionKeyLoginID stores session login id key. SessionKeyLoginID 存储登录 ID 字段名。
 	SessionKeyLoginID = "loginId"

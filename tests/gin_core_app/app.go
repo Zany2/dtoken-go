@@ -229,6 +229,8 @@ func newDemoManager(cfg Config, authType string, storage adapter.Storage) (*mana
 		IsPrintBanner(false).
 		IsLog(false).
 		AsyncEvent(false).
+		EnableNonce().
+		EnableOAuth2().
 		SetStorage(storage)
 	if cfg.KeyPrefix != "" {
 		builder.KeyPrefix(cfg.KeyPrefix)

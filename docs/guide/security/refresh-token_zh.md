@@ -2,102 +2,146 @@
 
 # Refresh Token 指南
 
-## 当前状态
+## 概览
 
-这个主题在当前项目里需要特别说明：
+DToken-Go 在两个地方支持 Refresh Token：
 
-当前代码库**没有提供独立的“业务登录 Refresh Token 模块”**，也没有这些旧文档里提到的 API：
+- 普通业务登录：`LoginWithRefreshToken(...)`
+- OAuth2 令牌流程：`RefreshOAuth2AccessToken(...)`
 
-- `LoginWithRefreshToken(...)`
-- `RefreshAccessToken(...)`
-- `RevokeRefreshToken(...)`
+本文主要说明普通业务登录流程。
 
-这些接口在当前版本中并不存在。
-
-## 现在项目里哪里有 Refresh Token
-
-当前项目里的 Refresh Token 能力只出现在 **OAuth2** 模块里。
-
-对应 API 是：
-
-- `RefreshOAuth2AccessToken(...)`
-- `RevokeOAuth2Token(...)`
-
-也就是说，Refresh Token 目前是 OAuth2 访问令牌体系的一部分，而不是普通 `dtoken.Login(...)` 登录体系的独立扩展。
-
-## OAuth2 中的 Refresh Token
-
-当你通过 OAuth2 授权码模式、密码模式、客户端凭证模式拿到 `AccessToken` 结构时，返回值里会包含：
+## 登录并返回双令牌
 
 ```go
-type AccessToken struct {
-    Token        string
-    TokenType    string
-    ExpiresIn    int64
-    RefreshToken string
-    Scopes       []string
-    UserID       string
-    ClientID     string
+pair, err := dtoken.LoginWithRefreshToken(ctx, "user-1001", "web", "browser-1")
+if err != nil {
+	return err
+}
+
+fmt.Println(pair.AccessToken)
+fmt.Println(pair.RefreshToken)
+fmt.Println(pair.ExpiresIn)
+fmt.Println(pair.RefreshExpiresIn)
+```
+
+`AccessToken` 用于访问受保护接口。`RefreshToken` 由客户端保存，只用于换取新的令牌对。
+
+## 使用选项登录
+
+如果单次登录需要设置自定义有效期、设备、扩展数据或并发登录策略，可以使用 `LoginWithRefreshTokenOptions(...)`。
+
+```go
+pair, err := dtoken.LoginWithRefreshTokenOptions(ctx, dtoken.RefreshTokenOptions{
+	LoginOptions: dtoken.LoginOptions{
+		LoginID: "user-1001",
+		Device:  "app",
+		Extra: map[string]any{
+			"tenant": "main",
+		},
+	},
+	RefreshTimeout: 30 * 24 * time.Hour,
+})
+```
+
+## 刷新流程
+
+```go
+nextPair, err := dtoken.RefreshToken(ctx, pair.RefreshToken)
+if err != nil {
+	return err
 }
 ```
 
-其中：
+刷新是一次轮换操作：
 
-- `Token`：访问令牌
-- `RefreshToken`：刷新令牌
+1. 校验 refresh token
+2. 拒绝已封禁账号或已封禁设备
+3. 撤销旧 access token 和旧 refresh token
+4. 签发新的 access token 和 refresh token
 
-## 刷新方式
+Refresh token 不依赖旧 access token 的 TTL。只要 refresh token 仍有效，即使 access token 已过期，也可以刷新成功。
+
+## 撤销流程
+
+```go
+err := dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
+```
+
+撤销 refresh token 时，会同时登出它关联的 access token。
+
+## 有效期
+
+```go
+ttl, err := dtoken.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
+```
+
+默认 refresh token 有效期是 `30` 天。可以设置全局有效期：
+
+```go
+mgr, err := dtoken.NewBuilder().
+	RefreshTokenTimeout(30 * 24 * 60 * 60).
+	Build()
+```
+
+也可以使用 `time.Duration`：
+
+```go
+mgr, err := dtoken.NewBuilder().
+	RefreshTokenTimeoutDuration(30 * 24 * time.Hour).
+	Build()
+```
+
+## 框架门面示例
+
+各框架包会导出这些 API。例如 GoFrame：
+
+```go
+import gfdt "github.com/Zany2/dtoken-go/integrations/gf"
+
+pair, err := gfdt.LoginWithRefreshToken(ctx, "user-1001")
+nextPair, err := gfdt.RefreshToken(ctx, pair.RefreshToken)
+ttl, err := gfdt.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
+_ = gfdt.RevokeRefreshToken(ctx, nextPair.RefreshToken)
+```
+
+在 GoFrame 控制器中，登录与刷新接口也可以只使用同一个框架包：
+
+```go
+func (c *AuthController) Login(r *ghttp.Request) {
+	pair, err := gfdt.LoginWithRefreshToken(r.Context(), "user-1001", "web", "browser-1")
+	if err != nil {
+		r.Response.WriteJsonExit(g.Map{"code": 401, "message": err.Error()})
+	}
+	r.Response.WriteJsonExit(pair)
+}
+
+func (c *AuthController) Refresh(r *ghttp.Request) {
+	pair, err := gfdt.RefreshToken(r.Context(), r.Get("refreshToken").String())
+	if err != nil {
+		r.Response.WriteJsonExit(g.Map{"code": 401, "message": err.Error()})
+	}
+	r.Response.WriteJsonExit(pair)
+}
+```
+
+## OAuth2 中的 Refresh Token
+
+OAuth2 的 refresh token 能力仍然通过 OAuth2 API 使用：
 
 ```go
 newToken, err := dtoken.RefreshOAuth2AccessToken(
-    ctx,
-    "web-app",
-    oldToken.RefreshToken,
-    "secret",
+	ctx,
+	"web-app",
+	oldToken.RefreshToken,
+	"secret",
 )
 ```
 
-当前实现会：
-
-1. 校验 refresh token
-2. 校验客户端身份
-3. 删除旧 access token
-4. 删除旧 refresh token
-5. 重新签发一组新的 token
-
-## 撤销方式
-
-```go
-err := dtoken.RevokeOAuth2Token(ctx, accessToken)
-```
-
-撤销 access token 时，会同时清掉它对应的 refresh token。
-
-## 默认有效期
-
-根据当前 OAuth2 常量：
-
-- access token：`2` 小时
-- refresh token：`30` 天
-
-## 如果你想做普通登录态的双 token
-
-当前项目没有内建“普通登录态双 token”方案。  
-如果你要做 App / Web 的 access token + refresh token 登录机制，通常有两条路：
-
-1. 直接使用项目现有 OAuth2 能力
-2. 在业务层基于 `dtoken.Login(...)` 自己再封装一层 refresh token 存储和刷新逻辑
-
-## 当前文档建议
-
-所以这篇文档的正确理解应该是：
-
-1. 当前仓库没有独立 refresh-token 模块
-2. 现有 refresh token 只属于 OAuth2
-3. 相关示例和接入说明请优先参考 OAuth2 文档
+OAuth2 专属行为见 [OAuth2 指南](../security/oauth2_zh.md)。
 
 ## 相关文档
 
 - [OAuth2 指南](../security/oauth2_zh.md)
 - [登录认证](../core/authentication_zh.md)
-- [Nonce 防重放](../security/nonce_zh.md)
+- [高级能力](../security/advanced-features_zh.md)

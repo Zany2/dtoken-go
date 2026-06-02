@@ -41,6 +41,77 @@ func (a *Auth) LoginWithTimeout(ctx context.Context, loginID string, timeout tim
 	return a.Login(ctx, LoginOptions{LoginID: loginID, Timeout: timeout})
 }
 
+// LoginWithRefreshToken logs in and returns access and refresh tokens. LoginWithRefreshToken 登录并返回访问令牌和刷新令牌。
+func (a *Auth) LoginWithRefreshToken(ctx context.Context, loginID string) (*manager.RefreshTokenPair, error) {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return nil, err
+	}
+	return mgr.LoginWithRefreshToken(ctx, loginID)
+}
+
+// LoginWithRefreshTokenOptions logs in with options and returns token pair. LoginWithRefreshTokenOptions 使用选项登录并返回令牌对。
+func (a *Auth) LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions) (*manager.RefreshTokenPair, error) {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return nil, err
+	}
+	return mgr.LoginWithRefreshTokenOptions(ctx, manager.RefreshTokenOptions{
+		LoginOptions: manager.LoginOptions{
+			LoginID:               opts.LoginID,
+			Device:                opts.Device,
+			DeviceID:              opts.DeviceID,
+			Timeout:               opts.Timeout,
+			ActiveTimeout:         opts.ActiveTimeout,
+			Token:                 opts.Token,
+			Extra:                 opts.Extra,
+			TerminalExtra:         opts.TerminalExtra,
+			IsConcurrent:          opts.IsConcurrent,
+			IsShare:               opts.IsShare,
+			MaxLoginCount:         opts.MaxLoginCount,
+			ReplacedLoginExitMode: opts.ReplacedLoginExitMode,
+			OverflowLogoutMode:    opts.OverflowLogoutMode,
+		},
+		RefreshTimeout: opts.RefreshTimeout,
+	})
+}
+
+// RefreshToken rotates a refresh token and returns a new token pair. RefreshToken 轮换刷新令牌并返回新的令牌对。
+func (a *Auth) RefreshToken(ctx context.Context, refreshToken string) (*manager.RefreshTokenPair, error) {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return nil, err
+	}
+	return mgr.RefreshToken(ctx, refreshToken)
+}
+
+// RevokeRefreshToken revokes a refresh token and its related access token. RevokeRefreshToken 撤销刷新令牌及其关联访问令牌。
+func (a *Auth) RevokeRefreshToken(ctx context.Context, refreshToken string) error {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return err
+	}
+	return mgr.RevokeRefreshToken(ctx, refreshToken)
+}
+
+// GetRefreshTokenTTL returns refresh token remaining lifetime seconds. GetRefreshTokenTTL 返回刷新令牌剩余有效秒数。
+func (a *Auth) GetRefreshTokenTTL(ctx context.Context, refreshToken string) (int64, error) {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return 0, err
+	}
+	return mgr.GetRefreshTokenTTL(ctx, refreshToken)
+}
+
+// IntrospectToken inspects token validity without renewal side effects. IntrospectToken 无续期副作用地检查令牌状态。
+func (a *Auth) IntrospectToken(ctx context.Context, token string) (*manager.TokenIntrospection, error) {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return nil, err
+	}
+	return mgr.IntrospectToken(ctx, token)
+}
+
 // LoginByToken renews login state by an existing token. LoginByToken 根据已有 Token 续期登录态。
 func (a *Auth) LoginByToken(ctx context.Context, token string) error {
 	mgr, err := a.requireManager()

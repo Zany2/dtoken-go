@@ -3,7 +3,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	gfdt "github.com/Zany2/dtoken-go/integrations/gf"
@@ -19,14 +21,27 @@ func main() {
 	s.Use(gfdt.RegisterDTokenContextMiddleware(ctx))
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.POST("/login", handleLogin)
+		group.POST("/refresh", handleRefresh)
 	})
 
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.Middleware(gfdt.AuthMiddleware(ctx))
 		group.GET("/me", handleMe)
+		group.GET("/introspect", handleIntrospect)
 		group.GET("/admin", gfdt.CheckRoleMiddleware(ctx, []string{"admin"}, handleAdmin, nil))
 		group.GET("/articles", gfdt.CheckPermissionMiddleware(ctx, []string{"article:read"}, handleArticles, nil))
 		group.POST("/logout", handleLogout)
+	})
+
+	s.Group("/access", func(group *ghttp.RouterGroup) {
+		group.Middleware(gfdt.AccessMiddleware(ctx,
+			gfdt.WithRouteAccessHandler(resolveRouteAccess),
+			gfdt.WithFailFunc(handleAuthFail),
+		))
+		group.GET("/public", handleAccessPublic)
+		group.GET("/me", handleMe)
+		group.GET("/articles", handleArticles)
+		group.GET("/admin", handleAdmin)
 	})
 
 	s.SetPort(8080)
@@ -37,6 +52,7 @@ func main() {
 func initDToken() {
 	mgr, err := gfdt.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
+		RefreshTokenTimeout(int64((30 * 24 * time.Hour).Seconds())).
 		IsPrintBanner(false).
 		Build()
 	if err != nil {
@@ -60,7 +76,7 @@ func handleLogin(r *ghttp.Request) {
 		return
 	}
 
-	token, err := gfdt.Login(r.Context(), username)
+	pair, err := gfdt.LoginWithRefreshToken(r.Context(), username, "web", "gf-example")
 	if err != nil {
 		writeJSON(r, http.StatusInternalServerError, gfdt.CodeServerError, err.Error(), nil)
 		return
@@ -70,7 +86,24 @@ func handleLogin(r *ghttp.Request) {
 	_ = gfdt.AddRoles(r.Context(), username, []string{"admin"})
 	_ = gfdt.AddPermissions(r.Context(), username, []string{"article:read"})
 
-	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", g.Map{"token": token})
+	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", pair)
+}
+
+// handleRefresh rotates refresh token handleRefresh 轮换刷新令牌
+func handleRefresh(r *ghttp.Request) {
+	refreshToken := r.Get("refreshToken").String()
+	if refreshToken == "" {
+		writeJSON(r, http.StatusBadRequest, gfdt.CodeBadRequest, "refreshToken is required", nil)
+		return
+	}
+
+	pair, err := gfdt.RefreshToken(r.Context(), refreshToken)
+	if err != nil {
+		writeJSON(r, http.StatusUnauthorized, gfdt.CodeNotLogin, err.Error(), nil)
+		return
+	}
+
+	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", pair)
 }
 
 // handleMe returns current login information handleMe 返回当前登录信息
@@ -97,6 +130,17 @@ func handleMe(r *ghttp.Request) {
 	})
 }
 
+// handleIntrospect returns current token introspection handleIntrospect 返回当前 token 自省结果
+func handleIntrospect(r *ghttp.Request) {
+	info, err := gfdt.IntrospectTokenByCtx(r.Context())
+	if err != nil {
+		writeJSON(r, http.StatusUnauthorized, gfdt.CodeNotLogin, err.Error(), nil)
+		return
+	}
+
+	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", info)
+}
+
 // handleAdmin returns admin data handleAdmin 返回管理员数据
 func handleAdmin(r *ghttp.Request) {
 	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", g.Map{"scope": "admin"})
@@ -121,6 +165,37 @@ func handleLogout(r *ghttp.Request) {
 	}
 
 	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", nil)
+}
+
+// resolveRouteAccess maps URL paths to auth, permission, and role rules resolveRouteAccess 将 URL 映射为认证、权限、角色规则
+func resolveRouteAccess(_ context.Context, r *ghttp.Request, req *gfdt.RouteAccessRequest) {
+	path := strings.TrimRight(r.URL.Path, "/")
+	switch path {
+	case "/access/public":
+		req.SkipAuth()
+	case "/access/me":
+		req.SkipPermission()
+	case "/access/articles":
+		req.RequirePermissions("article:read")
+	case "/access/admin":
+		req.RequireRoles("admin")
+	}
+}
+
+// handleAccessPublic returns public access data handleAccessPublic 返回公开访问数据
+func handleAccessPublic(r *ghttp.Request) {
+	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", g.Map{"scope": "public"})
+}
+
+// handleAuthFail writes custom auth failure response handleAuthFail 写入自定义认证失败响应
+func handleAuthFail(r *ghttp.Request, err error) {
+	code := gfdt.CodeNotLogin
+	status := http.StatusUnauthorized
+	if errors.Is(err, gfdt.ErrPermissionDenied) || errors.Is(err, gfdt.ErrRoleDenied) {
+		code = gfdt.CodePermissionDenied
+		status = http.StatusForbidden
+	}
+	writeJSON(r, status, code, err.Error(), nil)
 }
 
 // writeJSON writes a unified JSON response writeJSON 写入统一 JSON 响应

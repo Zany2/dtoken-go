@@ -39,6 +39,13 @@ type LoginOptions struct {
 	OverflowLogoutMode *config.LogoutMode
 }
 
+// RefreshTokenOptions describes a typed refresh-token login request. RefreshTokenOptions 描述类型化刷新令牌登录请求。
+type RefreshTokenOptions struct {
+	LoginOptions
+	// RefreshTimeout stores custom refresh token timeout. RefreshTimeout 存储自定义刷新令牌超时时间。
+	RefreshTimeout time.Duration
+}
+
 // LogoutOptions describes a typed logout or terminal operation. LogoutOptions 描述类型化登出或终端操作。
 type LogoutOptions struct {
 	// AuthType stores the auth namespace. AuthType 存储认证命名空间。

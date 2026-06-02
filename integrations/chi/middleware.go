@@ -411,6 +411,15 @@ func GetTokenInfoByCtx(ctx context.Context) (*manager.TokenInfo, error) {
 	return dCtx.GetTokenInfo(ctx)
 }
 
+// IntrospectTokenByCtx inspects current token without renewal side effects IntrospectTokenByCtx 无续期副作用地检查当前 token 状态
+func IntrospectTokenByCtx(ctx context.Context) (*manager.TokenIntrospection, error) {
+	dCtx, ok := GetDTokenContextByCtx(ctx)
+	if !ok {
+		return nil, derror.ErrNotLogin
+	}
+	return dCtx.IntrospectToken(ctx)
+}
+
 // getDTokenContext gets or creates dtoken context getDTokenContext 获取或创建 DToken 上下文
 func getDTokenContext(chiCtx *ChiContext, mgr *manager.Manager) *DContext.DTokenContext {
 	if v := chiCtx.r.Context().Value(DTokenCtxKey); v != nil {

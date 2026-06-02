@@ -147,6 +147,15 @@ func (c *DTokenContext) GetTokenInfo(ctx context.Context) (*manager.TokenInfo, e
 	return c.manager.GetTokenInfo(ctx, token)
 }
 
+// IntrospectToken inspects current token without renewal side effects. IntrospectToken 无续期副作用地检查当前 token 状态。
+func (c *DTokenContext) IntrospectToken(ctx context.Context) (*manager.TokenIntrospection, error) {
+	token := c.GetTokenValue()
+	if token == "" {
+		return nil, derror.ErrNotLogin
+	}
+	return c.manager.IntrospectToken(ctx, token)
+}
+
 // GetDevice gets token device GetDevice 获取当前 token 的设备类型
 func (c *DTokenContext) GetDevice(ctx context.Context) (string, error) {
 	token := c.GetTokenValue()

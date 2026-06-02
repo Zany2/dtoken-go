@@ -12,12 +12,14 @@ This example showcases:
 - **Protected Routes** - User info and logout requiring authentication
 - **Role-Based Access Control** - Admin endpoints requiring admin role
 - **Permission-Based Access Control** - Resource endpoints requiring specific permissions
+- **Refresh Token** - Login returns access and refresh tokens, and refresh rotates token pairs
+- **Token Introspection** - Inspect the current token from the GoFrame request context
+- **Route Access Rules** - Use one middleware to decide login, permission, and role rules by URL
 - **Annotation-Based Routes** - Various check middlewares (login, role, permission, all)
 
 ## Prerequisites
 
 - Go 1.25 or higher
-- Redis server running (default: `192.168.19.104:6379`)
 
 ## Installation
 
@@ -28,11 +30,7 @@ go mod tidy
 
 ## Configuration
 
-Update the Redis connection string in `main.go` if needed:
-
-```go
-storage, err := redis.NewStorage("redis://:root@192.168.19.104:6379/0?dial_timeout=3&read_timeout=10s&max_retries=2")
-```
+The example uses the bundled memory storage through `gfdt.NewBuilder()`. Replace it with Redis storage in `initDToken()` when you need persistence.
 
 ## Running the Example
 
@@ -46,45 +44,45 @@ The server will start on `http://localhost:8080`
 
 ### Public Endpoints
 
-- `POST /api/login` - User login
+- `POST /login` - User login
   - Request: `{"username": "admin", "password": "123456"}`
-  - Response: Returns token for authentication
+  - Response: Returns access and refresh tokens
 
-- `GET /api/public` - Public endpoint (no authentication required)
+- `POST /refresh` - Refresh access token
+  - Request: `{"refreshToken": "<refresh-token>"}`
 
 ### Protected Endpoints (Requires Login)
 
-- `GET /api/user/info` - Get current user information
+- `GET /me` - Get current user information
   - Headers: `Authorization: Bearer <token>`
 
-- `POST /api/user/logout` - Logout current user
+- `GET /introspect` - Inspect current token status
+  - Headers: `Authorization: Bearer <token>`
+
+- `POST /logout` - Logout current user
   - Headers: `Authorization: Bearer <token>`
 
 ### Admin Endpoints (Requires Admin Role)
 
-- `GET /api/admin/users` - List all users
-- `POST /api/admin/disable` - Disable a user account
-  - Request: `{"username": "user1"}`
-- `POST /api/admin/enable` - Enable a user account
-  - Request: `{"username": "user1"}`
+- `GET /admin` - Admin data
 
 ### Resource Endpoints (Requires Permissions)
 
-- `GET /api/resource/list` - List resources (requires `resource:read` permission)
+- `GET /articles` - List articles (requires `article:read` permission)
 
-### Annotation-Based Endpoints
+### Route Access Endpoints
 
-- `GET /api/annotation/profile` - User profile (login check only)
-- `GET /api/annotation/admin-data` - Admin data (requires admin role)
-- `GET /api/annotation/sensitive` - Sensitive data (requires `data:read` permission)
-- `GET /api/annotation/super` - Super admin data (requires `super-admin` role and `all:access` permission)
+- `GET /access/public` - Public endpoint, skips auth
+- `GET /access/me` - Requires login only
+- `GET /access/articles` - Requires `article:read`
+- `GET /access/admin` - Requires `admin`
 
 ## Testing with cURL
 
 ### 1. Login
 
 ```bash
-curl -X POST http://localhost:8080/api/login \
+curl -X POST http://localhost:8080/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"123456"}'
 ```
@@ -95,8 +93,9 @@ Response:
   "code": 200,
   "message": "Login successful",
   "data": {
-    "token": "your-token-here",
-    "username": "admin"
+    "accessToken": "your-access-token-here",
+    "refreshToken": "your-refresh-token-here",
+    "tokenType": "Bearer"
   }
 }
 ```
@@ -104,25 +103,30 @@ Response:
 ### 2. Get User Info
 
 ```bash
-curl http://localhost:8080/api/user/info \
-  -H "Authorization: Bearer your-token-here"
+curl http://localhost:8080/me \
+  -H "Authorization: Bearer your-access-token-here"
 ```
 
-### 3. Access Admin Endpoint
+### 3. Refresh Token
 
 ```bash
-curl http://localhost:8080/api/admin/users \
-  -H "Authorization: Bearer your-token-here"
+curl -X POST http://localhost:8080/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken":"your-refresh-token-here"}'
+```
+
+### 4. Route Access Example
+
+```bash
+curl http://localhost:8080/access/articles \
+  -H "Authorization: Bearer your-access-token-here"
 ```
 
 ## Adding Roles and Permissions
 
 To test role and permission-based endpoints, uncomment the following lines in `handleLogin` function:
 
-```go
-_ = dtoken.AddRoles(r.Context(), username, []string{"admin", "super-admin"})
-_ = dtoken.AddPermissions(r.Context(), username, []string{"resource:read", "resource:write", "data:read", "all:access"})
-```
+The demo seeds `admin` and `article:read` during login so role and permission routes can be called immediately.
 
 ## Project Structure
 
@@ -139,8 +143,8 @@ examples/gf/
 
 ```go
 mgr := defaults.NewBuilder().
-    SetStorage(storage).
     Timeout(3600).       // 1 hour
+    RefreshTokenTimeout(30 * 24 * 60 * 60).
     ActiveTimeout(1800). // 30 minutes
     MaxLoginCount(3).
     Build()
@@ -162,6 +166,17 @@ group.Middleware(gfdt.RoleMiddleware(ctx, []string{"admin"}))
 // Permission middleware
 group.Middleware(gfdt.PermissionMiddleware(ctx, []string{"resource:read"}))
 ```
+
+### Route Access Rules
+
+```go
+group.Middleware(gfdt.AccessMiddleware(ctx,
+    gfdt.WithRouteAccessHandler(resolveRouteAccess),
+    gfdt.WithFailFunc(handleAuthFail),
+))
+```
+
+`resolveRouteAccess` can call `SkipAuth()`, `SkipPermission()`, `RequirePermissions(...)`, or `RequireRoles(...)` according to the current URL.
 
 ### Annotation-Based Checks
 

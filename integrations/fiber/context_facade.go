@@ -122,6 +122,15 @@ func GetTokenInfoByContext(c *gofiber.Ctx) (*manager.TokenInfo, error) {
 	return dCtx.GetTokenInfo(requestContext(c))
 }
 
+// IntrospectTokenByContext inspects current token without renewal side effects IntrospectTokenByContext 无续期副作用地检查当前 token 状态
+func IntrospectTokenByContext(c *gofiber.Ctx) (*manager.TokenIntrospection, error) {
+	dCtx, err := requireDTokenContextByContext(c)
+	if err != nil {
+		return nil, err
+	}
+	return dCtx.IntrospectToken(requestContext(c))
+}
+
 // GetDeviceByContext gets current token device GetDeviceByContext 获取当前 token 设备类型
 func GetDeviceByContext(c *gofiber.Ctx) (string, error) {
 	dCtx, err := requireDTokenContextByContext(c)

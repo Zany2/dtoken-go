@@ -491,6 +491,16 @@ func GetTokenInfoByCtx(ctx context.Context, authType ...string) (*manager.TokenI
 	return mgr.GetTokenInfo(ctx, getDContext(g.RequestFromCtx(ctx), mgr).GetTokenValue())
 }
 
+// IntrospectTokenByCtx inspects current token without renewal side effects IntrospectTokenByCtx 无续期副作用地检查当前 token 状态
+func IntrospectTokenByCtx(ctx context.Context, authType ...string) (*manager.TokenIntrospection, error) {
+	mgr, err := authcheck.GetManager(firstAuthType(authType...))
+	if err != nil {
+		return nil, err
+	}
+
+	return mgr.IntrospectToken(ctx, getDContext(g.RequestFromCtx(ctx), mgr).GetTokenValue())
+}
+
 // getDContext gets or creates DToken context getDContext 获取或创建 DToken 上下文
 func getDContext(r *ghttp.Request, mgr *manager.Manager) *DContext.DTokenContext {
 	if v := r.GetCtxVar(DTokenCtxKey); v != nil {

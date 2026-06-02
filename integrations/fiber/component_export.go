@@ -23,86 +23,90 @@ import (
 	"github.com/Zany2/dtoken-go/dtoken"
 )
 
-// Core aliases keep framework imports self-contained Core 别名让框架包可独立使用
+// Core aliases keep framework imports self-contained Core 鍒悕璁╂鏋跺寘鍙嫭绔嬩娇鐢?
 type (
-	Builder               = builder.Builder
-	DTokenBuilder         = dtoken.Builder
-	GeneratorFactory      = builder.GeneratorFactory
-	StorageFactory        = builder.StorageFactory
-	CodecFactory          = builder.CodecFactory
-	LogFactory            = builder.LogFactory
-	PoolFactory           = builder.PoolFactory
-	Components            = builder.Components
-	ComponentFactories    = builder.ComponentFactories
-	Config                = config.Config
-	CookieConfig          = config.CookieConfig
-	SameSiteMode          = config.SameSiteMode
-	ConcurrencyScope      = config.ConcurrencyScope
-	ReplacedLoginExitMode = config.ReplacedLoginExitMode
-	ReplacedLoginMode     = config.ReplacedLoginExitMode
-	LogoutMode            = config.LogoutMode
-	Manager               = manager.Manager
-	ManagerOption         = manager.Option
-	TokenInfo             = manager.TokenInfo
-	Session               = manager.Session
-	TerminalInfo          = manager.TerminalInfo
-	DisableInfo           = manager.DisableInfo
-	ServiceDisableInfo    = manager.ServiceDisableInfo
-	DeviceDisableInfo     = manager.DeviceDisableInfo
-	TokenState            = manager.TokenState
-	TerminalRemovalFunc   = manager.TerminalRemovalFunc
-	TerminalVisitor       = manager.TerminalVisitor
-	AccessSubject         = manager.AccessSubject
-	AccessProvider        = manager.AccessProvider
-	AccessProviderFunc    = manager.AccessProviderFunc
-	Generator             = adapter.Generator
-	TokenStyle            = adapter.TokenStyle
-	Storage               = adapter.Storage
-	AtomicStorage         = adapter.AtomicStorage
-	ScannerStorage        = adapter.ScannerStorage
-	AdminStorage          = adapter.AdminStorage
-	FullStorage           = adapter.FullStorage
-	Codec                 = adapter.Codec
-	Log                   = adapter.Log
-	LogLevel              = adapter.LogLevel
-	LogControl            = adapter.LogControl
-	Pool                  = adapter.Pool
-	CookieOptions         = adapter.CookieOptions
-	RequestContext        = adapter.RequestContext
-	RequestContextExt     = adapter.RequestContextExt
-	Event                 = listener.Event
-	EventData             = listener.EventData
-	Listener              = listener.Listener
-	ListenerFunc          = listener.ListenerFunc
-	ListenerConfig        = listener.ListenerConfig
-	EventFilter           = listener.EventFilter
-	EventStats            = listener.EventStats
-	EventManager          = listener.Manager
-	NonceConfig           = nonce.Config
-	NonceManager          = nonce.NonceManager
-	OAuth2Config          = oauth2.Config
-	OAuth2Client          = oauth2.Client
-	AuthorizationCode     = oauth2.AuthorizationCode
-	AccessToken           = oauth2.AccessToken
-	TokenRequest          = oauth2.TokenRequest
-	UserValidator         = oauth2.UserValidator
-	OAuth2Server          = oauth2.OAuth2Server
-	GrantType             = oauth2.GrantType
-	RedisConfig           = redisstorage.Config
-	RedisStorage          = redisstorage.Storage
-	MemoryStorage         = memorystorage.Storage
-	JSONSerializer        = jsoncodec.JSONSerializer
-	Base64Serializer      = base64codec.Base64Serializer
-	MsgPackSerializer     = msgpackcodec.MsgPackSerializer
-	DefaultGenerator      = dgenerator.Generator
-	LoggerConfig          = dlog.LoggerConfig
-	Logger                = dlog.Logger
-	RenewPoolConfig       = ants.RenewPoolConfig
-	RenewPoolManager      = ants.RenewPoolManager
-	NopLogger             = nop.NopLogger
+	Builder                    = builder.Builder
+	DTokenBuilder              = dtoken.Builder
+	GeneratorFactory           = builder.GeneratorFactory
+	StorageFactory             = builder.StorageFactory
+	CodecFactory               = builder.CodecFactory
+	LogFactory                 = builder.LogFactory
+	PoolFactory                = builder.PoolFactory
+	Components                 = builder.Components
+	ComponentFactories         = builder.ComponentFactories
+	Config                     = config.Config
+	CookieConfig               = config.CookieConfig
+	SameSiteMode               = config.SameSiteMode
+	ConcurrencyScope           = config.ConcurrencyScope
+	ReplacedLoginExitMode      = config.ReplacedLoginExitMode
+	ReplacedLoginMode          = config.ReplacedLoginExitMode
+	LogoutMode                 = config.LogoutMode
+	Manager                    = manager.Manager
+	ManagerOption              = manager.Option
+	TokenInfo                  = manager.TokenInfo
+	TokenIntrospection         = manager.TokenIntrospection
+	ManagerRefreshTokenOptions = manager.RefreshTokenOptions
+	RefreshTokenPair           = manager.RefreshTokenPair
+	RefreshTokenInfo           = manager.RefreshTokenInfo
+	Session                    = manager.Session
+	TerminalInfo               = manager.TerminalInfo
+	DisableInfo                = manager.DisableInfo
+	ServiceDisableInfo         = manager.ServiceDisableInfo
+	DeviceDisableInfo          = manager.DeviceDisableInfo
+	TokenState                 = manager.TokenState
+	TerminalRemovalFunc        = manager.TerminalRemovalFunc
+	TerminalVisitor            = manager.TerminalVisitor
+	AccessSubject              = manager.AccessSubject
+	AccessProvider             = manager.AccessProvider
+	AccessProviderFunc         = manager.AccessProviderFunc
+	Generator                  = adapter.Generator
+	TokenStyle                 = adapter.TokenStyle
+	Storage                    = adapter.Storage
+	AtomicStorage              = adapter.AtomicStorage
+	ScannerStorage             = adapter.ScannerStorage
+	AdminStorage               = adapter.AdminStorage
+	FullStorage                = adapter.FullStorage
+	Codec                      = adapter.Codec
+	Log                        = adapter.Log
+	LogLevel                   = adapter.LogLevel
+	LogControl                 = adapter.LogControl
+	Pool                       = adapter.Pool
+	CookieOptions              = adapter.CookieOptions
+	RequestContext             = adapter.RequestContext
+	RequestContextExt          = adapter.RequestContextExt
+	Event                      = listener.Event
+	EventData                  = listener.EventData
+	Listener                   = listener.Listener
+	ListenerFunc               = listener.ListenerFunc
+	ListenerConfig             = listener.ListenerConfig
+	EventFilter                = listener.EventFilter
+	EventStats                 = listener.EventStats
+	EventManager               = listener.Manager
+	NonceConfig                = nonce.Config
+	NonceManager               = nonce.NonceManager
+	OAuth2Config               = oauth2.Config
+	OAuth2Client               = oauth2.Client
+	AuthorizationCode          = oauth2.AuthorizationCode
+	AccessToken                = oauth2.AccessToken
+	TokenRequest               = oauth2.TokenRequest
+	UserValidator              = oauth2.UserValidator
+	OAuth2Server               = oauth2.OAuth2Server
+	GrantType                  = oauth2.GrantType
+	RedisConfig                = redisstorage.Config
+	RedisStorage               = redisstorage.Storage
+	MemoryStorage              = memorystorage.Storage
+	JSONSerializer             = jsoncodec.JSONSerializer
+	Base64Serializer           = base64codec.Base64Serializer
+	MsgPackSerializer          = msgpackcodec.MsgPackSerializer
+	DefaultGenerator           = dgenerator.Generator
+	LoggerConfig               = dlog.LoggerConfig
+	Logger                     = dlog.Logger
+	RenewPoolConfig            = ants.RenewPoolConfig
+	RenewPoolManager           = ants.RenewPoolManager
+	NopLogger                  = nop.NopLogger
 )
 
-// Common constants forward core configuration values Common 常量转发核心配置值
+// Common constants forward core configuration values Common 甯搁噺杞彂鏍稿績閰嶇疆鍊?
 const (
 	Version                        = corepkg.Version
 	SameSiteStrict                 = config.SameSiteStrict
@@ -122,6 +126,7 @@ const (
 	DefaultAuthType                = config.DefaultAuthType
 	TokenKeyPrefix                 = config.TokenKeyPrefix
 	DefaultTimeout                 = config.DefaultTimeout
+	DefaultRefreshTokenTimeout     = config.DefaultRefreshTokenTimeout
 	DefaultJWTSecretKey            = config.DefaultJWTSecretKey
 	DefaultMaxLoginCount           = config.DefaultMaxLoginCount
 	DefaultCookiePath              = config.DefaultCookiePath
@@ -182,6 +187,8 @@ const (
 	SessionKeyPrefix               = manager.SessionKeyPrefix
 	RenewKeyPrefix                 = manager.RenewKeyPrefix
 	ActivePrefix                   = manager.ActivePrefix
+	RefreshTokenKeyPrefix          = manager.RefreshTokenKeyPrefix
+	TokenRefreshKeyPrefix          = manager.TokenRefreshKeyPrefix
 	SessionKeyLoginID              = manager.SessionKeyLoginID
 	SessionKeyDevice               = manager.SessionKeyDevice
 	SessionKeyLoginTime            = manager.SessionKeyLoginTime
@@ -212,7 +219,7 @@ const (
 	TTLNotFound                    = adapter.TTLNotFound
 )
 
-// Component constructors forward bundled implementations Component 构造器转发内置实现
+// Component constructors forward bundled implementations Component 鏋勯€犲櫒杞彂鍐呯疆瀹炵幇
 var (
 	NewDTokenBuilder               = dtoken.NewBuilder
 	BuildAndSetManager             = dtoken.BuildAndSetManager

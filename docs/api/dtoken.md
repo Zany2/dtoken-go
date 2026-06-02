@@ -4,7 +4,7 @@
 
 ## Overview
 
-`dtoken` is the global utility entry of DToken-Go. It wraps common capabilities such as authentication, permission checks, roles, account disable, session access, nonce, and OAuth2.
+`dtoken` is the global utility entry of DToken-Go. It wraps common capabilities such as authentication, permission checks, roles, account disable, session access, nonce, OAuth2, Token Introspection, and Refresh Token.
 
 In the current version, `dtoken` uses `context.Context` as the unified entry, and different auth systems can be selected through the optional `authType` parameter.
 
@@ -55,6 +55,65 @@ func Login(ctx context.Context, loginID string, params ...string) (string, error
 token, _ := dtoken.Login(ctx, "1000")
 token, _ := dtoken.Login(ctx, "1000", "mobile")
 token, _ := dtoken.Login(ctx, "1000", "mobile", "device-001", "user")
+```
+
+### LoginWithRefreshToken
+
+Login and return an access token plus a refresh token.
+
+**Signature**:
+```go
+func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*manager.RefreshTokenPair, error)
+func LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions, authType ...string) (*manager.RefreshTokenPair, error)
+```
+
+**Example**:
+```go
+pair, err := dtoken.LoginWithRefreshToken(ctx, "1000", "web", "browser-001")
+if err != nil {
+    return err
+}
+
+fmt.Println(pair.AccessToken)
+fmt.Println(pair.RefreshToken)
+```
+
+### RefreshToken
+
+Rotate a refresh token and return a new token pair.
+
+**Signature**:
+```go
+func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*manager.RefreshTokenPair, error)
+func RevokeRefreshToken(ctx context.Context, refreshToken string, authType ...string) error
+func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...string) (int64, error)
+```
+
+**Example**:
+```go
+nextPair, err := dtoken.RefreshToken(ctx, pair.RefreshToken)
+ttl, err := dtoken.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
+_ = dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
+```
+
+### IntrospectToken
+
+Inspect token validity and ownership information without renewal side effects.
+
+**Signature**:
+```go
+func IntrospectToken(ctx context.Context, tokenValue string, authType ...string) (*manager.TokenIntrospection, error)
+```
+
+**Example**:
+```go
+info, err := dtoken.IntrospectToken(ctx, token)
+if err != nil {
+    return err
+}
+if !info.Active {
+    // token is inactive
+}
 ```
 
 ### IsLogin
@@ -119,6 +178,12 @@ _ = dtoken.Kickout(ctx, token)
 
 ```go
 func LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, params ...string) (string, error)
+func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*manager.RefreshTokenPair, error)
+func LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions, authType ...string) (*manager.RefreshTokenPair, error)
+func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*manager.RefreshTokenPair, error)
+func RevokeRefreshToken(ctx context.Context, refreshToken string, authType ...string) error
+func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...string) (int64, error)
+func IntrospectToken(ctx context.Context, tokenValue string, authType ...string) (*manager.TokenIntrospection, error)
 func LoginByToken(ctx context.Context, tokenValue string, authType ...string) error
 func CheckLogin(ctx context.Context, tokenValue string, authType ...string) error
 func LogoutByDevice(ctx context.Context, loginID string, device string, authType ...string) error
@@ -455,6 +520,12 @@ func DeleteAllManager()
 ### Authentication
 - `Login`
 - `LoginWithTimeout`
+- `LoginWithRefreshToken`
+- `LoginWithRefreshTokenOptions`
+- `RefreshToken`
+- `RevokeRefreshToken`
+- `GetRefreshTokenTTL`
+- `IntrospectToken`
 - `LoginByToken`
 - `Logout`
 - `LogoutByDeviceAndDeviceId`

@@ -56,6 +56,8 @@ const (
 	TokenKeyPrefix = "token:"
 	// DefaultTimeout stores default timeout DefaultTimeout 存储默认 Token 超时时间
 	DefaultTimeout = 2592000
+	// DefaultRefreshTokenTimeout stores default refresh token timeout DefaultRefreshTokenTimeout 存储默认刷新令牌超时时间
+	DefaultRefreshTokenTimeout = 2592000
 	// DefaultJWTSecretKey stores default jwt secret key DefaultJWTSecretKey 存储默认 JWT 密钥
 	DefaultJWTSecretKey = "dtoken-go"
 	// DefaultMaxLoginCount stores default max login count DefaultMaxLoginCount 存储默认最大并发登录数

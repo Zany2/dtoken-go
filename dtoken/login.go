@@ -28,6 +28,52 @@ func LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration
 	return mgr.LoginWithTimeout(ctx, loginID, timeout, device, deviceId)
 }
 
+// LoginWithRefreshToken logs in and returns access and refresh tokens. LoginWithRefreshToken 登录并返回访问令牌和刷新令牌。
+func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*manager.RefreshTokenPair, error) {
+	device, deviceId, authType := parseDeviceAndAuthType(params...)
+	mgr, err := GetManager(authType)
+	if err != nil {
+		return nil, err
+	}
+	return mgr.LoginWithRefreshToken(ctx, loginID, device, deviceId)
+}
+
+// RefreshToken rotates a refresh token and returns a new token pair. RefreshToken 轮换刷新令牌并返回新的令牌对。
+func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*manager.RefreshTokenPair, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return nil, err
+	}
+	return mgr.RefreshToken(ctx, refreshToken)
+}
+
+// RevokeRefreshToken revokes a refresh token and its related access token. RevokeRefreshToken 撤销刷新令牌及其关联访问令牌。
+func RevokeRefreshToken(ctx context.Context, refreshToken string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.RevokeRefreshToken(ctx, refreshToken)
+}
+
+// GetRefreshTokenTTL returns refresh token remaining lifetime seconds. GetRefreshTokenTTL 返回刷新令牌剩余有效秒数。
+func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...string) (int64, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return 0, err
+	}
+	return mgr.GetRefreshTokenTTL(ctx, refreshToken)
+}
+
+// IntrospectToken inspects token validity without renewal side effects. IntrospectToken 无续期副作用地检查令牌状态。
+func IntrospectToken(ctx context.Context, tokenValue string, authType ...string) (*manager.TokenIntrospection, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return nil, err
+	}
+	return mgr.IntrospectToken(ctx, tokenValue)
+}
+
 // LoginByToken renews login state from an existing token. LoginByToken 基于已有 token 续期登录态。
 func LoginByToken(ctx context.Context, tokenValue string, authType ...string) error {
 	mgr, err := GetManager(authType...)

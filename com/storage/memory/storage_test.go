@@ -56,7 +56,7 @@ func TestStorageKeysAndPatterns(t *testing.T) {
 		t.Fatalf("Keys() error = %v", err)
 	}
 	sort.Strings(keys)
-	if !reflect.DeepEqual(keys, []string{"user:1", "user:2"}) {
+	if !reflect.DeepEqual(keys, []string{"user:*", "user:1", "user:2"}) {
 		t.Fatalf("Keys(user:?) = %v", keys)
 	}
 

@@ -11,10 +11,15 @@ github.com/KyleBanks/depth v1.2.1/go.mod h1:jzSb9d0L43HxTQfT+oSA1EEp2q+ne2uh6Xge
 github.com/PuerkitoBio/purell v1.1.1/go.mod h1:c11w/QuzBsJSee3cPx9rAFu61PvFxuPbtSwDGJws/X0=
 github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578/go.mod h1:uGdkoq3SwY9Y+13GIhn11/XLaGBb4BfwItxLd5jeuXE=
 github.com/Zany2/dtoken-go/com/codec/base64 v0.0.1/go.mod h1:h4LfQ+Dlc8Q+FFpxfz4qqNLLKrbwFnKZ3RXuheRgYwo=
+github.com/Zany2/dtoken-go/com/codec/base64 v0.0.2/go.mod h1:v4U5DwLyfDXw+JpCF+zxF/wdaoI2HduZ4fdNo0duz9A=
 github.com/Zany2/dtoken-go/com/codec/msgpack v0.0.1/go.mod h1:+yWvGLrs1/Fvgpq4LjMzGhnA39xR35MKp09EEt3b7xM=
+github.com/Zany2/dtoken-go/com/codec/msgpack v0.0.2/go.mod h1:P3dLyYAEEno4Lx0lZvuFkkLWCnj8TNNFPdYM01VEtNE=
 github.com/Zany2/dtoken-go/com/log/gf v0.0.1/go.mod h1:nEZfiP2zBMzyea2g95Thx+RrBoaQJi8muzLLDIBJX88=
+github.com/Zany2/dtoken-go/com/log/gf v0.0.2/go.mod h1:Gn1V6jOuG72mbqIODsAdK1+LTOnhbkF+4mzmdBbbtlo=
 github.com/Zany2/dtoken-go/com/log/nop v0.0.1/go.mod h1:dodgEmA8WQaetC4HTSqx5Nc5d4F/piVo2nrjLAql810=
+github.com/Zany2/dtoken-go/com/log/nop v0.0.2/go.mod h1:AHCLbYcRSVeGYHOChSLmQ1GAN0UqLmBz8Ox6+Ow84Os=
 github.com/Zany2/dtoken-go/integrations/authcheck v0.0.1/go.mod h1:cxLE9E+elS/wpU0gFnRfbW8h7ELv496xVQXb7hvwINY=
+github.com/Zany2/dtoken-go/integrations/authcheck v0.0.2/go.mod h1:TNoTBiwOFP1V/vbRXPuH9mR3BmHRhE+67YIAjFm8MA4=
 github.com/andybalholm/brotli v1.0.5/go.mod h1:fO7iG3H7G2nSZ7m0zPUDn85XEX2GTukHGRSepvi9Eig=
 github.com/bsm/ginkgo/v2 v2.12.0/go.mod h1:SwYbGRRDovPVboqFv0tPTcG1sN61LM1Z4ARdbAV9g4c=
 github.com/bsm/gomega v1.27.10/go.mod h1:JyEr/xRbxbtgWNi8tIEVPUYZ5Dzef52k01W3YH0H+O0=

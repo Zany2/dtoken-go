@@ -16,6 +16,8 @@ mgr, err := defaults.NewBuilder().
     TokenName("Authorization").
     // Timeout is the absolute Token lifetime in seconds.
     Timeout(7200).
+    // RefreshTokenTimeout is the absolute Refresh Token lifetime in seconds.
+    RefreshTokenTimeout(30 * 24 * 60 * 60).
     // AutoRenew allows login checks to extend Token lifetime.
     AutoRenew(true).
     // RenewMaxRefresh triggers renewal when remaining TTL is below this value.
@@ -47,6 +49,7 @@ mgr, err := defaults.NewBuilder().
 | `KeyPrefix` | `dtoken:` | Storage key prefix, usually separated by project or environment |
 | `TokenName` | `dtoken` | Header, cookie, or body field name used to read Tokens |
 | `Timeout` | `2592000` | Absolute Token expiration time in seconds |
+| `RefreshTokenTimeout` | `2592000` | Absolute Refresh Token expiration time in seconds |
 | `AutoRenew` | `true` | Whether login checks can automatically renew Tokens |
 | `RenewMaxRefresh` | `Timeout / 2` | Auto-renew trigger threshold |
 | `RenewInterval` | `-1` | Minimum renewal interval for one Token; `-1` means unlimited |
@@ -105,6 +108,7 @@ Time options use seconds and support `-1` as unlimited:
 | Option | Allowed values |
 | --- | --- |
 | `Timeout` | `-1` or `> 0` |
+| `RefreshTokenTimeout` | `-1` or `> 0` |
 | `RenewMaxRefresh` | `-1` or `> 0` |
 | `RenewInterval` | `-1` or `> 0` |
 | `ActiveTimeout` | `-1` or `> 0` |
@@ -116,6 +120,13 @@ Auto-renew has additional rules:
 - `RenewMaxRefresh` cannot be greater than `Timeout`.
 - `RenewInterval` must be less than `Timeout`.
 - If `ActiveTimeout` is enabled, `RenewInterval` must also be less than `ActiveTimeout`.
+
+Refresh-token timeout can also be configured with `time.Duration`:
+
+```go
+defaults.NewBuilder().
+    RefreshTokenTimeoutDuration(30 * 24 * time.Hour)
+```
 
 ## Token Sources
 

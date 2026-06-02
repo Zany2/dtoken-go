@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"github.com/Zany2/dtoken-go/core/derror"
+	"github.com/Zany2/dtoken-go/core/manager"
 )
 
 // Default returns the default auth instance. Default 返回默认鉴权实例。
@@ -32,6 +33,15 @@ func LoginWithOptions(ctx context.Context, opts LoginOptions, authType ...string
 		return "", err
 	}
 	return New(mgr).Login(ctx, opts)
+}
+
+// LoginWithRefreshTokenOptions performs refresh-token login with typed options. LoginWithRefreshTokenOptions 使用类型化选项执行刷新令牌登录。
+func LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions, authType ...string) (*manager.RefreshTokenPair, error) {
+	mgr, err := GetManager(resolveAuthType(opts.AuthType, authType...))
+	if err != nil {
+		return nil, err
+	}
+	return New(mgr).LoginWithRefreshTokenOptions(ctx, opts)
 }
 
 // LogoutWithOptions logs out by typed terminal options. LogoutWithOptions 根据类型化终端选项登出。

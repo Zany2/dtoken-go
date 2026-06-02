@@ -9,6 +9,7 @@ type Auth = dtoken.Auth
 // Typed option aliases keep framework imports self-contained.
 type (
 	LoginOptions          = dtoken.LoginOptions
+	RefreshTokenOptions   = dtoken.RefreshTokenOptions
 	LogoutOptions         = dtoken.LogoutOptions
 	DisableOptions        = dtoken.DisableOptions
 	ServiceDisableOptions = dtoken.ServiceDisableOptions
@@ -24,6 +25,7 @@ var (
 	MustDefault                    = dtoken.MustDefault
 	NewByAuthType                  = dtoken.NewByAuthType
 	LoginWithOptions               = dtoken.LoginWithOptions
+	LoginWithRefreshTokenOptions   = dtoken.LoginWithRefreshTokenOptions
 	LogoutWithOptions              = dtoken.LogoutWithOptions
 	KickoutWithOptions             = dtoken.KickoutWithOptions
 	ReplaceWithOptions             = dtoken.ReplaceWithOptions

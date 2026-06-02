@@ -16,6 +16,8 @@ mgr, err := defaults.NewBuilder().
     TokenName("Authorization").
     // Timeout 是 Token 绝对有效期，单位是秒。
     Timeout(7200).
+    // RefreshTokenTimeout 是 Refresh Token 绝对有效期，单位是秒。
+    RefreshTokenTimeout(30 * 24 * 60 * 60).
     // AutoRenew 开启后，校验登录态时可自动延长 Token 有效期。
     AutoRenew(true).
     // RenewMaxRefresh 表示剩余 TTL 小于等于该值时才触发续期。
@@ -47,6 +49,7 @@ mgr, err := defaults.NewBuilder().
 | `KeyPrefix` | `dtoken:` | 存储 key 前缀，建议按项目或环境区分 |
 | `TokenName` | `dtoken` | 读取 Token 时使用的 Header、Cookie 或 Body 字段名 |
 | `Timeout` | `2592000` | Token 绝对过期时间，单位秒 |
+| `RefreshTokenTimeout` | `2592000` | Refresh Token 绝对过期时间，单位秒 |
 | `AutoRenew` | `true` | 是否在登录态校验时自动续期 |
 | `RenewMaxRefresh` | `Timeout / 2` | 自动续期触发阈值 |
 | `RenewInterval` | `-1` | 同一 Token 最小续期间隔，`-1` 表示不限制 |
@@ -105,6 +108,7 @@ dtoken:admin:session:10001
 | 配置 | 允许值 |
 | --- | --- |
 | `Timeout` | `-1` 或 `> 0` |
+| `RefreshTokenTimeout` | `-1` 或 `> 0` |
 | `RenewMaxRefresh` | `-1` 或 `> 0` |
 | `RenewInterval` | `-1` 或 `> 0` |
 | `ActiveTimeout` | `-1` 或 `> 0` |
@@ -116,6 +120,13 @@ dtoken:admin:session:10001
 - `RenewMaxRefresh` 不能大于 `Timeout`。
 - `RenewInterval` 必须小于 `Timeout`。
 - 如果启用了 `ActiveTimeout`，`RenewInterval` 也必须小于 `ActiveTimeout`。
+
+Refresh Token 有效期也可以使用 `time.Duration` 配置：
+
+```go
+defaults.NewBuilder().
+    RefreshTokenTimeoutDuration(30 * 24 * time.Hour)
+```
 
 ## Token 读取来源
 

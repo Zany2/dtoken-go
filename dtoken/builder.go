@@ -96,10 +96,24 @@ func (b *Builder) Timeout(seconds int64) *Builder {
 	return b
 }
 
+// RefreshTokenTimeout sets refresh token timeout seconds RefreshTokenTimeout 设置刷新令牌超时时间秒数
+func (b *Builder) RefreshTokenTimeout(seconds int64) *Builder {
+	b.ensureBuilder()
+	b.inner.RefreshTokenTimeout(seconds)
+	return b
+}
+
 // TimeoutDuration sets token timeout by duration TimeoutDuration 使用时长设置 Token 超时时间
 func (b *Builder) TimeoutDuration(d time.Duration) *Builder {
 	b.ensureBuilder()
 	b.inner.TimeoutDuration(d)
+	return b
+}
+
+// RefreshTokenTimeoutDuration sets refresh token timeout by duration RefreshTokenTimeoutDuration 使用时长设置刷新令牌超时时间
+func (b *Builder) RefreshTokenTimeoutDuration(d time.Duration) *Builder {
+	b.ensureBuilder()
+	b.inner.RefreshTokenTimeoutDuration(d)
 	return b
 }
 

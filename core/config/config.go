@@ -23,6 +23,9 @@ type Config struct {
 	// Timeout stores token timeout seconds Timeout 存储 Token 超时时间秒数
 	Timeout int64
 
+	// RefreshTokenTimeout stores refresh token timeout seconds RefreshTokenTimeout 存储刷新令牌超时时间秒数
+	RefreshTokenTimeout int64
+
 	// AutoRenew controls auto renew AutoRenew 控制是否在校验时自动续期
 	AutoRenew bool
 
@@ -109,6 +112,7 @@ func DefaultConfig() *Config {
 		KeyPrefix:             DefaultKeyPrefix,
 		TokenName:             DefaultTokenName,
 		Timeout:               DefaultTimeout,
+		RefreshTokenTimeout:   DefaultRefreshTokenTimeout,
 		AutoRenew:             true,
 		RenewMaxRefresh:       DefaultTimeout / 2,
 		RenewInterval:         NoLimit,
@@ -331,6 +335,12 @@ func (c *Config) SetTimeout(timeout int64) *Config {
 	return c
 }
 
+// SetRefreshTokenTimeout sets refresh token timeout SetRefreshTokenTimeout 设置刷新令牌超时时间
+func (c *Config) SetRefreshTokenTimeout(timeout int64) *Config {
+	c.RefreshTokenTimeout = timeout
+	return c
+}
+
 // SetRenewMaxRefresh sets renew threshold SetRenewMaxRefresh 设置自动续期触发阈值
 func (c *Config) SetRenewMaxRefresh(refresh int64) *Config {
 	c.RenewMaxRefresh = refresh
@@ -442,11 +452,12 @@ func (c *Config) SetCookieConfig(cookieConfig *CookieConfig) *Config {
 // checkNoLimits validates no limit fields checkNoLimits 验证无限制数值字段
 func (c *Config) checkNoLimits() error {
 	fields := map[string]int64{
-		"Timeout":         c.Timeout,
-		"RenewMaxRefresh": c.RenewMaxRefresh,
-		"RenewInterval":   c.RenewInterval,
-		"ActiveTimeout":   c.ActiveTimeout,
-		"MaxLoginCount":   c.MaxLoginCount,
+		"Timeout":             c.Timeout,
+		"RefreshTokenTimeout": c.RefreshTokenTimeout,
+		"RenewMaxRefresh":     c.RenewMaxRefresh,
+		"RenewInterval":       c.RenewInterval,
+		"ActiveTimeout":       c.ActiveTimeout,
+		"MaxLoginCount":       c.MaxLoginCount,
 	}
 
 	for name, value := range fields {

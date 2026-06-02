@@ -4,7 +4,7 @@
 
 ## 概述
 
-`dtoken` 是 DToken-Go 的全局工具入口，封装了登录认证、权限、角色、封禁、Session、Nonce、OAuth2 等常用能力。
+`dtoken` 是 DToken-Go 的全局工具入口，封装了登录认证、权限、角色、封禁、Session、Nonce、OAuth2、Token Introspection 和 Refresh Token 等常用能力。
 
 当前版本的 `dtoken` 以 `context.Context` 为统一入口，认证体系可通过可选 `authType` 参数区分。
 
@@ -55,6 +55,65 @@ func Login(ctx context.Context, loginID string, params ...string) (string, error
 token, _ := dtoken.Login(ctx, "1000")
 token, _ := dtoken.Login(ctx, "1000", "mobile")
 token, _ := dtoken.Login(ctx, "1000", "mobile", "device-001", "user")
+```
+
+### LoginWithRefreshToken
+
+登录并返回 access token 与 refresh token。
+
+**签名**：
+```go
+func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*manager.RefreshTokenPair, error)
+func LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions, authType ...string) (*manager.RefreshTokenPair, error)
+```
+
+**示例**：
+```go
+pair, err := dtoken.LoginWithRefreshToken(ctx, "1000", "web", "browser-001")
+if err != nil {
+    return err
+}
+
+fmt.Println(pair.AccessToken)
+fmt.Println(pair.RefreshToken)
+```
+
+### RefreshToken
+
+轮换 refresh token，并返回新的令牌对。
+
+**签名**：
+```go
+func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*manager.RefreshTokenPair, error)
+func RevokeRefreshToken(ctx context.Context, refreshToken string, authType ...string) error
+func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...string) (int64, error)
+```
+
+**示例**：
+```go
+nextPair, err := dtoken.RefreshToken(ctx, pair.RefreshToken)
+ttl, err := dtoken.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
+_ = dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
+```
+
+### IntrospectToken
+
+无续期副作用地检查 token 是否有效，并返回归属信息。
+
+**签名**：
+```go
+func IntrospectToken(ctx context.Context, tokenValue string, authType ...string) (*manager.TokenIntrospection, error)
+```
+
+**示例**：
+```go
+info, err := dtoken.IntrospectToken(ctx, token)
+if err != nil {
+    return err
+}
+if !info.Active {
+    // token 已失效
+}
 ```
 
 ### IsLogin
@@ -119,6 +178,12 @@ _ = dtoken.Kickout(ctx, token)
 
 ```go
 func LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, params ...string) (string, error)
+func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*manager.RefreshTokenPair, error)
+func LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions, authType ...string) (*manager.RefreshTokenPair, error)
+func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*manager.RefreshTokenPair, error)
+func RevokeRefreshToken(ctx context.Context, refreshToken string, authType ...string) error
+func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...string) (int64, error)
+func IntrospectToken(ctx context.Context, tokenValue string, authType ...string) (*manager.TokenIntrospection, error)
 func LoginByToken(ctx context.Context, tokenValue string, authType ...string) error
 func CheckLogin(ctx context.Context, tokenValue string, authType ...string) error
 func LogoutByDevice(ctx context.Context, loginID string, device string, authType ...string) error
@@ -455,6 +520,12 @@ func DeleteAllManager()
 ### 登录认证
 - `Login`
 - `LoginWithTimeout`
+- `LoginWithRefreshToken`
+- `LoginWithRefreshTokenOptions`
+- `RefreshToken`
+- `RevokeRefreshToken`
+- `GetRefreshTokenTTL`
+- `IntrospectToken`
 - `LoginByToken`
 - `Logout`
 - `LogoutByDeviceAndDeviceId`

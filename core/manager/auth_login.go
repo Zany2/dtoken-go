@@ -394,13 +394,27 @@ func (m *Manager) GetTokenTTL(ctx context.Context, tokenValue string) (int64, er
 	// Normalize TTL sentinel values 统一 TTL 哨兵值语义
 	switch {
 	case ttl == adapter.TTLNotFound:
-		return -2, nil
+		return normalizeTTLSeconds(ttl), nil
 	case ttl == adapter.TTLNoExpire:
-		return -1, nil
+		return normalizeTTLSeconds(ttl), nil
 	case ttl > 0:
-		return int64(ttl.Seconds()), nil
+		return normalizeTTLSeconds(ttl), nil
 	default:
 		return 0, nil
+	}
+}
+
+// normalizeTTLSeconds normalizes storage ttl sentinels to seconds. normalizeTTLSeconds 将存储 TTL 哨兵值归一化为秒数。
+func normalizeTTLSeconds(ttl time.Duration) int64 {
+	switch {
+	case ttl == adapter.TTLNotFound:
+		return -2
+	case ttl == adapter.TTLNoExpire:
+		return -1
+	case ttl > 0:
+		return int64(ttl.Seconds())
+	default:
+		return 0
 	}
 }
 

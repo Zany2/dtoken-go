@@ -387,6 +387,12 @@ func (m *Manager) cleanTokenMetadata(ctx context.Context, tokens []string) error
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
+	for _, token := range tokens {
+		if err := m.cleanRefreshTokenByAccessToken(ctx, token); err != nil {
+			return err
+		}
+	}
+
 	// Return cleanup success 返回清理成功。
 	return nil
 }

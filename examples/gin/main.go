@@ -23,6 +23,11 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
+// RefreshRequest defines the refresh-token payload RefreshRequest 定义刷新令牌请求参数
+type RefreshRequest struct {
+	RefreshToken string `json:"refreshToken" binding:"required"`
+}
+
 func main() {
 	ctx := context.Background()
 	initDToken()
@@ -30,10 +35,12 @@ func main() {
 	r := gin.Default()
 	r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
 	r.POST("/login", handleLogin)
+	r.POST("/refresh", handleRefresh)
 
 	auth := r.Group("/")
 	auth.Use(gindt.AuthMiddleware(ctx))
 	auth.GET("/me", handleMe)
+	auth.GET("/introspect", handleIntrospect)
 	auth.GET("/admin", gindt.RoleMiddleware(ctx, []string{"admin"}), handleAdmin)
 	auth.GET("/articles", gindt.PermissionMiddleware(ctx, []string{"article:read"}), handleArticles)
 	auth.POST("/logout", handleLogout)
@@ -45,6 +52,7 @@ func main() {
 func initDToken() {
 	mgr, err := gindt.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
+		RefreshTokenTimeout(int64((30 * 24 * time.Hour).Seconds())).
 		IsPrintBanner(false).
 		Build()
 	if err != nil {
@@ -67,7 +75,7 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	token, err := gindt.Login(c.Request.Context(), req.Username)
+	pair, err := gindt.LoginWithRefreshToken(c.Request.Context(), req.Username, "web", "gin-example")
 	if err != nil {
 		writeJSON(c, http.StatusInternalServerError, gindt.CodeServerError, err.Error(), nil)
 		return
@@ -77,7 +85,24 @@ func handleLogin(c *gin.Context) {
 	_ = gindt.AddRoles(c.Request.Context(), req.Username, []string{"admin"})
 	_ = gindt.AddPermissions(c.Request.Context(), req.Username, []string{"article:read"})
 
-	writeJSON(c, http.StatusOK, gindt.CodeSuccess, "ok", gin.H{"token": token})
+	writeJSON(c, http.StatusOK, gindt.CodeSuccess, "ok", pair)
+}
+
+// handleRefresh rotates refresh token handleRefresh 轮换刷新令牌
+func handleRefresh(c *gin.Context) {
+	var req RefreshRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeJSON(c, http.StatusBadRequest, gindt.CodeBadRequest, "refreshToken is required", nil)
+		return
+	}
+
+	pair, err := gindt.RefreshToken(c.Request.Context(), req.RefreshToken)
+	if err != nil {
+		writeJSON(c, http.StatusUnauthorized, gindt.CodeNotLogin, err.Error(), nil)
+		return
+	}
+
+	writeJSON(c, http.StatusOK, gindt.CodeSuccess, "ok", pair)
 }
 
 // handleMe returns current login information handleMe 返回当前登录信息
@@ -102,6 +127,17 @@ func handleMe(c *gin.Context) {
 		"roles":       roles,
 		"permissions": permissions,
 	})
+}
+
+// handleIntrospect returns current token introspection handleIntrospect 返回当前 token 自省结果
+func handleIntrospect(c *gin.Context) {
+	info, err := gindt.IntrospectTokenByContext(c)
+	if err != nil {
+		writeJSON(c, http.StatusUnauthorized, gindt.CodeNotLogin, err.Error(), nil)
+		return
+	}
+
+	writeJSON(c, http.StatusOK, gindt.CodeSuccess, "ok", info)
 }
 
 // handleAdmin returns admin data handleAdmin 返回管理员数据

@@ -35,6 +35,16 @@ func (m *Manager) getActiveKey(tokenValue string) string {
 	return m.config.KeyPrefix + m.config.AuthType + ActivePrefix + tokenValue
 }
 
+// getRefreshTokenKey generates the storage key for a refresh token. getRefreshTokenKey 获取刷新令牌存储键。
+func (m *Manager) getRefreshTokenKey(refreshToken string) string {
+	return m.config.KeyPrefix + m.config.AuthType + RefreshTokenKeyPrefix + refreshToken
+}
+
+// getTokenRefreshKey generates the storage key for token refresh mapping. getTokenRefreshKey 获取访问令牌刷新映射键。
+func (m *Manager) getTokenRefreshKey(tokenValue string) string {
+	return m.config.KeyPrefix + m.config.AuthType + TokenRefreshKeyPrefix + tokenValue
+}
+
 // getDisableKey generates the storage key for account disable status. getDisableKey 获取账号禁用状态存储键。
 func (m *Manager) getDisableKey(loginID string) string {
 	return m.config.KeyPrefix + m.config.AuthType + DisableKeyPrefix + loginID

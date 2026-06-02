@@ -1,10 +1,10 @@
 # Advanced Features
 
-This page lists advanced DToken-Go capabilities. Some features are still under development and are marked with `🚧` in the README feature table.
+This page lists advanced DToken-Go capabilities that can be used on top of the normal login, logout, permission, and role APIs.
 
-## Token Introspection 🚧
+## Token Introspection
 
-Standardized query for Token validity, ownership information, TTL, and invalid reason.
+Token introspection checks whether a token is currently active without renewing it. It returns ownership information, TTL, permissions, roles, token extra data, and an inactive reason.
 
 ```go
 info, err := dtoken.IntrospectToken(ctx, token)
@@ -12,13 +12,17 @@ if err != nil {
 	return err
 }
 if !info.Active {
-	fmt.Println("invalid reason:", info.Reason)
+	fmt.Println("invalid reason:", info.Error)
+	return nil
 }
+fmt.Println(info.LoginID, info.ExpiresIn, info.Permissions, info.Roles)
 ```
 
-## Refresh Token 🚧
+Framework packages re-export the same API, so a GoFrame project can call `gfdt.IntrospectToken(...)` after importing `github.com/Zany2/dtoken-go/integrations/gf`.
 
-Independent refresh token issuing, refreshing, revocation, expiration, and rotation.
+## Refresh Token
+
+The normal login flow supports an access-token + refresh-token pair. Refreshing rotates the refresh token: the old access token and old refresh token are revoked, then a fresh pair is issued.
 
 ```go
 pair, err := dtoken.LoginWithRefreshToken(ctx, "user-1001")
@@ -30,10 +34,19 @@ nextPair, err := dtoken.RefreshToken(ctx, pair.RefreshToken)
 if err != nil {
 	return err
 }
+
+ttl, err := dtoken.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
+if err != nil {
+	return err
+}
+fmt.Println(ttl)
+
 _ = dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
 ```
 
-## Temporary Ticket 🚧
+The default refresh-token TTL is `30` days. You can override it globally with `RefreshTokenTimeout(...)` or per login with `LoginWithRefreshTokenOptions(...)`.
+
+## Temporary Ticket
 
 For one-time tickets, temporary authorization, and system-to-system ticket exchange.
 
@@ -50,7 +63,7 @@ if err != nil {
 fmt.Println(token)
 ```
 
-## Short-Key Access Credential 🚧
+## Short-Key Access Credential
 
 For short-link access, QR confirmation, temporary authorization, and system-to-system ticket exchange.
 

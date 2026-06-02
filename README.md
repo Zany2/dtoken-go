@@ -23,7 +23,7 @@
 
 ## What Is DToken-Go
 
-DToken-Go is a modular and pluggable Go authentication and authorization framework. It already provides login authentication, Token management, Session management, terminal management, role and permission checks, account and device banning, Nonce anti-replay, OAuth2 server support, SSO, and event listeners. Short-key access credentials, Token Introspection, and standalone Refresh Token capabilities are under active development. The framework supports pluggable component replacement and custom extensions, and integrates with mainstream Go Web frameworks, so it can be used as an independent auth core or quickly embedded into existing business projects.
+DToken-Go is a modular and pluggable Go authentication and authorization framework. It already provides login authentication, Token management, Session management, terminal management, role and permission checks, account and device banning, Nonce anti-replay, OAuth2 server support, SSO, event listeners, temporary tickets, short-key access credentials, Token Introspection, and standalone Refresh Token capabilities. The framework supports pluggable component replacement and custom extensions, and integrates with mainstream Go Web frameworks, so it can be used as an independent auth core or quickly embedded into existing business projects.
 
 You can use it for:
 
@@ -50,12 +50,10 @@ You can use it for:
 | Pluggable components | Storage, codec, logger, Token generator, goroutine pool, and other components can be replaced |
 | Framework integration | Middleware, context adapters, and API exports for mainstream Go Web frameworks |
 | SSO | Unified login, ticket exchange, cross-system login-state sharing, unified logout, and application-level management |
-| Temporary Ticket 🚧 | Ticket creation, validation, one-time consumption, revocation, TTL query, and status identification |
-| Short-key access credential 🚧 | Generate random short keys for short-link access, QR confirmation, temporary authorization, and system-to-system ticket exchange |
-| Token Introspection 🚧 | Standardized query for Token validity, ownership information, TTL, and invalid reason |
-| Refresh Token 🚧 | Independent refresh token issuing, refreshing, revocation, expiration, rotation, and security checks |
-
-> 🚧 means the feature is under development.
+| Temporary Ticket | Ticket creation, validation, one-time consumption, revocation, TTL query, and status identification |
+| Short-key access credential | Generate random short keys for short-link access, QR confirmation, temporary authorization, and system-to-system ticket exchange |
+| Token Introspection | Standardized query for Token validity, ownership information, TTL, and invalid reason |
+| Refresh Token | Independent refresh token issuing, refreshing, revocation, expiration, rotation, and security checks |
 
 ## Installation
 

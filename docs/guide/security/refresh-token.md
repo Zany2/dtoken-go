@@ -2,97 +2,146 @@ English | [中文文档](../security/refresh-token_zh.md)
 
 # Refresh Token Guide
 
-## Current Status
+## Overview
 
-This topic needs a very explicit clarification in the current codebase:
+DToken-Go supports refresh tokens in two places:
 
-The project does **not** provide a standalone “business login refresh token module”, and it does not contain these old APIs:
+- normal business login through `LoginWithRefreshToken(...)`
+- OAuth2 token flow through `RefreshOAuth2AccessToken(...)`
 
-- `LoginWithRefreshToken(...)`
-- `RefreshAccessToken(...)`
-- `RevokeRefreshToken(...)`
+This guide focuses on the normal business login flow.
 
-Those APIs do not exist in the current version.
-
-## Where Refresh Token Exists Today
-
-Refresh token support currently exists only inside the **OAuth2** module.
-
-Relevant APIs:
-
-- `RefreshOAuth2AccessToken(...)`
-- `RevokeOAuth2Token(...)`
-
-So refresh tokens are currently part of the OAuth2 access-token system, not a separate extension of the normal `dtoken.Login(...)` login flow.
-
-## Refresh Token In OAuth2
-
-When you obtain an OAuth2 token through authorization code, password, or client credentials related flows, the returned `AccessToken` structure includes:
+## Login With Token Pair
 
 ```go
-type AccessToken struct {
-    Token        string
-    TokenType    string
-    ExpiresIn    int64
-    RefreshToken string
-    Scopes       []string
-    UserID       string
-    ClientID     string
+pair, err := dtoken.LoginWithRefreshToken(ctx, "user-1001", "web", "browser-1")
+if err != nil {
+	return err
 }
+
+fmt.Println(pair.AccessToken)
+fmt.Println(pair.RefreshToken)
+fmt.Println(pair.ExpiresIn)
+fmt.Println(pair.RefreshExpiresIn)
+```
+
+`AccessToken` is used to access protected APIs. `RefreshToken` is stored by the client and used only to request a fresh token pair.
+
+## Login With Options
+
+Use `LoginWithRefreshTokenOptions(...)` when a single login needs custom timeout, device, extra data, or concurrency behavior.
+
+```go
+pair, err := dtoken.LoginWithRefreshTokenOptions(ctx, dtoken.RefreshTokenOptions{
+	LoginOptions: dtoken.LoginOptions{
+		LoginID: "user-1001",
+		Device:  "app",
+		Extra: map[string]any{
+			"tenant": "main",
+		},
+	},
+	RefreshTimeout: 30 * 24 * time.Hour,
+})
 ```
 
 ## Refresh Flow
 
 ```go
-newToken, err := dtoken.RefreshOAuth2AccessToken(
-    ctx,
-    "web-app",
-    oldToken.RefreshToken,
-    "secret",
-)
+nextPair, err := dtoken.RefreshToken(ctx, pair.RefreshToken)
+if err != nil {
+	return err
+}
 ```
 
-The current implementation:
+Refresh is a rotation operation:
 
 1. validates the refresh token
-2. validates the client identity
-3. deletes the old access token
-4. deletes the old refresh token
-5. issues a fresh token pair
+2. rejects disabled accounts or disabled devices
+3. revokes the old access token and old refresh token
+4. issues a fresh access token and refresh token
+
+The refresh token is independent from the old access token TTL. If the access token has expired but the refresh token is still valid, refresh can still succeed.
 
 ## Revoke Flow
 
 ```go
-err := dtoken.RevokeOAuth2Token(ctx, accessToken)
+err := dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
 ```
 
-Revoking an access token also clears its related refresh token.
+Revoking a refresh token also logs out the related access token.
 
-## Default TTL
+## TTL
 
-According to the current OAuth2 constants:
+```go
+ttl, err := dtoken.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
+```
 
-- access token: `2` hours
-- refresh token: `30` days
+The default refresh-token TTL is `30` days. Configure it globally:
 
-## If You Need Dual-Token Login Outside OAuth2
+```go
+mgr, err := dtoken.NewBuilder().
+	RefreshTokenTimeout(30 * 24 * 60 * 60).
+	Build()
+```
 
-The project does not currently ship a built-in “normal login dual-token” mechanism.  
-If you want an app/web access-token + refresh-token login model, you generally have two choices:
+Or use duration:
 
-1. use the existing OAuth2 capabilities directly
-2. build your own refresh-token storage and rotation logic on top of `dtoken.Login(...)`
+```go
+mgr, err := dtoken.NewBuilder().
+	RefreshTokenTimeoutDuration(30 * 24 * time.Hour).
+	Build()
+```
 
-## Practical Conclusion
+## Framework Facade Example
 
-The correct interpretation of this guide in the current repository is:
+Framework packages re-export these APIs. For GoFrame:
 
-1. there is no standalone refresh-token module
-2. existing refresh-token support belongs only to OAuth2
-3. for implementation details and examples, the OAuth2 guide is the primary reference
+```go
+import gfdt "github.com/Zany2/dtoken-go/integrations/gf"
+
+pair, err := gfdt.LoginWithRefreshToken(ctx, "user-1001")
+nextPair, err := gfdt.RefreshToken(ctx, pair.RefreshToken)
+ttl, err := gfdt.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
+_ = gfdt.RevokeRefreshToken(ctx, nextPair.RefreshToken)
+```
+
+In a GoFrame controller, the login and refresh handlers can keep using the same framework package:
+
+```go
+func (c *AuthController) Login(r *ghttp.Request) {
+	pair, err := gfdt.LoginWithRefreshToken(r.Context(), "user-1001", "web", "browser-1")
+	if err != nil {
+		r.Response.WriteJsonExit(g.Map{"code": 401, "message": err.Error()})
+	}
+	r.Response.WriteJsonExit(pair)
+}
+
+func (c *AuthController) Refresh(r *ghttp.Request) {
+	pair, err := gfdt.RefreshToken(r.Context(), r.Get("refreshToken").String())
+	if err != nil {
+		r.Response.WriteJsonExit(g.Map{"code": 401, "message": err.Error()})
+	}
+	r.Response.WriteJsonExit(pair)
+}
+```
+
+## OAuth2 Refresh Token
+
+OAuth2 refresh token support remains available through the OAuth2 APIs:
+
+```go
+newToken, err := dtoken.RefreshOAuth2AccessToken(
+	ctx,
+	"web-app",
+	oldToken.RefreshToken,
+	"secret",
+)
+```
+
+See [OAuth2 Guide](../security/oauth2.md) for OAuth2-specific behavior.
 
 ## Related Documentation
 
 - [OAuth2 Guide](../security/oauth2.md)
 - [Authentication Guide](../core/authentication.md)
-- [Nonce Anti-Replay](../security/nonce.md)
+- [Advanced Features](../security/advanced-features.md)
