@@ -3,7 +3,7 @@ module github.com/Zany2/dtoken-go/tests/gin_core_app
 go 1.25.0
 
 require (
-	github.com/Zany2/dtoken-go/core v0.0.1
+	github.com/Zany2/dtoken-go/core v0.0.2
 	github.com/Zany2/dtoken-go/dtoken v0.0.0
 	github.com/gin-gonic/gin v1.10.0
 )
@@ -16,13 +16,13 @@ require (
 )
 
 require (
-	github.com/Zany2/dtoken-go/com/codec/json v0.0.1 // indirect
-	github.com/Zany2/dtoken-go/com/generator/dgenerator v0.0.1 // indirect
-	github.com/Zany2/dtoken-go/com/log/dlog v0.0.1 // indirect
-	github.com/Zany2/dtoken-go/com/pool/ants v0.0.1 // indirect
-	github.com/Zany2/dtoken-go/com/storage/memory v0.0.1
+	github.com/Zany2/dtoken-go/com/codec/json v0.0.2 // indirect
+	github.com/Zany2/dtoken-go/com/generator/dgenerator v0.0.2 // indirect
+	github.com/Zany2/dtoken-go/com/log/dlog v0.0.2 // indirect
+	github.com/Zany2/dtoken-go/com/pool/ants v0.0.2 // indirect
+	github.com/Zany2/dtoken-go/com/storage/memory v0.0.2
 	github.com/Zany2/dtoken-go/com/storage/redis v0.0.0
-	github.com/Zany2/dtoken-go/defaults v0.0.1 // indirect
+	github.com/Zany2/dtoken-go/defaults v0.0.2 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

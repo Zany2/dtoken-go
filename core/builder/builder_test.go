@@ -49,13 +49,13 @@ func TestBuildResolvesFactoryComponentsPerBuild(t *testing.T) {
 			return &testLogger{}, nil
 		})
 
-	first, err := b.Timeout(10).IsLog(false).Build()
+	first, err := b.Timeout(10).RenewMaxRefresh(10).IsLog(false).Build()
 	if err != nil {
 		t.Fatalf("first Build() error = %v", err)
 	}
 	first.CloseManager()
 
-	second, err := b.Timeout(20).IsLog(true).Build()
+	second, err := b.Timeout(20).RenewMaxRefresh(20).IsLog(true).Build()
 	if err != nil {
 		t.Fatalf("second Build() error = %v", err)
 	}
