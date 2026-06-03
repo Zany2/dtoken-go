@@ -188,6 +188,8 @@ var (
 	ErrUserIDEmpty = errors.New("user ID cannot be empty")
 	// ErrInvalidAuthCode indicates invalid auth code ErrInvalidAuthCode 表示授权码无效
 	ErrInvalidAuthCode = errors.New("invalid authorization code")
+	// ErrInvalidCodeVerifier indicates invalid PKCE verifier. ErrInvalidCodeVerifier 表示 PKCE 校验码无效。
+	ErrInvalidCodeVerifier = errors.New("invalid code verifier")
 	// ErrAuthCodeUsed indicates used auth code ErrAuthCodeUsed 表示授权码已被使用
 	ErrAuthCodeUsed = errors.New("authorization code has been used")
 	// ErrAuthCodeExpired indicates expired auth code ErrAuthCodeExpired 表示授权码已过期

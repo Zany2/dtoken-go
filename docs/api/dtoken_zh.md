@@ -491,7 +491,9 @@ func UnregisterOAuth2Client(clientID string, authType ...string) error
 func GetOAuth2Client(clientID string, authType ...string) (*oauth2.Client, error)
 func OAuth2Token(ctx context.Context, req *oauth2.TokenRequest, validateUser oauth2.UserValidator, authType ...string) (*oauth2.AccessToken, error)
 func GenerateOAuth2AuthorizationCode(ctx context.Context, clientID, userID, redirectURI string, scopes []string, authType ...string) (*oauth2.AuthorizationCode, error)
+func GenerateOAuth2AuthorizationCodeWithPKCE(ctx context.Context, clientID, userID, redirectURI string, scopes []string, codeChallenge, codeChallengeMethod string, authType ...string) (*oauth2.AuthorizationCode, error)
 func ExchangeOAuth2CodeForToken(ctx context.Context, code, clientID, clientSecret, redirectURI string, authType ...string) (*oauth2.AccessToken, error)
+func ExchangeOAuth2CodeForTokenWithPKCE(ctx context.Context, code, clientID, clientSecret, redirectURI, codeVerifier string, authType ...string) (*oauth2.AccessToken, error)
 func OAuth2ClientCredentialsToken(ctx context.Context, clientID, clientSecret string, scopes []string, authType ...string) (*oauth2.AccessToken, error)
 func OAuth2PasswordGrantToken(ctx context.Context, clientID, clientSecret, username, password string, scopes []string, validateUser oauth2.UserValidator, authType ...string) (*oauth2.AccessToken, error)
 func RefreshOAuth2AccessToken(ctx context.Context, clientID, refreshToken, clientSecret string, authType ...string) (*oauth2.AccessToken, error)
@@ -635,7 +637,9 @@ func DeleteAllManager()
 - `GetOAuth2Client`
 - `OAuth2Token`
 - `GenerateOAuth2AuthorizationCode`
+- `GenerateOAuth2AuthorizationCodeWithPKCE`
 - `ExchangeOAuth2CodeForToken`
+- `ExchangeOAuth2CodeForTokenWithPKCE`
 - `OAuth2ClientCredentialsToken`
 - `OAuth2PasswordGrantToken`
 - `RefreshOAuth2AccessToken`

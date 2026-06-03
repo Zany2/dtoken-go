@@ -69,4 +69,5 @@ var (
 	ErrInvalidRefreshToken          = derror.ErrInvalidRefreshToken
 	ErrInvalidAccessToken           = derror.ErrInvalidAccessToken
 	ErrInvalidUserCredentials       = derror.ErrInvalidUserCredentials
+	ErrInvalidCodeVerifier          = derror.ErrInvalidCodeVerifier
 )

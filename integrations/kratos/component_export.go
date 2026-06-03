@@ -214,6 +214,8 @@ const (
 	GrantTypeRefreshToken          = oauth2.GrantTypeRefreshToken
 	GrantTypeClientCredentials     = oauth2.GrantTypeClientCredentials
 	GrantTypePassword              = oauth2.GrantTypePassword
+	CodeChallengeMethodPlain       = oauth2.CodeChallengeMethodPlain
+	CodeChallengeMethodS256        = oauth2.CodeChallengeMethodS256
 	TokenTypeBearer                = oauth2.TokenTypeBearer
 	TTLNoExpire                    = adapter.TTLNoExpire
 	TTLNotFound                    = adapter.TTLNotFound

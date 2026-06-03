@@ -82,7 +82,7 @@ fmt.Println(token)
 
 ## SSO 单点登录
 
-用于统一登录、票据交换、跨系统登录态共享和统一登出。SSO 位于独立模块 `github.com/Zany2/dtoken-go/sso`，不绑定基础认证鉴权架构，只依赖存储和编解码适配器；当前已提供 Ticket、共享 Token、远程会话和 OAuth2 授权码模式原语，完整 HTTP 化 SSO 服务仍在开发中。更多说明见 [SSO 单点登录](../../../sso/README_zh.md)。
+用于统一登录、票据交换、跨系统登录态共享和统一登出。SSO 位于独立模块 `github.com/Zany2/dtoken-go/sso`，不绑定基础认证鉴权架构，只依赖存储和编解码适配器；当前已提供 Ticket、共享 Token、远程会话和 OAuth2 授权码模式原语，也提供 redirect、token exchange、introspection、revoke、userinfo、logout 和 callback 处理等 HTTP 服务封装。更多说明见 [SSO 单点登录](../../../sso/README_zh.md)。
 
 ```go
 server := sso.NewServerWithConfig("sso:", "dtoken:", storage, codec, sso.DefaultConfig())

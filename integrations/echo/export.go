@@ -141,7 +141,9 @@ var (
 	GetOAuth2Client                           = dtoken.GetOAuth2Client
 	OAuth2Token                               = dtoken.OAuth2Token
 	GenerateOAuth2AuthorizationCode           = dtoken.GenerateOAuth2AuthorizationCode
+	GenerateOAuth2AuthorizationCodeWithPKCE   = dtoken.GenerateOAuth2AuthorizationCodeWithPKCE
 	ExchangeOAuth2CodeForToken                = dtoken.ExchangeOAuth2CodeForToken
+	ExchangeOAuth2CodeForTokenWithPKCE        = dtoken.ExchangeOAuth2CodeForTokenWithPKCE
 	OAuth2ClientCredentialsToken              = dtoken.OAuth2ClientCredentialsToken
 	OAuth2PasswordGrantToken                  = dtoken.OAuth2PasswordGrantToken
 	RefreshOAuth2AccessToken                  = dtoken.RefreshOAuth2AccessToken

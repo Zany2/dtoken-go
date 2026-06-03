@@ -308,7 +308,6 @@ dtoken-go/
 │   ├── api/                      # API 参考
 │   ├── design/                   # 架构与设计文档
 │   └── tutorial/                 # 快速开始教程
-├── FEATURE.md                    # 功能规划和待完善能力记录
 ├── LICENSE                       # Apache-2.0 开源协议
 ├── README_zh.md                  # 中文项目说明
 ├── README.md                     # 英文项目说明

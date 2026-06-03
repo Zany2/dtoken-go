@@ -160,16 +160,18 @@ var (
 
 // DToken OAuth2 operations DToken OAuth2 鎿嶄綔銆?
 var (
-	RegisterOAuth2Client                = dtoken.RegisterOAuth2Client
-	UnregisterOAuth2Client              = dtoken.UnregisterOAuth2Client
-	GetOAuth2Client                     = dtoken.GetOAuth2Client
-	OAuth2Token                         = dtoken.OAuth2Token
-	GenerateOAuth2AuthorizationCode     = dtoken.GenerateOAuth2AuthorizationCode
-	ExchangeOAuth2CodeForToken          = dtoken.ExchangeOAuth2CodeForToken
-	OAuth2ClientCredentialsToken        = dtoken.OAuth2ClientCredentialsToken
-	OAuth2PasswordGrantToken            = dtoken.OAuth2PasswordGrantToken
-	RefreshOAuth2AccessToken            = dtoken.RefreshOAuth2AccessToken
-	ValidateOAuth2AccessToken           = dtoken.ValidateOAuth2AccessToken
-	ValidateOAuth2AccessTokenAndGetInfo = dtoken.ValidateOAuth2AccessTokenAndGetInfo
-	RevokeOAuth2Token                   = dtoken.RevokeOAuth2Token
+	RegisterOAuth2Client                    = dtoken.RegisterOAuth2Client
+	UnregisterOAuth2Client                  = dtoken.UnregisterOAuth2Client
+	GetOAuth2Client                         = dtoken.GetOAuth2Client
+	OAuth2Token                             = dtoken.OAuth2Token
+	GenerateOAuth2AuthorizationCode         = dtoken.GenerateOAuth2AuthorizationCode
+	GenerateOAuth2AuthorizationCodeWithPKCE = dtoken.GenerateOAuth2AuthorizationCodeWithPKCE
+	ExchangeOAuth2CodeForToken              = dtoken.ExchangeOAuth2CodeForToken
+	ExchangeOAuth2CodeForTokenWithPKCE      = dtoken.ExchangeOAuth2CodeForTokenWithPKCE
+	OAuth2ClientCredentialsToken            = dtoken.OAuth2ClientCredentialsToken
+	OAuth2PasswordGrantToken                = dtoken.OAuth2PasswordGrantToken
+	RefreshOAuth2AccessToken                = dtoken.RefreshOAuth2AccessToken
+	ValidateOAuth2AccessToken               = dtoken.ValidateOAuth2AccessToken
+	ValidateOAuth2AccessTokenAndGetInfo     = dtoken.ValidateOAuth2AccessTokenAndGetInfo
+	RevokeOAuth2Token                       = dtoken.RevokeOAuth2Token
 )

@@ -112,6 +112,33 @@ token, err := dtoken.ExchangeOAuth2CodeForToken(
 )
 ```
 
+### PKCE
+
+Public clients can bind the authorization code to a proof key.
+
+```go
+authCode, err := dtoken.GenerateOAuth2AuthorizationCodeWithPKCE(
+    ctx,
+    "mobile-app",
+    "10001",
+    "myapp://oauth/callback",
+    []string{"read", "profile"},
+    codeChallenge,
+    oauth2.CodeChallengeMethodS256,
+)
+
+token, err := dtoken.ExchangeOAuth2CodeForTokenWithPKCE(
+    ctx,
+    authCode.Code,
+    "mobile-app",
+    "secret",
+    "myapp://oauth/callback",
+    codeVerifier,
+)
+```
+
+`codeChallengeMethod` supports `oauth2.CodeChallengeMethodPlain` and `oauth2.CodeChallengeMethodS256`. If a challenge is provided with an empty method, it defaults to `plain`. The unified token entry also accepts `TokenRequest.CodeVerifier` for `authorization_code` requests.
+
 Returned `AccessToken`:
 
 ```go
@@ -227,11 +254,11 @@ If the client `Scopes` field is empty, scope restriction is treated as open.
 
 ## Current Boundaries
 
-The OAuth2 implementation is already usable for common authorization flows, but there are a few important limits:
+The OAuth2 implementation is already usable for common authorization flows, with a few important boundaries:
 
 1. there is no `GetOAuth2Server()` public entry in the current API
-2. PKCE is not built in and should be implemented at the application layer
-3. no ready-made HTTP introspection endpoint is provided; you write the route yourself
+2. no ready-made HTTP introspection endpoint is provided; you write the route yourself
+3. PKCE is built into the authorization-code helpers and unified token entry, but you still generate and store the client-side verifier in your application
 
 ## Related Documentation
 

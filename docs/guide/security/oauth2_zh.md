@@ -112,6 +112,33 @@ token, err := dtoken.ExchangeOAuth2CodeForToken(
 )
 ```
 
+### PKCE
+
+公开客户端可以把授权码和 proof key 绑定起来。
+
+```go
+authCode, err := dtoken.GenerateOAuth2AuthorizationCodeWithPKCE(
+    ctx,
+    "mobile-app",
+    "10001",
+    "myapp://oauth/callback",
+    []string{"read", "profile"},
+    codeChallenge,
+    oauth2.CodeChallengeMethodS256,
+)
+
+token, err := dtoken.ExchangeOAuth2CodeForTokenWithPKCE(
+    ctx,
+    authCode.Code,
+    "mobile-app",
+    "secret",
+    "myapp://oauth/callback",
+    codeVerifier,
+)
+```
+
+`codeChallengeMethod` 支持 `oauth2.CodeChallengeMethodPlain` 和 `oauth2.CodeChallengeMethodS256`。如果传入了 challenge 但 method 为空，默认按 `plain` 处理。统一令牌入口 `OAuth2Token` 也可以通过 `TokenRequest.CodeVerifier` 处理 `authorization_code` 请求。
+
 返回的 `AccessToken` 结构包括：
 
 ```go

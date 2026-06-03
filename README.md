@@ -308,7 +308,6 @@ dtoken-go/
 │   ├── api/                      # API references
 │   ├── design/                   # Architecture and design docs
 │   └── tutorial/                 # Quick-start tutorials
-├── FEATURE.md                    # Feature roadmap and planned capability notes
 ├── LICENSE                       # Apache-2.0 license
 ├── README_zh.md                  # Chinese project README
 ├── README.md                     # English project README

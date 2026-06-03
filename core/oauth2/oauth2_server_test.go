@@ -2,6 +2,8 @@ package oauth2
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -100,6 +102,92 @@ func TestOAuth2TokenEndpointDispatch(t *testing.T) {
 	}
 }
 
+// TestOAuth2PKCES256Flow verifies S256 PKCE challenge verification. TestOAuth2PKCES256Flow verifies S256 PKCE challenge verification.
+func TestOAuth2PKCES256Flow(t *testing.T) {
+	ctx := context.Background()
+	server := newOAuth2TestServer()
+	client := oauth2TestClient()
+	if err := server.RegisterClient(client); err != nil {
+		t.Fatalf("RegisterClient() error = %v", err)
+	}
+
+	verifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	challenge := oauth2PKCEChallenge(verifier)
+	code, err := server.GenerateAuthorizationCodeWithPKCE(ctx, client.ClientID, "user-1", client.RedirectURIs[0], []string{"read"}, challenge, CodeChallengeMethodS256)
+	if err != nil {
+		t.Fatalf("GenerateAuthorizationCodeWithPKCE() error = %v", err)
+	}
+
+	if _, err = server.ExchangeCodeForTokenWithPKCE(ctx, code.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], "wrong-verifier"); !errors.Is(err, derror.ErrInvalidCodeVerifier) {
+		t.Fatalf("ExchangeCodeForTokenWithPKCE(wrong verifier) error = %v, want ErrInvalidCodeVerifier", err)
+	}
+
+	token, err := server.ExchangeCodeForTokenWithPKCE(ctx, code.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], verifier)
+	if err != nil {
+		t.Fatalf("ExchangeCodeForTokenWithPKCE() error = %v", err)
+	}
+	if token.Token == "" || token.UserID != "user-1" {
+		t.Fatalf("AccessToken = %+v, want populated token for user-1", token)
+	}
+}
+
+// TestOAuth2PKCEPlainDefault verifies empty method defaults to plain. TestOAuth2PKCEPlainDefault verifies empty method defaults to plain.
+func TestOAuth2PKCEPlainDefault(t *testing.T) {
+	ctx := context.Background()
+	server := newOAuth2TestServer()
+	client := oauth2TestClient()
+	if err := server.RegisterClient(client); err != nil {
+		t.Fatalf("RegisterClient() error = %v", err)
+	}
+
+	verifier := "plain-verifier"
+	code, err := server.GenerateAuthorizationCodeWithPKCE(ctx, client.ClientID, "user-1", client.RedirectURIs[0], []string{"read"}, verifier, "")
+	if err != nil {
+		t.Fatalf("GenerateAuthorizationCodeWithPKCE() error = %v", err)
+	}
+	if code.CodeChallengeMethod != CodeChallengeMethodPlain {
+		t.Fatalf("CodeChallengeMethod = %q, want plain", code.CodeChallengeMethod)
+	}
+
+	if _, err = server.ExchangeCodeForTokenWithPKCE(ctx, code.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], ""); !errors.Is(err, derror.ErrInvalidCodeVerifier) {
+		t.Fatalf("ExchangeCodeForTokenWithPKCE(empty verifier) error = %v, want ErrInvalidCodeVerifier", err)
+	}
+	if _, err = server.ExchangeCodeForTokenWithPKCE(ctx, code.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], verifier); err != nil {
+		t.Fatalf("ExchangeCodeForTokenWithPKCE() error = %v", err)
+	}
+}
+
+// TestOAuth2TokenEndpointPKCE verifies token endpoint passes code verifier. TestOAuth2TokenEndpointPKCE verifies token endpoint passes code verifier.
+func TestOAuth2TokenEndpointPKCE(t *testing.T) {
+	ctx := context.Background()
+	server := newOAuth2TestServer()
+	client := oauth2TestClient()
+	if err := server.RegisterClient(client); err != nil {
+		t.Fatalf("RegisterClient() error = %v", err)
+	}
+
+	verifier := "token-endpoint-verifier"
+	code, err := server.GenerateAuthorizationCodeWithPKCE(ctx, client.ClientID, "user-1", client.RedirectURIs[0], []string{"read"}, verifier, CodeChallengeMethodPlain)
+	if err != nil {
+		t.Fatalf("GenerateAuthorizationCodeWithPKCE() error = %v", err)
+	}
+
+	token, err := server.Token(ctx, &TokenRequest{
+		GrantType:    GrantTypeAuthorizationCode,
+		ClientID:     client.ClientID,
+		ClientSecret: client.ClientSecret,
+		RedirectURI:  client.RedirectURIs[0],
+		Code:         code.Code,
+		CodeVerifier: verifier,
+	}, nil)
+	if err != nil {
+		t.Fatalf("Token(authorization_code PKCE) error = %v", err)
+	}
+	if token.Token == "" || token.ClientID != client.ClientID {
+		t.Fatalf("AccessToken = %+v, want populated token for client", token)
+	}
+}
+
 // TestOAuth2RefreshAndRevoke verifies refresh rotation and revoke cleanup. TestOAuth2RefreshAndRevoke 验证刷新轮换和撤销清理。
 func TestOAuth2RefreshAndRevoke(t *testing.T) {
 	ctx := context.Background()
@@ -144,6 +232,11 @@ func newOAuth2TestServer() *OAuth2Server {
 		RefreshExpiration: time.Hour,
 	}
 	return NewOAuth2ServerWithConfig("auth:", "dtoken:", newOAuth2TestStorage(), oauth2TestCodec{}, cfg)
+}
+
+func oauth2PKCEChallenge(verifier string) string {
+	sum := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 func oauth2TestClient() *Client {

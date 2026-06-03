@@ -31,6 +31,11 @@ const (
 
 	// TokenTypeBearer stores bearer token type TokenTypeBearer 存储 Bearer 令牌类型
 	TokenTypeBearer = "Bearer"
+
+	// CodeChallengeMethodPlain stores plain PKCE method CodeChallengeMethodPlain 存储 plain PKCE 方法
+	CodeChallengeMethodPlain = "plain"
+	// CodeChallengeMethodS256 stores S256 PKCE method CodeChallengeMethodS256 存储 S256 PKCE 方法
+	CodeChallengeMethodS256 = "S256"
 )
 
 // GrantType defines oauth2 grant type GrantType 定义 OAuth2 授权类型

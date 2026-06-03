@@ -4,8 +4,11 @@ package oauth2
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
@@ -72,14 +75,16 @@ type Client struct {
 
 // AuthorizationCode authorization code information 授权码信息
 type AuthorizationCode struct {
-	Code        string   // Authorization code 授权码
-	ClientID    string   // Client ID 客户端ID
-	RedirectURI string   // Redirect URI 回调URI
-	UserID      string   // User ID 用户ID
-	Scopes      []string // Requested scopes 请求的权限范围
-	CreateTime  int64    // Creation time 创建时间
-	ExpiresIn   int64    // Expiration time in seconds 过期时间（秒）
-	Used        bool     // Whether used 是否已使用
+	Code                string   // Authorization code 授权码
+	ClientID            string   // Client ID 客户端ID
+	RedirectURI         string   // Redirect URI 回调URI
+	UserID              string   // User ID 用户ID
+	Scopes              []string // Requested scopes 请求的权限范围
+	CodeChallenge       string   // PKCE code challenge PKCE 授权码挑战值
+	CodeChallengeMethod string   // PKCE challenge method PKCE 授权码挑战方法
+	CreateTime          int64    // Creation time 创建时间
+	ExpiresIn           int64    // Expiration time in seconds 过期时间（秒）
+	Used                bool     // Whether used 是否已使用
 }
 
 // AccessToken access token information 访问令牌信息
@@ -100,6 +105,7 @@ type TokenRequest struct {
 	ClientSecret string    // Required: client secret 必需：客户端密钥
 	Code         string    // For authorization_code: authorization code 授权码模式：授权码
 	RedirectURI  string    // For authorization_code: redirect URI 授权码模式：回调URI
+	CodeVerifier string    // For authorization_code with PKCE: code verifier 授权码 PKCE 模式：校验码
 	RefreshToken string    // For refresh_token: refresh token 刷新令牌模式：刷新令牌
 	Username     string    // For password: username 密码模式：用户名
 	Password     string    // For password: password 密码模式：密码
@@ -186,7 +192,7 @@ func (s *OAuth2Server) Token(ctx context.Context, req *TokenRequest, validateUse
 
 	switch req.GrantType {
 	case GrantTypeAuthorizationCode:
-		return s.ExchangeCodeForToken(ctx, req.Code, req.ClientID, req.ClientSecret, req.RedirectURI)
+		return s.ExchangeCodeForTokenWithPKCE(ctx, req.Code, req.ClientID, req.ClientSecret, req.RedirectURI, req.CodeVerifier)
 
 	case GrantTypeClientCredentials:
 		return s.ClientCredentialsToken(ctx, req.ClientID, req.ClientSecret, req.Scopes)
@@ -202,8 +208,13 @@ func (s *OAuth2Server) Token(ctx context.Context, req *TokenRequest, validateUse
 	}
 }
 
-// GenerateAuthorizationCode Generates authorization code 生成授权码
+// GenerateAuthorizationCode generates authorization code.
 func (s *OAuth2Server) GenerateAuthorizationCode(ctx context.Context, clientID, userID, redirectURI string, scopes []string) (*AuthorizationCode, error) {
+	return s.GenerateAuthorizationCodeWithPKCE(ctx, clientID, userID, redirectURI, scopes, "", "")
+}
+
+// GenerateAuthorizationCodeWithPKCE generates authorization code with optional PKCE challenge.
+func (s *OAuth2Server) GenerateAuthorizationCodeWithPKCE(ctx context.Context, clientID, userID, redirectURI string, scopes []string, codeChallenge, codeChallengeMethod string) (*AuthorizationCode, error) {
 	if userID == "" {
 		return nil, derror.ErrUserIDEmpty
 	}
@@ -220,6 +231,11 @@ func (s *OAuth2Server) GenerateAuthorizationCode(ctx context.Context, clientID, 
 	if !s.isValidScopes(client, scopes) {
 		return nil, derror.ErrInvalidScope
 	}
+	codeChallenge = strings.TrimSpace(codeChallenge)
+	codeChallengeMethod, err = normalizeCodeChallengeMethod(codeChallenge, codeChallengeMethod)
+	if err != nil {
+		return nil, err
+	}
 
 	codeBytes := make([]byte, CodeLength)
 	if _, err = rand.Read(codeBytes); err != nil {
@@ -228,14 +244,16 @@ func (s *OAuth2Server) GenerateAuthorizationCode(ctx context.Context, clientID, 
 	code := hex.EncodeToString(codeBytes)
 
 	authCode := &AuthorizationCode{
-		Code:        code,
-		ClientID:    clientID,
-		RedirectURI: redirectURI,
-		UserID:      userID,
-		Scopes:      scopes,
-		CreateTime:  time.Now().Unix(),
-		ExpiresIn:   int64(s.codeExpiration.Seconds()),
-		Used:        false,
+		Code:                code,
+		ClientID:            clientID,
+		RedirectURI:         redirectURI,
+		UserID:              userID,
+		Scopes:              scopes,
+		CodeChallenge:       codeChallenge,
+		CodeChallengeMethod: codeChallengeMethod,
+		CreateTime:          time.Now().Unix(),
+		ExpiresIn:           int64(s.codeExpiration.Seconds()),
+		Used:                false,
 	}
 
 	encodeData, err := s.serializer.Encode(authCode)
@@ -251,8 +269,13 @@ func (s *OAuth2Server) GenerateAuthorizationCode(ctx context.Context, clientID, 
 	return authCode, nil
 }
 
-// ExchangeCodeForToken Exchanges authorization code for access token 用授权码换取访问令牌
+// ExchangeCodeForToken exchanges authorization code for access token.
 func (s *OAuth2Server) ExchangeCodeForToken(ctx context.Context, code, clientID, clientSecret, redirectURI string) (*AccessToken, error) {
+	return s.ExchangeCodeForTokenWithPKCE(ctx, code, clientID, clientSecret, redirectURI, "")
+}
+
+// ExchangeCodeForTokenWithPKCE exchanges authorization code with optional PKCE verifier.
+func (s *OAuth2Server) ExchangeCodeForTokenWithPKCE(ctx context.Context, code, clientID, clientSecret, redirectURI, codeVerifier string) (*AccessToken, error) {
 	client, err := s.getClient(ctx, clientID)
 	if err != nil {
 		return nil, err
@@ -300,6 +323,9 @@ func (s *OAuth2Server) ExchangeCodeForToken(ctx context.Context, code, clientID,
 	if time.Now().Unix() > authCode.CreateTime+authCode.ExpiresIn {
 		_ = s.storage.Delete(ctx, key)
 		return nil, derror.ErrAuthCodeExpired
+	}
+	if err = verifyCodeChallenge(authCode.CodeChallenge, authCode.CodeChallengeMethod, codeVerifier); err != nil {
+		return nil, err
 	}
 
 	authCode.Used = true
@@ -600,6 +626,51 @@ func (s *OAuth2Server) isValidGrantType(client *Client, grantType GrantType) boo
 		}
 	}
 	return false
+}
+
+// normalizeCodeChallengeMethod normalizes PKCE challenge method.
+func normalizeCodeChallengeMethod(codeChallenge, method string) (string, error) {
+	if codeChallenge == "" {
+		return "", nil
+	}
+	method = strings.TrimSpace(method)
+	if method == "" {
+		return CodeChallengeMethodPlain, nil
+	}
+	switch method {
+	case CodeChallengeMethodPlain, CodeChallengeMethodS256:
+		return method, nil
+	default:
+		return "", derror.ErrInvalidParam
+	}
+}
+
+// verifyCodeChallenge verifies PKCE verifier against stored challenge.
+func verifyCodeChallenge(codeChallenge, method, codeVerifier string) error {
+	if codeChallenge == "" {
+		return nil
+	}
+	codeVerifier = strings.TrimSpace(codeVerifier)
+	if codeVerifier == "" {
+		return derror.ErrInvalidCodeVerifier
+	}
+	if method == "" {
+		method = CodeChallengeMethodPlain
+	}
+	switch method {
+	case CodeChallengeMethodPlain:
+		if codeVerifier != codeChallenge {
+			return derror.ErrInvalidCodeVerifier
+		}
+	case CodeChallengeMethodS256:
+		sum := sha256.Sum256([]byte(codeVerifier))
+		if base64.RawURLEncoding.EncodeToString(sum[:]) != codeChallenge {
+			return derror.ErrInvalidCodeVerifier
+		}
+	default:
+		return derror.ErrInvalidParam
+	}
+	return nil
 }
 
 // generateAccessToken Generates access token and refresh token 生成访问令牌和刷新令牌
