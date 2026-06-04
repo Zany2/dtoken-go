@@ -40,14 +40,14 @@ oauth2.GrantTypePassword
 
 ```go
 client := &oauth2.Client{
-    ClientID:     "web-app",
-    ClientSecret: "secret",
-    RedirectURIs: []string{"http://localhost:3000/callback"},
-    GrantTypes: []oauth2.GrantType{
-        oauth2.GrantTypeAuthorizationCode,
-        oauth2.GrantTypeRefreshToken,
-    },
-    Scopes: []string{"read", "write", "profile"},
+	ClientID:     "web-app",
+	ClientSecret: "secret",
+	RedirectURIs: []string{"http://localhost:3000/callback"},
+	GrantTypes: []oauth2.GrantType{
+		oauth2.GrantTypeAuthorizationCode,
+		oauth2.GrantTypeRefreshToken,
+	},
+	Scopes: []string{"read", "write", "profile"},
 }
 ```
 
@@ -55,14 +55,14 @@ client := &oauth2.Client{
 
 ```go
 err := dtoken.RegisterOAuth2Client(&oauth2.Client{
-    ClientID:     "web-app",
-    ClientSecret: "secret",
-    RedirectURIs: []string{"http://localhost:3000/callback"},
-    GrantTypes: []oauth2.GrantType{
-        oauth2.GrantTypeAuthorizationCode,
-        oauth2.GrantTypeRefreshToken,
-    },
-    Scopes: []string{"read", "write", "profile"},
+	ClientID:     "web-app",
+	ClientSecret: "secret",
+	RedirectURIs: []string{"http://localhost:3000/callback"},
+	GrantTypes: []oauth2.GrantType{
+		oauth2.GrantTypeAuthorizationCode,
+		oauth2.GrantTypeRefreshToken,
+	},
+	Scopes: []string{"read", "write", "profile"},
 })
 ```
 
@@ -72,10 +72,10 @@ err := dtoken.RegisterOAuth2Client(&oauth2.Client{
 
 ```go
 token, err := dtoken.OAuth2Token(ctx, &oauth2.TokenRequest{
-    GrantType:    oauth2.GrantTypeClientCredentials,
-    ClientID:     "server-app",
-    ClientSecret: "secret",
-    Scopes:       []string{"read"},
+	GrantType:    oauth2.GrantTypeClientCredentials,
+	ClientID:     "server-app",
+	ClientSecret: "secret",
+	Scopes:       []string{"read"},
 }, nil)
 ```
 
@@ -85,11 +85,11 @@ token, err := dtoken.OAuth2Token(ctx, &oauth2.TokenRequest{
 
 ```go
 authCode, err := dtoken.GenerateOAuth2AuthorizationCode(
-    ctx,
-    "web-app",
-    "10001",
-    "http://localhost:3000/callback",
-    []string{"read", "profile"},
+	ctx,
+	"web-app",
+	"10001",
+	"http://localhost:3000/callback",
+	[]string{"read", "profile"},
 )
 ```
 
@@ -104,11 +104,11 @@ authCode, err := dtoken.GenerateOAuth2AuthorizationCode(
 
 ```go
 token, err := dtoken.ExchangeOAuth2CodeForToken(
-    ctx,
-    authCode.Code,
-    "web-app",
-    "secret",
-    "http://localhost:3000/callback",
+	ctx,
+	authCode.Code,
+	"web-app",
+	"secret",
+	"http://localhost:3000/callback",
 )
 ```
 
@@ -118,22 +118,22 @@ token, err := dtoken.ExchangeOAuth2CodeForToken(
 
 ```go
 authCode, err := dtoken.GenerateOAuth2AuthorizationCodeWithPKCE(
-    ctx,
-    "mobile-app",
-    "10001",
-    "myapp://oauth/callback",
-    []string{"read", "profile"},
-    codeChallenge,
-    oauth2.CodeChallengeMethodS256,
+	ctx,
+	"mobile-app",
+	"10001",
+	"myapp://oauth/callback",
+	[]string{"read", "profile"},
+	codeChallenge,
+	oauth2.CodeChallengeMethodS256,
 )
 
 token, err := dtoken.ExchangeOAuth2CodeForTokenWithPKCE(
-    ctx,
-    authCode.Code,
-    "mobile-app",
-    "secret",
-    "myapp://oauth/callback",
-    codeVerifier,
+	ctx,
+	authCode.Code,
+	"mobile-app",
+	"secret",
+	"myapp://oauth/callback",
+	codeVerifier,
 )
 ```
 
@@ -143,13 +143,13 @@ token, err := dtoken.ExchangeOAuth2CodeForTokenWithPKCE(
 
 ```go
 type AccessToken struct {
-    Token        string
-    TokenType    string
-    ExpiresIn    int64
-    RefreshToken string
-    Scopes       []string
-    UserID       string
-    ClientID     string
+	Token        string
+	TokenType    string
+	ExpiresIn    int64
+	RefreshToken string
+	Scopes       []string
+	UserID       string
+	ClientID     string
 }
 ```
 
@@ -157,10 +157,10 @@ type AccessToken struct {
 
 ```go
 token, err := dtoken.OAuth2ClientCredentialsToken(
-    ctx,
-    "server-app",
-    "secret",
-    []string{"read"},
+	ctx,
+	"server-app",
+	"secret",
+	[]string{"read"},
 )
 ```
 
@@ -170,20 +170,20 @@ token, err := dtoken.OAuth2ClientCredentialsToken(
 
 ```go
 validateUser := func(username, password string) (string, error) {
-    if username == "admin" && password == "123456" {
-        return "10001", nil
-    }
-    return "", fmt.Errorf("invalid credentials")
+	if username == "admin" && password == "123456" {
+		return "10001", nil
+	}
+	return "", fmt.Errorf("invalid credentials")
 }
 
 token, err := dtoken.OAuth2PasswordGrantToken(
-    ctx,
-    "native-app",
-    "secret",
-    "admin",
-    "123456",
-    []string{"read", "write"},
-    validateUser,
+	ctx,
+	"native-app",
+	"secret",
+	"admin",
+	"123456",
+	[]string{"read", "write"},
+	validateUser,
 )
 ```
 
@@ -193,10 +193,10 @@ token, err := dtoken.OAuth2PasswordGrantToken(
 
 ```go
 newToken, err := dtoken.RefreshOAuth2AccessToken(
-    ctx,
-    "web-app",
-    token.RefreshToken,
-    "secret",
+	ctx,
+	"web-app",
+	token.RefreshToken,
+	"secret",
 )
 ```
 
@@ -229,18 +229,17 @@ err := dtoken.RevokeOAuth2Token(ctx, token.Token)
 
 ## Scope 校验
 
-当前实现会在签发前校验 scope 是否属于客户端允许范围。  
-如果客户端 `Scopes` 为空，则视为不限制。
+当前实现会在签发前校验 scope 是否属于客户端允许范围。如果客户端 `Scopes` 为空，则视为不限制。
 
 ```go
 client := &oauth2.Client{
-    ClientID:     "web-app",
-    ClientSecret: "secret",
-    RedirectURIs: []string{"http://localhost:3000/callback"},
-    GrantTypes: []oauth2.GrantType{
-        oauth2.GrantTypeAuthorizationCode,
-    },
-    Scopes: []string{"read", "write", "profile"},
+	ClientID:     "web-app",
+	ClientSecret: "secret",
+	RedirectURIs: []string{"http://localhost:3000/callback"},
+	GrantTypes: []oauth2.GrantType{
+		oauth2.GrantTypeAuthorizationCode,
+	},
+	Scopes: []string{"read", "write", "profile"},
 }
 ```
 
@@ -254,7 +253,7 @@ client := &oauth2.Client{
 
 ### Token 端
 
-1. client 带 `grant_type`
+1. client 携带 `grant_type`
 2. server 调用 `OAuth2Token` 或各模式专用函数
 3. 返回 `AccessToken` 结构
 
@@ -268,9 +267,9 @@ client := &oauth2.Client{
 
 当前 OAuth2 实现已经能覆盖常见授权场景，但也要注意：
 
-1. 文档层不要再写不存在的 `GetOAuth2Server()` 这类入口
-2. PKCE 目前没有内建，需要在应用层自己补
-3. Token introspection 端点没有内建 HTTP 封装，需要你自己写路由
+1. 当前 API 没有 `GetOAuth2Server()` 这类公开入口
+2. PKCE 已内建到授权码助手和统一令牌入口中，但客户端侧仍需要自行生成、保存和传递 `code_verifier`
+3. Token introspection 端点没有内建 HTTP 封装，需要你在应用层自己写路由
 
 ## 相关文档
 

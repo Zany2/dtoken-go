@@ -262,6 +262,4 @@ var (
 	NewRenewPoolManagerWithConfig  = ants.NewRenewPoolManagerWithConfig
 	NewNopLogger                   = nop.NewNopLogger
 	NewAdapterNopLogger            = adapter.NewNopLogger
-	ErrRedisKeyNotFound            = redisstorage.ErrKeyNotFound
-	ErrMemoryKeyNotFound           = memorystorage.ErrKeyNotFound
 )

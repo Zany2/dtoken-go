@@ -27,7 +27,6 @@ type CookieOptions struct {
 
 // RequestContext defines request context abstraction RequestContext 定义请求上下文抽象接口
 type RequestContext interface {
-
 	// GetHeader gets request header GetHeader 获取请求头
 	GetHeader(key string) string
 	// GetHeaders gets all request headers GetHeaders 获取所有请求头

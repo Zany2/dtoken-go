@@ -8,11 +8,9 @@ import (
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
+	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/patrickmn/go-cache"
 )
-
-// ErrKeyNotFound indicates the key is missing or expired 表示键不存在或已过期。
-var ErrKeyNotFound = errors.New("key not found")
 
 // TTL constants define memory TTL sentinel values TTL 常量定义内存 TTL 哨兵值
 const (
@@ -34,13 +32,16 @@ var _ adapter.FullStorage = (*Storage)(nil)
 // NewStorage creates a new memory storage instance 创建一个新的内存存储实例
 func NewStorage() *Storage {
 	return &Storage{
-		c: cache.New(time.Duration(time.Minute*10), time.Duration(time.Minute*10)),
+		c: cache.New(time.Minute*10, time.Minute*10),
 	}
 }
 
 // Set stores a key value pair 设置键值对
-func (s *Storage) Set(_ context.Context, key string, value any, expiration time.Duration) error {
+func (s *Storage) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
 	if err := s.ensureReady(); err != nil {
+		return err
+	}
+	if err := checkContext(ctx); err != nil {
 		return err
 	}
 	if expiration <= 0 {
@@ -52,8 +53,11 @@ func (s *Storage) Set(_ context.Context, key string, value any, expiration time.
 }
 
 // Get retrieves the value for a key 获取指定键的值
-func (s *Storage) Get(_ context.Context, key string) (any, error) {
+func (s *Storage) Get(ctx context.Context, key string) (any, error) {
 	if err := s.ensureReady(); err != nil {
+		return nil, err
+	}
+	if err := checkContext(ctx); err != nil {
 		return nil, err
 	}
 	if val, found := s.c.Get(key); found {
@@ -64,8 +68,11 @@ func (s *Storage) Get(_ context.Context, key string) (any, error) {
 }
 
 // GetAndDelete atomically gets and deletes a key 原子地获取并删除指定键
-func (s *Storage) GetAndDelete(_ context.Context, key string) (any, error) {
+func (s *Storage) GetAndDelete(ctx context.Context, key string) (any, error) {
 	if err := s.ensureReady(); err != nil {
+		return nil, err
+	}
+	if err := checkContext(ctx); err != nil {
 		return nil, err
 	}
 	s.mu.Lock()
@@ -82,11 +89,14 @@ func (s *Storage) GetAndDelete(_ context.Context, key string) (any, error) {
 }
 
 // Delete removes one or more keys 删除一个或多个键
-func (s *Storage) Delete(_ context.Context, keys ...string) error {
+func (s *Storage) Delete(ctx context.Context, keys ...string) error {
 	if len(keys) == 0 {
 		return nil
 	}
 	if err := s.ensureReady(); err != nil {
+		return err
+	}
+	if err := checkContext(ctx); err != nil {
 		return err
 	}
 	for _, key := range keys {
@@ -96,8 +106,11 @@ func (s *Storage) Delete(_ context.Context, keys ...string) error {
 }
 
 // Exists checks whether a key exists and is not expired 检查键是否存在且未过期
-func (s *Storage) Exists(_ context.Context, key string) bool {
+func (s *Storage) Exists(ctx context.Context, key string) bool {
 	if err := s.ensureReady(); err != nil {
+		return false
+	}
+	if err := checkContext(ctx); err != nil {
 		return false
 	}
 	_, found := s.c.Get(key)
@@ -105,8 +118,11 @@ func (s *Storage) Exists(_ context.Context, key string) bool {
 }
 
 // Keys returns all keys matching the pattern 返回匹配指定模式的所有键
-func (s *Storage) Keys(_ context.Context, pattern string) ([]string, error) {
+func (s *Storage) Keys(ctx context.Context, pattern string) ([]string, error) {
 	if err := s.ensureReady(); err != nil {
+		return nil, err
+	}
+	if err := checkContext(ctx); err != nil {
 		return nil, err
 	}
 	if pattern == "" {
@@ -131,8 +147,11 @@ func (s *Storage) Keys(_ context.Context, pattern string) ([]string, error) {
 }
 
 // Expire sets a new expiration for the key 为指定键设置新的过期时间
-func (s *Storage) Expire(_ context.Context, key string, expiration time.Duration) error {
+func (s *Storage) Expire(ctx context.Context, key string, expiration time.Duration) error {
 	if err := s.ensureReady(); err != nil {
+		return err
+	}
+	if err := checkContext(ctx); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -140,7 +159,7 @@ func (s *Storage) Expire(_ context.Context, key string, expiration time.Duration
 
 	_, found := s.c.Get(key)
 	if !found {
-		return ErrKeyNotFound
+		return derror.ErrKeyNotFound
 	}
 
 	if expiration <= 0 {
@@ -155,8 +174,11 @@ func (s *Storage) Expire(_ context.Context, key string, expiration time.Duration
 }
 
 // TTL returns the remaining lifetime for a key 获取指定键的剩余生存时间
-func (s *Storage) TTL(_ context.Context, key string) (time.Duration, error) {
+func (s *Storage) TTL(ctx context.Context, key string) (time.Duration, error) {
 	if err := s.ensureReady(); err != nil {
+		return 0, err
+	}
+	if err := checkContext(ctx); err != nil {
 		return 0, err
 	}
 	_, expirationTime, found := s.c.GetWithExpiration(key)
@@ -175,8 +197,11 @@ func (s *Storage) TTL(_ context.Context, key string) (time.Duration, error) {
 }
 
 // Clear removes all stored data 清空所有数据。
-func (s *Storage) Clear(_ context.Context) error {
+func (s *Storage) Clear(ctx context.Context) error {
 	if err := s.ensureReady(); err != nil {
+		return err
+	}
+	if err := checkContext(ctx); err != nil {
 		return err
 	}
 	s.c.Flush()
@@ -184,8 +209,11 @@ func (s *Storage) Clear(_ context.Context) error {
 }
 
 // Ping checks whether storage is available 检查存储是否可用
-func (s *Storage) Ping(_ context.Context) error {
+func (s *Storage) Ping(ctx context.Context) error {
 	if err := s.ensureReady(); err != nil {
+		return err
+	}
+	if err := checkContext(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -197,6 +225,14 @@ func (s *Storage) ensureReady() error {
 		return errors.New("memory storage cache is nil")
 	}
 	return nil
+}
+
+// checkContext returns context cancellation errors consistently with remote storage. checkContext 返回上下文取消错误以对齐远程存储语义。
+func checkContext(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+	return ctx.Err()
 }
 
 // matchPattern implements Redis style wildcard matching 实现 Redis 风格的通配符匹配（支持 *, ?, \ 转义）

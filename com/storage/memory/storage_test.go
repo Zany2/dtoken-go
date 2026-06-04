@@ -3,11 +3,23 @@ package memory
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/Zany2/dtoken-go/core/adapter"
+	"github.com/Zany2/dtoken-go/core/adapter/storagetest"
+	"github.com/Zany2/dtoken-go/core/derror"
 )
+
+// TestStorageContract verifies memory storage follows the shared storage contract. TestStorageContract 验证内存存储符合共享存储契约。
+func TestStorageContract(t *testing.T) {
+	storagetest.RunStorageContract(t, func(t *testing.T) adapter.FullStorage {
+		return NewStorage()
+	})
+}
 
 // TestStorageBasicOperations verifies memory storage CRUD behavior 测试内存存储基础增删查行为
 func TestStorageBasicOperations(t *testing.T) {
@@ -105,8 +117,8 @@ func TestStorageTTLAndExpire(t *testing.T) {
 	if s.Exists(ctx, "forever") {
 		t.Fatal("Expire(immediate) should delete key")
 	}
-	if err := s.Expire(ctx, "missing", time.Second); err != ErrKeyNotFound {
-		t.Fatalf("Expire(missing) error = %v, want %v", err, ErrKeyNotFound)
+	if err := s.Expire(ctx, "missing", time.Second); !errors.Is(err, derror.ErrKeyNotFound) {
+		t.Fatalf("Expire(missing) error = %v, want %v", err, derror.ErrKeyNotFound)
 	}
 }
 
@@ -154,5 +166,37 @@ func TestZeroValueStorageReturnsErrors(t *testing.T) {
 	}
 	if err := s.Delete(ctx, "k"); err == nil {
 		t.Fatal("Delete() error = nil, want nil cache error")
+	}
+}
+
+// TestStorageContextCancellation verifies memory storage respects context cancellation TestStorageContextCancellation 验证内存存储遵守上下文取消语义。
+func TestStorageContextCancellation(t *testing.T) {
+	s := NewStorage()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := s.Set(ctx, "k", "v", 0); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Set(canceled) error = %v, want %v", err, context.Canceled)
+	}
+	if _, err := s.Get(ctx, "k"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Get(canceled) error = %v, want %v", err, context.Canceled)
+	}
+	if s.Exists(ctx, "k") {
+		t.Fatal("Exists(canceled) should return false")
+	}
+	if _, err := s.Keys(ctx, "*"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Keys(canceled) error = %v, want %v", err, context.Canceled)
+	}
+	if err := s.Expire(ctx, "k", time.Second); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Expire(canceled) error = %v, want %v", err, context.Canceled)
+	}
+	if _, err := s.TTL(ctx, "k"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("TTL(canceled) error = %v, want %v", err, context.Canceled)
+	}
+	if err := s.Clear(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Clear(canceled) error = %v, want %v", err, context.Canceled)
+	}
+	if err := s.Ping(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Ping(canceled) error = %v, want %v", err, context.Canceled)
 	}
 }

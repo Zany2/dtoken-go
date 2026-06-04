@@ -8,11 +8,9 @@ import (
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
+	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/redis/go-redis/v9"
 )
-
-// ErrKeyNotFound indicates the key is missing or expired 表示键不存在或已过期。
-var ErrKeyNotFound = errors.New("key not found")
 
 // TTL constants define Redis TTL sentinel values TTL 常量定义 Redis TTL 哨兵值
 const (
@@ -129,7 +127,7 @@ func (s *Storage) Set(ctx context.Context, key string, value any, expiration tim
 	ctx, cancel := s.withOperationTimeout(ctx)
 	defer cancel()
 
-	return s.client.Set(ctx, key, value, expiration).Err()
+	return s.client.Set(ctx, key, value, normalizeSetExpiration(expiration)).Err()
 }
 
 // Get retrieves the value 获取值
@@ -214,7 +212,7 @@ func (s *Storage) Keys(ctx context.Context, pattern string) ([]string, error) {
 
 	var (
 		cursor uint64
-		result []string
+		result = make([]string, 0)
 	)
 
 	for {
@@ -240,14 +238,25 @@ func (s *Storage) Expire(ctx context.Context, key string, expiration time.Durati
 	ctx, cancel := s.withOperationTimeout(ctx)
 	defer cancel()
 
-	ok, err := s.client.Expire(ctx, key, expiration).Result()
+	if expiration <= 0 {
+		deleted, err := s.client.Del(ctx, key).Result()
+		if err != nil {
+			return err
+		}
+		if deleted == 0 {
+			return derror.ErrKeyNotFound
+		}
+		return nil
+	}
+
+	ok, err := s.client.PExpire(ctx, key, expiration).Result()
 	if err != nil {
 		// Return network or Redis command errors 网络错误、Redis 报错（如 EXPIRE -1）等
 		return err
 	}
 	if !ok {
 		// Handle Redis zero result when the key is missing Redis 返回 0：key 不存在或已过期
-		return ErrKeyNotFound
+		return derror.ErrKeyNotFound
 	}
 	return nil
 }
@@ -260,7 +269,7 @@ func (s *Storage) TTL(ctx context.Context, key string) (time.Duration, error) {
 	ctx, cancel := s.withOperationTimeout(ctx)
 	defer cancel()
 
-	ttl, err := s.client.TTL(ctx, key).Result()
+	ttl, err := s.client.PTTL(ctx, key).Result()
 	if err != nil {
 		return 0, err
 	}
@@ -275,23 +284,7 @@ func (s *Storage) Clear(ctx context.Context) error {
 	ctx, cancel := s.withOperationTimeout(ctx)
 	defer cancel()
 
-	var cursor uint64
-	for {
-		keys, next, err := s.client.Scan(ctx, cursor, "*", 1000).Result()
-		if err != nil {
-			return err
-		}
-		if len(keys) > 0 {
-			if err := s.client.Unlink(ctx, keys...).Err(); err != nil {
-				return err
-			}
-		}
-		cursor = next
-		if cursor == 0 {
-			break
-		}
-	}
-	return nil
+	return s.client.FlushDB(ctx).Err()
 }
 
 // Ping checks the Redis connection 检查连接
@@ -332,13 +325,21 @@ func (s *Storage) ensureReady() error {
 // normalizeTTL converts Redis sentinel durations to adapter sentinels normalizeTTL 转换 Redis TTL 哨兵值
 func normalizeTTL(ttl time.Duration) time.Duration {
 	switch ttl {
-	case -time.Second, adapter.TTLNoExpire:
+	case -time.Second, -time.Millisecond, adapter.TTLNoExpire:
 		return adapter.TTLNoExpire
-	case -2 * time.Second, adapter.TTLNotFound:
+	case -2 * time.Second, -2 * time.Millisecond, adapter.TTLNotFound:
 		return adapter.TTLNotFound
 	default:
 		return ttl
 	}
+}
+
+// normalizeSetExpiration converts non-positive set TTL to no expiration. normalizeSetExpiration 将 Set 的非正过期时间转换为永不过期。
+func normalizeSetExpiration(expiration time.Duration) time.Duration {
+	if expiration <= 0 {
+		return 0
+	}
+	return expiration
 }
 
 // withOperationTimeout applies configured operation timeout. withOperationTimeout 应用已配置的单次操作超时时间。

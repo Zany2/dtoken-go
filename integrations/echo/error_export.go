@@ -28,6 +28,7 @@ const (
 var (
 	NewDTokenError                  = derror.NewDTokenError
 	ErrStorageUnavailable           = derror.ErrStorageUnavailable
+	ErrKeyNotFound                  = derror.ErrKeyNotFound
 	ErrSerializeFailed              = derror.ErrSerializeFailed
 	ErrTypeConvert                  = derror.ErrTypeConvert
 	ErrManagerNotFound              = derror.ErrManagerNotFound
@@ -35,6 +36,7 @@ var (
 	ErrInvalidParam                 = derror.ErrInvalidParam
 	ErrStorageCapabilityUnsupported = derror.ErrStorageCapabilityUnsupported
 	ErrIDIsEmpty                    = derror.ErrIDIsEmpty
+	ErrEmptyLoginID                 = derror.ErrEmptyLoginID
 	ErrAccountDisabled              = derror.ErrAccountDisabled
 	ErrAccountNotDisabled           = derror.ErrAccountNotDisabled
 	ErrLoginLimitExceeded           = derror.ErrLoginLimitExceeded

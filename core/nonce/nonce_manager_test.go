@@ -2,6 +2,7 @@ package nonce
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -34,7 +35,7 @@ func TestNonceManagerGenerateVerifyAndConsume(t *testing.T) {
 	if manager.Verify(ctx, value) {
 		t.Fatal("Verify() = true on second consume, want false")
 	}
-	if err = manager.VerifyAndConsume(ctx, value); err != derror.ErrInvalidNonce {
+	if err = manager.VerifyAndConsume(ctx, value); !errors.Is(err, derror.ErrInvalidNonce) {
 		t.Fatalf("VerifyAndConsume() error = %v, want ErrInvalidNonce", err)
 	}
 }

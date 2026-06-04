@@ -2,17 +2,19 @@
 package dgenerator
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
+	"github.com/Zany2/dtoken-go/core/derror"
 )
 
 // TestGenerateRejectsEmptyLoginID verifies empty loginID validation 测试空 loginID 校验
 func TestGenerateRejectsEmptyLoginID(t *testing.T) {
 	g := NewDefaultGenerator()
-	if _, err := g.Generate("", "web", "device-1"); err != ErrEmptyLoginID {
-		t.Fatalf("Generate() error = %v, want %v", err, ErrEmptyLoginID)
+	if _, err := g.Generate("", "web", "device-1"); !errors.Is(err, derror.ErrEmptyLoginID) {
+		t.Fatalf("Generate() error = %v, want %v", err, derror.ErrEmptyLoginID)
 	}
 }
 
@@ -70,12 +72,18 @@ func TestJWTLifecycle(t *testing.T) {
 	if err = g.ValidateJWT(token); err != nil {
 		t.Fatalf("ValidateJWT() error = %v", err)
 	}
-	loginID, err := g.GetLoginIDFromJWT(token)
+	loginID, device, deviceId, err := g.GetLoginInfoFromJWT(token)
 	if err != nil {
-		t.Fatalf("GetLoginIDFromJWT() error = %v", err)
+		t.Fatalf("GetLoginInfoFromJWT() error = %v", err)
 	}
 	if loginID != "user-1" {
-		t.Fatalf("GetLoginIDFromJWT() = %q, want %q", loginID, "user-1")
+		t.Fatalf("GetLoginInfoFromJWT() loginID = %q, want %q", loginID, "user-1")
+	}
+	if device != "web" {
+		t.Fatalf("GetLoginInfoFromJWT() device = %q, want %q", device, "web")
+	}
+	if deviceId != "device-1" {
+		t.Fatalf("GetLoginInfoFromJWT() deviceId = %q, want %q", deviceId, "device-1")
 	}
 }
 
@@ -88,8 +96,8 @@ func TestJWTInvalidInputs(t *testing.T) {
 	if _, err := g.ParseJWT("bad-token"); err == nil {
 		t.Fatal("ParseJWT() should fail for malformed token")
 	}
-	if _, err := g.GetLoginIDFromJWT("bad-token"); err == nil {
-		t.Fatal("GetLoginIDFromJWT() should fail for malformed token")
+	if _, _, _, err := g.GetLoginInfoFromJWT("bad-token"); err == nil {
+		t.Fatal("GetLoginInfoFromJWT() should fail for malformed token")
 	}
 }
 

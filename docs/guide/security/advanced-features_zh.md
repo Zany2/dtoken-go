@@ -1,6 +1,6 @@
 # 高级能力
 
-本页整理 DToken-Go 在普通登录、登出、权限、角色之外可以直接使用的高级能力。
+本页整理 DToken-Go 在普通登录、登出、权限和角色 API 之外可以直接使用的高级能力。
 
 ## Token Introspection
 
@@ -51,16 +51,16 @@ _ = dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
 用于一次性票据、临时授权和系统间换票。
 
 ```go
-ticket, err := dtoken.CreateTicket(ctx, "user-1001")
+createdTicket, err := dtoken.CreateTicket(ctx, "user-1001")
 if err != nil {
 	return err
 }
 
-token, err := dtoken.ConsumeTicket(ctx, ticket)
+result, err := dtoken.ConsumeTicket(ctx, createdTicket.Ticket)
 if err != nil {
 	return err
 }
-fmt.Println(token)
+fmt.Println(result.Ticket.LoginID)
 ```
 
 ## Short-Key 访问凭证
@@ -68,16 +68,21 @@ fmt.Println(token)
 用于短链访问、扫码确认、临时授权和系统间换票。
 
 ```go
-shortKey, err := dtoken.CreateShortKey(ctx, "user-1001")
+createdKey, err := dtoken.CreateShortKey(ctx)
 if err != nil {
 	return err
 }
 
-token, err := dtoken.ConsumeShortKey(ctx, shortKey)
+confirmedKey, err := dtoken.ConfirmShortKey(ctx, createdKey.Key, "user-1001")
 if err != nil {
 	return err
 }
-fmt.Println(token)
+
+result, err := dtoken.ConsumeShortKey(ctx, confirmedKey.Key)
+if err != nil {
+	return err
+}
+fmt.Println(result.ShortKey.LoginID)
 ```
 
 ## SSO 单点登录

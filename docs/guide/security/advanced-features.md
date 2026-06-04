@@ -51,16 +51,16 @@ The default refresh-token TTL is `30` days. You can override it globally with `R
 For one-time tickets, temporary authorization, and system-to-system ticket exchange.
 
 ```go
-ticket, err := dtoken.CreateTicket(ctx, "user-1001")
+createdTicket, err := dtoken.CreateTicket(ctx, "user-1001")
 if err != nil {
 	return err
 }
 
-token, err := dtoken.ConsumeTicket(ctx, ticket)
+result, err := dtoken.ConsumeTicket(ctx, createdTicket.Ticket)
 if err != nil {
 	return err
 }
-fmt.Println(token)
+fmt.Println(result.Ticket.LoginID)
 ```
 
 ## Short-Key Access Credential
@@ -68,16 +68,21 @@ fmt.Println(token)
 For short-link access, QR confirmation, temporary authorization, and system-to-system ticket exchange.
 
 ```go
-shortKey, err := dtoken.CreateShortKey(ctx, "user-1001")
+createdKey, err := dtoken.CreateShortKey(ctx)
 if err != nil {
 	return err
 }
 
-token, err := dtoken.ConsumeShortKey(ctx, shortKey)
+confirmedKey, err := dtoken.ConfirmShortKey(ctx, createdKey.Key, "user-1001")
 if err != nil {
 	return err
 }
-fmt.Println(token)
+
+result, err := dtoken.ConsumeShortKey(ctx, confirmedKey.Key)
+if err != nil {
+	return err
+}
+fmt.Println(result.ShortKey.LoginID)
 ```
 
 ## SSO
