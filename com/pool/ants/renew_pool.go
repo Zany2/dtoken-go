@@ -76,13 +76,22 @@ func (m *RenewPoolManager) initPool() error {
 
 // Submit submits a renewal task 提交续期任务
 func (m *RenewPoolManager) Submit(task func()) error {
-	if m == nil || !m.started || m.pool == nil {
+	if m == nil {
 		return fmt.Errorf("renew pool not started")
 	}
 	if task == nil {
 		return fmt.Errorf("renew pool task is nil")
 	}
-	return m.pool.Submit(task)
+
+	m.mu.Lock()
+	pool := m.pool
+	started := m.started
+	m.mu.Unlock()
+
+	if !started || pool == nil {
+		return fmt.Errorf("renew pool not started")
+	}
+	return pool.Submit(task)
 }
 
 // Stop stops the auto scaling process 停止自动扩缩容
@@ -91,26 +100,33 @@ func (m *RenewPoolManager) Stop() {
 		return
 	}
 	m.closeOnce.Do(func() {
+		m.mu.Lock()
 		if !m.started {
+			m.mu.Unlock()
 			return
 		}
 		close(m.stopCh)
 		m.started = false
+		pool := m.pool
+		m.mu.Unlock()
 
-		if m.pool != nil && !m.pool.IsClosed() {
-			_ = m.pool.ReleaseTimeout(3 * time.Second)
+		if pool != nil && !pool.IsClosed() {
+			_ = pool.ReleaseTimeout(DefaultStopTimeout)
 		}
 	})
 }
 
 // Stats returns current pool statistics 返回当前池状态
 func (m *RenewPoolManager) Stats() (running, capacity int, usage float64) {
-	if m == nil || m.pool == nil {
+	if m == nil {
 		return
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.pool == nil {
+		return
+	}
 	running = m.pool.Running() // Active tasks 当前运行任务数
 	capacity = m.pool.Cap()    // Pool capacity 当前池容量
 	if capacity > 0 {
@@ -126,16 +142,26 @@ func (m *RenewPoolManager) Stats() (running, capacity int, usage float64) {
 
 // autoScale runs automatic pool scale up and down logic 自动扩缩容逻辑
 func (m *RenewPoolManager) autoScale() {
-	if m == nil || m.pool == nil || m.config == nil {
+	if m == nil {
 		return
 	}
-	ticker := time.NewTicker(m.config.CheckInterval) // Ticker for periodic usage checks 定时器，用于定期检测使用率
-	defer ticker.Stop()                              // Stop ticker on exit 函数退出时停止定时器
+	m.mu.Lock()
+	config := m.config
+	m.mu.Unlock()
+	if config == nil {
+		return
+	}
+	ticker := time.NewTicker(config.CheckInterval) // Ticker for periodic usage checks 定时器，用于定期检测使用率
+	defer ticker.Stop()                            // Stop ticker on exit 函数退出时停止定时器
 
 	for {
 		select {
 		case <-ticker.C:
 			m.mu.Lock() // Protect concurrent access 加锁防止并发冲突
+			if !m.started || m.pool == nil || m.config == nil {
+				m.mu.Unlock()
+				continue
+			}
 
 			// Get current pool stats 获取当前运行状态
 			running := m.pool.Running() // Number of active goroutines 当前正在执行的任务数

@@ -76,17 +76,15 @@ func TestLoggerConfigValidate(t *testing.T) {
 	if err := (&LoggerConfig{}).Validate(); err != nil {
 		t.Fatalf("Validate(zero) error = %v", err)
 	}
+	if err := (&LoggerConfig{Path: "logs"}).Validate(); err != nil {
+		t.Fatalf("Validate(partial) error = %v", err)
+	}
 
 	tests := []LoggerConfig{
 		{TimeFormat: DefaultTimeFormat, Path: "   ", Level: LevelInfo, QueueSize: 1, RotateSize: 1},
 		{TimeFormat: DefaultTimeFormat, FileFormat: "   ", Level: LevelInfo, QueueSize: 1, RotateSize: 1},
 		{TimeFormat: DefaultTimeFormat, FileFormat: "logs/app.log", Level: LevelInfo, QueueSize: 1, RotateSize: 1},
 		{TimeFormat: DefaultTimeFormat, Level: LogLevel(99), QueueSize: 1, RotateSize: 1},
-		*DefaultLoggerConfig().SetQueueSize(0),
-		*DefaultLoggerConfig().SetRotateSize(0),
-		*DefaultLoggerConfig().SetRotateBackupLimit(0),
-		*DefaultLoggerConfig().SetRotateExpire(-time.Second),
-		*DefaultLoggerConfig().SetRotateBackupDays(-1),
 	}
 	for _, tt := range tests {
 		cfg := tt

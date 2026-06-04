@@ -42,11 +42,6 @@ func DefaultLoggerConfig() *LoggerConfig {
 
 // Validate validates logger configuration Validate 验证日志配置
 func (c *LoggerConfig) Validate() error {
-	if c != nil && !isZeroConfig(c) {
-		if err := validateExplicitConfig(c); err != nil {
-			return err
-		}
-	}
 	cfg := normalizeConfig(c)
 	return validateNormalizedConfig(cfg)
 }
@@ -201,42 +196,6 @@ func validateNormalizedConfig(c *LoggerConfig) error {
 	default:
 		return fmt.Errorf("LoggerConfig.Level is invalid: %v", c.Level)
 	}
-	if c.QueueSize <= 0 {
-		return fmt.Errorf("LoggerConfig.QueueSize must be > 0")
-	}
-	if !c.StdoutOnly && c.RotateSize <= 0 {
-		return fmt.Errorf("LoggerConfig.RotateSize must be > 0")
-	}
-	if c.RotateExpire < 0 {
-		return fmt.Errorf("LoggerConfig.RotateExpire must not be negative")
-	}
-	if !c.StdoutOnly && c.RotateBackupLimit <= 0 {
-		return fmt.Errorf("LoggerConfig.RotateBackupLimit must be > 0")
-	}
-	if c.RotateBackupDays < 0 {
-		return fmt.Errorf("LoggerConfig.RotateBackupDays must not be negative")
-	}
-	return nil
-}
-
-// isZeroConfig checks whether config is the zero value isZeroConfig 妫€鏌ラ厤缃槸鍚︿负闆跺€?
-func isZeroConfig(c *LoggerConfig) bool {
-	return c.Path == "" &&
-		c.FileFormat == "" &&
-		c.Prefix == "" &&
-		c.Level == 0 &&
-		c.TimeFormat == "" &&
-		!c.Stdout &&
-		!c.StdoutOnly &&
-		c.QueueSize == 0 &&
-		c.RotateSize == 0 &&
-		c.RotateExpire == 0 &&
-		c.RotateBackupLimit == 0 &&
-		c.RotateBackupDays == 0
-}
-
-// validateExplicitConfig rejects invalid non-zero config values validateExplicitConfig 鎷掔粷闈為浂閰嶇疆涓殑鏄惧紡闈炴硶鍊?
-func validateExplicitConfig(c *LoggerConfig) error {
 	if c.QueueSize <= 0 {
 		return fmt.Errorf("LoggerConfig.QueueSize must be > 0")
 	}

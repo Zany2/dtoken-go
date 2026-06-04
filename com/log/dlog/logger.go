@@ -29,7 +29,7 @@ type Logger struct {
 	curSize    int64      // Current log size 当前文件大小
 	lastRotate time.Time  // Last rotation time 上次切分时间
 
-	queue chan []byte   // Async write queue 异步写队列
+	queue chan logEntry // Async write queue 异步写队列
 	quit  chan struct{} // Stop signal 停止信号
 	wg    sync.WaitGroup
 
@@ -46,8 +46,15 @@ var _ adapter.LogControl = (*Logger)(nil)
 
 // timeCacheEntry stores cached timestamps 时间缓存条目
 type timeCacheEntry struct {
-	sec int64  // Unix seconds Unix 秒
-	str string // Formatted string 格式化字符串
+	sec    int64  // Unix seconds Unix 秒
+	format string // Time format 时间格式
+	str    string // Formatted string 格式化字符串
+}
+
+// logEntry stores a write entry or a flush marker 日志队列条目，可表示写入或刷新标记
+type logEntry struct {
+	data  []byte        // Log line bytes 日志行内容
+	flush chan struct{} // Flush acknowledgement 刷新完成信号
 }
 
 // NewLoggerWithConfig creates a logger instance 使用配置创建日志器
@@ -64,7 +71,7 @@ func NewLoggerWithConfig(cfg *LoggerConfig) (*Logger, error) {
 
 	l := &Logger{
 		cfg:        newCfg,
-		queue:      make(chan []byte, queueSize),
+		queue:      make(chan logEntry, queueSize),
 		quit:       make(chan struct{}),
 		lastRotate: time.Now(),
 	}
@@ -72,8 +79,9 @@ func NewLoggerWithConfig(cfg *LoggerConfig) (*Logger, error) {
 	// Initialize time cache 初始化时间缓存
 	now := time.Now()
 	l.timeCache.Store(&timeCacheEntry{
-		sec: now.Unix(),
-		str: now.Format(newCfg.TimeFormat),
+		sec:    now.Unix(),
+		format: newCfg.TimeFormat,
+		str:    now.Format(newCfg.TimeFormat),
 	})
 
 	l.wg.Add(1)
@@ -87,6 +95,9 @@ func NewLoggerWithConfig(cfg *LoggerConfig) (*Logger, error) {
 
 // write handles plain log output 输出普通日志
 func (l *Logger) write(level LogLevel, args ...any) {
+	if l == nil {
+		return
+	}
 	if atomic.LoadUint32(&l.closed) != 0 {
 		return
 	}
@@ -99,6 +110,9 @@ func (l *Logger) write(level LogLevel, args ...any) {
 
 // writef handles formatted log output 输出格式化日志
 func (l *Logger) writef(level LogLevel, format string, args ...any) {
+	if l == nil {
+		return
+	}
 	if atomic.LoadUint32(&l.closed) != 0 {
 		return
 	}
@@ -115,11 +129,14 @@ func (l *Logger) writef(level LogLevel, format string, args ...any) {
 
 // enqueue pushes logs to the async queue 将日志推入异步队列
 func (l *Logger) enqueue(b []byte) {
+	if l == nil {
+		return
+	}
 	if atomic.LoadUint32(&l.closed) != 0 {
 		return
 	}
 	select {
-	case l.queue <- b:
+	case l.queue <- logEntry{data: b}:
 	default:
 		// Drop logs when the queue is full 队列满时丢弃
 		atomic.AddUint64(&l.dropCount, 1)
@@ -161,13 +178,13 @@ func (l *Logger) buildLine(level LogLevel, cfg LoggerConfig, args ...any) []byte
 // getTimeString returns cached or formatted time strings 返回缓存或格式化的时间字符串
 func (l *Logger) getTimeString(now time.Time, sec int64, format string) string {
 	// Try to load from cache 尝试从缓存加载
-	if cached, ok := l.timeCache.Load().(*timeCacheEntry); ok && cached.sec == sec {
+	if cached, ok := l.timeCache.Load().(*timeCacheEntry); ok && cached.sec == sec && cached.format == format {
 		return cached.str
 	}
 
 	// Format a new string and update cache atomically 格式化新字符串并更新缓存
 	str := now.Format(format)
-	l.timeCache.Store(&timeCacheEntry{sec: sec, str: str})
+	l.timeCache.Store(&timeCacheEntry{sec: sec, format: format, str: str})
 	return str
 }
 
@@ -235,28 +252,40 @@ func appendValue(buf *bytes.Buffer, v any) {
 // writerLoop processes all file IO 异步写线程处理文件操作
 func (l *Logger) writerLoop() {
 	defer func() {
-		l.Flush()
+		l.syncFile()
 	}()
 
 	for {
 		select {
-		case b, ok := <-l.queue:
+		case entry, ok := <-l.queue:
 			if !ok {
 				return
 			}
-			l.writeToOutput(b)
+			l.handleEntry(entry)
 
 		case <-l.quit:
 			// Drain the queue before exit 退出前清空队列
 			for {
 				select {
-				case b := <-l.queue:
-					l.writeToOutput(b)
+				case entry := <-l.queue:
+					l.handleEntry(entry)
 				default:
 					return
 				}
 			}
 		}
+	}
+}
+
+// handleEntry processes one queued log entry 处理单个日志队列条目
+func (l *Logger) handleEntry(entry logEntry) {
+	if entry.flush != nil {
+		l.syncFile()
+		close(entry.flush)
+		return
+	}
+	if len(entry.data) > 0 {
+		l.writeToOutput(entry.data)
 	}
 }
 
@@ -378,10 +407,13 @@ func (l *Logger) rotate(cfg LoggerConfig) error {
 	l.curName = ""
 	l.lastRotate = now
 
+	if err := l.openNewFile(now, cfg); err != nil {
+		return err
+	}
+
 	// Clean up asynchronously to avoid blocking writes 异步清理避免阻塞写入
 	go l.cleanup(cfg)
-
-	return l.openNewFile(now, cfg)
+	return nil
 }
 
 // cleanup removes expired or extra log files 清理过期或多余日志文件
@@ -404,6 +436,10 @@ func (l *Logger) cleanup(cfg LoggerConfig) {
 		return
 	}
 
+	l.fileMu.Lock()
+	currentName := l.curName
+	l.fileMu.Unlock()
+
 	var keep []struct {
 		path string
 		t    time.Time
@@ -422,6 +458,9 @@ func (l *Logger) cleanup(cfg LoggerConfig) {
 		}
 
 		filename := filepath.Base(f)
+		if filename == currentName {
+			continue
+		}
 
 		// Only handle files with the same base prefix 只处理以 base 开头的文件
 		if !strings.HasPrefix(filename, base) {
@@ -475,6 +514,9 @@ func (l *Logger) formatFileName(t time.Time, cfg LoggerConfig) string {
 
 // SetLevel updates the minimum log level 动态更新日志级别
 func (l *Logger) SetLevel(level LogLevel) {
+	if l == nil {
+		return
+	}
 	l.cfgMu.Lock()
 	defer l.cfgMu.Unlock()
 	if l.cfg != nil {
@@ -484,6 +526,9 @@ func (l *Logger) SetLevel(level LogLevel) {
 
 // SetPrefix updates the log prefix 动态更新日志前缀
 func (l *Logger) SetPrefix(prefix string) {
+	if l == nil {
+		return
+	}
 	l.cfgMu.Lock()
 	defer l.cfgMu.Unlock()
 	if l.cfg != nil {
@@ -493,6 +538,9 @@ func (l *Logger) SetPrefix(prefix string) {
 
 // SetStdout toggles stdout output 开关控制台输出
 func (l *Logger) SetStdout(enable bool) {
+	if l == nil {
+		return
+	}
 	l.cfgMu.Lock()
 	defer l.cfgMu.Unlock()
 	if l.cfg != nil {
@@ -502,6 +550,9 @@ func (l *Logger) SetStdout(enable bool) {
 
 // SetConfig replaces config and reopens the log file 动态替换配置并重新创建日志文件
 func (l *Logger) SetConfig(cfg *LoggerConfig) {
+	if l == nil {
+		return
+	}
 	newCfg, err := prepareConfig(cfg)
 	if err != nil {
 		return
@@ -525,10 +576,19 @@ func (l *Logger) SetConfig(cfg *LoggerConfig) {
 	l.curName = ""
 	l.curSize = 0
 	l.lastRotate = time.Now()
+	now := time.Now()
+	l.timeCache.Store(&timeCacheEntry{
+		sec:    now.Unix(),
+		format: newCfg.TimeFormat,
+		str:    now.Format(newCfg.TimeFormat),
+	})
 }
 
 // Close stops the logger 关闭日志系统
 func (l *Logger) Close() {
+	if l == nil {
+		return
+	}
 	l.closeOnce.Do(func() {
 		atomic.StoreUint32(&l.closed, 1)
 		close(l.quit)
@@ -541,12 +601,39 @@ func (l *Logger) Close() {
 		if l.curFile != nil {
 			_ = l.curFile.Sync()
 			_ = l.curFile.Close()
+			l.curFile = nil
 		}
 	})
 }
 
 // Flush flushes the file buffer 强制刷新文件缓冲区
 func (l *Logger) Flush() {
+	if l == nil {
+		return
+	}
+	if atomic.LoadUint32(&l.closed) != 0 {
+		l.syncFile()
+		return
+	}
+
+	done := make(chan struct{})
+	select {
+	case l.queue <- logEntry{flush: done}:
+		select {
+		case <-done:
+		case <-l.quit:
+			l.syncFile()
+		}
+	case <-l.quit:
+		l.syncFile()
+	}
+}
+
+// syncFile flushes the current file buffer 刷新当前文件缓冲区
+func (l *Logger) syncFile() {
+	if l == nil {
+		return
+	}
 	l.fileMu.Lock()
 	defer l.fileMu.Unlock()
 	if l.curFile != nil {
@@ -556,6 +643,9 @@ func (l *Logger) Flush() {
 
 // LogPath returns the log directory 返回日志目录
 func (l *Logger) LogPath() string {
+	if l == nil {
+		return ""
+	}
 	l.cfgMu.RLock()
 	defer l.cfgMu.RUnlock()
 	if l.cfg == nil {
@@ -566,6 +656,9 @@ func (l *Logger) LogPath() string {
 
 // DropCount returns the dropped log count 返回丢弃日志数量
 func (l *Logger) DropCount() uint64 {
+	if l == nil {
+		return 0
+	}
 	return atomic.LoadUint64(&l.dropCount)
 }
 

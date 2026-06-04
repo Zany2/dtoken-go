@@ -9,14 +9,14 @@ import (
 
 // RenewPoolConfig defines renew pool configuration 续期池配置
 type RenewPoolConfig struct {
-	MinSize             int           // Minimum pool size 最小协程数
-	MaxSize             int           // Maximum pool size 最大协程数
+	MinSize             int           // Initial and minimum pool capacity 初始和最小池容量
+	MaxSize             int           // Maximum pool capacity 最大池容量
 	ScaleUpRate         float64       // Scale-up threshold 扩容阈值
 	ScaleDownRate       float64       // Scale-down threshold 缩容阈值
 	CheckInterval       time.Duration // Auto-scale check interval 检查间隔
 	Expiry              time.Duration // Idle worker expiry duration 空闲协程过期时间
 	PrintStatusInterval time.Duration // Interval for periodic status printing 定时打印池状态的间隔
-	PreAlloc            bool          // Whether to pre-allocate memory 是否预分配内存
+	PreAlloc            bool          // Whether to pre-allocate memory, disables dynamic scaling 是否预分配内存，会禁用动态扩缩容
 	NonBlocking         bool          // Whether to use non-blocking mode 是否为非阻塞模式
 }
 
@@ -68,6 +68,9 @@ func (c *RenewPoolConfig) Validate() error {
 	}
 	if c.PrintStatusInterval < 0 {
 		return fmt.Errorf("RenewPoolConfig.PrintStatusInterval must not be negative")
+	}
+	if c.PreAlloc {
+		return fmt.Errorf("RenewPoolConfig.PreAlloc must be false because dynamic scaling requires ants Tune")
 	}
 
 	return nil

@@ -157,7 +157,7 @@ func (s *Storage) Expire(ctx context.Context, key string, expiration time.Durati
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, found := s.c.Get(key)
+	val, found := s.c.Get(key)
 	if !found {
 		return derror.ErrKeyNotFound
 	}
@@ -166,7 +166,6 @@ func (s *Storage) Expire(ctx context.Context, key string, expiration time.Durati
 		s.c.Delete(key) // Delete the key for immediate expiration 立即过期等于删除
 	} else {
 		// Reset the value with a new TTL 重新设置值 + 新 TTL
-		val, _ := s.c.Get(key) // The key is confirmed to exist 已确认存在
 		s.c.Set(key, val, expiration)
 	}
 

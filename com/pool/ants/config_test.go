@@ -57,6 +57,7 @@ func TestRenewPoolConfigValidateInvalid(t *testing.T) {
 		{MinSize: 1, MaxSize: 1, ScaleUpRate: 0.8, ScaleDownRate: 0.2, CheckInterval: 0, Expiry: time.Second},
 		{MinSize: 1, MaxSize: 1, ScaleUpRate: 0.8, ScaleDownRate: 0.2, CheckInterval: time.Second, Expiry: 0},
 		{MinSize: 1, MaxSize: 1, ScaleUpRate: 0.8, ScaleDownRate: 0.2, CheckInterval: time.Second, Expiry: time.Second, PrintStatusInterval: -time.Second},
+		{MinSize: 1, MaxSize: 1, ScaleUpRate: 0.8, ScaleDownRate: 0.2, CheckInterval: time.Second, Expiry: time.Second, PreAlloc: true},
 	}
 
 	for _, tt := range tests {
