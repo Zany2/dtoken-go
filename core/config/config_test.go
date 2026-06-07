@@ -167,6 +167,19 @@ func TestValidateRejectsInvalidCookieConfig(t *testing.T) {
 				cfg.CookieConfig.MaxAge = -1
 			},
 		},
+		{
+			name: "invalid same site",
+			mutate: func(cfg *Config) {
+				cfg.CookieConfig.SameSite = SameSiteMode("Invalid")
+			},
+		},
+		{
+			name: "same site none without secure",
+			mutate: func(cfg *Config) {
+				cfg.CookieConfig.SameSite = SameSiteNone
+				cfg.CookieConfig.Secure = false
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -178,6 +191,46 @@ func TestValidateRejectsInvalidCookieConfig(t *testing.T) {
 				t.Fatal("Validate() error = nil, want invalid cookie config error")
 			}
 		})
+	}
+}
+
+// TestConfigCloneDeepCopiesCookieConfig verifies clone isolates nested cookie config TestConfigCloneDeepCopiesCookieConfig 验证克隆会隔离嵌套 Cookie 配置
+func TestConfigCloneDeepCopiesCookieConfig(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.AuthType = "user:"
+	cfg.CookieConfig.Domain = "example.com"
+	cfg.CookieConfig.Path = "/api"
+	cfg.CookieConfig.MaxAge = 3600
+
+	clone := cfg.Clone()
+	if clone == cfg {
+		t.Fatal("Clone() returned original config pointer")
+	}
+	if clone.CookieConfig == cfg.CookieConfig {
+		t.Fatal("Clone() reused CookieConfig pointer, want deep copy")
+	}
+	if clone.CookieConfig.Domain != "example.com" || clone.CookieConfig.Path != "/api" || clone.CookieConfig.MaxAge != 3600 {
+		t.Fatalf("clone CookieConfig = %+v, want copied values", clone.CookieConfig)
+	}
+
+	clone.CookieConfig.Domain = "changed.example.com"
+	clone.CookieConfig.Path = "/changed"
+	if cfg.CookieConfig.Domain != "example.com" || cfg.CookieConfig.Path != "/api" {
+		t.Fatalf("original CookieConfig changed after clone mutation: %+v", cfg.CookieConfig)
+	}
+}
+
+// TestConfigClonePreservesNilCookieConfig verifies nil cookie config stays nil TestConfigClonePreservesNilCookieConfig 验证 nil Cookie 配置克隆后仍为 nil
+func TestConfigClonePreservesNilCookieConfig(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.CookieConfig = nil
+
+	clone := cfg.Clone()
+	if clone == cfg {
+		t.Fatal("Clone() returned original config pointer")
+	}
+	if clone.CookieConfig != nil {
+		t.Fatalf("Clone().CookieConfig = %+v, want nil", clone.CookieConfig)
 	}
 }
 

@@ -73,10 +73,11 @@ func (req *AuthHandleRequest) IsHandled() bool {
 
 // RouteAccessRequest carries route access rules RouteAccessRequest 携带路由访问规则
 type RouteAccessRequest struct {
-	AuthType    string
-	LogicType   LogicType
-	Permissions []string
-	Roles       []string
+	AuthType     string
+	LogicType    LogicType
+	CheckDisable bool
+	Permissions  []string
+	Roles        []string
 
 	skipAuth       bool
 	skipPermission bool
@@ -238,7 +239,7 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) ghttp.HandlerFunc
 			return
 		}
 
-		mgr, err := authcheck.GetManager(options.AuthType)
+		mgr, err := authcheck.GetManager(accessReq.AuthType)
 		if err != nil {
 			dispatchFail(r, options, err)
 			return
@@ -248,9 +249,10 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) ghttp.HandlerFunc
 		tokenValue := dCtx.GetTokenValue()
 
 		req := authcheck.Request{
-			TokenValue: tokenValue,
-			CheckLogin: true,
-			LoginError: derror.ErrTokenExpired,
+			TokenValue:   tokenValue,
+			CheckLogin:   true,
+			CheckDisable: accessReq.CheckDisable,
+			LoginError:   derror.ErrTokenExpired,
 		}
 
 		if !accessReq.skipPermission {
@@ -461,6 +463,9 @@ func GetDTokenContext(r *ghttp.Request) (*DContext.DTokenContext, bool) {
 // GetDTokenContextByCtx gets DToken context by context GetDTokenContextByCtx 从上下文获取 DToken 上下文
 func GetDTokenContextByCtx(ctx context.Context) (*DContext.DTokenContext, bool) {
 	request := g.RequestFromCtx(ctx)
+	if request == nil {
+		return nil, false
+	}
 	ctxVar := request.GetCtxVar(DTokenCtxKey)
 	if ctxVar == nil {
 		return nil, false
@@ -470,42 +475,13 @@ func GetDTokenContextByCtx(ctx context.Context) (*DContext.DTokenContext, bool) 
 	return tokenContext, ok
 }
 
-// GetLoginIDByCtx gets login ID by context GetLoginIDByCtx 从上下文获取登录 ID
-func GetLoginIDByCtx(ctx context.Context, authType ...string) (string, error) {
-	mgr, err := authcheck.GetManager(firstAuthType(authType...))
-	if err != nil {
-		return "", err
-	}
-
-	tokenValue := getDContext(g.RequestFromCtx(ctx), mgr).GetTokenValue()
-	return mgr.GetLoginID(ctx, tokenValue)
-}
-
-// GetTokenInfoByCtx gets token info by context GetTokenInfoByCtx 从上下文获取 Token 信息
-func GetTokenInfoByCtx(ctx context.Context, authType ...string) (*manager.TokenInfo, error) {
-	mgr, err := authcheck.GetManager(firstAuthType(authType...))
-	if err != nil {
-		return nil, err
-	}
-
-	return mgr.GetTokenInfo(ctx, getDContext(g.RequestFromCtx(ctx), mgr).GetTokenValue())
-}
-
-// IntrospectTokenByCtx inspects current token without renewal side effects IntrospectTokenByCtx 无续期副作用地检查当前 token 状态
-func IntrospectTokenByCtx(ctx context.Context, authType ...string) (*manager.TokenIntrospection, error) {
-	mgr, err := authcheck.GetManager(firstAuthType(authType...))
-	if err != nil {
-		return nil, err
-	}
-
-	return mgr.IntrospectToken(ctx, getDContext(g.RequestFromCtx(ctx), mgr).GetTokenValue())
-}
-
 // getDContext gets or creates DToken context getDContext 获取或创建 DToken 上下文
 func getDContext(r *ghttp.Request, mgr *manager.Manager) *DContext.DTokenContext {
 	if v := r.GetCtxVar(DTokenCtxKey); v != nil {
 		if dCtx, ok := v.Val().(*DContext.DTokenContext); ok {
-			return dCtx
+			if dCtx.GetManager() == mgr {
+				return dCtx
+			}
 		}
 	}
 

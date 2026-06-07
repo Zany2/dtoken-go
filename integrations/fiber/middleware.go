@@ -309,7 +309,9 @@ func GetDTokenContext(c *gofiber.Ctx) (*corecontext.DTokenContext, bool) {
 func getDTokenContext(c *gofiber.Ctx, mgr *manager.Manager) *corecontext.DTokenContext {
 	if value := c.Locals(DTokenCtxKey); value != nil {
 		if dCtx, ok := value.(*corecontext.DTokenContext); ok {
-			return dCtx
+			if dCtx.GetManager() == mgr {
+				return dCtx
+			}
 		}
 	}
 

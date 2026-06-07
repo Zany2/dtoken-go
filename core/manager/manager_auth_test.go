@@ -367,6 +367,81 @@ func TestManagerAccessProviderOverridesSessionAccess(t *testing.T) {
 	}
 }
 
+// TestManagerAccessProviderNilFallsBackToSession verifies nil provider data uses session access. TestManagerAccessProviderNilFallsBackToSession 验证提供器返回 nil 时回退到会话权限。
+func TestManagerAccessProviderNilFallsBackToSession(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManagerWithAccessProvider(t, nil, AccessProviderFunc{
+		PermissionFunc: func(context.Context, AccessSubject) ([]string, error) {
+			return nil, nil
+		},
+		RoleFunc: func(context.Context, AccessSubject) ([]string, error) {
+			return nil, nil
+		},
+	})
+
+	token, err := mgr.Login(ctx, "u16")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if err = mgr.AddPermissions(ctx, "u16", []string{"session:write"}); err != nil {
+		t.Fatalf("AddPermissions() error = %v", err)
+	}
+	if err = mgr.AddRoles(ctx, "u16", []string{"session-admin"}); err != nil {
+		t.Fatalf("AddRoles() error = %v", err)
+	}
+
+	if !mgr.HasPermission(ctx, "u16", "session:write") {
+		t.Fatal("HasPermission(session:write) = false, want session fallback")
+	}
+	if err = mgr.CheckPermissionByToken(ctx, token, "session:write"); err != nil {
+		t.Fatalf("CheckPermissionByToken(session:write) error = %v", err)
+	}
+	if !mgr.HasRoleByToken(ctx, token, "session-admin") {
+		t.Fatal("HasRoleByToken(session-admin) = false, want session fallback")
+	}
+	if err = mgr.CheckRole(ctx, "u16", "session-admin"); err != nil {
+		t.Fatalf("CheckRole(session-admin) error = %v", err)
+	}
+}
+
+// TestManagerAccessProviderErrorsFailClosed verifies provider errors do not allow access. TestManagerAccessProviderErrorsFailClosed 验证提供器错误时权限安全拒绝。
+func TestManagerAccessProviderErrorsFailClosed(t *testing.T) {
+	ctx := context.Background()
+	providerErr := errors.New("provider unavailable")
+	mgr := newTestManagerWithAccessProvider(t, nil, AccessProviderFunc{
+		PermissionFunc: func(context.Context, AccessSubject) ([]string, error) {
+			return nil, providerErr
+		},
+		RoleFunc: func(context.Context, AccessSubject) ([]string, error) {
+			return nil, providerErr
+		},
+	})
+
+	token, err := mgr.Login(ctx, "u17")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if err = mgr.AddPermissions(ctx, "u17", []string{"session:delete"}); err != nil {
+		t.Fatalf("AddPermissions() error = %v", err)
+	}
+	if err = mgr.AddRoles(ctx, "u17", []string{"session-owner"}); err != nil {
+		t.Fatalf("AddRoles() error = %v", err)
+	}
+
+	if mgr.HasPermission(ctx, "u17", "session:delete") {
+		t.Fatal("HasPermission(session:delete) = true, want false on provider error")
+	}
+	if err = mgr.CheckPermissionByToken(ctx, token, "session:delete"); !errors.Is(err, providerErr) {
+		t.Fatalf("CheckPermissionByToken() error = %v, want provider error", err)
+	}
+	if mgr.HasRoleByToken(ctx, token, "session-owner") {
+		t.Fatal("HasRoleByToken(session-owner) = true, want false on provider error")
+	}
+	if err = mgr.CheckRole(ctx, "u17", "session-owner"); !errors.Is(err, providerErr) {
+		t.Fatalf("CheckRole() error = %v, want provider error", err)
+	}
+}
+
 // TestManagerActiveTimeoutMarksTokenState verifies inactive tokens keep the active-timeout cause. TestManagerActiveTimeoutMarksTokenState 验证不活跃 Token 会保留活跃超时原因。
 func TestManagerActiveTimeoutMarksTokenState(t *testing.T) {
 	ctx := context.Background()

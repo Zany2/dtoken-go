@@ -1,19 +1,33 @@
 package context
 
 import (
+	stdctx "context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
+	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/manager"
+	"github.com/Zany2/dtoken-go/core/nonce"
+	"github.com/Zany2/dtoken-go/core/oauth2"
+	"github.com/Zany2/dtoken-go/core/shortkey"
+	"github.com/Zany2/dtoken-go/core/ticket"
 )
 
-// TestGetTokenValuePrecedence verifies header, bearer, cookie, and body lookup order. TestGetTokenValuePrecedence 验证 Header、Bearer、Cookie 和 Body 的读取顺序。
+// TestGetTokenValuePrecedence verifies header, bearer, cookie, query, and body lookup order. TestGetTokenValuePrecedence 验证 Header、Bearer、Cookie、Query 和 Body 的读取顺序。
 func TestGetTokenValuePrecedence(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.TokenName = "X-Token"
 	cfg.IsReadHeader = true
 	cfg.IsReadCookie = true
+	cfg.IsReadQuery = true
 	cfg.IsReadBody = true
 	mgr := manager.NewManager(cfg, nil, nil, nil, nil, nil, nil)
 
@@ -23,6 +37,7 @@ func TestGetTokenValuePrecedence(t *testing.T) {
 			"Authorization": "Bearer bearer-token",
 		},
 		cookies: map[string]string{"X-Token": "cookie-token"},
+		queries: map[string]string{"X-Token": "query-token"},
 		forms:   map[string]string{"X-Token": "body-token"},
 	}
 	if token := NewContext(req, mgr).GetTokenValue(); token != "header-token" {
@@ -40,6 +55,11 @@ func TestGetTokenValuePrecedence(t *testing.T) {
 	}
 
 	delete(req.cookies, "X-Token")
+	if token := NewContext(req, mgr).GetTokenValue(); token != "query-token" {
+		t.Fatalf("GetTokenValue() = %q, want query-token", token)
+	}
+
+	delete(req.queries, "X-Token")
 	if token := NewContext(req, mgr).GetTokenValue(); token != "body-token" {
 		t.Fatalf("GetTokenValue() = %q, want body-token", token)
 	}
@@ -72,6 +92,8 @@ func TestExtractBearerToken(t *testing.T) {
 	}{
 		{name: "bearer", auth: "Bearer abc", want: "abc"},
 		{name: "case insensitive", auth: "bearer abc", want: "abc"},
+		{name: "empty bearer", auth: "Bearer", want: ""},
+		{name: "empty bearer with spaces", auth: "Bearer   ", want: ""},
 		{name: "raw compatibility", auth: "raw-token", want: "raw-token"},
 		{name: "empty", auth: "  ", want: ""},
 	}
@@ -85,11 +107,236 @@ func TestExtractBearerToken(t *testing.T) {
 	}
 }
 
+// TestContextAuthAccessSessionTerminalFacades verifies core context helpers use the current token. TestContextAuthAccessSessionTerminalFacades 验证核心上下文快捷方法使用当前 Token。
+func TestContextAuthAccessSessionTerminalFacades(t *testing.T) {
+	ctx := stdctx.Background()
+	dctx, req, mgr := newTestDTokenContext(t)
+
+	token, err := dctx.Auth().Login(ctx, "ctx-user", "web", "browser-1")
+	if err != nil {
+		t.Fatalf("Auth.Login() error = %v", err)
+	}
+	req.headers[mgr.GetConfig().TokenName] = token
+
+	if dctx.Auth().Value() != token {
+		t.Fatalf("Auth.Value() = %q, want token", dctx.Auth().Value())
+	}
+	if !dctx.Auth().IsLogin(ctx) {
+		t.Fatal("Auth.IsLogin() = false, want true")
+	}
+	loginID, err := dctx.Auth().GetLoginID(ctx)
+	if err != nil {
+		t.Fatalf("Auth.GetLoginID() error = %v", err)
+	}
+	if loginID != "ctx-user" {
+		t.Fatalf("Auth.GetLoginID() = %q, want ctx-user", loginID)
+	}
+	device, err := dctx.Auth().GetDevice(ctx)
+	if err != nil {
+		t.Fatalf("Auth.GetDevice() error = %v", err)
+	}
+	if device != "web" {
+		t.Fatalf("Auth.GetDevice() = %q, want web", device)
+	}
+	if err = dctx.Auth().RenewTimeout(ctx, time.Minute); err != nil {
+		t.Fatalf("Auth.RenewTimeout() error = %v", err)
+	}
+
+	if err = dctx.Access().AddPermissions(ctx, []string{"ctx:read", "ctx:write"}); err != nil {
+		t.Fatalf("Access.AddPermissions() error = %v", err)
+	}
+	if err = dctx.Access().AddRoles(ctx, []string{"ctx-admin", "ctx-editor"}); err != nil {
+		t.Fatalf("Access.AddRoles() error = %v", err)
+	}
+	if !dctx.Access().HasPermission(ctx, "ctx:read") {
+		t.Fatal("Access.HasPermission(ctx:read) = false, want true")
+	}
+	if !dctx.Access().HasPermissionsAnd(ctx, []string{"ctx:read", "ctx:write"}) {
+		t.Fatal("Access.HasPermissionsAnd() = false, want true")
+	}
+	if err = dctx.Access().CheckRolesOr(ctx, []string{"missing", "ctx-admin"}); err != nil {
+		t.Fatalf("Access.CheckRolesOr() error = %v", err)
+	}
+	if err = dctx.Access().RemovePermissions(ctx, []string{"ctx:write"}); err != nil {
+		t.Fatalf("Access.RemovePermissions() error = %v", err)
+	}
+	if dctx.Access().HasPermission(ctx, "ctx:write") {
+		t.Fatal("Access.HasPermission(ctx:write) = true after remove, want false")
+	}
+
+	if err = dctx.Session().SetValue(ctx, "theme", "dark"); err != nil {
+		t.Fatalf("Session.SetValue() error = %v", err)
+	}
+	value, ok, err := dctx.Session().GetValue(ctx, "theme")
+	if err != nil {
+		t.Fatalf("Session.GetValue() error = %v", err)
+	}
+	if !ok || value != "dark" {
+		t.Fatalf("Session.GetValue() = %v, %v, want dark, true", value, ok)
+	}
+	if err = dctx.Session().DeleteValue(ctx, "theme"); err != nil {
+		t.Fatalf("Session.DeleteValue() error = %v", err)
+	}
+
+	tokens, err := dctx.Terminal().GetTokenValueList(ctx, true)
+	if err != nil {
+		t.Fatalf("Terminal.GetTokenValueList() error = %v", err)
+	}
+	if !sameContextStrings(tokens, []string{token}) {
+		t.Fatalf("Terminal.GetTokenValueList() = %v, want [%s]", tokens, token)
+	}
+	count, err := dctx.Terminal().GetOnlineTerminalCountByDevice(ctx, "web")
+	if err != nil {
+		t.Fatalf("Terminal.GetOnlineTerminalCountByDevice() error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("Terminal.GetOnlineTerminalCountByDevice() = %d, want 1", count)
+	}
+	terminalInfo, err := dctx.Terminal().GetTerminalInfo(ctx)
+	if err != nil {
+		t.Fatalf("Terminal.GetTerminalInfo() error = %v", err)
+	}
+	if terminalInfo.Token != token || terminalInfo.Device != "web" {
+		t.Fatalf("Terminal.GetTerminalInfo() = %+v, want current web terminal", terminalInfo)
+	}
+
+	info, err := dctx.Auth().IntrospectToken(ctx)
+	if err != nil {
+		t.Fatalf("Auth.IntrospectToken() error = %v", err)
+	}
+	if !info.Active || info.LoginID != "ctx-user" {
+		t.Fatalf("Auth.IntrospectToken() = %+v, want active ctx-user", info)
+	}
+	if err = dctx.Terminal().Logout(ctx); err != nil {
+		t.Fatalf("Terminal.Logout() error = %v", err)
+	}
+	if dctx.Auth().IsLogin(ctx) {
+		t.Fatal("Auth.IsLogin() after logout = true, want false")
+	}
+}
+
+// TestContextCookieAndOptionalFacades verifies cookie and optional module facades. TestContextCookieAndOptionalFacades 验证 Cookie 与可选模块快捷入口。
+func TestContextCookieAndOptionalFacades(t *testing.T) {
+	ctx := stdctx.Background()
+	dctx, req, mgr := newTestDTokenContext(t)
+	enableContextOptionalManagers(mgr)
+
+	token, err := dctx.Cookie().Login(ctx, "cookie-user", "app")
+	if err != nil {
+		t.Fatalf("Cookie.Login() error = %v", err)
+	}
+	if req.cookie == nil || req.cookie.Name != mgr.GetConfig().TokenName || req.cookie.Value != token {
+		t.Fatalf("Cookie.Login() cookie = %+v, want token cookie", req.cookie)
+	}
+	req.headers[mgr.GetConfig().TokenName] = token
+
+	nonceValue, err := dctx.Nonce().Generate(ctx)
+	if err != nil {
+		t.Fatalf("Nonce.Generate() error = %v", err)
+	}
+	if !dctx.Nonce().IsValid(ctx, nonceValue) {
+		t.Fatal("Nonce.IsValid() = false, want true")
+	}
+	if err = dctx.Nonce().VerifyAndConsume(ctx, nonceValue); err != nil {
+		t.Fatalf("Nonce.VerifyAndConsume() error = %v", err)
+	}
+
+	createdTicket, err := dctx.Ticket().CreateForCurrentLogin(ctx, ticket.CreateOptions{TargetApp: "admin"})
+	if err != nil {
+		t.Fatalf("Ticket.CreateForCurrentLogin() error = %v", err)
+	}
+	if createdTicket.LoginID != "cookie-user" {
+		t.Fatalf("Ticket loginID = %q, want cookie-user", createdTicket.LoginID)
+	}
+	if _, err = dctx.Ticket().Consume(ctx, createdTicket.Ticket, ticket.ValidateOptions{LoginID: "cookie-user"}); err != nil {
+		t.Fatalf("Ticket.Consume() error = %v", err)
+	}
+
+	createdShortKey, err := dctx.ShortKey().Create(ctx, shortkey.CreateOptions{TargetApp: "admin"})
+	if err != nil {
+		t.Fatalf("ShortKey.Create() error = %v", err)
+	}
+	if _, err = dctx.ShortKey().ConfirmForCurrentLogin(ctx, createdShortKey.Key, shortkey.ConfirmOptions{Device: "app"}); err != nil {
+		t.Fatalf("ShortKey.ConfirmForCurrentLogin() error = %v", err)
+	}
+	if _, err = dctx.ShortKey().Consume(ctx, createdShortKey.Key, shortkey.ValidateOptions{LoginID: "cookie-user"}); err != nil {
+		t.Fatalf("ShortKey.Consume() error = %v", err)
+	}
+
+	refreshPair, err := dctx.Refresh().Login(ctx, "refresh-context-user", "web")
+	if err != nil {
+		t.Fatalf("Refresh.Login() error = %v", err)
+	}
+	if refreshPair.AccessToken == "" || refreshPair.RefreshToken == "" {
+		t.Fatalf("Refresh.Login() pair = %+v, want non-empty tokens", refreshPair)
+	}
+	if _, err = dctx.Refresh().Refresh(ctx, refreshPair.RefreshToken); err != nil {
+		t.Fatalf("Refresh.Refresh() error = %v", err)
+	}
+
+	client := &oauth2.Client{
+		ClientID:     "ctx-client",
+		ClientSecret: "secret",
+		GrantTypes:   []oauth2.GrantType{oauth2.GrantTypeClientCredentials},
+		Scopes:       []string{"read"},
+	}
+	if err = dctx.OAuth2().RegisterClient(client); err != nil {
+		t.Fatalf("OAuth2.RegisterClient() error = %v", err)
+	}
+	oauthToken, err := dctx.OAuth2().ClientCredentialsToken(ctx, client.ClientID, client.ClientSecret, []string{"read"})
+	if err != nil {
+		t.Fatalf("OAuth2.ClientCredentialsToken() error = %v", err)
+	}
+	if !dctx.OAuth2().ValidateAccessToken(ctx, oauthToken.Token) {
+		t.Fatal("OAuth2.ValidateAccessToken() = false, want true")
+	}
+
+	if err = dctx.Cookie().Logout(ctx); err != nil {
+		t.Fatalf("Cookie.Logout() error = %v", err)
+	}
+	if req.cookie == nil || req.cookie.Value != "" || req.cookie.MaxAge != -1 {
+		t.Fatalf("Cookie.Logout() cookie = %+v, want cleared cookie", req.cookie)
+	}
+}
+
+// TestContextNoTokenErrors verifies current-token helpers fail consistently without a token. TestContextNoTokenErrors 验证无 Token 时快捷方法一致返回未登录。
+func TestContextNoTokenErrors(t *testing.T) {
+	ctx := stdctx.Background()
+	dctx, _, _ := newTestDTokenContext(t)
+
+	if dctx.Auth().IsLogin(ctx) {
+		t.Fatal("Auth.IsLogin() without token = true, want false")
+	}
+	if err := dctx.Auth().CheckLogin(ctx); !errors.Is(err, derror.ErrNotLogin) {
+		t.Fatalf("Auth.CheckLogin() error = %v, want ErrNotLogin", err)
+	}
+	if _, err := dctx.Auth().GetLoginID(ctx); !errors.Is(err, derror.ErrNotLogin) {
+		t.Fatalf("Auth.GetLoginID() error = %v, want ErrNotLogin", err)
+	}
+	if err := dctx.Access().CheckPermission(ctx, "ctx:read"); !errors.Is(err, derror.ErrNotLogin) {
+		t.Fatalf("Access.CheckPermission() error = %v, want ErrNotLogin", err)
+	}
+	if dctx.Access().HasRole(ctx, "admin") {
+		t.Fatal("Access.HasRole() without token = true, want false")
+	}
+	if _, err := dctx.Session().Get(ctx); !errors.Is(err, derror.ErrNotLogin) {
+		t.Fatalf("Session.Get() error = %v, want ErrNotLogin", err)
+	}
+	if err := dctx.Terminal().LogoutAll(ctx); !errors.Is(err, derror.ErrNotLogin) {
+		t.Fatalf("Terminal.LogoutAll() error = %v, want ErrNotLogin", err)
+	}
+	if err := dctx.Disable().Account(ctx, time.Minute); !errors.Is(err, derror.ErrNotLogin) {
+		t.Fatalf("Disable.Account() error = %v, want ErrNotLogin", err)
+	}
+}
+
 type testRequestContext struct {
 	headers map[string]string
 	cookies map[string]string
+	queries map[string]string
 	forms   map[string]string
 	values  map[string]any
+	cookie  *adapter.CookieOptions
 }
 
 func (c *testRequestContext) GetHeader(key string) string { return c.headers[key] }
@@ -100,7 +347,7 @@ func (c *testRequestContext) GetHeaders() map[string][]string {
 	}
 	return result
 }
-func (c *testRequestContext) GetQuery(string) string           { return "" }
+func (c *testRequestContext) GetQuery(key string) string       { return c.queries[key] }
 func (c *testRequestContext) GetQueryAll() map[string][]string { return nil }
 func (c *testRequestContext) GetPostForm(key string) string    { return c.forms[key] }
 func (c *testRequestContext) GetCookie(key string) string      { return c.cookies[key] }
@@ -116,7 +363,9 @@ func (c *testRequestContext) SetHeader(string, string)         {}
 func (c *testRequestContext) Write(data []byte) (int, error)   { return len(data), nil }
 func (c *testRequestContext) SetCookie(string, string, int, string, string, bool, bool) {
 }
-func (c *testRequestContext) SetCookieWithOptions(*adapter.CookieOptions) {}
+func (c *testRequestContext) SetCookieWithOptions(options *adapter.CookieOptions) {
+	c.cookie = options
+}
 func (c *testRequestContext) Set(key string, value any) {
 	if c.values == nil {
 		c.values = map[string]any{}
@@ -134,3 +383,277 @@ func (c *testRequestContext) GetString(key string) string {
 func (c *testRequestContext) MustGet(key string) any { return c.values[key] }
 func (c *testRequestContext) Abort()                 {}
 func (c *testRequestContext) IsAborted() bool        { return false }
+
+func newTestDTokenContext(t *testing.T) (*DTokenContext, *testRequestContext, *manager.Manager) {
+	t.Helper()
+
+	cfg := config.DefaultConfig()
+	cfg.TokenName = "X-Context-Token"
+	cfg.Timeout = 120
+	cfg.RefreshTokenTimeout = 180
+	cfg.AutoRenew = false
+	cfg.AsyncEvent = false
+	cfg.IsPrintBanner = false
+	cfg.IsLog = false
+	cfg.IsReadHeader = true
+	cfg.IsReadCookie = true
+	cfg.CookieConfig = config.DefaultCookieConfig()
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("test config invalid: %v", err)
+	}
+
+	mgr := manager.NewManager(
+		cfg,
+		&contextTestGenerator{},
+		newContextTestStorage(),
+		contextTestCodec{},
+		adapter.NewNopLogger(),
+		nil,
+		nil,
+	)
+	t.Cleanup(mgr.CloseManager)
+
+	req := &testRequestContext{
+		headers: map[string]string{},
+		cookies: map[string]string{},
+		queries: map[string]string{},
+		forms:   map[string]string{},
+	}
+	return NewContext(req, mgr), req, mgr
+}
+
+func enableContextOptionalManagers(mgr *manager.Manager) {
+	cfg := mgr.GetConfig()
+	manager.WithNonceManager(nonce.NewDefaultNonceManager(
+		cfg.AuthType,
+		cfg.KeyPrefix,
+		mgr.GetStorage(),
+	))(mgr)
+	manager.WithTicketManager(ticket.NewDefaultManager(
+		cfg.AuthType,
+		cfg.KeyPrefix,
+		mgr.GetStorage(),
+		mgr.GetSerializer(),
+	))(mgr)
+	manager.WithShortKeyManager(shortkey.NewDefaultManager(
+		cfg.AuthType,
+		cfg.KeyPrefix,
+		mgr.GetStorage(),
+		mgr.GetSerializer(),
+	))(mgr)
+	manager.WithOAuth2Manager(oauth2.NewOAuth2Server(
+		cfg.AuthType,
+		cfg.KeyPrefix,
+		mgr.GetStorage(),
+		mgr.GetSerializer(),
+	))(mgr)
+}
+
+func sameContextStrings(got, want []string) bool {
+	got = append([]string(nil), got...)
+	want = append([]string(nil), want...)
+	sort.Strings(got)
+	sort.Strings(want)
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+type contextTestGenerator struct {
+	mu  sync.Mutex
+	seq int
+}
+
+func (g *contextTestGenerator) Generate(loginID, device, deviceID string) (string, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.seq++
+	return fmt.Sprintf("ctx-token-%s-%s-%s-%d", loginID, device, deviceID, g.seq), nil
+}
+
+type contextTestCodec struct{}
+
+func (contextTestCodec) Name() string { return "json-test" }
+
+func (contextTestCodec) Encode(v any) ([]byte, error) { return json.Marshal(v) }
+
+func (contextTestCodec) Decode(data []byte, v any) error { return json.Unmarshal(data, v) }
+
+type contextTestStorage struct {
+	mu    sync.RWMutex
+	items map[string]contextTestStorageItem
+}
+
+type contextTestStorageItem struct {
+	value    any
+	expireAt time.Time
+}
+
+func newContextTestStorage() *contextTestStorage {
+	return &contextTestStorage{items: map[string]contextTestStorageItem{}}
+}
+
+func (s *contextTestStorage) Set(_ stdctx.Context, key string, value any, expiration time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var expireAt time.Time
+	if expiration > 0 {
+		expireAt = time.Now().Add(expiration)
+	}
+	s.items[key] = contextTestStorageItem{value: value, expireAt: expireAt}
+	return nil
+}
+
+func (s *contextTestStorage) Get(_ stdctx.Context, key string) (any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if !ok {
+		return nil, nil
+	}
+	if item.expired() {
+		delete(s.items, key)
+		return nil, nil
+	}
+	return item.value, nil
+}
+
+func (s *contextTestStorage) Delete(_ stdctx.Context, keys ...string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, key := range keys {
+		delete(s.items, key)
+	}
+	return nil
+}
+
+func (s *contextTestStorage) Exists(_ stdctx.Context, key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if !ok {
+		return false
+	}
+	if item.expired() {
+		delete(s.items, key)
+		return false
+	}
+	return true
+}
+
+func (s *contextTestStorage) Expire(_ stdctx.Context, key string, expiration time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if !ok || item.expired() {
+		delete(s.items, key)
+		return derror.ErrInvalidToken
+	}
+	if expiration > 0 {
+		item.expireAt = time.Now().Add(expiration)
+	} else {
+		item.expireAt = time.Time{}
+	}
+	s.items[key] = item
+	return nil
+}
+
+func (s *contextTestStorage) TTL(_ stdctx.Context, key string) (time.Duration, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if !ok {
+		return adapter.TTLNotFound, nil
+	}
+	if item.expired() {
+		delete(s.items, key)
+		return adapter.TTLNotFound, nil
+	}
+	if item.expireAt.IsZero() {
+		return adapter.TTLNoExpire, nil
+	}
+	ttl := time.Until(item.expireAt)
+	if ttl <= 0 {
+		delete(s.items, key)
+		return adapter.TTLNotFound, nil
+	}
+	return ttl, nil
+}
+
+func (s *contextTestStorage) Ping(stdctx.Context) error { return nil }
+
+func (s *contextTestStorage) GetAndDelete(_ stdctx.Context, key string) (any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if !ok {
+		return nil, nil
+	}
+	delete(s.items, key)
+	if item.expired() {
+		return nil, nil
+	}
+	return item.value, nil
+}
+
+func (s *contextTestStorage) Keys(_ stdctx.Context, pattern string) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	keys := make([]string, 0, len(s.items))
+	for key, item := range s.items {
+		if item.expired() {
+			delete(s.items, key)
+			continue
+		}
+		if matchContextTestPattern(pattern, key) {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	return keys, nil
+}
+
+func (s *contextTestStorage) Clear(stdctx.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.items = map[string]contextTestStorageItem{}
+	return nil
+}
+
+func (item contextTestStorageItem) expired() bool {
+	return !item.expireAt.IsZero() && time.Now().After(item.expireAt)
+}
+
+func matchContextTestPattern(pattern, value string) bool {
+	parts := strings.Split(pattern, "*")
+	if len(parts) == 1 {
+		return pattern == value
+	}
+	if !strings.HasPrefix(value, parts[0]) {
+		return false
+	}
+	value = strings.TrimPrefix(value, parts[0])
+	for _, part := range parts[1 : len(parts)-1] {
+		idx := strings.Index(value, part)
+		if idx < 0 {
+			return false
+		}
+		value = value[idx+len(part):]
+	}
+	last := parts[len(parts)-1]
+	return last == "" || strings.HasSuffix(value, last)
+}

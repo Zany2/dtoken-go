@@ -337,7 +337,9 @@ func GetDTokenContext(ctx *hertzapp.RequestContext) (*corecontext.DTokenContext,
 func getDTokenContext(ctx *hertzapp.RequestContext, mgr *manager.Manager) *corecontext.DTokenContext {
 	if value, exists := ctx.Get(DTokenCtxKey); exists {
 		if dCtx, ok := value.(*corecontext.DTokenContext); ok {
-			return dCtx
+			if dCtx.GetManager() == mgr {
+				return dCtx
+			}
 		}
 	}
 

@@ -304,7 +304,9 @@ func GetDTokenContext(c echo4.Context) (*corecontext.DTokenContext, bool) {
 func getDTokenContext(c echo4.Context, mgr *manager.Manager) *corecontext.DTokenContext {
 	if value := c.Get(DTokenCtxKey); value != nil {
 		if dCtx, ok := value.(*corecontext.DTokenContext); ok {
-			return dCtx
+			if dCtx.GetManager() == mgr {
+				return dCtx
+			}
 		}
 	}
 

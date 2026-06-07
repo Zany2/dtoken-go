@@ -1,0 +1,34 @@
+// @Author daixk 2026/06/05
+package chi
+
+import (
+	"context"
+	"time"
+)
+
+// GenerateNonceWithTimeoutByCtx generates nonce with timeout GenerateNonceWithTimeoutByCtx ?Nonce
+func GenerateNonceWithTimeoutByCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	dCtx, err := requireDTokenContextByCtx(ctx)
+	if err != nil {
+		return "", err
+	}
+	return dCtx.Nonce().GenerateWithTimeout(ctx, timeout)
+}
+
+// IsValidNonceByCtx checks nonce state IsValidNonceByCtx ?Nonce ?
+func IsValidNonceByCtx(ctx context.Context, nonce string) bool {
+	dCtx, err := requireDTokenContextByCtx(ctx)
+	if err != nil {
+		return false
+	}
+	return dCtx.Nonce().IsValid(ctx, nonce)
+}
+
+// GetNonceTTLByCtx gets nonce TTL GetNonceTTLByCtx ?Nonce ?
+func GetNonceTTLByCtx(ctx context.Context, nonce string) (int64, error) {
+	dCtx, err := requireDTokenContextByCtx(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return dCtx.Nonce().GetTTL(ctx, nonce)
+}

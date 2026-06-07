@@ -399,7 +399,7 @@ func GetLoginIDByCtx(ctx context.Context) (string, error) {
 	if !ok {
 		return "", derror.ErrNotLogin
 	}
-	return dCtx.GetLoginID(ctx)
+	return dCtx.Auth().GetLoginID(ctx)
 }
 
 // GetTokenInfoByCtx gets token info by context GetTokenInfoByCtx 从上下文获取 Token 信息
@@ -408,7 +408,7 @@ func GetTokenInfoByCtx(ctx context.Context) (*manager.TokenInfo, error) {
 	if !ok {
 		return nil, derror.ErrNotLogin
 	}
-	return dCtx.GetTokenInfo(ctx)
+	return dCtx.Auth().GetTokenInfo(ctx)
 }
 
 // IntrospectTokenByCtx inspects current token without renewal side effects IntrospectTokenByCtx 无续期副作用地检查当前 token 状态
@@ -417,14 +417,16 @@ func IntrospectTokenByCtx(ctx context.Context) (*manager.TokenIntrospection, err
 	if !ok {
 		return nil, derror.ErrNotLogin
 	}
-	return dCtx.IntrospectToken(ctx)
+	return dCtx.Auth().IntrospectToken(ctx)
 }
 
 // getDTokenContext gets or creates dtoken context getDTokenContext 获取或创建 DToken 上下文
 func getDTokenContext(chiCtx *ChiContext, mgr *manager.Manager) *DContext.DTokenContext {
 	if v := chiCtx.r.Context().Value(DTokenCtxKey); v != nil {
 		if dCtx, ok := v.(*DContext.DTokenContext); ok {
-			return dCtx
+			if dCtx.GetManager() == mgr {
+				return dCtx
+			}
 		}
 	}
 

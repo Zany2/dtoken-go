@@ -233,7 +233,6 @@ var (
 	NewManager                     = manager.NewManager
 	WithNonceManager               = manager.WithNonceManager
 	WithOAuth2Manager              = manager.WithOAuth2Manager
-	NewLegacyAccessProvider        = manager.NewLegacyAccessProvider
 	NewEventManager                = listener.NewManager
 	DefaultNonceConfig             = nonce.DefaultConfig
 	NewDefaultNonceManager         = nonce.NewDefaultNonceManager

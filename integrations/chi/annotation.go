@@ -183,7 +183,7 @@ func GetLoginIDFromRequest(w http.ResponseWriter, r *http.Request, authType ...s
 
 	chiCtx := NewChiContext(w, r).(*ChiContext)
 	dCtx := getDTokenContext(chiCtx, mgr)
-	return dCtx.GetLoginID(chiCtx.r.Context())
+	return dCtx.Auth().GetLoginID(chiCtx.r.Context())
 }
 
 // IsLoginFromRequest checks login state from request IsLoginFromRequest 从请求检查登录状态

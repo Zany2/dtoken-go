@@ -11,6 +11,8 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 	"github.com/Zany2/dtoken-go/core/nonce"
 	"github.com/Zany2/dtoken-go/core/oauth2"
+	"github.com/Zany2/dtoken-go/core/shortkey"
+	"github.com/Zany2/dtoken-go/core/ticket"
 )
 
 // TestBuildReturnsErrorForInvalidConfig verifies Build returns error instead of panic 测试 Build 在配置无效时返回错误而不是 panic
@@ -86,6 +88,8 @@ func TestBuildUsesInjectedOptionalModules(t *testing.T) {
 	codec := &testCodec{}
 	nonceManager := nonce.NewNonceManager(config.DefaultAuthType, config.DefaultKeyPrefix, storage, time.Minute)
 	oauth2Manager := oauth2.NewOAuth2Server(config.DefaultAuthType, config.DefaultKeyPrefix, storage, codec)
+	ticketManager := ticket.NewDefaultManager(config.DefaultAuthType, config.DefaultKeyPrefix, storage, codec)
+	shortKeyManager := shortkey.NewDefaultManager(config.DefaultAuthType, config.DefaultKeyPrefix, storage, codec)
 
 	mgr, err := NewBuilder().
 		IsPrintBanner(false).
@@ -94,6 +98,8 @@ func TestBuildUsesInjectedOptionalModules(t *testing.T) {
 		SetCodec(codec).
 		SetNonceManager(nonceManager).
 		SetOAuth2Manager(oauth2Manager).
+		SetTicketManager(ticketManager).
+		SetShortKeyManager(shortKeyManager).
 		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -105,6 +111,54 @@ func TestBuildUsesInjectedOptionalModules(t *testing.T) {
 	}
 	if mgr.GetOAuth2Manager() != oauth2Manager {
 		t.Fatal("oauth2 manager was not injected")
+	}
+	if mgr.GetTicketManager() != ticketManager {
+		t.Fatal("ticket manager was not injected")
+	}
+	if mgr.GetShortKeyManager() != shortKeyManager {
+		t.Fatal("short key manager was not injected")
+	}
+}
+
+// TestBuildUsesInjectedAccessProvider verifies access provider injection TestBuildUsesInjectedAccessProvider 验证访问提供器注入
+func TestBuildUsesInjectedAccessProvider(t *testing.T) {
+	provider := &testAccessProvider{}
+
+	mgr, err := NewBuilder().
+		IsPrintBanner(false).
+		SetGenerator(&testGenerator{}).
+		SetStorage(&testStorage{}).
+		SetCodec(&testCodec{}).
+		SetAccessProvider(provider).
+		Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	defer mgr.CloseManager()
+
+	if mgr.GetAccessProvider() != provider {
+		t.Fatalf("access provider = %T, want injected provider", mgr.GetAccessProvider())
+	}
+}
+
+// TestBuildUsesInjectedPool verifies explicit pool reaches manager TestBuildUsesInjectedPool 验证显式任务池会传递给 Manager
+func TestBuildUsesInjectedPool(t *testing.T) {
+	pool := &testPool{}
+
+	mgr, err := NewBuilder().
+		IsPrintBanner(false).
+		SetGenerator(&testGenerator{}).
+		SetStorage(&testStorage{}).
+		SetCodec(&testCodec{}).
+		SetPool(pool).
+		Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	defer mgr.CloseManager()
+
+	if mgr.GetPool() != pool {
+		t.Fatalf("pool = %T, want injected pool", mgr.GetPool())
 	}
 }
 
@@ -299,3 +353,39 @@ func (l *testLogger) Error(v ...any) {}
 
 // Errorf writes a formatted error message Errorf 输出格式化错误消息
 func (l *testLogger) Errorf(format string, v ...any) {}
+
+// testAccessProvider provides a comparable provider for builder tests testAccessProvider 为 Builder 测试提供可比较的访问提供器
+type testAccessProvider struct{}
+
+// Permissions returns no provider permissions Permissions 不返回提供器权限
+func (p *testAccessProvider) Permissions(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
+	return nil, nil
+}
+
+// Roles returns no provider roles Roles 不返回提供器角色
+func (p *testAccessProvider) Roles(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
+	return nil, nil
+}
+
+// testPool provides a minimal pool for builder tests testPool 为 Builder 测试提供最小任务池
+type testPool struct {
+	stopped bool
+}
+
+// Submit runs task immediately Submit 立即执行任务
+func (p *testPool) Submit(task func()) error {
+	if task != nil {
+		task()
+	}
+	return nil
+}
+
+// Stop records stop state Stop 记录停止状态
+func (p *testPool) Stop() {
+	p.stopped = true
+}
+
+// Stats returns fixed pool stats Stats 返回固定任务池状态
+func (p *testPool) Stats() (running, capacity int, usage float64) {
+	return 0, 1, 0
+}

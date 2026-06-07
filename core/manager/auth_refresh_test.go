@@ -94,6 +94,90 @@ func TestManagerRefreshTokenAllowsExpiredAccessToken(t *testing.T) {
 	}
 }
 
+// TestManagerRefreshTokenBoundaries verifies invalid, ttl, revoke, and expiry behavior. TestManagerRefreshTokenBoundaries 验证刷新令牌非法值、TTL、撤销和过期行为。
+func TestManagerRefreshTokenBoundaries(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.Timeout = 60
+		cfg.RefreshTokenTimeout = 120
+	})
+
+	if _, err := mgr.RefreshToken(ctx, ""); !errors.Is(err, derror.ErrInvalidRefreshToken) {
+		t.Fatalf("RefreshToken(empty) error = %v, want ErrInvalidRefreshToken", err)
+	}
+	if _, err := mgr.RefreshToken(ctx, "missing"); !errors.Is(err, derror.ErrInvalidRefreshToken) {
+		t.Fatalf("RefreshToken(missing) error = %v, want ErrInvalidRefreshToken", err)
+	}
+	if _, err := mgr.GetRefreshTokenTTL(ctx, ""); !errors.Is(err, derror.ErrInvalidRefreshToken) {
+		t.Fatalf("GetRefreshTokenTTL(empty) error = %v, want ErrInvalidRefreshToken", err)
+	}
+	if ttl, err := mgr.GetRefreshTokenTTL(ctx, "missing"); err != nil || ttl != -2 {
+		t.Fatalf("GetRefreshTokenTTL(missing) = %d, %v, want -2, nil", ttl, err)
+	}
+	if err := mgr.RevokeRefreshToken(ctx, "missing"); err != nil {
+		t.Fatalf("RevokeRefreshToken(missing) error = %v, want nil", err)
+	}
+
+	pair, err := mgr.LoginWithRefreshTokenOptions(ctx, RefreshTokenOptions{
+		LoginOptions: LoginOptions{
+			LoginID:  "refresh-boundary",
+			Device:   "web",
+			DeviceID: "browser-1",
+			Extra:    map[string]any{"trace": "boundary"},
+		},
+		RefreshTimeout: time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("LoginWithRefreshTokenOptions() error = %v", err)
+	}
+	ttl, err := mgr.GetRefreshTokenTTL(ctx, pair.RefreshToken)
+	if err != nil {
+		t.Fatalf("GetRefreshTokenTTL() error = %v", err)
+	}
+	if ttl <= 0 || ttl > 60 {
+		t.Fatalf("GetRefreshTokenTTL() = %d, want 1..60", ttl)
+	}
+
+	nextPair, err := mgr.RefreshToken(ctx, pair.RefreshToken)
+	if err != nil {
+		t.Fatalf("RefreshToken() error = %v", err)
+	}
+	if nextPair.LoginID != "refresh-boundary" || nextPair.Device != "web" || nextPair.DeviceID != "browser-1" {
+		t.Fatalf("RefreshToken() subject = %+v, want inherited subject", nextPair)
+	}
+	info, err := mgr.GetTokenInfo(ctx, nextPair.AccessToken)
+	if err != nil {
+		t.Fatalf("GetTokenInfo(refreshed) error = %v", err)
+	}
+	if info.Extra["trace"] != "boundary" {
+		t.Fatalf("refreshed token extra = %+v, want trace=boundary", info.Extra)
+	}
+}
+
+// TestManagerRefreshTokenExpires verifies expired refresh tokens cannot rotate. TestManagerRefreshTokenExpires 验证过期刷新令牌不能轮换。
+func TestManagerRefreshTokenExpires(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.Timeout = 60
+		cfg.RefreshTokenTimeout = 60
+	})
+
+	pair, err := mgr.LoginWithRefreshTokenOptions(ctx, RefreshTokenOptions{
+		LoginOptions:   LoginOptions{LoginID: "refresh-expiring"},
+		RefreshTimeout: 20 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("LoginWithRefreshTokenOptions() error = %v", err)
+	}
+	time.Sleep(30 * time.Millisecond)
+	if _, err = mgr.RefreshToken(ctx, pair.RefreshToken); !errors.Is(err, derror.ErrInvalidRefreshToken) {
+		t.Fatalf("RefreshToken(expired) error = %v, want ErrInvalidRefreshToken", err)
+	}
+	if ttl, err := mgr.GetRefreshTokenTTL(ctx, pair.RefreshToken); err != nil || ttl != -2 {
+		t.Fatalf("GetRefreshTokenTTL(expired) = %d, %v, want -2, nil", ttl, err)
+	}
+}
+
 // TestManagerIntrospectToken verifies active and inactive token responses. TestManagerIntrospectToken 验证活跃和非活跃令牌响应。
 func TestManagerIntrospectToken(t *testing.T) {
 	ctx := context.Background()

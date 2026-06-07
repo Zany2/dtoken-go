@@ -29,44 +29,36 @@ func PrintBanner(cfg *config.Config) {
 		return
 	}
 
-	// Print banner 打印 Banner
 	fmt.Print(BannerText)
 	fmt.Printf(":: DToken-Go ::        (version %s)\n\n", core.Version)
 
-	// Print config summary 打印关键配置信息
 	fmt.Println("========================================")
 	fmt.Println("         Configuration Summary          ")
 	fmt.Println("========================================")
 
-	// Print auth config 打印认证配置
 	fmt.Printf("AuthType         : %s\n", strings.TrimSuffix(cfg.AuthType, ":"))
 	fmt.Printf("KeyPrefix        : %s\n", strings.TrimSuffix(cfg.KeyPrefix, ":"))
 	fmt.Printf("TokenName        : %s\n", cfg.TokenName)
 	fmt.Printf("TokenStyle       : %s\n", getTokenStyleName(cfg.TokenStyle))
 
-	// Print timeout config 打印超时配置
 	fmt.Printf("Timeout          : %s\n", formatDuration(cfg.Timeout))
+	fmt.Printf("RefreshTokenTTL  : %s\n", formatDuration(cfg.RefreshTokenTimeout))
 	if cfg.AutoRenew {
 		fmt.Printf("AutoRenew        : Enabled\n")
-		fmt.Printf("  ├─ MaxRefresh  : %s\n", formatDuration(cfg.RenewMaxRefresh))
-		fmt.Printf("  └─ Interval    : %s\n", formatDuration(cfg.RenewInterval))
+		fmt.Printf("  - MaxRefresh   : %s\n", formatDuration(cfg.RenewMaxRefresh))
+		fmt.Printf("  - Interval     : %s\n", formatDuration(cfg.RenewInterval))
 	} else {
 		fmt.Printf("AutoRenew        : Disabled\n")
 	}
 	fmt.Printf("ActiveTimeout    : %s\n", formatDuration(cfg.ActiveTimeout))
 
-	// Print concurrency config 打印并发配置
 	fmt.Printf("Concurrency      : %s\n", formatConcurrency(cfg))
-
-	// Print token source config 打印 Token 读取配置
 	fmt.Printf("Token Source     : %s\n", formatTokenSource(cfg))
-
-	// Print log config 打印日志配置
-	if cfg.IsLog {
-		fmt.Printf("Logging          : Enabled\n")
-	} else {
-		fmt.Printf("Logging          : Disabled\n")
+	if cfg.IsReadCookie {
+		fmt.Printf("Cookie           : %s\n", formatCookieConfig(cfg.CookieConfig))
 	}
+	fmt.Printf("AsyncEvent       : %s\n", formatEnabled(cfg.AsyncEvent))
+	fmt.Printf("Logging          : %s\n", formatEnabled(cfg.IsLog))
 
 	fmt.Println("========================================")
 	fmt.Printf("Started at: %s\n", time.Now().Format("2006-01-02 15:04:05"))
@@ -110,8 +102,6 @@ func formatDuration(seconds int64) string {
 	}
 
 	d := time.Duration(seconds) * time.Second
-
-	// Format day-level duration 格式化天级时长
 	if d >= 24*time.Hour {
 		days := d / (24 * time.Hour)
 		hours := (d % (24 * time.Hour)) / time.Hour
@@ -120,8 +110,6 @@ func formatDuration(seconds int64) string {
 		}
 		return fmt.Sprintf("%dd", days)
 	}
-
-	// Format hour-level duration 格式化小时级时长
 	if d >= time.Hour {
 		hours := d / time.Hour
 		minutes := (d % time.Hour) / time.Minute
@@ -130,8 +118,6 @@ func formatDuration(seconds int64) string {
 		}
 		return fmt.Sprintf("%dh", hours)
 	}
-
-	// Format minute-level duration 格式化分钟级时长
 	if d >= time.Minute {
 		minutes := d / time.Minute
 		seconds := (d % time.Minute) / time.Second
@@ -141,31 +127,27 @@ func formatDuration(seconds int64) string {
 		return fmt.Sprintf("%dm", minutes)
 	}
 
-	// Format second-level duration 格式化秒级时长
 	return fmt.Sprintf("%ds", seconds)
 }
 
 // formatConcurrency formats concurrency config formatConcurrency 格式化并发配置
 func formatConcurrency(cfg *config.Config) string {
 	if !cfg.IsConcurrent {
-		return fmt.Sprintf("Disabled (Scope: %s)", cfg.ConcurrencyScope)
+		return fmt.Sprintf("Disabled (Scope: %s, Exit: %s)", cfg.ConcurrencyScope, cfg.ReplacedLoginExitMode)
 	}
 
 	var parts []string
 	parts = append(parts, "Enabled")
 	parts = append(parts, fmt.Sprintf("Scope: %s", cfg.ConcurrencyScope))
-
-	if cfg.IsShare {
-		parts = append(parts, "Share: Yes")
-	} else {
-		parts = append(parts, "Share: No")
-	}
+	parts = append(parts, fmt.Sprintf("Exit: %s", cfg.ReplacedLoginExitMode))
+	parts = append(parts, fmt.Sprintf("Share: %s", formatYesNo(cfg.IsShare)))
 
 	if cfg.MaxLoginCount == config.NoLimit {
 		parts = append(parts, "Max: Unlimited")
 	} else {
 		parts = append(parts, fmt.Sprintf("Max: %d", cfg.MaxLoginCount))
 	}
+	parts = append(parts, fmt.Sprintf("Overflow: %s", cfg.OverflowLogoutMode))
 
 	return strings.Join(parts, ", ")
 }
@@ -175,17 +157,66 @@ func formatTokenSource(cfg *config.Config) string {
 	var sources []string
 	if cfg.IsReadHeader {
 		sources = append(sources, "Header")
+		sources = append(sources, "Authorization Bearer")
 	}
 	if cfg.IsReadCookie {
 		sources = append(sources, "Cookie")
 	}
+	if cfg.IsReadQuery {
+		sources = append(sources, "Query")
+	}
 	if cfg.IsReadBody {
 		sources = append(sources, "Body")
 	}
-
 	if len(sources) == 0 {
 		return "None"
 	}
 
 	return strings.Join(sources, ", ")
+}
+
+// formatCookieConfig formats cookie options formatCookieConfig 格式化 Cookie 配置
+func formatCookieConfig(cfg *config.CookieConfig) string {
+	if cfg == nil {
+		return "nil"
+	}
+
+	domain := strings.TrimSpace(cfg.Domain)
+	if domain == "" {
+		domain = "<current-host>"
+	}
+
+	parts := []string{
+		fmt.Sprintf("Path: %s", cfg.Path),
+		fmt.Sprintf("Domain: %s", domain),
+		fmt.Sprintf("Secure: %s", formatYesNo(cfg.Secure)),
+		fmt.Sprintf("HttpOnly: %s", formatYesNo(cfg.HttpOnly)),
+		fmt.Sprintf("SameSite: %s", formatSameSite(cfg.SameSite)),
+		fmt.Sprintf("MaxAge: %s", formatDuration(cfg.MaxAge)),
+	}
+	return strings.Join(parts, ", ")
+}
+
+// formatEnabled formats bool as enabled text formatEnabled 格式化启用状态
+func formatEnabled(value bool) string {
+	if value {
+		return "Enabled"
+	}
+	return "Disabled"
+}
+
+// formatYesNo formats bool as yes/no text formatYesNo 格式化布尔值
+func formatYesNo(value bool) string {
+	if value {
+		return "Yes"
+	}
+	return "No"
+}
+
+// formatSameSite formats cookie sameSite mode formatSameSite 格式化 Cookie SameSite 模式
+func formatSameSite(mode config.SameSiteMode) string {
+	if mode == "" {
+		return "Default"
+	}
+	return string(mode)
 }

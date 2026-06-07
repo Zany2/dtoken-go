@@ -13,7 +13,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/derror"
 )
 
-// TestOAuth2AuthorizationCodeFlow verifies authorization code exchange is single-use. TestOAuth2AuthorizationCodeFlow 验证授权码交换只能使用一次。
+// TestOAuth2AuthorizationCodeFlow verifies authorization code exchange is single-use TestOAuth2AuthorizationCodeFlow 验证授权码只能交换一次
 func TestOAuth2AuthorizationCodeFlow(t *testing.T) {
 	ctx := context.Background()
 	server := newOAuth2TestServer()
@@ -43,7 +43,7 @@ func TestOAuth2AuthorizationCodeFlow(t *testing.T) {
 	}
 }
 
-// TestOAuth2TokenEndpointDispatch verifies token endpoint grants and validation failures. TestOAuth2TokenEndpointDispatch 验证令牌端点分发和校验失败。
+// TestOAuth2TokenEndpointDispatch verifies token endpoint grants and validation failures TestOAuth2TokenEndpointDispatch 验证令牌端点分发和校验失败
 func TestOAuth2TokenEndpointDispatch(t *testing.T) {
 	ctx := context.Background()
 	server := newOAuth2TestServer()
@@ -99,6 +99,89 @@ func TestOAuth2TokenEndpointDispatch(t *testing.T) {
 		Scopes:       []string{"admin"},
 	}, nil); !errors.Is(err, derror.ErrInvalidScope) {
 		t.Fatalf("Token(invalid scope) error = %v, want ErrInvalidScope", err)
+	}
+}
+
+// TestOAuth2ClientRegistrationBoundaries verifies client registration and lookup boundaries TestOAuth2ClientRegistrationBoundaries 验证客户端注册和查询边界
+func TestOAuth2ClientRegistrationBoundaries(t *testing.T) {
+	server := newOAuth2TestServer()
+
+	if err := server.RegisterClient(nil); !errors.Is(err, derror.ErrClientOrClientIDEmpty) {
+		t.Fatalf("RegisterClient(nil) error = %v, want ErrClientOrClientIDEmpty", err)
+	}
+	if err := server.RegisterClient(&Client{}); !errors.Is(err, derror.ErrClientOrClientIDEmpty) {
+		t.Fatalf("RegisterClient(empty) error = %v, want ErrClientOrClientIDEmpty", err)
+	}
+	if _, err := server.GetClient("missing"); !errors.Is(err, derror.ErrClientNotFound) {
+		t.Fatalf("GetClient(missing) error = %v, want ErrClientNotFound", err)
+	}
+
+	client := oauth2TestClient()
+	if err := server.RegisterClient(client); err != nil {
+		t.Fatalf("RegisterClient() error = %v", err)
+	}
+	got, err := server.GetClient(client.ClientID)
+	if err != nil {
+		t.Fatalf("GetClient() error = %v", err)
+	}
+	if got.ClientID != client.ClientID || got.ClientSecret != client.ClientSecret {
+		t.Fatalf("GetClient() = %+v, want registered client", got)
+	}
+	if err = server.UnregisterClient(client.ClientID); err != nil {
+		t.Fatalf("UnregisterClient() error = %v", err)
+	}
+	if _, err = server.GetClient(client.ClientID); !errors.Is(err, derror.ErrClientNotFound) {
+		t.Fatalf("GetClient(after unregister) error = %v, want ErrClientNotFound", err)
+	}
+}
+
+// TestOAuth2TokenEndpointBoundaries verifies token endpoint invalid requests TestOAuth2TokenEndpointBoundaries 验证令牌端点非法请求
+func TestOAuth2TokenEndpointBoundaries(t *testing.T) {
+	ctx := context.Background()
+	server := newOAuth2TestServer()
+	client := oauth2TestClient()
+	if err := server.RegisterClient(client); err != nil {
+		t.Fatalf("RegisterClient() error = %v", err)
+	}
+
+	if _, err := server.Token(ctx, nil, nil); !errors.Is(err, derror.ErrInvalidAuthCode) {
+		t.Fatalf("Token(nil) error = %v, want ErrInvalidAuthCode", err)
+	}
+	if _, err := server.Token(ctx, &TokenRequest{GrantType: GrantType("unsupported")}, nil); !errors.Is(err, derror.ErrInvalidGrantType) {
+		t.Fatalf("Token(unsupported) error = %v, want ErrInvalidGrantType", err)
+	}
+	if _, err := server.PasswordGrantToken(ctx, client.ClientID, client.ClientSecret, "alice", "secret", nil, nil); !errors.Is(err, derror.ErrInvalidUserCredentials) {
+		t.Fatalf("PasswordGrantToken(nil validator) error = %v, want ErrInvalidUserCredentials", err)
+	}
+
+	limited := oauth2TestClient()
+	limited.ClientID = "client-limited"
+	limited.GrantTypes = []GrantType{GrantTypeAuthorizationCode}
+	if err := server.RegisterClient(limited); err != nil {
+		t.Fatalf("RegisterClient(limited) error = %v", err)
+	}
+	if _, err := server.ClientCredentialsToken(ctx, limited.ClientID, limited.ClientSecret, nil); !errors.Is(err, derror.ErrInvalidGrantType) {
+		t.Fatalf("ClientCredentialsToken(disallowed grant) error = %v, want ErrInvalidGrantType", err)
+	}
+}
+
+// TestOAuth2AuthorizationCodeBoundaries verifies authorization code validation boundaries TestOAuth2AuthorizationCodeBoundaries 验证授权码创建边界
+func TestOAuth2AuthorizationCodeBoundaries(t *testing.T) {
+	ctx := context.Background()
+	server := newOAuth2TestServer()
+	client := oauth2TestClient()
+	if err := server.RegisterClient(client); err != nil {
+		t.Fatalf("RegisterClient() error = %v", err)
+	}
+
+	if _, err := server.GenerateAuthorizationCode(ctx, client.ClientID, "", client.RedirectURIs[0], nil); !errors.Is(err, derror.ErrUserIDEmpty) {
+		t.Fatalf("GenerateAuthorizationCode(empty user) error = %v, want ErrUserIDEmpty", err)
+	}
+	if _, err := server.GenerateAuthorizationCode(ctx, client.ClientID, "user-1", "https://evil.example.com/callback", nil); !errors.Is(err, derror.ErrInvalidRedirectURI) {
+		t.Fatalf("GenerateAuthorizationCode(invalid redirect) error = %v, want ErrInvalidRedirectURI", err)
+	}
+	if _, err := server.GenerateAuthorizationCode(ctx, client.ClientID, "user-1", client.RedirectURIs[0], []string{"admin"}); !errors.Is(err, derror.ErrInvalidScope) {
+		t.Fatalf("GenerateAuthorizationCode(invalid scope) error = %v, want ErrInvalidScope", err)
 	}
 }
 
@@ -188,7 +271,7 @@ func TestOAuth2TokenEndpointPKCE(t *testing.T) {
 	}
 }
 
-// TestOAuth2RefreshAndRevoke verifies refresh rotation and revoke cleanup. TestOAuth2RefreshAndRevoke 验证刷新轮换和撤销清理。
+// TestOAuth2RefreshAndRevoke verifies refresh rotation and revoke cleanup TestOAuth2RefreshAndRevoke 验证刷新轮换和撤销清理
 func TestOAuth2RefreshAndRevoke(t *testing.T) {
 	ctx := context.Background()
 	server := newOAuth2TestServer()

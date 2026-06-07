@@ -194,6 +194,13 @@ func (b *Builder) IsReadBody(isRead bool) *Builder {
 	return b
 }
 
+// IsReadQuery sets query read switch IsReadQuery 设置是否从 Query 读取 Token
+func (b *Builder) IsReadQuery(isRead bool) *Builder {
+	b.ensureBuilder()
+	b.inner.IsReadQuery(isRead)
+	return b
+}
+
 // IsReadHeader sets header read switch IsReadHeader 设置是否从 Header 读取 Token
 func (b *Builder) IsReadHeader(isRead bool) *Builder {
 	b.ensureBuilder()
@@ -765,34 +772,6 @@ func (b *Builder) SetPoolFactory(factory builder.PoolFactory) *Builder {
 func (b *Builder) SetAccessProvider(provider manager.AccessProvider) *Builder {
 	b.ensureBuilder()
 	b.inner.SetAccessProvider(provider)
-	return b
-}
-
-// SetCustomPermissionListFunc sets permission callback SetCustomPermissionListFunc 设置权限回调
-func (b *Builder) SetCustomPermissionListFunc(f func(loginID, authType string) ([]string, error)) *Builder {
-	b.ensureBuilder()
-	b.inner.SetCustomPermissionListFunc(f)
-	return b
-}
-
-// SetCustomRoleListFunc sets role callback SetCustomRoleListFunc 设置角色回调
-func (b *Builder) SetCustomRoleListFunc(f func(loginID, authType string) ([]string, error)) *Builder {
-	b.ensureBuilder()
-	b.inner.SetCustomRoleListFunc(f)
-	return b
-}
-
-// SetCustomPermissionListExtFunc sets extended permission callback SetCustomPermissionListExtFunc 设置扩展权限回调
-func (b *Builder) SetCustomPermissionListExtFunc(f func(loginID, device, deviceId, authType string) ([]string, error)) *Builder {
-	b.ensureBuilder()
-	b.inner.SetCustomPermissionListExtFunc(f)
-	return b
-}
-
-// SetCustomRoleListExtFunc sets extended role callback SetCustomRoleListExtFunc 设置扩展角色回调
-func (b *Builder) SetCustomRoleListExtFunc(f func(loginID, device, deviceId, authType string) ([]string, error)) *Builder {
-	b.ensureBuilder()
-	b.inner.SetCustomRoleListExtFunc(f)
 	return b
 }
 

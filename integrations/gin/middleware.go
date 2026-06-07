@@ -337,7 +337,9 @@ func GetDTokenContext(c *gin.Context) (*DContext.DTokenContext, bool) {
 func getDContext(c *gin.Context, mgr *manager.Manager) *DContext.DTokenContext {
 	if v, exists := c.Get(DTokenCtxKey); exists {
 		if dCtx, ok := v.(*DContext.DTokenContext); ok {
-			return dCtx
+			if dCtx.GetManager() == mgr {
+				return dCtx
+			}
 		}
 	}
 

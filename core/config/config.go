@@ -59,6 +59,9 @@ type Config struct {
 	// IsReadBody controls body token read IsReadBody 控制是否尝试从请求体读取 Token
 	IsReadBody bool
 
+	// IsReadQuery controls query token read IsReadQuery 控制是否尝试从 Query 读取 Token
+	IsReadQuery bool
+
 	// IsReadHeader controls header token read IsReadHeader 控制是否尝试从 HTTP Header 读取 Token
 	IsReadHeader bool
 
@@ -124,6 +127,7 @@ func DefaultConfig() *Config {
 		ReplacedLoginExitMode: ReplacedLoginExitModeOldDevice,
 		OverflowLogoutMode:    LogoutModeKickout,
 		IsReadBody:            false,
+		IsReadQuery:           false,
 		IsReadHeader:          true,
 		IsReadCookie:          false,
 		TokenStyle:            adapter.TokenStyleUUID,
@@ -254,8 +258,8 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate token sources 验证 Token 读取来源
-	if !c.IsReadHeader && !c.IsReadCookie && !c.IsReadBody {
-		return fmt.Errorf("Config must enable at least one token source: IsReadHeader, IsReadCookie, or IsReadBody")
+	if !c.IsReadHeader && !c.IsReadCookie && !c.IsReadQuery && !c.IsReadBody {
+		return fmt.Errorf("Config must enable at least one token source: IsReadHeader, IsReadCookie, IsReadQuery, or IsReadBody")
 	}
 
 	// Validate cookie config 验证 Cookie 配置
@@ -392,6 +396,12 @@ func (c *Config) SetOverflowLogoutMode(mode LogoutMode) *Config {
 // SetIsReadBody sets body read switch SetIsReadBody 设置是否从请求体读取 Token
 func (c *Config) SetIsReadBody(isReadBody bool) *Config {
 	c.IsReadBody = isReadBody
+	return c
+}
+
+// SetIsReadQuery sets query read switch SetIsReadQuery 设置是否从 Query 读取 Token
+func (c *Config) SetIsReadQuery(isReadQuery bool) *Config {
+	c.IsReadQuery = isReadQuery
 	return c
 }
 

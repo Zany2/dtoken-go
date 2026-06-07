@@ -285,23 +285,76 @@ func TestManagerOptionalModulesDisabled(t *testing.T) {
 	ctx := context.Background()
 	mgr := newBareTestManager(t)
 
-	if _, err := mgr.GenerateNonce(ctx); !errors.Is(err, derror.ErrModuleNotEnabled) {
-		t.Fatalf("GenerateNonce() error = %v, want ErrModuleNotEnabled", err)
+	errChecks := map[string]error{
+		"GenerateNonce":            func() error { _, err := mgr.GenerateNonce(ctx); return err }(),
+		"GenerateNonceWithTimeout": func() error { _, err := mgr.GenerateNonceWithTimeout(ctx, time.Minute); return err }(),
+		"VerifyAndConsumeNonce":    mgr.VerifyAndConsumeNonce(ctx, "nonce"),
+		"GetNonceTTL":              func() error { _, err := mgr.GetNonceTTL(ctx, "nonce"); return err }(),
+		"CreateTicket":             func() error { _, err := mgr.CreateTicket(ctx, ticket.CreateOptions{}); return err }(),
+		"CreateTicketWithTimeout": func() error {
+			_, err := mgr.CreateTicketWithTimeout(ctx, ticket.CreateOptions{}, time.Minute)
+			return err
+		}(),
+		"ValidateTicket":  func() error { _, err := mgr.ValidateTicket(ctx, "ticket"); return err }(),
+		"ConsumeTicket":   func() error { _, err := mgr.ConsumeTicket(ctx, "ticket"); return err }(),
+		"RevokeTicket":    mgr.RevokeTicket(ctx, "ticket"),
+		"GetTicketStatus": func() error { _, err := mgr.GetTicketStatus(ctx, "ticket"); return err }(),
+		"GetTicketTTL":    func() error { _, err := mgr.GetTicketTTL(ctx, "ticket"); return err }(),
+		"CreateShortKey":  func() error { _, err := mgr.CreateShortKey(ctx, shortkey.CreateOptions{}); return err }(),
+		"CreateShortKeyWithTimeout": func() error {
+			_, err := mgr.CreateShortKeyWithTimeout(ctx, shortkey.CreateOptions{}, time.Minute)
+			return err
+		}(),
+		"ConfirmShortKey":        func() error { _, err := mgr.ConfirmShortKey(ctx, "key", shortkey.ConfirmOptions{}); return err }(),
+		"ValidateShortKey":       func() error { _, err := mgr.ValidateShortKey(ctx, "key"); return err }(),
+		"ConsumeShortKey":        func() error { _, err := mgr.ConsumeShortKey(ctx, "key"); return err }(),
+		"RevokeShortKey":         mgr.RevokeShortKey(ctx, "key"),
+		"GetShortKeyStatus":      func() error { _, err := mgr.GetShortKeyStatus(ctx, "key"); return err }(),
+		"GetShortKeyTTL":         func() error { _, err := mgr.GetShortKeyTTL(ctx, "key"); return err }(),
+		"RegisterOAuth2Client":   mgr.RegisterOAuth2Client(&oauth2.Client{ClientID: "client"}),
+		"UnregisterOAuth2Client": mgr.UnregisterOAuth2Client("client"),
+		"GetOAuth2Client":        func() error { _, err := mgr.GetOAuth2Client("client"); return err }(),
+		"OAuth2Token":            func() error { _, err := mgr.OAuth2Token(ctx, &oauth2.TokenRequest{}, nil); return err }(),
+		"GenerateOAuth2AuthorizationCode": func() error {
+			_, err := mgr.GenerateOAuth2AuthorizationCode(ctx, "client", "user", "uri", nil)
+			return err
+		}(),
+		"GenerateOAuth2AuthorizationCodeWithPKCE": func() error {
+			_, err := mgr.GenerateOAuth2AuthorizationCodeWithPKCE(ctx, "client", "user", "uri", nil, "challenge", "plain")
+			return err
+		}(),
+		"ExchangeOAuth2CodeForToken": func() error {
+			_, err := mgr.ExchangeOAuth2CodeForToken(ctx, "code", "client", "secret", "uri")
+			return err
+		}(),
+		"ExchangeOAuth2CodeForTokenWithPKCE": func() error {
+			_, err := mgr.ExchangeOAuth2CodeForTokenWithPKCE(ctx, "code", "client", "secret", "uri", "verifier")
+			return err
+		}(),
+		"OAuth2ClientCredentialsToken": func() error { _, err := mgr.OAuth2ClientCredentialsToken(ctx, "client", "secret", nil); return err }(),
+		"OAuth2PasswordGrantToken": func() error {
+			_, err := mgr.OAuth2PasswordGrantToken(ctx, "client", "secret", "user", "pass", nil, nil)
+			return err
+		}(),
+		"RefreshOAuth2AccessToken":            func() error { _, err := mgr.RefreshOAuth2AccessToken(ctx, "client", "refresh", "secret"); return err }(),
+		"ValidateOAuth2AccessTokenAndGetInfo": func() error { _, err := mgr.ValidateOAuth2AccessTokenAndGetInfo(ctx, "access"); return err }(),
+		"RevokeOAuth2Token":                   mgr.RevokeOAuth2Token(ctx, "access"),
 	}
-	if mgr.VerifyNonce(ctx, "nonce") {
-		t.Fatal("VerifyNonce() = true, want false when module disabled")
+	for name, err := range errChecks {
+		if !errors.Is(err, derror.ErrModuleNotEnabled) {
+			t.Fatalf("%s error = %v, want ErrModuleNotEnabled", name, err)
+		}
 	}
-	if _, err := mgr.CreateTicket(ctx, ticket.CreateOptions{}); !errors.Is(err, derror.ErrModuleNotEnabled) {
-		t.Fatalf("CreateTicket() error = %v, want ErrModuleNotEnabled", err)
+
+	falseChecks := map[string]bool{
+		"VerifyNonce":               mgr.VerifyNonce(ctx, "nonce"),
+		"IsNonceValid":              mgr.IsNonceValid(ctx, "nonce"),
+		"ValidateOAuth2AccessToken": mgr.ValidateOAuth2AccessToken(ctx, "access"),
 	}
-	if _, err := mgr.CreateShortKey(ctx, shortkey.CreateOptions{}); !errors.Is(err, derror.ErrModuleNotEnabled) {
-		t.Fatalf("CreateShortKey() error = %v, want ErrModuleNotEnabled", err)
-	}
-	if err := mgr.RegisterOAuth2Client(&oauth2.Client{ClientID: "client"}); !errors.Is(err, derror.ErrModuleNotEnabled) {
-		t.Fatalf("RegisterOAuth2Client() error = %v, want ErrModuleNotEnabled", err)
-	}
-	if mgr.ValidateOAuth2AccessToken(ctx, "access") {
-		t.Fatal("ValidateOAuth2AccessToken() = true, want false when module disabled")
+	for name, got := range falseChecks {
+		if got {
+			t.Fatalf("%s = true, want false when module disabled", name)
+		}
 	}
 }
 

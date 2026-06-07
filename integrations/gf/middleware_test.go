@@ -16,7 +16,7 @@ func TestRouteAccessRequestMutations(t *testing.T) {
 	WithLogicType(LogicOr)(options)
 
 	req := newRouteAccessRequest(options)
-	if req.AuthType != "admin" || req.LogicType != LogicOr {
+	if req.AuthType != "admin" || req.LogicType != LogicOr || req.CheckDisable {
 		t.Fatalf("newRouteAccessRequest() = %+v", req)
 	}
 
@@ -52,12 +52,20 @@ func TestRouteAccessRequestMutations(t *testing.T) {
 func TestRouteAccessHandlerOption(t *testing.T) {
 	options := defaultAuthOptions()
 	WithRouteAccessHandler(func(_ context.Context, _ *ghttp.Request, req *RouteAccessRequest) {
+		req.AuthType = "tenant:"
+		req.CheckDisable = true
 		req.RequirePermissions("report:read")
 		req.SetLogicType(LogicOr)
 	})(options)
 
 	req := newRouteAccessRequest(options)
 	options.RouteAccessHandler(context.Background(), nil, req)
+	if req.AuthType != "tenant:" {
+		t.Fatalf("AuthType = %q, want tenant:", req.AuthType)
+	}
+	if !req.CheckDisable {
+		t.Fatal("CheckDisable = false, want true")
+	}
 	if req.LogicType != LogicOr {
 		t.Fatalf("LogicType = %v, want %v", req.LogicType, LogicOr)
 	}

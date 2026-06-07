@@ -81,6 +81,11 @@ func defaultAuthOptions() *AuthOptions {
 	return &AuthOptions{LogicType: LogicAnd}
 }
 
+// authMiddlewareLoginError returns auth middleware login failure error authMiddlewareLoginError 返回认证中间件登录失败错误
+func authMiddlewareLoginError() error {
+	return derror.ErrTokenExpired
+}
+
 // WithAuthType sets auth type WithAuthType 设置认证类型
 func WithAuthType(authType string) AuthOption {
 	return func(o *AuthOptions) {
@@ -155,7 +160,7 @@ func AuthMiddleware(opts ...AuthOption) middleware.Middleware {
 			_, err = authcheck.Check(ctx, mgr, authcheck.Request{
 				TokenValue: dCtx.GetTokenValue(),
 				CheckLogin: true,
-				LoginError: derror.ErrNotLogin,
+				LoginError: authMiddlewareLoginError(),
 			})
 			if err != nil {
 				return nil, dispatchFail(ctx, options.FailFunc, err)
@@ -343,7 +348,7 @@ func GetLoginIDByCtx(ctx context.Context, authType ...string) (string, error) {
 	}
 
 	dCtx, ctx := getDTokenContext(ctx, mgr)
-	return mgr.GetLoginID(ctx, dCtx.GetTokenValue())
+	return dCtx.Auth().GetLoginID(ctx)
 }
 
 // GetTokenInfoByCtx gets token info by context GetTokenInfoByCtx 从上下文获取 Token 信息
@@ -354,7 +359,7 @@ func GetTokenInfoByCtx(ctx context.Context, authType ...string) (*manager.TokenI
 	}
 
 	dCtx, ctx := getDTokenContext(ctx, mgr)
-	return mgr.GetTokenInfo(ctx, dCtx.GetTokenValue())
+	return dCtx.Auth().GetTokenInfo(ctx)
 }
 
 // IntrospectTokenByCtx inspects current token without renewal side effects IntrospectTokenByCtx 无续期副作用地检查当前 token 状态
@@ -365,13 +370,15 @@ func IntrospectTokenByCtx(ctx context.Context, authType ...string) (*manager.Tok
 	}
 
 	dCtx, ctx := getDTokenContext(ctx, mgr)
-	return mgr.IntrospectToken(ctx, dCtx.GetTokenValue())
+	return dCtx.Auth().IntrospectToken(ctx)
 }
 
 // getDTokenContext gets or creates dtoken context getDTokenContext 获取或创建 DToken 上下文
 func getDTokenContext(ctx context.Context, mgr *manager.Manager) (*corecontext.DTokenContext, context.Context) {
 	if dCtx, ok := GetDTokenContext(ctx); ok {
-		return dCtx, ctx
+		if dCtx.GetManager() == mgr {
+			return dCtx, ctx
+		}
 	}
 
 	kratosCtx := NewKratosContext(ctx).(*KratosContext)

@@ -70,15 +70,6 @@ type Builder struct {
 	managerOptions []manager.Option
 	// accessProvider stores permission and role provider accessProvider 存储权限与角色提供器
 	accessProvider manager.AccessProvider
-
-	// customPermissionListFunc custom account permission callback customPermissionListFunc 自定义账号权限回调
-	customPermissionListFunc func(loginID, authType string) ([]string, error)
-	// customRoleListFunc custom account role callback customRoleListFunc 自定义账号角色回调
-	customRoleListFunc func(loginID, authType string) ([]string, error)
-	// customPermissionListExtFunc custom terminal permission callback customPermissionListExtFunc 自定义终端权限回调
-	customPermissionListExtFunc func(loginID, device, deviceId, authType string) ([]string, error)
-	// customRoleListExtFunc custom terminal role callback customRoleListExtFunc 自定义终端角色回调
-	customRoleListExtFunc func(loginID, device, deviceId, authType string) ([]string, error)
 }
 
 // NewBuilder creates a builder with the default config NewBuilder 使用默认配置创建 Builder
@@ -225,6 +216,13 @@ func (b *Builder) OverflowLogoutMode(mode config.LogoutMode) *Builder {
 func (b *Builder) IsReadBody(isRead bool) *Builder {
 	b.ensureConfig()
 	b.cfg.IsReadBody = isRead
+	return b
+}
+
+// IsReadQuery sets query read switch IsReadQuery 设置是否从 Query 读取 Token
+func (b *Builder) IsReadQuery(isRead bool) *Builder {
+	b.ensureConfig()
+	b.cfg.IsReadQuery = isRead
 	return b
 }
 
@@ -425,30 +423,6 @@ func (b *Builder) SetAccessProvider(provider manager.AccessProvider) *Builder {
 	return b
 }
 
-// SetCustomPermissionListFunc sets permission callback SetCustomPermissionListFunc 设置权限回调
-func (b *Builder) SetCustomPermissionListFunc(f func(loginID, authType string) ([]string, error)) *Builder {
-	b.customPermissionListFunc = f
-	return b
-}
-
-// SetCustomRoleListFunc sets role callback SetCustomRoleListFunc 设置角色回调
-func (b *Builder) SetCustomRoleListFunc(f func(loginID, authType string) ([]string, error)) *Builder {
-	b.customRoleListFunc = f
-	return b
-}
-
-// SetCustomPermissionListExtFunc sets extended permission callback SetCustomPermissionListExtFunc 设置扩展权限回调
-func (b *Builder) SetCustomPermissionListExtFunc(f func(loginID, device, deviceId, authType string) ([]string, error)) *Builder {
-	b.customPermissionListExtFunc = f
-	return b
-}
-
-// SetCustomRoleListExtFunc sets extended role callback SetCustomRoleListExtFunc 设置扩展角色回调
-func (b *Builder) SetCustomRoleListExtFunc(f func(loginID, device, deviceId, authType string) ([]string, error)) *Builder {
-	b.customRoleListExtFunc = f
-	return b
-}
-
 // JwtSecret enables JWT style and sets secret JwtSecret 启用 JWT 风格并设置密钥
 func (b *Builder) JwtSecret(secret string) *Builder {
 	b.ensureConfig()
@@ -548,16 +522,6 @@ func (b *Builder) Build() (*manager.Manager, error) {
 		banner.PrintBanner(cfg)
 	}
 
-	accessProvider := b.accessProvider
-	if accessProvider == nil {
-		accessProvider = manager.NewLegacyAccessProvider(
-			b.customPermissionListFunc,
-			b.customRoleListFunc,
-			b.customPermissionListExtFunc,
-			b.customRoleListExtFunc,
-		)
-	}
-
 	mgr := manager.NewManager(
 		cfg,
 		components.Generator,
@@ -565,7 +529,7 @@ func (b *Builder) Build() (*manager.Manager, error) {
 		components.Codec,
 		components.Log,
 		components.Pool,
-		accessProvider,
+		b.accessProvider,
 		b.managerOptions...,
 	)
 
