@@ -17,7 +17,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
-// TestNeedAuth verifies empty requests skip auth checks. TestNeedAuth 验证空请求会跳过认证校验。
+// TestNeedAuth verifies empty requests skip auth checks TestNeedAuth 验证空请求会跳过认证校验。
 func TestNeedAuth(t *testing.T) {
 	if NeedAuth(Request{}) {
 		t.Fatal("NeedAuth(empty) = true, want false")
@@ -30,7 +30,7 @@ func TestNeedAuth(t *testing.T) {
 	}
 }
 
-// TestCheckLoginDisablePermissionsAndRoles verifies shared auth decision behavior. TestCheckLoginDisablePermissionsAndRoles 验证公共认证决策行为。
+// TestCheckLoginDisablePermissionsAndRoles verifies shared auth decision behavior TestCheckLoginDisablePermissionsAndRoles 验证公共认证决策行为。
 func TestCheckLoginDisablePermissionsAndRoles(t *testing.T) {
 	ctx := context.Background()
 	mgr := newAuthcheckTestManager(t)
@@ -87,7 +87,7 @@ func TestCheckLoginDisablePermissionsAndRoles(t *testing.T) {
 	}
 }
 
-// TestCheckWithoutExplicitLoginUsesTokenChecks verifies middleware-style token checks. TestCheckWithoutExplicitLoginUsesTokenChecks 验证中间件风格的 token 校验。
+// TestCheckWithoutExplicitLoginUsesTokenChecks verifies middleware-style token checks TestCheckWithoutExplicitLoginUsesTokenChecks 验证中间件风格的 token 校验。
 func TestCheckWithoutExplicitLoginUsesTokenChecks(t *testing.T) {
 	ctx := context.Background()
 	mgr := newAuthcheckTestManager(t)
@@ -113,7 +113,7 @@ func TestCheckWithoutExplicitLoginUsesTokenChecks(t *testing.T) {
 	}
 }
 
-// TestGetErrorCodeAndMessage verifies stable error mapping. TestGetErrorCodeAndMessage 验证稳定错误映射。
+// TestGetErrorCodeAndMessage verifies stable error mapping TestGetErrorCodeAndMessage 验证稳定错误映射。
 func TestGetErrorCodeAndMessage(t *testing.T) {
 	tests := []struct {
 		name string
@@ -126,6 +126,11 @@ func TestGetErrorCodeAndMessage(t *testing.T) {
 		{name: "permission", err: derror.ErrPermissionDenied, code: derror.CodePermissionDenied},
 		{name: "disabled", err: derror.ErrDeviceDisabled, code: derror.CodeAccountDisabled},
 		{name: "bad request", err: derror.ErrIDIsEmpty, code: derror.CodeBadRequest},
+		{name: "storage", err: derror.ErrStorageUnavailable, code: derror.CodeStorageError},
+		{name: "not found", err: derror.ErrClientNotFound, code: derror.CodeNotFound},
+		{name: "oauth2 token", err: derror.ErrInvalidAccessToken, code: derror.CodeTokenInvalid},
+		{name: "ticket expired", err: derror.ErrTicketExpired, code: derror.CodeTokenExpired},
+		{name: "short key pending", err: derror.ErrShortKeyPending, code: derror.CodeBadRequest},
 		{name: "server", err: errors.New("boom"), code: derror.CodeServerError},
 	}
 

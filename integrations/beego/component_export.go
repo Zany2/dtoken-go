@@ -23,7 +23,7 @@ import (
 	"github.com/Zany2/dtoken-go/dtoken"
 )
 
-// Core aliases keep framework imports self-contained Core 别名让框架包自包含
+// Core aliases keep framework imports self-contained. Core 别名让框架包可以独立使用 dtoken。
 type (
 	Builder                    = builder.Builder
 	DTokenBuilder              = dtoken.Builder
@@ -106,7 +106,7 @@ type (
 	NopLogger                  = nop.NopLogger
 )
 
-// Common constants forward core configuration values 常用常量转发核心配置值
+// Common constants forward core configuration values. Common 常量转发核心配置值。
 const (
 	Version                        = corepkg.Version
 	SameSiteStrict                 = config.SameSiteStrict
@@ -165,6 +165,27 @@ const (
 	EventUntieService              = listener.EventUntieService
 	EventDisableDevice             = listener.EventDisableDevice
 	EventUntieDevice               = listener.EventUntieDevice
+	EventRefreshTokenCreate        = listener.EventRefreshTokenCreate
+	EventRefreshTokenRotate        = listener.EventRefreshTokenRotate
+	EventRefreshTokenRevoke        = listener.EventRefreshTokenRevoke
+	EventNonceGenerate             = listener.EventNonceGenerate
+	EventNonceVerify               = listener.EventNonceVerify
+	EventTicketCreate              = listener.EventTicketCreate
+	EventTicketValidate            = listener.EventTicketValidate
+	EventTicketConsume             = listener.EventTicketConsume
+	EventTicketRevoke              = listener.EventTicketRevoke
+	EventShortKeyCreate            = listener.EventShortKeyCreate
+	EventShortKeyConfirm           = listener.EventShortKeyConfirm
+	EventShortKeyValidate          = listener.EventShortKeyValidate
+	EventShortKeyConsume           = listener.EventShortKeyConsume
+	EventShortKeyRevoke            = listener.EventShortKeyRevoke
+	EventOAuth2ClientRegister      = listener.EventOAuth2ClientRegister
+	EventOAuth2ClientUnregister    = listener.EventOAuth2ClientUnregister
+	EventOAuth2CodeGenerate        = listener.EventOAuth2CodeGenerate
+	EventOAuth2TokenIssue          = listener.EventOAuth2TokenIssue
+	EventOAuth2TokenRefresh        = listener.EventOAuth2TokenRefresh
+	EventOAuth2TokenValidate       = listener.EventOAuth2TokenValidate
+	EventOAuth2TokenRevoke         = listener.EventOAuth2TokenRevoke
 	EventAll                       = listener.EventAll
 	ExtraKeyPermission             = listener.ExtraKeyPermission
 	ExtraKeyPermissions            = listener.ExtraKeyPermissions
@@ -176,10 +197,32 @@ const (
 	ExtraKeyShared                 = listener.ExtraKeyShared
 	ExtraKeyService                = listener.ExtraKeyService
 	ExtraKeyLevel                  = listener.ExtraKeyLevel
+	ExtraKeyTokenType              = listener.ExtraKeyTokenType
+	ExtraKeyClientID               = listener.ExtraKeyClientID
+	ExtraKeyUserID                 = listener.ExtraKeyUserID
+	ExtraKeyScopes                 = listener.ExtraKeyScopes
+	ExtraKeySource                 = listener.ExtraKeySource
+	ExtraKeySourceApp              = listener.ExtraKeySourceApp
+	ExtraKeyTargetApp              = listener.ExtraKeyTargetApp
+	ExtraKeyScene                  = listener.ExtraKeyScene
+	ExtraKeyStatus                 = listener.ExtraKeyStatus
+	ExtraKeyTTL                    = listener.ExtraKeyTTL
+	ExtraKeyRefreshToken           = listener.ExtraKeyRefreshToken
+	ExtraKeyGrantType              = listener.ExtraKeyGrantType
 	EventLogicAnd                  = listener.LogicAnd
 	EventLogicOr                   = listener.LogicOr
 	ActionAdd                      = listener.ActionAdd
 	ActionRemove                   = listener.ActionRemove
+	ActionCreate                   = listener.ActionCreate
+	ActionValidate                 = listener.ActionValidate
+	ActionConsume                  = listener.ActionConsume
+	ActionRevoke                   = listener.ActionRevoke
+	ActionConfirm                  = listener.ActionConfirm
+	ActionRotate                   = listener.ActionRotate
+	ActionRegister                 = listener.ActionRegister
+	ActionUnregister               = listener.ActionUnregister
+	ActionIssue                    = listener.ActionIssue
+	ActionRefresh                  = listener.ActionRefresh
 	DisableKeyPrefix               = manager.DisableKeyPrefix
 	DisableServiceKeyPrefix        = manager.DisableServiceKeyPrefix
 	DisableDeviceKeyPrefix         = manager.DisableDeviceKeyPrefix
@@ -221,7 +264,7 @@ const (
 	TTLNotFound                    = adapter.TTLNotFound
 )
 
-// Component constructors forward bundled implementations 组件构造函数转发内置实现
+// Component constructors forward bundled implementations. Component 构造器转发内置实现。
 var (
 	NewDTokenBuilder               = dtoken.NewBuilder
 	BuildAndSetManager             = dtoken.BuildAndSetManager

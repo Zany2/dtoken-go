@@ -67,3 +67,65 @@ func TestManagerPanicHandlerRecovers(t *testing.T) {
 		t.Fatalf("recovered = %v, want boom", recovered)
 	}
 }
+
+// TestManagerDefensiveNoops verifies nil inputs do not panic or register listeners. TestManagerDefensiveNoops 验证空输入不会 panic 或注册监听器。
+func TestManagerDefensiveNoops(t *testing.T) {
+	manager := NewManager()
+	manager.EnableStats(true)
+
+	manager.Trigger(nil)
+	manager.TriggerAsync(nil)
+	manager.TriggerSync(nil)
+	manager.AddFilter(nil)
+
+	if id := manager.Register(EventLogin, nil); id != "" {
+		t.Fatalf("Register(nil) id = %q, want empty", id)
+	}
+	if id := manager.RegisterFunc(EventLogin, nil); id != "" {
+		t.Fatalf("RegisterFunc(nil) id = %q, want empty", id)
+	}
+	if id := manager.RegisterFuncWithConfig(EventLogin, nil, ListenerConfig{}); id != "" {
+		t.Fatalf("RegisterFuncWithConfig(nil) id = %q, want empty", id)
+	}
+	if manager.Count() != 0 {
+		t.Fatalf("Count() = %d, want 0", manager.Count())
+	}
+
+	stats := manager.GetStats()
+	if stats.TotalTriggered != 0 {
+		t.Fatalf("stats.TotalTriggered = %d, want 0", stats.TotalTriggered)
+	}
+}
+
+// TestDisableKnownEventBeforeRegister verifies built-in events can be disabled before listeners are registered. TestDisableKnownEventBeforeRegister 验证内置事件可在注册监听器前禁用。
+func TestDisableKnownEventBeforeRegister(t *testing.T) {
+	manager := NewManager()
+	manager.DisableEvent(EventNonceGenerate)
+	if manager.IsEventEnabled(EventNonceGenerate) {
+		t.Fatal("IsEventEnabled(nonceGenerate) = true, want false")
+	}
+
+	called := false
+	manager.RegisterFuncWithConfig(EventNonceGenerate, func(*EventData) {
+		called = true
+	}, ListenerConfig{Async: false})
+	manager.TriggerSync(&EventData{Event: EventNonceGenerate})
+	if called {
+		t.Fatal("disabled event listener was called")
+	}
+}
+
+// TestFilterCanUseManager verifies filters run outside the manager lock. TestFilterCanUseManager 验证过滤器在管理器锁外执行。
+func TestFilterCanUseManager(t *testing.T) {
+	manager := NewManager()
+	manager.RegisterFuncWithConfig(EventLogin, func(*EventData) {}, ListenerConfig{Async: false})
+	manager.AddFilter(func(*EventData) bool {
+		manager.RegisterFuncWithConfig(EventLogout, func(*EventData) {}, ListenerConfig{Async: false})
+		return true
+	})
+
+	manager.TriggerSync(&EventData{Event: EventLogin})
+	if manager.CountForEvent(EventLogout) != 1 {
+		t.Fatalf("CountForEvent(logout) = %d, want 1", manager.CountForEvent(EventLogout))
+	}
+}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
+	"github.com/Zany2/dtoken-go/core/listener"
 	"github.com/Zany2/dtoken-go/core/utils"
 )
 
@@ -62,6 +63,15 @@ func (m *Manager) LoginWithRefreshToken(ctx context.Context, loginID string, dev
 
 // LoginWithRefreshTokenOptions logs in with options and returns token pair. LoginWithRefreshTokenOptions 使用选项登录并返回令牌对。
 func (m *Manager) LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions) (*RefreshTokenPair, error) {
+	pair, err := m.loginWithRefreshTokenOptions(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	m.triggerRefreshTokenEvent(listener.EventRefreshTokenCreate, pair, listener.ActionCreate)
+	return pair, nil
+}
+
+func (m *Manager) loginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions) (*RefreshTokenPair, error) {
 	accessToken, err := m.LoginWithOptions(ctx, opts.LoginOptions)
 	if err != nil {
 		return nil, err
@@ -93,7 +103,7 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 	_ = m.Logout(ctx, info.AccessToken)
 	_ = m.storage.Delete(ctx, m.getRefreshTokenKey(refreshToken), m.getTokenRefreshKey(info.AccessToken))
 
-	pair, err := m.LoginWithRefreshTokenOptions(ctx, RefreshTokenOptions{
+	pair, err := m.loginWithRefreshTokenOptions(ctx, RefreshTokenOptions{
 		LoginOptions: LoginOptions{
 			LoginID:       info.LoginID,
 			Device:        info.Device,
@@ -107,6 +117,7 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 	if err != nil {
 		return nil, err
 	}
+	m.triggerRefreshTokenEvent(listener.EventRefreshTokenRotate, pair, listener.ActionRotate)
 	return pair, nil
 }
 
@@ -125,7 +136,14 @@ func (m *Manager) RevokeRefreshToken(ctx context.Context, refreshToken string) e
 	if info.AccessToken != "" {
 		_ = m.Logout(ctx, info.AccessToken)
 	}
-	return m.storage.Delete(ctx, m.getRefreshTokenKey(refreshToken), m.getTokenRefreshKey(info.AccessToken))
+	err = m.storage.Delete(ctx, m.getRefreshTokenKey(refreshToken), m.getTokenRefreshKey(info.AccessToken))
+	if err == nil {
+		m.triggerEvent(listener.EventRefreshTokenRevoke, info.LoginID, info.Device, info.DeviceID, info.AccessToken, map[string]any{
+			listener.ExtraKeyAction:       listener.ActionRevoke,
+			listener.ExtraKeyRefreshToken: refreshToken,
+		})
+	}
+	return err
 }
 
 // GetRefreshTokenTTL returns refresh token remaining lifetime seconds. GetRefreshTokenTTL 返回刷新令牌剩余有效秒数。
@@ -253,6 +271,18 @@ func generateRefreshToken() (string, error) {
 		return "", fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+func (m *Manager) triggerRefreshTokenEvent(event listener.Event, pair *RefreshTokenPair, action string) {
+	if pair == nil {
+		return
+	}
+	m.triggerEvent(event, pair.LoginID, pair.Device, pair.DeviceID, pair.AccessToken, map[string]any{
+		listener.ExtraKeyAction:       action,
+		listener.ExtraKeyTokenType:    pair.TokenType,
+		listener.ExtraKeyRefreshToken: pair.RefreshToken,
+		listener.ExtraKeyTTL:          pair.RefreshExpiresIn,
+	})
 }
 
 // secondsToDuration converts seconds to duration. secondsToDuration 将秒转换为时长。

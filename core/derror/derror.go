@@ -79,8 +79,6 @@ var (
 	ErrManagerNotFound = errors.New("manager not found")
 	// ErrManagerInvalidType indicates invalid manager type ErrManagerInvalidType 表示全局存储中的管理器类型不正确。
 	ErrManagerInvalidType = errors.New("manager has invalid type")
-	// ErrInvalidParam indicates invalid param ErrInvalidParam 表示参数无效。
-	ErrInvalidParam = errors.New("invalid parameter")
 	// ErrStorageCapabilityUnsupported indicates required storage capability is missing ErrStorageCapabilityUnsupported 表示存储能力不支持。
 	ErrStorageCapabilityUnsupported = errors.New("storage capability unsupported")
 	// ErrModuleNotEnabled indicates an optional module was not enabled ErrModuleNotEnabled 表示可选模块未启用。
@@ -88,10 +86,17 @@ var (
 )
 
 var (
+	// ErrInvalidParam indicates invalid param ErrInvalidParam 表示参数无效。
+	ErrInvalidParam = errors.New("invalid parameter")
 	// ErrIDIsEmpty indicates empty id ErrIDIsEmpty 表示 ID 为空。
 	ErrIDIsEmpty = errors.New("ID is required and cannot be empty")
 	// ErrEmptyLoginID indicates empty loginID ErrEmptyLoginID 表示 loginID 不能为空。
 	ErrEmptyLoginID = errors.New("loginID can not be empty")
+	// ErrUserIDEmpty indicates empty user id ErrUserIDEmpty 表示用户 ID 为空。
+	ErrUserIDEmpty = errors.New("user ID cannot be empty")
+)
+
+var (
 	// ErrAccountDisabled indicates disabled account ErrAccountDisabled 表示账号已被禁用。
 	ErrAccountDisabled = errors.New("account disabled: this account has been temporarily or permanently disabled")
 	// ErrAccountNotDisabled indicates account not disabled ErrAccountNotDisabled 表示账号未被禁用。
@@ -176,36 +181,41 @@ var (
 )
 
 var (
-	// ErrClientOrClientIDEmpty indicates empty client ErrClientOrClientIDEmpty 表示客户端或客户端 ID 为空。
+	// ErrClientOrClientIDEmpty indicates empty OAuth2 client ErrClientOrClientIDEmpty 表示 OAuth2 客户端或客户端 ID 为空。
 	ErrClientOrClientIDEmpty = errors.New("client or client ID cannot be empty")
-	// ErrClientNotFound indicates client not found ErrClientNotFound 表示客户端未找到。
+	// ErrClientNotFound indicates OAuth2 client not found ErrClientNotFound 表示 OAuth2 客户端未找到。
 	ErrClientNotFound = errors.New("client not found")
-	// ErrInvalidClientCredentials indicates invalid client credentials ErrInvalidClientCredentials 表示客户端凭证无效。
+	// ErrInvalidClientCredentials indicates invalid OAuth2 client credentials ErrInvalidClientCredentials 表示 OAuth2 客户端凭证无效。
 	ErrInvalidClientCredentials = errors.New("invalid client credentials")
-	// ErrInvalidGrantType indicates invalid grant type ErrInvalidGrantType 表示授权类型无效。
+	// ErrInvalidGrantType indicates invalid OAuth2 grant type ErrInvalidGrantType 表示 OAuth2 授权类型无效。
 	ErrInvalidGrantType = errors.New("invalid grant type")
-	// ErrInvalidRedirectURI indicates invalid redirect uri ErrInvalidRedirectURI 表示回调 URI 无效。
+	// ErrInvalidRedirectURI indicates invalid OAuth2 redirect uri ErrInvalidRedirectURI 表示 OAuth2 回调 URI 无效。
 	ErrInvalidRedirectURI = errors.New("invalid redirect URI")
-	// ErrInvalidScope indicates invalid scope ErrInvalidScope 表示权限范围无效。
+	// ErrInvalidScope indicates invalid OAuth2 scope ErrInvalidScope 表示 OAuth2 权限范围无效。
 	ErrInvalidScope = errors.New("invalid scope")
-	// ErrUserIDEmpty indicates empty user id ErrUserIDEmpty 表示用户 ID 为空。
-	ErrUserIDEmpty = errors.New("user ID cannot be empty")
-	// ErrInvalidAuthCode indicates invalid auth code ErrInvalidAuthCode 表示授权码无效。
+	// ErrInvalidAuthCode indicates invalid OAuth2 auth code ErrInvalidAuthCode 表示 OAuth2 授权码无效。
 	ErrInvalidAuthCode = errors.New("invalid authorization code")
 	// ErrInvalidCodeVerifier indicates invalid PKCE verifier ErrInvalidCodeVerifier 表示 PKCE 校验码无效。
 	ErrInvalidCodeVerifier = errors.New("invalid code verifier")
-	// ErrAuthCodeUsed indicates used auth code ErrAuthCodeUsed 表示授权码已被使用。
+	// ErrAuthCodeUsed indicates used OAuth2 auth code ErrAuthCodeUsed 表示 OAuth2 授权码已被使用。
 	ErrAuthCodeUsed = errors.New("authorization code has been used")
-	// ErrAuthCodeExpired indicates expired auth code ErrAuthCodeExpired 表示授权码已过期。
+	// ErrAuthCodeExpired indicates expired OAuth2 auth code ErrAuthCodeExpired 表示 OAuth2 授权码已过期。
 	ErrAuthCodeExpired = errors.New("authorization code has expired")
-	// ErrClientMismatch indicates client mismatch ErrClientMismatch 表示客户端不匹配。
+	// ErrClientMismatch indicates OAuth2 client mismatch ErrClientMismatch 表示 OAuth2 客户端不匹配。
 	ErrClientMismatch = errors.New("client mismatch")
-	// ErrRedirectURIMismatch indicates redirect uri mismatch ErrRedirectURIMismatch 表示回调 URI 不匹配。
+	// ErrRedirectURIMismatch indicates OAuth2 redirect uri mismatch ErrRedirectURIMismatch 表示 OAuth2 回调 URI 不匹配。
 	ErrRedirectURIMismatch = errors.New("redirect URI mismatch")
 	// ErrInvalidRefreshToken indicates invalid refresh token ErrInvalidRefreshToken 表示刷新令牌无效。
 	ErrInvalidRefreshToken = errors.New("invalid refresh token")
-	// ErrInvalidAccessToken indicates invalid access token ErrInvalidAccessToken 表示访问令牌无效。
+	// ErrInvalidAccessToken indicates invalid OAuth2 access token ErrInvalidAccessToken 表示 OAuth2 访问令牌无效。
 	ErrInvalidAccessToken = errors.New("invalid access token")
-	// ErrInvalidUserCredentials indicates invalid user credentials ErrInvalidUserCredentials 表示用户凭证无效。
+	// ErrInvalidUserCredentials indicates invalid OAuth2 user credentials ErrInvalidUserCredentials 表示 OAuth2 用户凭证无效。
 	ErrInvalidUserCredentials = errors.New("invalid user credentials")
+)
+
+var (
+	// ErrOAuth2InvalidRefreshToken aliases ErrInvalidRefreshToken for clearer OAuth2 usage ErrOAuth2InvalidRefreshToken 是 ErrInvalidRefreshToken 的 OAuth2 语义别名。
+	ErrOAuth2InvalidRefreshToken = ErrInvalidRefreshToken
+	// ErrOAuth2InvalidAccessToken aliases ErrInvalidAccessToken for clearer OAuth2 usage ErrOAuth2InvalidAccessToken 是 ErrInvalidAccessToken 的 OAuth2 语义别名。
+	ErrOAuth2InvalidAccessToken = ErrInvalidAccessToken
 )
