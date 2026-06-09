@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -219,6 +220,161 @@ func TestManagerStrategy(t *testing.T) {
 	}
 }
 
+func TestManagerPermissionShortcutMatrix(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, nil)
+	token, err := mgr.Login(ctx, "permission-shortcuts", "web", "browser")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if err = mgr.AddPermissions(ctx, "permission-shortcuts", []string{"article:*", "order:read", "profile:view"}); err != nil {
+		t.Fatalf("AddPermissions() error = %v", err)
+	}
+
+	permissions, err := mgr.GetPermissionsByToken(ctx, token)
+	if err != nil {
+		t.Fatalf("GetPermissionsByToken() error = %v", err)
+	}
+	if !sameStrings(permissions, []string{"article:*", "order:read", "profile:view"}) {
+		t.Fatalf("GetPermissionsByToken() = %v, want stored permissions", permissions)
+	}
+	if err = mgr.CheckPermission(ctx, "permission-shortcuts", "article:create"); err != nil {
+		t.Fatalf("CheckPermission(wildcard) error = %v", err)
+	}
+	if err = mgr.CheckPermissionAnd(ctx, "permission-shortcuts", []string{"article:update", "order:read"}); err != nil {
+		t.Fatalf("CheckPermissionAnd() error = %v", err)
+	}
+	if err = mgr.CheckPermissionAndByToken(ctx, token, []string{"article:delete", "profile:view"}); err != nil {
+		t.Fatalf("CheckPermissionAndByToken() error = %v", err)
+	}
+	if err = mgr.CheckPermissionOrByToken(ctx, token, []string{"missing", "order:read"}); err != nil {
+		t.Fatalf("CheckPermissionOrByToken() error = %v", err)
+	}
+	if !mgr.HasPermissionsOr(ctx, "permission-shortcuts", []string{"missing", "profile:view"}) {
+		t.Fatal("HasPermissionsOr() = false, want true")
+	}
+	if mgr.HasPermissionsOr(ctx, "permission-shortcuts", []string{"missing", ""}) {
+		t.Fatal("HasPermissionsOr(missing) = true, want false")
+	}
+	if err = mgr.RemovePermissions(ctx, "permission-shortcuts", []string{"order:read"}); err != nil {
+		t.Fatalf("RemovePermissions() error = %v", err)
+	}
+	if err = mgr.CheckPermissionOr(ctx, "permission-shortcuts", []string{"missing", "order:read"}); !errors.Is(err, derror.ErrPermissionDenied) {
+		t.Fatalf("CheckPermissionOr(removed) error = %v, want ErrPermissionDenied", err)
+	}
+	if err = mgr.CheckPermissionAnd(ctx, "permission-shortcuts", []string{"article:update", "order:read"}); !errors.Is(err, derror.ErrPermissionDenied) {
+		t.Fatalf("CheckPermissionAnd(removed) error = %v, want ErrPermissionDenied", err)
+	}
+	if err = mgr.CheckPermission(ctx, "permission-shortcuts", ""); !errors.Is(err, derror.ErrPermissionDenied) {
+		t.Fatalf("CheckPermission(empty) error = %v, want ErrPermissionDenied", err)
+	}
+}
+
+func TestManagerRoleShortcutMatrix(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, nil)
+	token, err := mgr.Login(ctx, "role-shortcuts", "web", "browser")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if err = mgr.AddRoles(ctx, "role-shortcuts", []string{"admin", "editor", "auditor"}); err != nil {
+		t.Fatalf("AddRoles() error = %v", err)
+	}
+
+	roles, err := mgr.GetRoles(ctx, "role-shortcuts")
+	if err != nil {
+		t.Fatalf("GetRoles() error = %v", err)
+	}
+	if !sameStrings(roles, []string{"admin", "editor", "auditor"}) {
+		t.Fatalf("GetRoles() = %v, want stored roles", roles)
+	}
+	if err = mgr.CheckRoleByToken(ctx, token, "admin"); err != nil {
+		t.Fatalf("CheckRoleByToken() error = %v", err)
+	}
+	if err = mgr.CheckRoleAnd(ctx, "role-shortcuts", []string{"admin", "editor"}); err != nil {
+		t.Fatalf("CheckRoleAnd() error = %v", err)
+	}
+	if err = mgr.CheckRoleAndByToken(ctx, token, []string{"admin", "auditor"}); err != nil {
+		t.Fatalf("CheckRoleAndByToken() error = %v", err)
+	}
+	if err = mgr.CheckRoleOr(ctx, "role-shortcuts", []string{"missing", "editor"}); err != nil {
+		t.Fatalf("CheckRoleOr() error = %v", err)
+	}
+	if err = mgr.CheckRoleOrByToken(ctx, token, []string{"missing", "auditor"}); err != nil {
+		t.Fatalf("CheckRoleOrByToken() error = %v", err)
+	}
+	if !mgr.HasRolesAndByToken(ctx, token, []string{"admin", "editor"}) {
+		t.Fatal("HasRolesAndByToken() = false, want true")
+	}
+	if !mgr.HasRolesOr(ctx, "role-shortcuts", []string{"missing", "auditor"}) {
+		t.Fatal("HasRolesOr() = false, want true")
+	}
+	if mgr.HasRolesOr(ctx, "role-shortcuts", []string{"missing", ""}) {
+		t.Fatal("HasRolesOr(missing) = true, want false")
+	}
+	if err = mgr.RemoveRoles(ctx, "role-shortcuts", []string{"editor"}); err != nil {
+		t.Fatalf("RemoveRoles() error = %v", err)
+	}
+	if err = mgr.CheckRoleOr(ctx, "role-shortcuts", []string{"missing", "editor"}); !errors.Is(err, derror.ErrRoleDenied) {
+		t.Fatalf("CheckRoleOr(removed) error = %v, want ErrRoleDenied", err)
+	}
+	if err = mgr.CheckRoleAnd(ctx, "role-shortcuts", []string{"admin", "editor"}); !errors.Is(err, derror.ErrRoleDenied) {
+		t.Fatalf("CheckRoleAnd(removed) error = %v, want ErrRoleDenied", err)
+	}
+	if err = mgr.CheckRole(ctx, "role-shortcuts", ""); !errors.Is(err, derror.ErrRoleDenied) {
+		t.Fatalf("CheckRole(empty) error = %v, want ErrRoleDenied", err)
+	}
+}
+
+func TestManagerLifecycleHelpers(t *testing.T) {
+	logger := &managerLifecycleTestLogger{}
+	pool := &managerLifecycleTestPool{running: 1, capacity: 2, usage: 0.5}
+	mgr := newTestManagerWithRuntime(t, pool, logger)
+
+	mgr.StartRenewPoolStatusLogger(5 * time.Millisecond)
+	waitForManagerTest(t, 100*time.Millisecond, func() bool {
+		return logger.infofCount() > 0
+	})
+	mgr.CloseManager()
+	mgr.CloseManager()
+
+	if !pool.stopped() {
+		t.Fatal("pool stopped = false, want CloseManager to stop pool")
+	}
+	if !logger.flushed() || !logger.closed() {
+		t.Fatalf("logger flushed/closed = %v/%v, want true/true", logger.flushed(), logger.closed())
+	}
+	if _, ok := managerBackgrounds.Load(mgr); ok {
+		t.Fatal("manager background state still exists after CloseManager")
+	}
+}
+
+func newTestManagerWithRuntime(t *testing.T, pool adapter.Pool, logger adapter.Log) *Manager {
+	t.Helper()
+
+	cfg := config.DefaultConfig()
+	cfg.IsPrintBanner = false
+	cfg.IsLog = false
+	cfg.AsyncEvent = false
+	cfg.AutoRenew = false
+	cfg.RenewInterval = config.NoLimit
+	cfg.ActiveTimeout = config.NoLimit
+	applyManagerTestStorageConfig(t, cfg)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("test config invalid: %v", err)
+	}
+
+	return NewManager(
+		cfg,
+		&managerTestGenerator{},
+		newManagerTestStorageForTest(t, cfg),
+		managerTestCodec{},
+		logger,
+		pool,
+		nil,
+	)
+}
+
 func newTestManagerWithStrategy(t *testing.T, strategy *Strategy) *Manager {
 	t.Helper()
 
@@ -229,6 +385,7 @@ func newTestManagerWithStrategy(t *testing.T, strategy *Strategy) *Manager {
 	cfg.AutoRenew = false
 	cfg.RenewInterval = config.NoLimit
 	cfg.ActiveTimeout = config.NoLimit
+	applyManagerTestStorageConfig(t, cfg)
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("test config invalid: %v", err)
 	}
@@ -236,7 +393,7 @@ func newTestManagerWithStrategy(t *testing.T, strategy *Strategy) *Manager {
 	mgr := NewManager(
 		cfg,
 		&managerTestGenerator{},
-		newManagerTestStorage(),
+		newManagerTestStorageForTest(t, cfg),
 		managerTestCodec{},
 		adapter.NewNopLogger(),
 		nil,
@@ -245,4 +402,96 @@ func newTestManagerWithStrategy(t *testing.T, strategy *Strategy) *Manager {
 	)
 	t.Cleanup(mgr.CloseManager)
 	return mgr
+}
+
+type managerLifecycleTestPool struct {
+	mu       sync.Mutex
+	running  int
+	capacity int
+	usage    float64
+	stop     bool
+}
+
+func (p *managerLifecycleTestPool) Submit(task func()) error {
+	go task()
+	return nil
+}
+
+func (p *managerLifecycleTestPool) Stop() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stop = true
+}
+
+func (p *managerLifecycleTestPool) Stats() (int, int, float64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.running, p.capacity, p.usage
+}
+
+func (p *managerLifecycleTestPool) stopped() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.stop
+}
+
+type managerLifecycleTestLogger struct {
+	mu         sync.Mutex
+	infof      int
+	flush      bool
+	close      bool
+	lastFormat string
+}
+
+func (l *managerLifecycleTestLogger) Print(v ...any)                 {}
+func (l *managerLifecycleTestLogger) Printf(format string, v ...any) {}
+func (l *managerLifecycleTestLogger) Debug(v ...any)                 {}
+func (l *managerLifecycleTestLogger) Debugf(format string, v ...any) {}
+func (l *managerLifecycleTestLogger) Info(v ...any)                  {}
+func (l *managerLifecycleTestLogger) Warn(v ...any)                  {}
+func (l *managerLifecycleTestLogger) Warnf(format string, v ...any)  {}
+func (l *managerLifecycleTestLogger) Error(v ...any)                 {}
+func (l *managerLifecycleTestLogger) Errorf(format string, v ...any) {}
+
+func (l *managerLifecycleTestLogger) Infof(format string, v ...any) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.infof++
+	l.lastFormat = format
+}
+
+func (l *managerLifecycleTestLogger) Close() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.close = true
+}
+
+func (l *managerLifecycleTestLogger) Flush() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.flush = true
+}
+
+func (l *managerLifecycleTestLogger) SetLevel(adapter.LogLevel) {}
+func (l *managerLifecycleTestLogger) SetPrefix(string)          {}
+func (l *managerLifecycleTestLogger) SetStdout(bool)            {}
+func (l *managerLifecycleTestLogger) LogPath() string           { return "" }
+func (l *managerLifecycleTestLogger) DropCount() uint64         { return 0 }
+
+func (l *managerLifecycleTestLogger) infofCount() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.infof
+}
+
+func (l *managerLifecycleTestLogger) flushed() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.flush
+}
+
+func (l *managerLifecycleTestLogger) closed() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.close
 }

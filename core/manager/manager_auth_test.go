@@ -2,9 +2,12 @@ package manager
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -455,10 +458,7 @@ func TestManagerActiveTimeoutMarksTokenState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
-	storage, ok := mgr.GetStorage().(*managerTestStorage)
-	if !ok {
-		t.Fatalf("storage type = %T, want *managerTestStorage", mgr.GetStorage())
-	}
+	storage := requireManagerTestStorage(t, mgr)
 	activeKey := mgr.getActiveKey(token)
 	if err = storage.Set(ctx, activeKey, time.Now().Add(-2*time.Second).Unix(), time.Minute); err != nil {
 		t.Fatalf("Set(active marker) error = %v", err)
@@ -743,11 +743,11 @@ func newTestManager(t *testing.T, mutate func(*config.Config)) *Manager {
 	return newTestManagerWithAccessProvider(t, mutate, nil)
 }
 
-func requireManagerTestStorage(t *testing.T, mgr *Manager) *managerTestStorage {
+func requireManagerTestStorage(t *testing.T, mgr *Manager) adapter.FullStorage {
 	t.Helper()
-	storage, ok := mgr.GetStorage().(*managerTestStorage)
+	storage, ok := mgr.GetStorage().(adapter.FullStorage)
 	if !ok {
-		t.Fatalf("storage type = %T, want *managerTestStorage", mgr.GetStorage())
+		t.Fatalf("storage type = %T, want adapter.FullStorage", mgr.GetStorage())
 	}
 	return storage
 }
@@ -763,6 +763,7 @@ func newTestManagerWithAccessProvider(t *testing.T, mutate func(*config.Config),
 	cfg.AutoRenew = false
 	cfg.RenewInterval = config.NoLimit
 	cfg.ActiveTimeout = config.NoLimit
+	applyManagerTestStorageConfig(t, cfg)
 	if mutate != nil {
 		mutate(cfg)
 	}
@@ -773,7 +774,7 @@ func newTestManagerWithAccessProvider(t *testing.T, mutate func(*config.Config),
 	mgr := NewManager(
 		cfg,
 		&managerTestGenerator{},
-		newManagerTestStorage(),
+		newManagerTestStorageForTest(t, cfg),
 		managerTestCodec{},
 		adapter.NewNopLogger(),
 		nil,
@@ -815,6 +816,38 @@ type managerTestStorageItem struct {
 
 func newManagerTestStorage() *managerTestStorage {
 	return &managerTestStorage{items: make(map[string]managerTestStorageItem)}
+}
+
+func newManagerTestStorageForTest(t *testing.T, cfg *config.Config) adapter.FullStorage {
+	t.Helper()
+	if os.Getenv("DTOKEN_MANAGER_TEST_STORAGE") != "redis" {
+		return newManagerTestStorage()
+	}
+	return newManagerRedisTestStorage(t, cfg)
+}
+
+func applyManagerTestStorageConfig(t *testing.T, cfg *config.Config) {
+	t.Helper()
+	if os.Getenv("DTOKEN_MANAGER_TEST_STORAGE") != "redis" {
+		return
+	}
+	cfg.KeyPrefix = "dtoken:test:" + sanitizeManagerTestName(t.Name()) + ":"
+}
+
+func sanitizeManagerTestName(name string) string {
+	replacer := strings.NewReplacer(
+		"/", ":",
+		"\\", ":",
+		" ", "_",
+		"\t", "_",
+		"\n", "_",
+	)
+	safeName := replacer.Replace(name)
+	if len(safeName) <= 40 {
+		return safeName
+	}
+	hash := sha1.Sum([]byte(safeName))
+	return safeName[:24] + "_" + hex.EncodeToString(hash[:])[:12]
 }
 
 func (s *managerTestStorage) Set(_ context.Context, key string, value any, expiration time.Duration) error {

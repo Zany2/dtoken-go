@@ -417,6 +417,7 @@ func newBareTestManager(t *testing.T) *Manager {
 	cfg.AutoRenew = false
 	cfg.RenewInterval = config.NoLimit
 	cfg.ActiveTimeout = config.NoLimit
+	applyManagerTestStorageConfig(t, cfg)
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("test config invalid: %v", err)
 	}
@@ -424,7 +425,7 @@ func newBareTestManager(t *testing.T) *Manager {
 	mgr := NewManager(
 		cfg,
 		&managerTestGenerator{},
-		newManagerTestStorage(),
+		newManagerTestStorageForTest(t, cfg),
 		managerTestCodec{},
 		adapter.NewNopLogger(),
 		nil,
