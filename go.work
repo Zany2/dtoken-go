@@ -20,9 +20,9 @@ use (
 	./core
 	./defaults
 	./dtoken
+	./examples/beego
 
 	./examples/chi
-	./examples/beego
 	./examples/echo
 	./examples/fiber
 	./examples/gf

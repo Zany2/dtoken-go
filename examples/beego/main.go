@@ -90,14 +90,14 @@ func handleMe(c *beegocontext.Context) {
 		return
 	}
 
-	loginID, err := dCtx.GetLoginID(c.Request.Context())
+	loginID, err := dCtx.Auth().GetLoginID(c.Request.Context())
 	if err != nil {
 		writeJSON(c, http.StatusUnauthorized, beegodt.CodeNotLogin, err.Error(), nil)
 		return
 	}
 
-	roles, _ := dCtx.GetRoles(c.Request.Context())
-	permissions, _ := dCtx.GetPermissions(c.Request.Context())
+	roles, _ := dCtx.Access().GetRoles(c.Request.Context())
+	permissions, _ := dCtx.Access().GetPermissions(c.Request.Context())
 
 	writeJSON(c, http.StatusOK, beegodt.CodeSuccess, "ok", map[string]interface{}{
 		"loginId":     loginID,
@@ -124,7 +124,7 @@ func handleLogout(c *beegocontext.Context) {
 		return
 	}
 
-	if err := dCtx.Logout(c.Request.Context()); err != nil {
+	if err := dCtx.Auth().Logout(c.Request.Context()); err != nil {
 		writeJSON(c, http.StatusInternalServerError, beegodt.CodeServerError, err.Error(), nil)
 		return
 	}
