@@ -76,30 +76,30 @@ type Ticket struct {
 
 // CreateOptions defines ticket creation options. CreateOptions 定义 Ticket 创建选项。
 type CreateOptions struct {
-	LoginID   string
-	Device    string
-	DeviceId  string
-	Source    string
-	SourceApp string
-	TargetApp string
-	Scopes    []string
-	Extra     map[string]any
-	Timeout   time.Duration
+	LoginID   string         // LoginID stores subject id. LoginID 存储登录主体 ID。
+	Device    string         // Device stores device type. Device 存储设备类型。
+	DeviceId  string         // DeviceId stores concrete device id. DeviceId 存储具体设备 ID。
+	Source    string         // Source stores business source. Source 存储业务来源。
+	SourceApp string         // SourceApp stores issuing application. SourceApp 存储签发应用。
+	TargetApp string         // TargetApp stores consuming application. TargetApp 存储目标应用。
+	Scopes    []string       // Scopes stores granted scopes. Scopes 存储授权范围。
+	Extra     map[string]any // Extra stores extension data. Extra 存储扩展数据。
+	Timeout   time.Duration  // Timeout overrides default ticket ttl. Timeout 覆盖默认 Ticket 有效期。
 }
 
 // ValidateOptions defines ticket validation constraints. ValidateOptions 定义 Ticket 校验约束。
 type ValidateOptions struct {
-	LoginID   string
-	Device    string
-	DeviceId  string
-	Source    string
-	SourceApp string
-	TargetApp string
+	LoginID   string // LoginID requires matching subject id when set. LoginID 非空时要求主体 ID 匹配。
+	Device    string // Device requires matching device type when set. Device 非空时要求设备类型匹配。
+	DeviceId  string // DeviceId requires matching concrete device id when set. DeviceId 非空时要求具体设备 ID 匹配。
+	Source    string // Source requires matching business source when set. Source 非空时要求业务来源匹配。
+	SourceApp string // SourceApp requires matching issuing application when set. SourceApp 非空时要求签发应用匹配。
+	TargetApp string // TargetApp requires matching consuming application when set. TargetApp 非空时要求目标应用匹配。
 }
 
 // ConsumeResult stores consumed ticket data. ConsumeResult 存储 Ticket 消费结果。
 type ConsumeResult struct {
-	Ticket *Ticket
+	Ticket *Ticket // Ticket stores consumed ticket payload. Ticket 存储已消费的 Ticket 载荷。
 }
 
 // Manager handles temporary ticket operations. Manager 处理临时 Ticket 操作。
@@ -215,6 +215,9 @@ func (m *Manager) Consume(ctx context.Context, ticketValue string, opts ...Valid
 	}
 	if len(opts) > 0 {
 		if err = checkConstraints(ticket, opts[0]); err != nil {
+			if ttl := remainingDuration(ticket); ttl > 0 {
+				_ = m.save(ctx, ticket, ttl)
+			}
 			return nil, err
 		}
 	}

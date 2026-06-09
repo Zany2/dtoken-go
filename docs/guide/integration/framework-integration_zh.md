@@ -23,6 +23,7 @@ go get github.com/Zany2/dtoken-go/integrations/chi
 go get github.com/Zany2/dtoken-go/integrations/gf
 go get github.com/Zany2/dtoken-go/integrations/hertz
 go get github.com/Zany2/dtoken-go/integrations/kratos
+go get github.com/Zany2/dtoken-go/integrations/beego
 ```
 
 ## Gin 示例
@@ -184,6 +185,7 @@ r.GET("/console",
 | GoFrame | `github.com/Zany2/dtoken-go/integrations/gf` | `gfdt` |
 | Hertz | `github.com/Zany2/dtoken-go/integrations/hertz` | `hertzdt` |
 | Kratos | `github.com/Zany2/dtoken-go/integrations/kratos` | `kratosdt` |
+| Beego | `github.com/Zany2/dtoken-go/integrations/beego` | `beegodt` |
 
 ## 什么时候直接导入 core
 

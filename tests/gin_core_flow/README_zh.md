@@ -193,11 +193,12 @@
 
 ## 运行
 
-默认情况下，`tests/gin_core_app` 使用内存存储。如果要让同一个 Gin 测试应用使用 Redis，可以在启动服务时通过 `DTOKEN_REDIS_URL` 传入 Redis URL，或在代码中设置 `gincoreapp.Config.RedisURL`。
+自动化流程测试会强制使用下面这个固定 Redis URL。这样可以让测试行为更接近多进程生产存储语义，也能覆盖 Redis 扫描和清理逻辑。`tests/gin_core_app` 自身在 `Config.RedisURL` 为空时仍然使用内存存储。
 
 Redis URL 示例：
 
 ```text
+redis://:root@192.168.19.104:6379/0
 redis://localhost:6379/0
 redis://:password@localhost:6379/0
 ```

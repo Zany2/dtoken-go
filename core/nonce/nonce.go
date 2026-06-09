@@ -6,10 +6,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"github.com/Zany2/dtoken-go/core/adapter"
-	"github.com/Zany2/dtoken-go/core/derror"
 	"sync"
 	"time"
+
+	"github.com/Zany2/dtoken-go/core/adapter"
+	"github.com/Zany2/dtoken-go/core/derror"
 )
 
 // Config defines nonce manager config Config 定义 Nonce 管理器配置
@@ -67,7 +68,7 @@ func NewNonceManagerWithConfig(authType, prefix string, storage adapter.Storage,
 
 // NewNonceManager creates nonce manager NewNonceManager 创建新的 Nonce 管理器
 func NewNonceManager(authType, prefix string, storage adapter.Storage, ttl time.Duration) *NonceManager {
-	if ttl == 0 {
+	if ttl <= 0 {
 		ttl = DefaultNonceTTL // Use default ttl 使用默认有效期
 	}
 
@@ -130,8 +131,13 @@ func (nm *NonceManager) GetTTL(ctx context.Context, nonce string) (int64, error)
 
 // Verify verifies and consumes nonce Verify 验证并消费 nonce 且在不存在时返回 false
 func (nm *NonceManager) Verify(ctx context.Context, nonce string) bool {
+	return nm.VerifyAndConsume(ctx, nonce) == nil
+}
+
+// VerifyAndConsume verifies nonce with error VerifyAndConsume 验证并消费 nonce 且在无效时返回错误
+func (nm *NonceManager) VerifyAndConsume(ctx context.Context, nonce string) error {
 	if nonce == "" {
-		return false
+		return derror.ErrInvalidNonce
 	}
 
 	key := nm.getNonceKey(nonce)
@@ -141,19 +147,17 @@ func (nm *NonceManager) Verify(ctx context.Context, nonce string) bool {
 
 	atomicStorage, ok := nm.storage.(adapter.AtomicStorage)
 	if !ok {
-		return false
+		return derror.ErrStorageCapabilityUnsupported
 	}
 
 	value, err := atomicStorage.GetAndDelete(ctx, key)
-
-	return err == nil && value != nil
-}
-
-// VerifyAndConsume verifies nonce with error VerifyAndConsume 验证并消费 nonce 且在无效时返回错误
-func (nm *NonceManager) VerifyAndConsume(ctx context.Context, nonce string) error {
-	if !nm.Verify(ctx, nonce) {
+	if err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	if value == nil {
 		return derror.ErrInvalidNonce
 	}
+
 	return nil
 }
 

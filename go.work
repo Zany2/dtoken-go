@@ -22,6 +22,7 @@ use (
 	./dtoken
 
 	./examples/chi
+	./examples/beego
 	./examples/echo
 	./examples/fiber
 	./examples/gf

@@ -90,7 +90,18 @@ fmt.Println(result.ShortKey.LoginID)
 For unified login, ticket exchange, cross-system login-state sharing, and unified logout. SSO lives in the optional module `github.com/Zany2/dtoken-go/sso`; it is not coupled to the base auth architecture and only depends on storage and codec adapters. It provides primitives for Ticket, shared token, remote session, and OAuth2 authorization-code modes, plus HTTP service wrappers for redirect, token exchange, introspection, revoke, userinfo, logout, and callback handling. See [SSO](../../../sso/README.md) for details.
 
 ```go
-server := sso.NewServerWithConfig("sso:", "dtoken:", storage, codec, sso.DefaultConfig())
+server := sso.NewServer()
+err := server.RegisterClient(&sso.Client{
+	ClientID:     "app-a",
+	ClientSecret: "secret-a",
+	RedirectURIs: []string{
+		"https://app.example.com/sso/callback",
+	},
+	Modes: []sso.Mode{sso.ModeTicket},
+})
+if err != nil {
+	return err
+}
 
 ticket, err := server.GenerateTicket(
 	ctx,

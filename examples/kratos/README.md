@@ -1,69 +1,54 @@
 # Kratos DToken Example
 
-这是一个基于当前 `DToken` 项目的 `Kratos` 示例，结构和 `gf/gin` 示例保持一致，包含登录、登录态校验、角色校验、权限校验和注解式校验。
+This example shows how to use `github.com/Zany2/dtoken-go/integrations/kratos` with Kratos HTTP middleware.
 
-## 目录说明
-
-```text
-examples/kratos/
-├── main.go
-├── README.md
-├── go.mod
-├── go.sum
-├── api/
-└── third_party/
-```
-
-当前示例入口是 [main.go](/g:/code/go/my_project/dtoken-go/examples/kratos/main.go)。
-
-## 当前使用的包
-
-- `github.com/Zany2/dtoken-go/integrations/kratos`
-- `github.com/Zany2/dtoken-go/com/storage/redis`
-- `github.com/go-kratos/kratos/v2`
-
-## 启动方式
-
-### 1. 进入目录
+## Run
 
 ```bash
 cd examples/kratos
+go run .
 ```
 
-### 2. 配置 Redis
+The server listens on `http://localhost:8080`.
 
-请先确认 Redis 可用，并按实际环境修改 `main.go` 里的连接地址。
+## Endpoints
 
-### 3. 运行示例
+- `POST /login`: logs in a demo user. Password must be `123456`.
+- `GET /me`: returns current login information.
+- `GET /admin`: requires the `admin` role.
+- `GET /articles`: requires the `article:read` permission.
+- `POST /logout`: logs out the current token.
+
+The example uses bundled memory storage through `kratosdt.NewBuilder()`, so no Redis service is required. The `api/` and `third_party/` folders are kept for later proto-based expansion.
+
+## Try
 
 ```bash
-go run main.go
+curl -X POST http://localhost:8080/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"123456"}'
+
+curl http://localhost:8080/me \
+  -H "Authorization: Bearer <token>"
+
+curl http://localhost:8080/admin \
+  -H "Authorization: Bearer <token>"
+
+curl http://localhost:8080/articles \
+  -H "Authorization: Bearer <token>"
+
+curl -X POST http://localhost:8080/logout \
+  -H "Authorization: Bearer <token>"
 ```
 
-默认访问地址：
+## Key APIs
 
-```text
-http://localhost:8080
+```go
+srv := khttp.NewServer(
+	khttp.Address(":8080"),
+	khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware()),
+)
+
+r.GET("/admin", wrapHandler(handleAdmin, kratosdt.AuthMiddleware(), kratosdt.RoleMiddleware([]string{"admin"})))
+r.GET("/articles", wrapHandler(handleArticles, kratosdt.AuthMiddleware(), kratosdt.PermissionMiddleware([]string{"article:read"})))
 ```
-
-## 示例接口
-
-- `POST /api/login`
-- `GET /api/public`
-- `GET /api/user/info`
-- `POST /api/user/logout`
-- `GET /api/admin/users`
-- `POST /api/admin/disable`
-- `POST /api/admin/enable`
-- `GET /api/resource/list`
-- `GET /api/annotation/profile`
-- `GET /api/annotation/admin-data`
-- `GET /api/annotation/sensitive`
-- `GET /api/annotation/super`
-
-## 说明
-
-- `POST /api/login` 默认账号密码为 `admin / 123456`
-- 登录成功后会初始化示例角色和权限数据
-- 示例里演示了 `AuthMiddleware`、`RoleMiddleware`、`PermissionMiddleware` 和 `CheckAllMiddleware`
-- `api/` 和 `third_party/` 目录继续保留，方便你后续扩展 `proto`

@@ -36,10 +36,10 @@ type Builder struct {
 	customTicket      bool             // customTicket marks user ticket manager. customTicket 标记用户自定义 Ticket 管理器。
 	customShortKey    bool             // customShortKey marks user short key manager. customShortKey 标记用户自定义短 Key 管理器。
 	managerOptions    []manager.Option // managerOptions stores delayed user options managerOptions 存储延迟执行的用户装配选项
-	enableNonce       bool
-	enableOAuth2      bool
-	enableTicket      bool
-	enableShortKey    bool
+	enableNonce       bool             // enableNonce marks nonce module enabled. enableNonce 标记启用 Nonce 模块。
+	enableOAuth2      bool             // enableOAuth2 marks OAuth2 module enabled. enableOAuth2 标记启用 OAuth2 模块。
+	enableTicket      bool             // enableTicket marks ticket module enabled. enableTicket 标记启用 Ticket 模块。
+	enableShortKey    bool             // enableShortKey marks short key module enabled. enableShortKey 标记启用短 Key 模块。
 }
 
 // NewBuilder creates a high-level builder with bundled default configs NewBuilder 创建高层默认配置构建器

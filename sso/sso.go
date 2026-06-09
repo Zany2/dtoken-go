@@ -220,6 +220,12 @@ func NewServerWithConfig(authType, prefix string, storage adapter.Storage, seria
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
+	if storage == nil {
+		storage = NewMemoryStorage()
+	}
+	if serializer == nil {
+		serializer = JSONCodec{}
+	}
 	ticketExpiration := cfg.TicketExpiration
 	if ticketExpiration <= 0 {
 		ticketExpiration = DefaultTicketExpiration
@@ -864,6 +870,12 @@ func (s *Server) getClient(ctx context.Context, clientID string) (*Client, error
 		return nil, fmt.Errorf("%w: %v", ErrSerializeFailed, err)
 	}
 	return &client, nil
+}
+
+// hasClient checks whether a client is registered. hasClient 检查客户端是否已经注册。
+func (s *Server) hasClient(clientID string) bool {
+	_, err := s.getClient(context.Background(), clientID)
+	return err == nil
 }
 
 // saveTicket serializes and persists a ticket with the supplied ttl. saveTicket 按指定有效期序列化并保存 Ticket。

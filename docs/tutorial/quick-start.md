@@ -115,6 +115,7 @@ If you want to see more complete examples, you can directly refer to:
 - [Quick Start example](../../examples/quick_start/)
 - [Gin example](../../examples/gin/)
 - [GoFrame example](../../examples/gf/)
+- [Beego example](../../examples/beego/)
 - [Echo example](../../examples/echo/)
 - [Fiber example](../../examples/fiber/)
 - [Chi example](../../examples/chi/)

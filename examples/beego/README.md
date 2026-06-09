@@ -1,11 +1,11 @@
-# Fiber DToken Example
+# DToken Beego Example
 
-This example shows how to use `github.com/Zany2/dtoken-go/integrations/fiber` with Fiber middleware.
+This example shows how to use `github.com/Zany2/dtoken-go/integrations/beego` with Beego filters.
 
 ## Run
 
 ```bash
-cd examples/fiber
+cd examples/beego
 go run .
 ```
 
@@ -19,24 +19,18 @@ The server listens on `http://localhost:8080`.
 - `GET /articles`: requires the `article:read` permission.
 - `POST /logout`: logs out the current token.
 
-The example uses bundled memory storage through `fiberdt.NewBuilder()`, so no Redis service is required.
+The example uses bundled memory storage through `beegodt.NewBuilder()`, so no Redis service is required.
 
 ## Try
 
 ```bash
-curl -X POST http://localhost:8080/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"123456"}'
-
+curl -X POST "http://localhost:8080/login?username=admin&password=123456"
 curl http://localhost:8080/me \
   -H "Authorization: Bearer <token>"
-
 curl http://localhost:8080/admin \
   -H "Authorization: Bearer <token>"
-
 curl http://localhost:8080/articles \
   -H "Authorization: Bearer <token>"
-
 curl -X POST http://localhost:8080/logout \
   -H "Authorization: Bearer <token>"
 ```
@@ -44,8 +38,8 @@ curl -X POST http://localhost:8080/logout \
 ## Key APIs
 
 ```go
-app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx))
-auth.Use(fiberdt.AuthMiddleware(ctx))
-auth.Get("/admin", fiberdt.RoleMiddleware(ctx, []string{"admin"}), handleAdmin)
-auth.Get("/articles", fiberdt.PermissionMiddleware(ctx, []string{"article:read"}), handleArticles)
+web.InsertFilter("/*", web.BeforeRouter, beegodt.RegisterDTokenContextMiddleware(ctx))
+web.InsertFilter("/me", web.BeforeRouter, beegodt.AuthMiddleware(ctx))
+web.InsertFilter("/admin", web.BeforeRouter, beegodt.RoleMiddleware(ctx, []string{"admin"}))
+web.InsertFilter("/articles", web.BeforeRouter, beegodt.PermissionMiddleware(ctx, []string{"article:read"}))
 ```

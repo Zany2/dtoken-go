@@ -23,6 +23,7 @@ go get github.com/Zany2/dtoken-go/integrations/chi
 go get github.com/Zany2/dtoken-go/integrations/gf
 go get github.com/Zany2/dtoken-go/integrations/hertz
 go get github.com/Zany2/dtoken-go/integrations/kratos
+go get github.com/Zany2/dtoken-go/integrations/beego
 ```
 
 ## Gin Example
@@ -186,6 +187,7 @@ Recommended aliases:
 | GoFrame | `github.com/Zany2/dtoken-go/integrations/gf` | `gfdt` |
 | Hertz | `github.com/Zany2/dtoken-go/integrations/hertz` | `hertzdt` |
 | Kratos | `github.com/Zany2/dtoken-go/integrations/kratos` | `kratosdt` |
+| Beego | `github.com/Zany2/dtoken-go/integrations/beego` | `beegodt` |
 
 ## When To Import Core Directly
 

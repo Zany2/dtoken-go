@@ -24,7 +24,9 @@ if err != nil {
 也可以使用 Redis 配置对象：
 
 ```go
-server, err := ssoredis.NewServerFromConfig(&redis.Config{
+import redisstorage "github.com/Zany2/dtoken-go/com/storage/redis"
+
+server, err := ssoredis.NewServerFromConfig(&redisstorage.Config{
 	Host:     "127.0.0.1",
 	Port:     6379,
 	Password: "password",
@@ -36,4 +38,16 @@ server, err := ssoredis.NewServerFromConfig(&redis.Config{
 
 ```go
 server := ssoredis.NewServerFromStorage(storage)
+```
+
+如果你已经有 `*go-redis` 客户端：
+
+```go
+import goredis "github.com/redis/go-redis/v9"
+
+client := goredis.NewClient(&goredis.Options{
+	Addr: "127.0.0.1:6379",
+})
+
+server := ssoredis.NewServerFromClient(client)
 ```

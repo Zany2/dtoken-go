@@ -38,3 +38,18 @@ func (a *Auth) VerifyAndConsumeNonce(ctx context.Context, nonce string) error {
 	}
 	return mgr.VerifyAndConsumeNonce(ctx, nonce)
 }
+
+// IsNonceValid checks whether a nonce is valid without consuming it. IsNonceValid 检查 nonce 是否有效且不消费。
+func (a *Auth) IsNonceValid(ctx context.Context, nonce string) bool {
+	mgr, err := a.requireManager()
+	return err == nil && mgr.IsNonceValid(ctx, nonce)
+}
+
+// GetNonceTTL returns the remaining ttl of a nonce in seconds. GetNonceTTL 返回 nonce 剩余有效秒数。
+func (a *Auth) GetNonceTTL(ctx context.Context, nonce string) (int64, error) {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return 0, err
+	}
+	return mgr.GetNonceTTL(ctx, nonce)
+}

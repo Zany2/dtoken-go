@@ -33,6 +33,22 @@ func TestSSONewServerDefaults(t *testing.T) {
 	}
 }
 
+func TestSSONewServerWithConfigFallsBackToBuiltIns(t *testing.T) {
+	ctx := context.Background()
+	server := NewServerWithConfig(DefaultAuthType, DefaultKeyPrefix, nil, nil, nil)
+	client := newTestClient()
+	if err := server.RegisterClient(client); err != nil {
+		t.Fatalf("RegisterClient() error = %v", err)
+	}
+	ticket, err := server.GenerateTicket(ctx, client.ClientID, "user-1001", client.RedirectURIs[0], nil, nil)
+	if err != nil {
+		t.Fatalf("GenerateTicket() error = %v", err)
+	}
+	if ticket.Ticket == "" {
+		t.Fatal("GenerateTicket() returned empty ticket")
+	}
+}
+
 func TestSSOClientLifecycle(t *testing.T) {
 	server := newTestServer()
 

@@ -2,7 +2,10 @@ module github.com/Zany2/dtoken-go/examples/fiber
 
 go 1.25.0
 
-require github.com/gofiber/fiber/v2 v2.52.0
+require (
+	github.com/Zany2/dtoken-go/integrations/fiber v0.0.2
+	github.com/gofiber/fiber/v2 v2.52.0
+)
 
 require (
 	github.com/andybalholm/brotli v1.0.5 // indirect

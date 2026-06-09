@@ -45,6 +45,91 @@ func TestHTTPServerAuthorizeRedirectsWithTicket(t *testing.T) {
 	}
 }
 
+func TestHTTPServerAuthorizeRejectsMissingClientByDefault(t *testing.T) {
+	server := NewServer()
+	handler := NewHTTPServer(server, HTTPOptions{
+		ServerOptions: ServerOptions{
+			CheckSign: false,
+			Endpoints: DefaultEndpoints(),
+			Params:    DefaultParamNames(),
+		},
+		LoginIDResolver: func(*http.Request) (string, bool) {
+			return "user-1001", true
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/sso/authorize?redirect="+url.QueryEscape("https://public.example.com/sso/callback"), nil)
+	rec := httptest.NewRecorder()
+	handler.HandleAuthorize(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("HandleAuthorize() status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHTTPServerAuthorizeAllowsAnonymousClient(t *testing.T) {
+	server := NewServer()
+	handler := NewHTTPServer(server, HTTPOptions{
+		ServerOptions: ServerOptions{
+			AllowAnonymousClient: true,
+			AllowURLs:            []string{"https://public.example.com/sso/callback"},
+			CheckSign:            false,
+			Endpoints:            DefaultEndpoints(),
+			Params:               DefaultParamNames(),
+		},
+		LoginIDResolver: func(*http.Request) (string, bool) {
+			return "user-1001", true
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/sso/authorize?redirect="+url.QueryEscape("https://public.example.com/sso/callback"), nil)
+	rec := httptest.NewRecorder()
+	handler.HandleAuthorize(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("HandleAuthorize() status = %d, want 302, body=%s", rec.Code, rec.Body.String())
+	}
+	location := rec.Header().Get("Location")
+	parsed, err := url.Parse(location)
+	if err != nil {
+		t.Fatalf("url.Parse(Location) error = %v", err)
+	}
+	if parsed.Host != "public.example.com" || parsed.Query().Get("ticket") == "" {
+		t.Fatalf("Location = %q, want public callback with ticket", location)
+	}
+}
+
+func TestHTTPServerAuthorizeKeepsRegisteredAnonymousClient(t *testing.T) {
+	server := NewServer()
+	if err := server.RegisterClient(&Client{
+		ClientID:     ClientAnonymous,
+		RedirectURIs: []string{"https://custom.example.com/sso/callback"},
+		Modes:        []Mode{ModeTicket},
+	}); err != nil {
+		t.Fatalf("RegisterClient() error = %v", err)
+	}
+	handler := NewHTTPServer(server, HTTPOptions{
+		ServerOptions: ServerOptions{
+			AllowAnonymousClient: true,
+			AllowURLs:            []string{"https://default.example.com/sso/callback"},
+			CheckSign:            false,
+			Endpoints:            DefaultEndpoints(),
+			Params:               DefaultParamNames(),
+		},
+		LoginIDResolver: func(*http.Request) (string, bool) {
+			return "user-1001", true
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/sso/authorize?redirect="+url.QueryEscape("https://custom.example.com/sso/callback"), nil)
+	rec := httptest.NewRecorder()
+	handler.HandleAuthorize(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("HandleAuthorize() status = %d, want 302, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHTTPServerTokenConsumesTicket(t *testing.T) {
 	server := NewServer()
 	registerTestClient(t, server)
@@ -195,6 +280,28 @@ func TestHTTPServerRevokeRemoteSession(t *testing.T) {
 	}
 	if _, err = server.ValidateRemoteSession(context.Background(), session.SessionID, "app-a"); !errors.Is(err, ErrInvalidRemoteSession) {
 		t.Fatalf("ValidateRemoteSession() after revoke error = %v, want ErrInvalidRemoteSession", err)
+	}
+}
+
+func TestHTTPServerLogoutRejectsNilServer(t *testing.T) {
+	handler := NewHTTPServer(nil, HTTPOptions{
+		ServerOptions: ServerOptions{
+			EnableSLO: true,
+			CheckSign: false,
+			Endpoints: DefaultEndpoints(),
+			Params:    DefaultParamNames(),
+		},
+	})
+
+	form := url.Values{}
+	form.Set("loginId", "user-1001")
+	req := httptest.NewRequest(http.MethodPost, "/sso/logout", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	handler.HandleLogout(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("HandleLogout() status = %d, want 500", rec.Code)
 	}
 }
 

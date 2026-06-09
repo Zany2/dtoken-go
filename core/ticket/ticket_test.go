@@ -141,6 +141,36 @@ func TestManagerBoundaries(t *testing.T) {
 	}
 }
 
+func TestConsumeConstraintMismatchDoesNotConsumeTicket(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestTicketManager(time.Minute)
+
+	created, err := mgr.Create(ctx, CreateOptions{LoginID: "user-1", TargetApp: "admin"})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if _, err = mgr.Consume(ctx, created.Ticket, ValidateOptions{TargetApp: "console"}); !errors.Is(err, ErrTicketMismatch) {
+		t.Fatalf("Consume(mismatch) error = %v, want ErrTicketMismatch", err)
+	}
+
+	validated, err := mgr.Validate(ctx, created.Ticket, ValidateOptions{TargetApp: "admin"})
+	if err != nil {
+		t.Fatalf("Validate(after mismatch) error = %v", err)
+	}
+	if validated.Status != StatusValid {
+		t.Fatalf("Validate(after mismatch) status = %s, want %s", validated.Status, StatusValid)
+	}
+
+	result, err := mgr.Consume(ctx, created.Ticket, ValidateOptions{TargetApp: "admin"})
+	if err != nil {
+		t.Fatalf("Consume(after mismatch) error = %v", err)
+	}
+	if result.Ticket.Status != StatusConsumed {
+		t.Fatalf("Consume(after mismatch) status = %s, want %s", result.Ticket.Status, StatusConsumed)
+	}
+}
+
 func newTestTicketManager(ttl time.Duration) *Manager {
 	return NewManagerWithConfig("test", "dt:", newTicketTestStorage(), ticketTestCodec{}, &Config{TTL: ttl})
 }

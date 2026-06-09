@@ -55,6 +55,7 @@ English | [中文文档](README_zh.md)
 - [gin](../examples/gin/) - Gin integration example
 - [gin_core_app](../tests/gin_core_app/) - Gin core flow testing app
 - [gf](../examples/gf/) - GoFrame integration example
+- [beego](../examples/beego/) - Beego integration example
 - [echo](../examples/echo/) - Echo integration example
 - [fiber](../examples/fiber/) - Fiber integration example
 - [chi](../examples/chi/) - Chi integration example

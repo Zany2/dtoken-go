@@ -62,6 +62,36 @@ func TestNonceManagerTTL(t *testing.T) {
 	}
 }
 
+// TestNonceManagerTimeoutFallback verifies non-positive timeout fallback. TestNonceManagerTimeoutFallback 验证非正有效期会回退默认值。
+func TestNonceManagerTimeoutFallback(t *testing.T) {
+	manager := NewNonceManager("auth:", "dtoken:", newNonceTestStorage(), -time.Second)
+	if manager.ttl != DefaultNonceTTL {
+		t.Fatalf("NewNonceManager() ttl = %s, want %s", manager.ttl, DefaultNonceTTL)
+	}
+}
+
+// TestNonceManagerExpiredNonce verifies expired nonce cannot be consumed. TestNonceManagerExpiredNonce 验证过期 nonce 不可消费。
+func TestNonceManagerExpiredNonce(t *testing.T) {
+	ctx := context.Background()
+	manager := NewNonceManager("auth:", "dtoken:", newNonceTestStorage(), time.Minute)
+
+	value, err := manager.GenerateWithTimeout(ctx, time.Nanosecond)
+	if err != nil {
+		t.Fatalf("GenerateWithTimeout() error = %v", err)
+	}
+	time.Sleep(time.Millisecond)
+
+	if manager.IsValid(ctx, value) {
+		t.Fatal("IsValid(expired) = true, want false")
+	}
+	if manager.Verify(ctx, value) {
+		t.Fatal("Verify(expired) = true, want false")
+	}
+	if err = manager.VerifyAndConsume(ctx, value); !errors.Is(err, derror.ErrInvalidNonce) {
+		t.Fatalf("VerifyAndConsume(expired) error = %v, want ErrInvalidNonce", err)
+	}
+}
+
 // TestNonceManagerRequiresAtomicStorage verifies non-atomic storage fails closed. TestNonceManagerRequiresAtomicStorage 验证非原子存储会安全失败。
 func TestNonceManagerRequiresAtomicStorage(t *testing.T) {
 	ctx := context.Background()
@@ -77,6 +107,22 @@ func TestNonceManagerRequiresAtomicStorage(t *testing.T) {
 	}
 	if manager.Verify(ctx, value) {
 		t.Fatal("Verify() = true with non-atomic storage, want false")
+	}
+	if err = manager.VerifyAndConsume(ctx, value); !errors.Is(err, derror.ErrStorageCapabilityUnsupported) {
+		t.Fatalf("VerifyAndConsume() error = %v, want ErrStorageCapabilityUnsupported", err)
+	}
+}
+
+// TestNonceManagerVerifyStorageError verifies storage errors are preserved. TestNonceManagerVerifyStorageError 验证存储错误会保留。
+func TestNonceManagerVerifyStorageError(t *testing.T) {
+	ctx := context.Background()
+	manager := NewNonceManager("auth:", "dtoken:", &nonceFailingAtomicStorage{}, time.Minute)
+
+	if manager.Verify(ctx, "nonce") {
+		t.Fatal("Verify() = true on storage error, want false")
+	}
+	if err := manager.VerifyAndConsume(ctx, "nonce"); !errors.Is(err, derror.ErrStorageUnavailable) {
+		t.Fatalf("VerifyAndConsume() error = %v, want ErrStorageUnavailable", err)
 	}
 }
 
@@ -95,6 +141,14 @@ func (s *nonceTestStorage) GetAndDelete(ctx context.Context, key string) (any, e
 	}
 	_ = s.Delete(ctx, key)
 	return value, nil
+}
+
+type nonceFailingAtomicStorage struct {
+	nonceBasicStorage
+}
+
+func (nonceFailingAtomicStorage) GetAndDelete(context.Context, string) (any, error) {
+	return nil, errors.New("storage down")
 }
 
 type nonceBasicStorage struct {

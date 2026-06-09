@@ -130,6 +130,33 @@ func (a *Auth) LogoutByToken(ctx context.Context, token string) error {
 	return mgr.Logout(ctx, token)
 }
 
+// LogoutByDeviceAndDeviceId logs out a concrete terminal. LogoutByDeviceAndDeviceId 注销具体终端。
+func (a *Auth) LogoutByDeviceAndDeviceId(ctx context.Context, loginID, device, deviceID string) error {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return err
+	}
+	return mgr.LogoutByDeviceAndDeviceId(ctx, loginID, device, deviceID)
+}
+
+// LogoutByDevice logs out all terminals on a device type. LogoutByDevice 注销指定设备类型下的所有终端。
+func (a *Auth) LogoutByDevice(ctx context.Context, loginID, device string) error {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return err
+	}
+	return mgr.LogoutByDevice(ctx, loginID, device)
+}
+
+// LogoutByLoginID logs out all terminals for a login ID. LogoutByLoginID 注销指定账号的所有终端。
+func (a *Auth) LogoutByLoginID(ctx context.Context, loginID string) error {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return err
+	}
+	return mgr.LogoutByLoginID(ctx, loginID)
+}
+
 // Logout logs out by typed terminal options. Logout 根据类型化终端选项登出。
 func (a *Auth) Logout(ctx context.Context, opts LogoutOptions) error {
 	mgr, err := a.requireManager()
@@ -145,6 +172,42 @@ func (a *Auth) Logout(ctx context.Context, opts LogoutOptions) error {
 	})
 }
 
+// KickoutByToken kicks out a terminal by token. KickoutByToken 根据 Token 踢人下线。
+func (a *Auth) KickoutByToken(ctx context.Context, token string) error {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return err
+	}
+	return mgr.Kickout(ctx, token)
+}
+
+// KickoutByDeviceAndDeviceId kicks out a concrete terminal. KickoutByDeviceAndDeviceId 踢下具体终端。
+func (a *Auth) KickoutByDeviceAndDeviceId(ctx context.Context, loginID, device, deviceID string) error {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return err
+	}
+	return mgr.KickoutByDeviceAndDeviceId(ctx, loginID, device, deviceID)
+}
+
+// KickoutByDevice kicks out all terminals on a device type. KickoutByDevice 踢下指定设备类型下的所有终端。
+func (a *Auth) KickoutByDevice(ctx context.Context, loginID, device string) error {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return err
+	}
+	return mgr.KickoutByDevice(ctx, loginID, device)
+}
+
+// KickoutByLoginID kicks out all terminals for a login ID. KickoutByLoginID 踢下指定账号的所有终端。
+func (a *Auth) KickoutByLoginID(ctx context.Context, loginID string) error {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return err
+	}
+	return mgr.KickoutByLoginID(ctx, loginID)
+}
+
 // Kickout kicks out by typed terminal options. Kickout 根据类型化终端选项踢人下线。
 func (a *Auth) Kickout(ctx context.Context, opts LogoutOptions) error {
 	mgr, err := a.requireManager()
@@ -158,6 +221,42 @@ func (a *Auth) Kickout(ctx context.Context, opts LogoutOptions) error {
 		Device:   opts.Device,
 		DeviceID: opts.DeviceID,
 	})
+}
+
+// ReplaceByToken replaces a terminal by token. ReplaceByToken 根据 Token 顶人下线。
+func (a *Auth) ReplaceByToken(ctx context.Context, token string) error {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return err
+	}
+	return mgr.Replace(ctx, token)
+}
+
+// ReplaceByDeviceAndDeviceId replaces a concrete terminal. ReplaceByDeviceAndDeviceId 顶下具体终端。
+func (a *Auth) ReplaceByDeviceAndDeviceId(ctx context.Context, loginID, device, deviceID string) error {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return err
+	}
+	return mgr.ReplaceByDeviceAndDeviceId(ctx, loginID, device, deviceID)
+}
+
+// ReplaceByDevice replaces all terminals on a device type. ReplaceByDevice 顶下指定设备类型下的所有终端。
+func (a *Auth) ReplaceByDevice(ctx context.Context, loginID, device string) error {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return err
+	}
+	return mgr.ReplaceByDevice(ctx, loginID, device)
+}
+
+// ReplaceByLoginID replaces all terminals for a login ID. ReplaceByLoginID 顶下指定账号的所有终端。
+func (a *Auth) ReplaceByLoginID(ctx context.Context, loginID string) error {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return err
+	}
+	return mgr.ReplaceByLoginID(ctx, loginID)
 }
 
 // Replace replaces login state by typed terminal options. Replace 根据类型化终端选项顶人下线。
@@ -206,6 +305,33 @@ func (a *Auth) GetTokenInfo(ctx context.Context, token string) (*manager.TokenIn
 		return nil, err
 	}
 	return mgr.GetTokenInfo(ctx, token)
+}
+
+// GetDevice resolves device from token. GetDevice 根据 Token 解析设备类型。
+func (a *Auth) GetDevice(ctx context.Context, token string) (string, error) {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return "", err
+	}
+	return mgr.GetDevice(ctx, token)
+}
+
+// GetDeviceId resolves device id from token. GetDeviceId 根据 Token 解析设备 ID。
+func (a *Auth) GetDeviceId(ctx context.Context, token string) (string, error) {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return "", err
+	}
+	return mgr.GetDeviceId(ctx, token)
+}
+
+// GetTokenCreateTime resolves token creation time. GetTokenCreateTime 获取 Token 创建时间。
+func (a *Auth) GetTokenCreateTime(ctx context.Context, token string) (int64, error) {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return 0, err
+	}
+	return mgr.GetTokenCreateTime(ctx, token)
 }
 
 // GetTokenTTL gets the remaining token lifetime in seconds. GetTokenTTL 获取 Token 剩余有效秒数。

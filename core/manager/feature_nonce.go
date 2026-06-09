@@ -50,7 +50,7 @@ func (m *Manager) VerifyNonce(ctx context.Context, nonce string) bool {
 	}
 	ok := m.nonceManager.Verify(ctx, nonce)
 	m.triggerEvent(listener.EventNonceVerify, "", "", "", nonce, map[string]any{
-		listener.ExtraKeyAction: listener.ActionValidate,
+		listener.ExtraKeyAction: listener.ActionConsume,
 		listener.ExtraKeyResult: ok,
 	})
 	return ok

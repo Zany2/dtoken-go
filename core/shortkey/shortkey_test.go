@@ -163,6 +163,36 @@ func TestManagerBoundaries(t *testing.T) {
 	}
 }
 
+func TestConsumeConstraintMismatchDoesNotConsumeShortKey(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestShortKeyManager(time.Minute)
+
+	created, err := mgr.Create(ctx, CreateOptions{LoginID: "user-1", Scene: "login"})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if _, err = mgr.Consume(ctx, created.Key, ValidateOptions{Scene: "bind"}); !errors.Is(err, ErrShortKeyMismatch) {
+		t.Fatalf("Consume(mismatch) error = %v, want ErrShortKeyMismatch", err)
+	}
+
+	validated, err := mgr.Validate(ctx, created.Key, ValidateOptions{Scene: "login"})
+	if err != nil {
+		t.Fatalf("Validate(after mismatch) error = %v", err)
+	}
+	if validated.Status != StatusConfirmed {
+		t.Fatalf("Validate(after mismatch) status = %s, want %s", validated.Status, StatusConfirmed)
+	}
+
+	result, err := mgr.Consume(ctx, created.Key, ValidateOptions{Scene: "login"})
+	if err != nil {
+		t.Fatalf("Consume(after mismatch) error = %v", err)
+	}
+	if result.ShortKey.Status != StatusConsumed {
+		t.Fatalf("Consume(after mismatch) status = %s, want %s", result.ShortKey.Status, StatusConsumed)
+	}
+}
+
 func newTestShortKeyManager(ttl time.Duration) *Manager {
 	return NewManagerWithConfig("test", "dt:", newShortKeyTestStorage(), shortKeyTestCodec{}, &Config{
 		TTL:                ttl,

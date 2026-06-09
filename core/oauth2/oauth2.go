@@ -248,7 +248,7 @@ func (s *OAuth2Server) GenerateAuthorizationCodeWithPKCE(ctx context.Context, cl
 		ClientID:            clientID,
 		RedirectURI:         redirectURI,
 		UserID:              userID,
-		Scopes:              scopes,
+		Scopes:              append([]string(nil), scopes...),
 		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
 		CreateTime:          time.Now().Unix(),
@@ -334,7 +334,9 @@ func (s *OAuth2Server) ExchangeCodeForTokenWithPKCE(ctx context.Context, code, c
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
 
-	_ = s.storage.Set(ctx, key, encodeData, time.Minute)
+	if err = s.storage.Set(ctx, key, encodeData, time.Minute); err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
 
 	return s.generateAccessToken(ctx, authCode.UserID, authCode.ClientID, authCode.Scopes)
 }
@@ -439,10 +441,18 @@ func (s *OAuth2Server) RefreshAccessToken(ctx context.Context, clientID, refresh
 		return nil, derror.ErrClientMismatch
 	}
 
-	_ = s.storage.Delete(ctx, s.getTokenKey(accessTokenInfo.Token))
-	_ = s.storage.Delete(ctx, key)
+	token, err := s.generateAccessToken(ctx, accessTokenInfo.UserID, accessTokenInfo.ClientID, accessTokenInfo.Scopes)
+	if err != nil {
+		return nil, err
+	}
 
-	return s.generateAccessToken(ctx, accessTokenInfo.UserID, accessTokenInfo.ClientID, accessTokenInfo.Scopes)
+	if err = s.storage.Delete(ctx, key); err != nil {
+		_ = s.storage.Delete(ctx, s.getTokenKey(token.Token), s.getRefreshKey(token.RefreshToken))
+		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	_ = s.storage.Delete(ctx, s.getTokenKey(accessTokenInfo.Token))
+
+	return token, nil
 }
 
 // ValidateAccessToken Validates access token 验证访问令牌
@@ -509,10 +519,15 @@ func (s *OAuth2Server) RevokeToken(ctx context.Context, accessToken string) erro
 	}
 
 	if accessTokenInfo.RefreshToken != "" {
-		_ = s.storage.Delete(ctx, s.getRefreshKey(accessTokenInfo.RefreshToken))
+		if err = s.storage.Delete(ctx, s.getRefreshKey(accessTokenInfo.RefreshToken)); err != nil {
+			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
 	}
 
-	return s.storage.Delete(ctx, key)
+	if err = s.storage.Delete(ctx, key); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	return nil
 }
 
 // getCodeKey Gets storage key for authorization code 获取授权码的存储键
@@ -692,7 +707,7 @@ func (s *OAuth2Server) generateAccessToken(ctx context.Context, userID, clientID
 		TokenType:    TokenTypeBearer,
 		ExpiresIn:    int64(s.tokenExpiration.Seconds()),
 		RefreshToken: refreshToken,
-		Scopes:       scopes,
+		Scopes:       append([]string(nil), scopes...),
 		UserID:       userID,
 		ClientID:     clientID,
 	}
@@ -710,6 +725,7 @@ func (s *OAuth2Server) generateAccessToken(ctx context.Context, userID, clientID
 	}
 
 	if err = s.storage.Set(ctx, refreshKey, encodeData, s.refreshExpiration); err != nil {
+		_ = s.storage.Delete(ctx, tokenKey)
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 

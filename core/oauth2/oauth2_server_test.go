@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -185,6 +186,36 @@ func TestOAuth2AuthorizationCodeBoundaries(t *testing.T) {
 	}
 }
 
+// TestOAuth2ScopesAreDefensivelyCopied verifies scope slices are copied. TestOAuth2ScopesAreDefensivelyCopied 验证 scopes 切片会被防御性复制。
+func TestOAuth2ScopesAreDefensivelyCopied(t *testing.T) {
+	ctx := context.Background()
+	server := newOAuth2TestServer()
+	client := oauth2TestClient()
+	if err := server.RegisterClient(client); err != nil {
+		t.Fatalf("RegisterClient() error = %v", err)
+	}
+
+	codeScopes := []string{"read"}
+	code, err := server.GenerateAuthorizationCode(ctx, client.ClientID, "user-1", client.RedirectURIs[0], codeScopes)
+	if err != nil {
+		t.Fatalf("GenerateAuthorizationCode() error = %v", err)
+	}
+	codeScopes[0] = "write"
+	if code.Scopes[0] != "read" {
+		t.Fatalf("AuthorizationCode.Scopes[0] = %q, want read", code.Scopes[0])
+	}
+
+	tokenScopes := []string{"read"}
+	token, err := server.ClientCredentialsToken(ctx, client.ClientID, client.ClientSecret, tokenScopes)
+	if err != nil {
+		t.Fatalf("ClientCredentialsToken() error = %v", err)
+	}
+	tokenScopes[0] = "write"
+	if token.Scopes[0] != "read" {
+		t.Fatalf("AccessToken.Scopes[0] = %q, want read", token.Scopes[0])
+	}
+}
+
 // TestOAuth2PKCES256Flow verifies S256 PKCE challenge verification. TestOAuth2PKCES256Flow verifies S256 PKCE challenge verification.
 func TestOAuth2PKCES256Flow(t *testing.T) {
 	ctx := context.Background()
@@ -271,6 +302,33 @@ func TestOAuth2TokenEndpointPKCE(t *testing.T) {
 	}
 }
 
+// TestOAuth2ExchangeCodeFailsWhenUsedStateCannotBeSaved verifies used-code write failures stop token issuing. TestOAuth2ExchangeCodeFailsWhenUsedStateCannotBeSaved 验证授权码使用状态写入失败时不会签发令牌。
+func TestOAuth2ExchangeCodeFailsWhenUsedStateCannotBeSaved(t *testing.T) {
+	ctx := context.Background()
+	storage := &oauth2UsedCodeSaveFailStorage{oauth2TestStorage: newOAuth2TestStorage()}
+	cfg := &Config{
+		CodeExpiration:    time.Minute,
+		TokenExpiration:   time.Minute,
+		RefreshExpiration: time.Hour,
+	}
+	server := NewOAuth2ServerWithConfig("auth:", "dtoken:", storage, oauth2TestCodec{}, cfg)
+	client := oauth2TestClient()
+	if err := server.RegisterClient(client); err != nil {
+		t.Fatalf("RegisterClient() error = %v", err)
+	}
+	code, err := server.GenerateAuthorizationCode(ctx, client.ClientID, "user-1", client.RedirectURIs[0], []string{"read"})
+	if err != nil {
+		t.Fatalf("GenerateAuthorizationCode() error = %v", err)
+	}
+
+	if _, err = server.ExchangeCodeForToken(ctx, code.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0]); !errors.Is(err, derror.ErrStorageUnavailable) {
+		t.Fatalf("ExchangeCodeForToken() error = %v, want ErrStorageUnavailable", err)
+	}
+	if storage.tokenWriteCount != 0 {
+		t.Fatalf("tokenWriteCount = %d, want 0", storage.tokenWriteCount)
+	}
+}
+
 // TestOAuth2RefreshAndRevoke verifies refresh rotation and revoke cleanup TestOAuth2RefreshAndRevoke 验证刷新轮换和撤销清理
 func TestOAuth2RefreshAndRevoke(t *testing.T) {
 	ctx := context.Background()
@@ -305,6 +363,131 @@ func TestOAuth2RefreshAndRevoke(t *testing.T) {
 	}
 	if _, err = server.ValidateAccessTokenAndGetInfo(ctx, refreshed.Token); !errors.Is(err, derror.ErrInvalidAccessToken) {
 		t.Fatalf("ValidateAccessTokenAndGetInfo() error = %v, want ErrInvalidAccessToken", err)
+	}
+}
+
+// TestOAuth2RefreshKeepsOldTokensWhenNewTokenGenerationFails verifies refresh failure keeps old token pair. TestOAuth2RefreshKeepsOldTokensWhenNewTokenGenerationFails 验证刷新失败时保留旧令牌。
+func TestOAuth2RefreshKeepsOldTokensWhenNewTokenGenerationFails(t *testing.T) {
+	ctx := context.Background()
+	storage := &oauth2RefreshFailStorage{oauth2TestStorage: newOAuth2TestStorage()}
+	cfg := &Config{
+		CodeExpiration:    time.Minute,
+		TokenExpiration:   time.Minute,
+		RefreshExpiration: time.Hour,
+	}
+	server := NewOAuth2ServerWithConfig("auth:", "dtoken:", storage.oauth2TestStorage, oauth2TestCodec{}, cfg)
+	client := oauth2TestClient()
+	if err := server.RegisterClient(client); err != nil {
+		t.Fatalf("RegisterClient() error = %v", err)
+	}
+	token, err := server.ClientCredentialsToken(ctx, client.ClientID, client.ClientSecret, []string{"read"})
+	if err != nil {
+		t.Fatalf("ClientCredentialsToken() error = %v", err)
+	}
+
+	server.storage = storage
+	if _, err = server.RefreshAccessToken(ctx, client.ClientID, token.RefreshToken, client.ClientSecret); !errors.Is(err, derror.ErrStorageUnavailable) {
+		t.Fatalf("RefreshAccessToken() error = %v, want ErrStorageUnavailable", err)
+	}
+	if !server.ValidateAccessToken(ctx, token.Token) {
+		t.Fatal("old access token is invalid after failed refresh")
+	}
+	if _, err = server.RefreshAccessToken(ctx, client.ClientID, token.RefreshToken, client.ClientSecret); !errors.Is(err, derror.ErrStorageUnavailable) {
+		t.Fatalf("second RefreshAccessToken() error = %v, want ErrStorageUnavailable", err)
+	}
+}
+
+// TestOAuth2RefreshRollsBackNewTokenWhenOldRefreshDeleteFails verifies old refresh deletion must succeed. TestOAuth2RefreshRollsBackNewTokenWhenOldRefreshDeleteFails 验证旧刷新令牌删除失败时会回滚新令牌。
+func TestOAuth2RefreshRollsBackNewTokenWhenOldRefreshDeleteFails(t *testing.T) {
+	ctx := context.Background()
+	storage := &oauth2DeleteRefreshFailStorage{oauth2TestStorage: newOAuth2TestStorage()}
+	cfg := &Config{
+		CodeExpiration:    time.Minute,
+		TokenExpiration:   time.Minute,
+		RefreshExpiration: time.Hour,
+	}
+	server := NewOAuth2ServerWithConfig("auth:", "dtoken:", storage.oauth2TestStorage, oauth2TestCodec{}, cfg)
+	client := oauth2TestClient()
+	if err := server.RegisterClient(client); err != nil {
+		t.Fatalf("RegisterClient() error = %v", err)
+	}
+	token, err := server.ClientCredentialsToken(ctx, client.ClientID, client.ClientSecret, []string{"read"})
+	if err != nil {
+		t.Fatalf("ClientCredentialsToken() error = %v", err)
+	}
+
+	storage.recordWrites = true
+	storage.failDeleteKey = server.getRefreshKey(token.RefreshToken)
+	server.storage = storage
+	if _, err = server.RefreshAccessToken(ctx, client.ClientID, token.RefreshToken, client.ClientSecret); !errors.Is(err, derror.ErrStorageUnavailable) {
+		t.Fatalf("RefreshAccessToken() error = %v, want ErrStorageUnavailable", err)
+	}
+	if storage.lastNewAccessKey == "" || storage.lastNewRefreshKey == "" {
+		t.Fatal("storage did not record new token keys")
+	}
+	if storage.Exists(ctx, storage.lastNewAccessKey) {
+		t.Fatal("new access token key still exists after failed old refresh delete")
+	}
+	if storage.Exists(ctx, storage.lastNewRefreshKey) {
+		t.Fatal("new refresh token key still exists after failed old refresh delete")
+	}
+	if !server.ValidateAccessToken(ctx, token.Token) {
+		t.Fatal("old access token is invalid after failed old refresh delete")
+	}
+}
+
+// TestOAuth2GenerateTokenRollsBackAccessTokenOnRefreshSaveFailure verifies partial token writes are cleaned. TestOAuth2GenerateTokenRollsBackAccessTokenOnRefreshSaveFailure 验证刷新令牌写入失败时会清理访问令牌。
+func TestOAuth2GenerateTokenRollsBackAccessTokenOnRefreshSaveFailure(t *testing.T) {
+	ctx := context.Background()
+	storage := &oauth2RefreshFailStorage{oauth2TestStorage: newOAuth2TestStorage()}
+	cfg := &Config{
+		CodeExpiration:    time.Minute,
+		TokenExpiration:   time.Minute,
+		RefreshExpiration: time.Hour,
+	}
+	server := NewOAuth2ServerWithConfig("auth:", "dtoken:", storage, oauth2TestCodec{}, cfg)
+	client := oauth2TestClient()
+	if err := server.RegisterClient(client); err != nil {
+		t.Fatalf("RegisterClient() error = %v", err)
+	}
+
+	if _, err := server.ClientCredentialsToken(ctx, client.ClientID, client.ClientSecret, []string{"read"}); !errors.Is(err, derror.ErrStorageUnavailable) {
+		t.Fatalf("ClientCredentialsToken() error = %v, want ErrStorageUnavailable", err)
+	}
+	if storage.lastAccessKey == "" {
+		t.Fatal("storage did not record access token key")
+	}
+	if storage.Exists(ctx, storage.lastAccessKey) {
+		t.Fatal("access token key still exists after refresh save failure")
+	}
+}
+
+// TestOAuth2RevokeReturnsStorageErrorWhenRefreshDeleteFails verifies revoke reports refresh delete failure. TestOAuth2RevokeReturnsStorageErrorWhenRefreshDeleteFails 验证撤销时刷新令牌删除失败会返回存储错误。
+func TestOAuth2RevokeReturnsStorageErrorWhenRefreshDeleteFails(t *testing.T) {
+	ctx := context.Background()
+	storage := &oauth2DeleteRefreshFailStorage{oauth2TestStorage: newOAuth2TestStorage()}
+	cfg := &Config{
+		CodeExpiration:    time.Minute,
+		TokenExpiration:   time.Minute,
+		RefreshExpiration: time.Hour,
+	}
+	server := NewOAuth2ServerWithConfig("auth:", "dtoken:", storage.oauth2TestStorage, oauth2TestCodec{}, cfg)
+	client := oauth2TestClient()
+	if err := server.RegisterClient(client); err != nil {
+		t.Fatalf("RegisterClient() error = %v", err)
+	}
+	token, err := server.ClientCredentialsToken(ctx, client.ClientID, client.ClientSecret, []string{"read"})
+	if err != nil {
+		t.Fatalf("ClientCredentialsToken() error = %v", err)
+	}
+
+	storage.failDeleteKey = server.getRefreshKey(token.RefreshToken)
+	server.storage = storage
+	if err = server.RevokeToken(ctx, token.Token); !errors.Is(err, derror.ErrStorageUnavailable) {
+		t.Fatalf("RevokeToken() error = %v, want ErrStorageUnavailable", err)
+	}
+	if !server.ValidateAccessToken(ctx, token.Token) {
+		t.Fatal("access token was deleted after failed refresh token delete")
 	}
 }
 
@@ -364,6 +547,65 @@ func (s *oauth2TestStorage) Set(_ context.Context, key string, value any, expira
 		delete(s.expires, key)
 	}
 	return nil
+}
+
+type oauth2RefreshFailStorage struct {
+	*oauth2TestStorage
+	lastAccessKey string
+}
+
+func (s *oauth2RefreshFailStorage) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
+	if strings.Contains(key, TokenKeySuffix) {
+		s.lastAccessKey = key
+	}
+	if strings.Contains(key, RefreshKeySuffix) {
+		return errors.New("refresh storage down")
+	}
+	return s.oauth2TestStorage.Set(ctx, key, value, expiration)
+}
+
+type oauth2UsedCodeSaveFailStorage struct {
+	*oauth2TestStorage
+	tokenWriteCount int
+}
+
+func (s *oauth2UsedCodeSaveFailStorage) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
+	if strings.Contains(key, TokenKeySuffix) {
+		s.tokenWriteCount++
+	}
+	if strings.Contains(key, CodeKeySuffix) && s.oauth2TestStorage.Exists(ctx, key) {
+		return errors.New("used code state storage down")
+	}
+	return s.oauth2TestStorage.Set(ctx, key, value, expiration)
+}
+
+type oauth2DeleteRefreshFailStorage struct {
+	*oauth2TestStorage
+	failDeleteKey     string
+	recordWrites      bool
+	lastNewAccessKey  string
+	lastNewRefreshKey string
+}
+
+func (s *oauth2DeleteRefreshFailStorage) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
+	if s.recordWrites && strings.Contains(key, TokenKeySuffix) {
+		s.lastNewAccessKey = key
+	}
+	if s.recordWrites && strings.Contains(key, RefreshKeySuffix) {
+		s.lastNewRefreshKey = key
+	}
+	return s.oauth2TestStorage.Set(ctx, key, value, expiration)
+}
+
+func (s *oauth2DeleteRefreshFailStorage) Delete(ctx context.Context, keys ...string) error {
+	if s.failDeleteKey != "" {
+		for _, key := range keys {
+			if key == s.failDeleteKey {
+				return errors.New("refresh delete failed")
+			}
+		}
+	}
+	return s.oauth2TestStorage.Delete(ctx, keys...)
 }
 
 func (s *oauth2TestStorage) Get(_ context.Context, key string) (any, error) {

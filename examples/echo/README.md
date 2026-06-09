@@ -1,90 +1,51 @@
 # Echo DToken Example
 
-这是一个基于当前 `DToken` 项目的 `Echo` 示例，结构和 `examples/gf`、`examples/gin` 保持一致，主要演示登录、角色、权限以及注解式校验的基本用法。
+This example shows how to use `github.com/Zany2/dtoken-go/integrations/echo` with Echo middleware.
 
-## 目录说明
-
-```text
-examples/echo/
-├── main.go
-├── README.md
-├── go.mod
-└── go.sum
-```
-
-## 当前使用的包
-
-- `github.com/Zany2/dtoken-go/integrations/echo`
-- `github.com/Zany2/dtoken-go/com/storage/redis`
-- `github.com/labstack/echo/v4`
-
-示例里统一使用：
-
-```go
-import (
-    "github.com/Zany2/dtoken-go/com/storage/redis"
-    echodt "github.com/Zany2/dtoken-go/integrations/echo"
-)
-```
-
-## 功能概览
-
-- 注册全局 `DTokenContext` 中间件
-- 公开接口访问
-- 登录校验中间件
-- 角色校验中间件
-- 权限校验中间件
-- 注解式登录、角色、权限组合校验
-
-## 启动方式
-
-### 1. 进入目录
+## Run
 
 ```bash
 cd examples/echo
+go run .
 ```
 
-### 2. 配置 Redis
+The server listens on `http://localhost:8080`.
 
-请先确认 Redis 可用，并按实际环境修改 [main.go](/g:/code/go/my_project/dtoken-go/examples/echo/main.go) 里的连接地址。
+## Endpoints
 
-当前初始化位置：
+- `POST /login`: logs in a demo user. Password must be `123456`.
+- `GET /me`: returns current login information.
+- `GET /admin`: requires the `admin` role.
+- `GET /articles`: requires the `article:read` permission.
+- `POST /logout`: logs out the current token.
 
-```go
-func initManager(ctx context.Context)
-```
+The example uses bundled memory storage through `echodt.NewBuilder()`, so no Redis service is required.
 
-### 3. 运行示例
+## Try
 
 ```bash
-go run main.go
+curl -X POST http://localhost:8080/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"123456"}'
+
+curl http://localhost:8080/me \
+  -H "Authorization: Bearer <token>"
+
+curl http://localhost:8080/admin \
+  -H "Authorization: Bearer <token>"
+
+curl http://localhost:8080/articles \
+  -H "Authorization: Bearer <token>"
+
+curl -X POST http://localhost:8080/logout \
+  -H "Authorization: Bearer <token>"
 ```
 
-默认访问地址：
-
-```text
-http://localhost:8080
-```
-
-## 中间件说明
-
-示例中使用了这些 `Echo` 集成能力：
+## Key APIs
 
 ```go
 e.Use(echodt.RegisterDTokenContextMiddleware(ctx))
-user.Use(echodt.AuthMiddleware(ctx))
-admin.Use(echodt.RoleMiddleware(ctx, []string{"admin"}))
-resource.Use(echodt.PermissionMiddleware(ctx, []string{"resource:read"}))
+auth.Use(echodt.AuthMiddleware(ctx))
+auth.GET("/admin", handleAdmin, echodt.RoleMiddleware(ctx, []string{"admin"}))
+auth.GET("/articles", handleArticles, echodt.PermissionMiddleware(ctx, []string{"article:read"}))
 ```
-
-需要直接读取上下文时，可以使用：
-
-```go
-dCtx, ok := echodt.GetDTokenContext(c)
-```
-
-## 说明
-
-- 当前示例主要用于展示 `Echo` 下的 `DToken` 基础集成方式
-- 示例入口已经调整为和 `gf`、`gin` 一致的根目录 `main.go`
-- 示例逻辑保留为简单 quick demo，方便继续扩展

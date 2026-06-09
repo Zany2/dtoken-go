@@ -31,6 +31,9 @@ type AuthOption func(*AuthOptions)
 // BeforeAuthHandler handles request before dtoken checks BeforeAuthHandler 在 dtoken 校验前处理请求
 type BeforeAuthHandler func(w http.ResponseWriter, r *http.Request, req *AuthHandleRequest)
 
+// RouteAccessHandler resolves route auth, permission, and role rules RouteAccessHandler 解析路由认证、权限、角色规则
+type RouteAccessHandler func(w http.ResponseWriter, r *http.Request, req *RouteAccessRequest)
+
 // AuthHandleRequest carries auth check metadata AuthHandleRequest 携带认证校验元数据
 type AuthHandleRequest struct {
 	AuthType     string
@@ -66,12 +69,54 @@ func (req *AuthHandleRequest) IsHandled() bool {
 	return req.handled
 }
 
+// RouteAccessRequest carries route access rules RouteAccessRequest 携带路由访问规则
+type RouteAccessRequest struct {
+	AuthType     string
+	LogicType    LogicType
+	CheckDisable bool
+	Permissions  []string
+	Roles        []string
+
+	skipAuth       bool
+	skipPermission bool
+}
+
+// SkipAuth skips login, permission, and role checks SkipAuth 跳过登录、权限、角色校验
+func (req *RouteAccessRequest) SkipAuth() {
+	req.skipAuth = true
+}
+
+// SkipPermission skips permission and role checks after login SkipPermission 登录后跳过权限和角色校验
+func (req *RouteAccessRequest) SkipPermission() {
+	req.skipPermission = true
+	req.Permissions = nil
+	req.Roles = nil
+}
+
+// RequirePermissions appends required permissions RequirePermissions 追加当前路由所需权限
+func (req *RouteAccessRequest) RequirePermissions(permissions ...string) {
+	req.skipPermission = false
+	req.Permissions = append(req.Permissions, permissions...)
+}
+
+// RequireRoles appends required roles RequireRoles 追加当前路由所需角色
+func (req *RouteAccessRequest) RequireRoles(roles ...string) {
+	req.skipPermission = false
+	req.Roles = append(req.Roles, roles...)
+}
+
+// SetLogicType sets permission and role logic type SetLogicType 设置权限和角色逻辑类型
+func (req *RouteAccessRequest) SetLogicType(logicType LogicType) {
+	req.LogicType = logicType
+}
+
 // AuthOptions defines middleware auth options AuthOptions 定义中间件认证选项
 type AuthOptions struct {
-	AuthType          string
-	LogicType         LogicType
-	FailFunc          func(w http.ResponseWriter, r *http.Request, err error)
-	BeforeAuthHandler BeforeAuthHandler
+	AuthType           string
+	LogicType          LogicType
+	FailFunc           func(w http.ResponseWriter, r *http.Request, err error)
+	BeforeAuthHandler  BeforeAuthHandler
+	RouteAccessHandler RouteAccessHandler
 }
 
 // defaultAuthOptions returns default auth options defaultAuthOptions 返回默认认证选项
@@ -104,6 +149,13 @@ func WithFailFunc(fn func(w http.ResponseWriter, r *http.Request, err error)) Au
 func WithBeforeAuthHandler(fn BeforeAuthHandler) AuthOption {
 	return func(o *AuthOptions) {
 		o.BeforeAuthHandler = fn
+	}
+}
+
+// WithRouteAccessHandler sets route access handler WithRouteAccessHandler 设置路由访问处理器
+func WithRouteAccessHandler(fn RouteAccessHandler) AuthOption {
+	return func(o *AuthOptions) {
+		o.RouteAccessHandler = fn
 	}
 }
 
@@ -169,6 +221,67 @@ func AuthMiddleware(opts ...AuthOption) func(http.Handler) http.Handler {
 				CheckLogin: true,
 				LoginError: derror.ErrTokenExpired,
 			})
+			if err != nil {
+				if options.FailFunc != nil {
+					options.FailFunc(w, chiCtx.r, err)
+				} else {
+					writeErrorResponse(w, err)
+				}
+				return
+			}
+
+			next.ServeHTTP(w, chiCtx.r)
+		})
+	}
+}
+
+// AccessMiddleware resolves route rules and checks login, permissions, and roles AccessMiddleware 解析路由规则并校验登录、权限、角色
+func AccessMiddleware(opts ...AuthOption) func(http.Handler) http.Handler {
+	options := defaultAuthOptions()
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			accessReq := newRouteAccessRequest(options)
+			if options.RouteAccessHandler != nil {
+				options.RouteAccessHandler(w, r, accessReq)
+			}
+
+			if accessReq.skipAuth {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			mgr, err := authcheck.GetManager(accessReq.AuthType)
+			if err != nil {
+				if options.FailFunc != nil {
+					options.FailFunc(w, r, err)
+				} else {
+					writeErrorResponse(w, err)
+				}
+				return
+			}
+
+			chiCtx := NewChiContext(w, r).(*ChiContext)
+			dCtx := getDTokenContext(chiCtx, mgr)
+			tokenValue := dCtx.GetTokenValue()
+
+			req := authcheck.Request{
+				TokenValue:   tokenValue,
+				CheckLogin:   true,
+				CheckDisable: accessReq.CheckDisable,
+				LoginError:   derror.ErrTokenExpired,
+			}
+
+			if !accessReq.skipPermission {
+				req.Permissions = append([]string{}, accessReq.Permissions...)
+				req.Roles = append([]string{}, accessReq.Roles...)
+				req.LogicType = accessReq.LogicType
+			}
+
+			_, err = authcheck.Check(chiCtx.r.Context(), mgr, req)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, chiCtx.r, err)
@@ -358,6 +471,14 @@ func newAuthHandleRequest(options *AuthOptions, next func(), exit func()) *AuthH
 		LogicType: options.LogicType,
 		next:      next,
 		exit:      exit,
+	}
+}
+
+// newRouteAccessRequest creates route access request newRouteAccessRequest 创建路由访问请求
+func newRouteAccessRequest(options *AuthOptions) *RouteAccessRequest {
+	return &RouteAccessRequest{
+		AuthType:  options.AuthType,
+		LogicType: options.LogicType,
 	}
 }
 

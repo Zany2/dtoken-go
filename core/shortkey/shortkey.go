@@ -93,39 +93,39 @@ type ShortKey struct {
 
 // CreateOptions defines short key creation options. CreateOptions 定义短 Key 创建选项。
 type CreateOptions struct {
-	LoginID   string
-	Device    string
-	DeviceId  string
-	Scene     string
-	SourceApp string
-	TargetApp string
-	Scopes    []string
-	Extra     map[string]any
-	Timeout   time.Duration
+	LoginID   string         // LoginID stores subject id and confirms the key when set. LoginID 存储主体 ID，非空时直接确认短 Key。
+	Device    string         // Device stores device type. Device 存储设备类型。
+	DeviceId  string         // DeviceId stores concrete device id. DeviceId 存储具体设备 ID。
+	Scene     string         // Scene stores business scene. Scene 存储业务场景。
+	SourceApp string         // SourceApp stores issuing application. SourceApp 存储签发应用。
+	TargetApp string         // TargetApp stores consuming application. TargetApp 存储目标应用。
+	Scopes    []string       // Scopes stores granted scopes. Scopes 存储授权范围。
+	Extra     map[string]any // Extra stores extension data. Extra 存储扩展数据。
+	Timeout   time.Duration  // Timeout overrides default short key ttl. Timeout 覆盖默认短 Key 有效期。
 }
 
 // ConfirmOptions defines short key confirmation data. ConfirmOptions 定义短 Key 确认数据。
 type ConfirmOptions struct {
-	LoginID  string
-	Device   string
-	DeviceId string
-	Scopes   []string
-	Extra    map[string]any
+	LoginID  string         // LoginID stores confirmed subject id. LoginID 存储确认后的主体 ID。
+	Device   string         // Device stores confirmed device type. Device 存储确认后的设备类型。
+	DeviceId string         // DeviceId stores confirmed concrete device id. DeviceId 存储确认后的具体设备 ID。
+	Scopes   []string       // Scopes replaces granted scopes when set. Scopes 非空时替换授权范围。
+	Extra    map[string]any // Extra replaces extension data when set. Extra 非空时替换扩展数据。
 }
 
 // ValidateOptions defines short key validation constraints. ValidateOptions 定义短 Key 校验约束。
 type ValidateOptions struct {
-	LoginID   string
-	Device    string
-	DeviceId  string
-	Scene     string
-	SourceApp string
-	TargetApp string
+	LoginID   string // LoginID requires matching subject id when set. LoginID 非空时要求主体 ID 匹配。
+	Device    string // Device requires matching device type when set. Device 非空时要求设备类型匹配。
+	DeviceId  string // DeviceId requires matching concrete device id when set. DeviceId 非空时要求具体设备 ID 匹配。
+	Scene     string // Scene requires matching business scene when set. Scene 非空时要求业务场景匹配。
+	SourceApp string // SourceApp requires matching issuing application when set. SourceApp 非空时要求签发应用匹配。
+	TargetApp string // TargetApp requires matching consuming application when set. TargetApp 非空时要求目标应用匹配。
 }
 
 // ConsumeResult stores consumed short key data. ConsumeResult 存储短 Key 消费结果。
 type ConsumeResult struct {
-	ShortKey *ShortKey
+	ShortKey *ShortKey // ShortKey stores consumed short key payload. ShortKey 存储已消费的短 Key 载荷。
 }
 
 // Manager handles short key operations. Manager 处理短 Key 操作。

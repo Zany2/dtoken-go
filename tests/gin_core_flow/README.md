@@ -193,11 +193,12 @@ This directory contains HTTP flow tests for `tests/gin_core_app`.
 
 ## Run
 
-By default, `tests/gin_core_app` uses in-memory storage. To run the same Gin test app with Redis, pass a Redis URL through `DTOKEN_REDIS_URL` when starting the server, or set `gincoreapp.Config.RedisURL` from code.
+The automated flow tests force Redis storage with the fixed URL below. This keeps test behavior close to multi-process production storage semantics and lets the suite verify Redis scanning and cleanup behavior. `tests/gin_core_app` itself still uses in-memory storage when `Config.RedisURL` is empty.
 
 Example Redis URLs:
 
 ```text
+redis://:root@192.168.19.104:6379/0
 redis://localhost:6379/0
 redis://:password@localhost:6379/0
 ```

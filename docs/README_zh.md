@@ -55,6 +55,7 @@
 - [gin](../examples/gin/) - Gin 集成示例
 - [gin_core_app](../tests/gin_core_app/) - Gin 核心流程测试应用
 - [gf](../examples/gf/) - GoFrame 集成示例
+- [beego](../examples/beego/) - Beego 集成示例
 - [echo](../examples/echo/) - Echo 集成示例
 - [fiber](../examples/fiber/) - Fiber 集成示例
 - [chi](../examples/chi/) - Chi 集成示例

@@ -131,6 +131,18 @@ func TestSignerIgnoresParameterOrder(t *testing.T) {
 	}
 }
 
+func TestSignerWithZeroParamsUsesDefaults(t *testing.T) {
+	values := NewSignerWithParams("secret", ParamNames{}).AttachSign(url.Values{
+		"client": {"app-a"},
+	})
+	if values.Get(DefaultParamNames().Sign) == "" {
+		t.Fatalf("AttachSign() values = %v, want default sign parameter", values)
+	}
+	if !NewSigner("secret").Verify(values) {
+		t.Fatal("Verify() with default signer = false, want true")
+	}
+}
+
 func TestClientAppBuildsSignedURLs(t *testing.T) {
 	app := NewClientApp(ClientConfig{
 		Mode:         ModeTicket,

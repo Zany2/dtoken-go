@@ -61,6 +61,14 @@ func NewHTTPServer(server *Server, options HTTPOptions) *HTTPServer {
 	if options.ServerOptions.Clients != nil && server != nil {
 		_ = server.RegisterClients(options.ServerOptions.Clients)
 	}
+	if options.ServerOptions.AllowAnonymousClient && server != nil && !server.hasClient(ClientAnonymous) {
+		_ = server.RegisterClient(&Client{
+			ClientID:     ClientAnonymous,
+			Name:         "Anonymous Client",
+			RedirectURIs: append([]string(nil), options.ServerOptions.AllowURLs...),
+			Modes:        []Mode{ModeTicket},
+		})
+	}
 	return &HTTPServer{server: server, options: options}
 }
 
@@ -110,6 +118,10 @@ func (h *HTTPServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 	redirectURI := values.Get(params.Redirect)
 	clientID := values.Get(params.Client)
 	if clientID == "" {
+		if !h.options.ServerOptions.AllowAnonymousClient {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse(http.StatusBadRequest, ErrClientOrClientIDEmpty.Error()))
+			return
+		}
 		clientID = ClientAnonymous
 	}
 	ticket, err := h.server.GenerateTicket(r.Context(), clientID, loginID, redirectURI, parseScopes(values.Get(params.Scope)), nil)
@@ -353,7 +365,7 @@ func (h *HTTPServer) oauth2CodeTTL(r *http.Request, value string) int64 {
 
 // HandleLogout clears optional shared cookie, pushes logout callbacks, and returns success. HandleLogout 清除共享 Cookie、推送注销回调并返回成功。
 func (h *HTTPServer) HandleLogout(w http.ResponseWriter, r *http.Request) {
-	if h == nil {
+	if h == nil || h.server == nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, ErrServerNotInitialized.Error()))
 		return
 	}

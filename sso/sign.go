@@ -23,6 +23,9 @@ func NewSigner(secret string) Signer {
 
 // NewSignerWithParams creates a signer with custom parameter names. NewSignerWithParams 使用自定义参数名创建签名器。
 func NewSignerWithParams(secret string, params ParamNames) Signer {
+	if params == (ParamNames{}) {
+		params = DefaultParamNames()
+	}
 	return Signer{secret: secret, params: params}
 }
 

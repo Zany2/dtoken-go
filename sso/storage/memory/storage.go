@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
+	"github.com/Zany2/dtoken-go/core/derror"
 )
 
 // Storage is the built-in in-memory SSO storage. Storage 是 SSO 内置内存存储。
@@ -15,6 +16,9 @@ type Storage struct {
 	mu     sync.RWMutex
 	values map[string]item
 }
+
+var _ adapter.Storage = (*Storage)(nil)
+var _ adapter.AtomicStorage = (*Storage)(nil)
 
 type item struct {
 	value    any
@@ -27,7 +31,13 @@ func New() *Storage {
 }
 
 // Set stores a key-value pair with optional expiration. Set 写入键值对，并可设置过期时间。
-func (s *Storage) Set(_ context.Context, key string, value any, expiration time.Duration) error {
+func (s *Storage) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
+	if err := s.ensureReady(); err != nil {
+		return err
+	}
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -40,7 +50,13 @@ func (s *Storage) Set(_ context.Context, key string, value any, expiration time.
 }
 
 // Get gets value by key and returns nil when missing. Get 根据键读取值，键不存在时返回 nil。
-func (s *Storage) Get(_ context.Context, key string) (any, error) {
+func (s *Storage) Get(ctx context.Context, key string) (any, error) {
+	if err := s.ensureReady(); err != nil {
+		return nil, err
+	}
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -56,7 +72,13 @@ func (s *Storage) Get(_ context.Context, key string) (any, error) {
 }
 
 // GetAndDelete gets and deletes key atomically. GetAndDelete 原子地读取并删除键。
-func (s *Storage) GetAndDelete(_ context.Context, key string) (any, error) {
+func (s *Storage) GetAndDelete(ctx context.Context, key string) (any, error) {
+	if err := s.ensureReady(); err != nil {
+		return nil, err
+	}
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -73,7 +95,13 @@ func (s *Storage) GetAndDelete(_ context.Context, key string) (any, error) {
 }
 
 // Delete deletes one or more keys. Delete 删除一个或多个键。
-func (s *Storage) Delete(_ context.Context, keys ...string) error {
+func (s *Storage) Delete(ctx context.Context, keys ...string) error {
+	if err := s.ensureReady(); err != nil {
+		return err
+	}
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -90,13 +118,23 @@ func (s *Storage) Exists(ctx context.Context, key string) bool {
 }
 
 // Expire sets key expiration and returns an error when the key is missing. Expire 设置键过期时间，键不存在时返回错误。
-func (s *Storage) Expire(_ context.Context, key string, expiration time.Duration) error {
+func (s *Storage) Expire(ctx context.Context, key string, expiration time.Duration) error {
+	if err := s.ensureReady(); err != nil {
+		return err
+	}
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	stored, ok := s.values[key]
 	if !ok {
-		return errors.New("key not found")
+		return derror.ErrKeyNotFound
+	}
+	if !stored.expireAt.IsZero() && time.Now().After(stored.expireAt) {
+		delete(s.values, key)
+		return derror.ErrKeyNotFound
 	}
 	if expiration <= 0 {
 		delete(s.values, key)
@@ -108,7 +146,13 @@ func (s *Storage) Expire(_ context.Context, key string, expiration time.Duration
 }
 
 // TTL gets remaining lifetime of key using TTL sentinel values. TTL 获取键剩余生存时间。
-func (s *Storage) TTL(_ context.Context, key string) (time.Duration, error) {
+func (s *Storage) TTL(ctx context.Context, key string) (time.Duration, error) {
+	if err := s.ensureReady(); err != nil {
+		return 0, err
+	}
+	if err := checkContext(ctx); err != nil {
+		return 0, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -127,4 +171,23 @@ func (s *Storage) TTL(_ context.Context, key string) (time.Duration, error) {
 }
 
 // Ping checks whether storage is reachable. Ping 检查存储是否可达。
-func (s *Storage) Ping(context.Context) error { return nil }
+func (s *Storage) Ping(ctx context.Context) error {
+	if err := s.ensureReady(); err != nil {
+		return err
+	}
+	return checkContext(ctx)
+}
+
+func (s *Storage) ensureReady() error {
+	if s == nil || s.values == nil {
+		return errors.New("sso memory storage is nil")
+	}
+	return nil
+}
+
+func checkContext(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+	return ctx.Err()
+}
