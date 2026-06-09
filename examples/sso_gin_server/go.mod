@@ -3,12 +3,12 @@ module github.com/Zany2/dtoken-go/examples/sso_gin_server
 go 1.25.0
 
 require (
-	github.com/Zany2/dtoken-go/sso v0.0.2
+	github.com/Zany2/dtoken-go/sso v0.0.3
 	github.com/gin-gonic/gin v1.10.0
 )
 
 require (
-	github.com/Zany2/dtoken-go/core v0.0.2 // indirect
+	github.com/Zany2/dtoken-go/core v0.0.3 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect

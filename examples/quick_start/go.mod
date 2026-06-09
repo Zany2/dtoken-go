@@ -3,8 +3,8 @@ module github.com/Zany2/dtoken-go/examples/quick_start
 go 1.25.0
 
 require (
-	github.com/Zany2/dtoken-go/defaults v0.0.2
-	github.com/Zany2/dtoken-go/dtoken v0.0.2
+	github.com/Zany2/dtoken-go/defaults v0.0.3
+	github.com/Zany2/dtoken-go/dtoken v0.0.3
 	github.com/gin-gonic/gin v1.10.0
 )
 

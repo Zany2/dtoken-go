@@ -22,6 +22,13 @@ github.com/Zany2/dtoken-go/com/log/nop v0.0.1/go.mod h1:dodgEmA8WQaetC4HTSqx5Nc5
 github.com/Zany2/dtoken-go/com/log/nop v0.0.2/go.mod h1:AHCLbYcRSVeGYHOChSLmQ1GAN0UqLmBz8Ox6+Ow84Os=
 github.com/Zany2/dtoken-go/integrations/authcheck v0.0.1/go.mod h1:cxLE9E+elS/wpU0gFnRfbW8h7ELv496xVQXb7hvwINY=
 github.com/Zany2/dtoken-go/integrations/authcheck v0.0.2/go.mod h1:TNoTBiwOFP1V/vbRXPuH9mR3BmHRhE+67YIAjFm8MA4=
+github.com/Zany2/dtoken-go/integrations/chi v0.0.2/go.mod h1:ai+f3bzSr35B8ceWTXiOp36nCIFbFdq9fGUX2ks2Mqc=
+github.com/Zany2/dtoken-go/integrations/echo v0.0.2/go.mod h1:UU1S1OyKcDsFspSuftvxpDNDmLKRxwKp0dCvb8levmY=
+github.com/Zany2/dtoken-go/integrations/fiber v0.0.2/go.mod h1:ve4DE95S9iIUqxZOE43Ulaio5pIhAR3MPlRBrSZyuSA=
+github.com/Zany2/dtoken-go/integrations/gf v0.0.2/go.mod h1:nuVIYlosoZyDyD8cf0jgmlboR9nGKToK5LAFV5YtU2Y=
+github.com/Zany2/dtoken-go/integrations/gin v0.0.2/go.mod h1:xA5r84IWMpJq9TuvPhP8x2mATymdd88ZaeMnmH4FmnU=
+github.com/Zany2/dtoken-go/integrations/hertz v0.0.2/go.mod h1:O3zE5U6nqoVM5GUyf5C6lN5KZNv0iwLQjNvuk6iUyWY=
+github.com/Zany2/dtoken-go/integrations/kratos v0.0.2/go.mod h1:B4uy90q3OTJNczPJ771vOTNn9PzcNHBnxUFxwThNrRI=
 github.com/andybalholm/brotli v1.0.5/go.mod h1:fO7iG3H7G2nSZ7m0zPUDn85XEX2GTukHGRSepvi9Eig=
 github.com/beego/beego/v2 v2.1.1 h1:VbvmrbFDg2xkaoawqZ1kSSXlV4/FcsOw6CJQD5qvMzU=
 github.com/beego/beego/v2 v2.1.1/go.mod h1:0J0RQVIpepnRUfu6ax+kLVVB1FcdYryHK9lpRl5wvbY=
