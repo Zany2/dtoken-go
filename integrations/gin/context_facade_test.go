@@ -35,7 +35,8 @@ func TestContextFacadeUsesRegisteredManager(t *testing.T) {
 	}
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
 	req.Header.Set(mgr.GetConfig().TokenName, token)
-	c, recorder := gin.CreateTestContext(httptest.NewRecorder())
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
 	c.Request = req
 
 	RegisterDTokenContextMiddleware(ctx)(c)

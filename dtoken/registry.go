@@ -2,23 +2,46 @@
 package dtoken
 
 import (
-	"github.com/Zany2/dtoken-go/core/builder"
-	"github.com/Zany2/dtoken-go/core/listener"
 	"strings"
 	"sync"
 
+	"github.com/Zany2/dtoken-go/core/builder"
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
+	"github.com/Zany2/dtoken-go/core/listener"
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
 var globalManagerMap sync.Map
 
+type managerBuilder interface {
+	Build() (*manager.Manager, error)
+}
+
 // BuildAndSetManager overrides auth type before building and stores the manager in the global registry. BuildAndSetManager 在构建前覆盖认证类型并将管理器注册到全局注册表。
-func BuildAndSetManager(b *builder.Builder, authType ...string) (*manager.Manager, error) {
+func BuildAndSetManager(b managerBuilder, authType ...string) (*manager.Manager, error) {
+	if b == nil {
+		return nil, derror.ErrManagerNotFound
+	}
+	switch typed := b.(type) {
+	case *Builder:
+		if typed == nil {
+			return nil, derror.ErrManagerNotFound
+		}
+	case *builder.Builder:
+		if typed == nil {
+			return nil, derror.ErrManagerNotFound
+		}
+	}
+
 	// Override auth type before build 在构建前覆盖认证类型。
 	if len(authType) > 0 && strings.TrimSpace(authType[0]) != "" {
-		b.AuthType(authType[0])
+		switch typed := b.(type) {
+		case *Builder:
+			typed.AuthType(authType[0])
+		case *builder.Builder:
+			typed.AuthType(authType[0])
+		}
 	}
 
 	// Build manager with final config 使用最终配置构建管理器。
