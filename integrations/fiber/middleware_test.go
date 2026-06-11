@@ -1,20 +1,12 @@
-// @Author daixk 2026/06/07
-package kratos
+package fiber
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"github.com/Zany2/dtoken-go/core/derror"
+	gofiber "github.com/gofiber/fiber/v2"
 )
-
-// TestAuthMiddlewareUsesTokenExpiredLoginError verifies auth failure semantics TestAuthMiddlewareUsesTokenExpiredLoginError 验证认证失败语义
-func TestAuthMiddlewareUsesTokenExpiredLoginError(t *testing.T) {
-	if err := authMiddlewareLoginError(); !errors.Is(err, derror.ErrTokenExpired) {
-		t.Fatalf("authMiddlewareLoginError() = %v, want ErrTokenExpired", err)
-	}
-}
 
 // TestRouteAccessRequestMutations verifies route access rule mutation. TestRouteAccessRequestMutations 验证路由访问规则变更。
 func TestRouteAccessRequestMutations(t *testing.T) {
@@ -58,7 +50,7 @@ func TestRouteAccessRequestMutations(t *testing.T) {
 // TestRouteAccessHandlerOption verifies custom route access handler execution. TestRouteAccessHandlerOption 验证自定义路由访问处理器执行。
 func TestRouteAccessHandlerOption(t *testing.T) {
 	options := defaultAuthOptions()
-	WithRouteAccessHandler(func(_ context.Context, _ any, req *RouteAccessRequest) {
+	WithRouteAccessHandler(func(_ context.Context, _ *gofiber.Ctx, req *RouteAccessRequest) {
 		req.AuthType = "tenant:"
 		req.CheckDisable = true
 		req.RequirePermissions("report:read")
@@ -87,23 +79,20 @@ func TestBeforeAuthHandlerNextAndExit(t *testing.T) {
 		t.Fatal("runBeforeAuthHandler without handler should return false")
 	}
 
-	wantResult := "next-result"
 	wantErr := errors.New("next failed")
 	options := defaultAuthOptions()
-	WithBeforeAuthHandler(func(_ context.Context, _ any, req *AuthHandleRequest) {
+	WithBeforeAuthHandler(func(_ context.Context, _ *gofiber.Ctx, req *AuthHandleRequest) {
 		req.Next()
 	})(options)
-	nextReq := newAuthHandleRequest(options, func() (any, error) {
-		return wantResult, wantErr
-	})
+	nextReq := newAuthHandleRequest(options, func() error { return wantErr })
 	if !runBeforeAuthHandler(context.Background(), nil, options, nextReq) {
 		t.Fatal("Next() should mark request as handled")
 	}
-	if nextReq.result != wantResult || !errors.Is(nextReq.err, wantErr) {
-		t.Fatalf("Next() result = %v, %v, want %v, %v", nextReq.result, nextReq.err, wantResult, wantErr)
+	if !errors.Is(nextReq.result, wantErr) {
+		t.Fatalf("result = %v, want %v", nextReq.result, wantErr)
 	}
 
-	WithBeforeAuthHandler(func(_ context.Context, _ any, req *AuthHandleRequest) {
+	WithBeforeAuthHandler(func(_ context.Context, _ *gofiber.Ctx, req *AuthHandleRequest) {
 		req.Exit()
 	})(options)
 	exitReq := newAuthHandleRequest(options, nil)
@@ -112,18 +101,16 @@ func TestBeforeAuthHandlerNextAndExit(t *testing.T) {
 	}
 }
 
-// TestDispatchFailUsesCustomFailFunc verifies custom failure dispatch. TestDispatchFailUsesCustomFailFunc 验证自定义失败处理分发。
-func TestDispatchFailUsesCustomFailFunc(t *testing.T) {
+// TestFailFuncOption verifies custom failure callback wiring. TestFailFuncOption 验证自定义失败回调装配。
+func TestFailFuncOption(t *testing.T) {
 	wantErr := errors.New("auth failed")
 	var gotErr error
-	failFunc := func(_ context.Context, err error) error {
+	options := defaultAuthOptions()
+	WithFailFunc(func(_ *gofiber.Ctx, err error) {
 		gotErr = err
-		return err
-	}
+	})(options)
 
-	if err := dispatchFail(context.Background(), failFunc, wantErr); !errors.Is(err, wantErr) {
-		t.Fatalf("dispatchFail() error = %v, want %v", err, wantErr)
-	}
+	options.FailFunc(nil, wantErr)
 	if !errors.Is(gotErr, wantErr) {
 		t.Fatalf("gotErr = %v, want %v", gotErr, wantErr)
 	}

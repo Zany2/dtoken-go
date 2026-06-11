@@ -1,20 +1,10 @@
-// @Author daixk 2026/06/07
-package kratos
+package chi
 
 import (
-	"context"
 	"errors"
+	"net/http"
 	"testing"
-
-	"github.com/Zany2/dtoken-go/core/derror"
 )
-
-// TestAuthMiddlewareUsesTokenExpiredLoginError verifies auth failure semantics TestAuthMiddlewareUsesTokenExpiredLoginError 验证认证失败语义
-func TestAuthMiddlewareUsesTokenExpiredLoginError(t *testing.T) {
-	if err := authMiddlewareLoginError(); !errors.Is(err, derror.ErrTokenExpired) {
-		t.Fatalf("authMiddlewareLoginError() = %v, want ErrTokenExpired", err)
-	}
-}
 
 // TestRouteAccessRequestMutations verifies route access rule mutation. TestRouteAccessRequestMutations 验证路由访问规则变更。
 func TestRouteAccessRequestMutations(t *testing.T) {
@@ -58,7 +48,7 @@ func TestRouteAccessRequestMutations(t *testing.T) {
 // TestRouteAccessHandlerOption verifies custom route access handler execution. TestRouteAccessHandlerOption 验证自定义路由访问处理器执行。
 func TestRouteAccessHandlerOption(t *testing.T) {
 	options := defaultAuthOptions()
-	WithRouteAccessHandler(func(_ context.Context, _ any, req *RouteAccessRequest) {
+	WithRouteAccessHandler(func(_ http.ResponseWriter, _ *http.Request, req *RouteAccessRequest) {
 		req.AuthType = "tenant:"
 		req.CheckDisable = true
 		req.RequirePermissions("report:read")
@@ -66,7 +56,7 @@ func TestRouteAccessHandlerOption(t *testing.T) {
 	})(options)
 
 	req := newRouteAccessRequest(options)
-	options.RouteAccessHandler(context.Background(), nil, req)
+	options.RouteAccessHandler(nil, nil, req)
 	if req.AuthType != "tenant:" {
 		t.Fatalf("AuthType = %q, want tenant:", req.AuthType)
 	}
@@ -83,47 +73,46 @@ func TestRouteAccessHandlerOption(t *testing.T) {
 
 // TestBeforeAuthHandlerNextAndExit verifies custom before-auth control flow. TestBeforeAuthHandlerNextAndExit 验证认证前置处理流程。
 func TestBeforeAuthHandlerNextAndExit(t *testing.T) {
-	if runBeforeAuthHandler(context.Background(), nil, defaultAuthOptions(), nil) {
+	if runBeforeAuthHandler(nil, nil, defaultAuthOptions(), nil) {
 		t.Fatal("runBeforeAuthHandler without handler should return false")
 	}
 
-	wantResult := "next-result"
-	wantErr := errors.New("next failed")
+	nextCount := 0
 	options := defaultAuthOptions()
-	WithBeforeAuthHandler(func(_ context.Context, _ any, req *AuthHandleRequest) {
+	WithBeforeAuthHandler(func(_ http.ResponseWriter, _ *http.Request, req *AuthHandleRequest) {
 		req.Next()
 	})(options)
-	nextReq := newAuthHandleRequest(options, func() (any, error) {
-		return wantResult, wantErr
-	})
-	if !runBeforeAuthHandler(context.Background(), nil, options, nextReq) {
+	nextReq := newAuthHandleRequest(options, func() { nextCount++ }, nil)
+	if !runBeforeAuthHandler(nil, nil, options, nextReq) {
 		t.Fatal("Next() should mark request as handled")
 	}
-	if nextReq.result != wantResult || !errors.Is(nextReq.err, wantErr) {
-		t.Fatalf("Next() result = %v, %v, want %v, %v", nextReq.result, nextReq.err, wantResult, wantErr)
+	if nextCount != 1 {
+		t.Fatalf("nextCount = %d, want 1", nextCount)
 	}
 
-	WithBeforeAuthHandler(func(_ context.Context, _ any, req *AuthHandleRequest) {
+	exitCount := 0
+	WithBeforeAuthHandler(func(_ http.ResponseWriter, _ *http.Request, req *AuthHandleRequest) {
 		req.Exit()
 	})(options)
-	exitReq := newAuthHandleRequest(options, nil)
-	if !runBeforeAuthHandler(context.Background(), nil, options, exitReq) {
+	exitReq := newAuthHandleRequest(options, nil, func() { exitCount++ })
+	if !runBeforeAuthHandler(nil, nil, options, exitReq) {
 		t.Fatal("Exit() should mark request as handled")
+	}
+	if exitCount != 1 {
+		t.Fatalf("exitCount = %d, want 1", exitCount)
 	}
 }
 
-// TestDispatchFailUsesCustomFailFunc verifies custom failure dispatch. TestDispatchFailUsesCustomFailFunc 验证自定义失败处理分发。
-func TestDispatchFailUsesCustomFailFunc(t *testing.T) {
+// TestFailFuncOption verifies custom failure callback wiring. TestFailFuncOption 验证自定义失败回调装配。
+func TestFailFuncOption(t *testing.T) {
 	wantErr := errors.New("auth failed")
 	var gotErr error
-	failFunc := func(_ context.Context, err error) error {
+	options := defaultAuthOptions()
+	WithFailFunc(func(_ http.ResponseWriter, _ *http.Request, err error) {
 		gotErr = err
-		return err
-	}
+	})(options)
 
-	if err := dispatchFail(context.Background(), failFunc, wantErr); !errors.Is(err, wantErr) {
-		t.Fatalf("dispatchFail() error = %v, want %v", err, wantErr)
-	}
+	options.FailFunc(nil, nil, wantErr)
 	if !errors.Is(gotErr, wantErr) {
 		t.Fatalf("gotErr = %v, want %v", gotErr, wantErr)
 	}
