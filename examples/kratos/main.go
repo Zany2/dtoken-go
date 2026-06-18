@@ -105,13 +105,13 @@ func handleMe(ctx context.Context, httpCtx khttp.Context) error {
 		return writeJSON(httpCtx, http.StatusUnauthorized, kratosdt.CodeNotLogin, "not logged in", nil)
 	}
 
-	loginID, err := dCtx.GetLoginID(ctx)
+	loginID, err := dCtx.Auth().GetLoginID(ctx)
 	if err != nil {
 		return writeJSON(httpCtx, http.StatusUnauthorized, kratosdt.CodeNotLogin, err.Error(), nil)
 	}
 
-	roles, _ := dCtx.GetRoles(ctx)
-	permissions, _ := dCtx.GetPermissions(ctx)
+	roles, _ := dCtx.Access().GetRoles(ctx)
+	permissions, _ := dCtx.Access().GetPermissions(ctx)
 
 	return writeJSON(httpCtx, http.StatusOK, kratosdt.CodeSuccess, "ok", map[string]interface{}{
 		"loginId":     loginID,
@@ -137,7 +137,7 @@ func handleLogout(ctx context.Context, httpCtx khttp.Context) error {
 		return writeJSON(httpCtx, http.StatusUnauthorized, kratosdt.CodeNotLogin, "not logged in", nil)
 	}
 
-	if err := dCtx.Logout(ctx); err != nil {
+	if err := dCtx.Auth().Logout(ctx); err != nil {
 		return writeJSON(httpCtx, http.StatusInternalServerError, kratosdt.CodeServerError, err.Error(), nil)
 	}
 

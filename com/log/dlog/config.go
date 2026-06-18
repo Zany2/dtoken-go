@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// LoggerConfig defines logger configuration 日志配置项，定义日志输出的行为、格式和文件管理策略
+// LoggerConfig defines logger configuration. LoggerConfig 定义日志配置。
 type LoggerConfig struct {
 	Path              string        // Log directory path 日志文件目录
 	FileFormat        string        // Log file naming format 日志文件命名格式
@@ -17,13 +17,13 @@ type LoggerConfig struct {
 	Stdout            bool          // Print logs to console 是否输出到控制台
 	StdoutOnly        bool          // Only print to console, skip file output 仅输出到控制台，不写入文件
 	QueueSize         int           // Async write queue size 异步写入队列大小
-	RotateSize        int64         // File size threshold before rotation (bytes) 文件滚动大小阈值（字节）
+	RotateSize        int64         // File size threshold before rotation in bytes 文件大小滚动阈值
 	RotateExpire      time.Duration // Rotation interval by time duration 文件时间滚动间隔
 	RotateBackupLimit int           // Maximum number of rotated backup files 最大备份文件数量
 	RotateBackupDays  int           // Retention days for old log files 备份文件保留天数
 }
 
-// DefaultLoggerConfig returns default logger configuration 返回默认日志配置
+// DefaultLoggerConfig returns default logger configuration. DefaultLoggerConfig 返回默认日志配置。
 func DefaultLoggerConfig() *LoggerConfig {
 	return &LoggerConfig{
 		TimeFormat:        DefaultTimeFormat,
@@ -40,49 +40,49 @@ func DefaultLoggerConfig() *LoggerConfig {
 	}
 }
 
-// Validate validates logger configuration Validate 验证日志配置
+// Validate validates logger configuration. Validate 校验日志配置。
 func (c *LoggerConfig) Validate() error {
 	cfg := normalizeConfig(c)
 	return validateNormalizedConfig(cfg)
 }
 
-// SetPath sets the log output directory 设置日志输出目录
+// SetPath sets the log output directory. SetPath 设置日志输出目录。
 func (c *LoggerConfig) SetPath(path string) *LoggerConfig {
 	c.Path = path
 	return c
 }
 
-// SetFileFormat sets the log file naming format 设置日志文件命名格式
+// SetFileFormat sets the log file naming format. SetFileFormat 设置日志文件命名格式。
 func (c *LoggerConfig) SetFileFormat(format string) *LoggerConfig {
 	c.FileFormat = format
 	return c
 }
 
-// SetPrefix sets the log line prefix 设置日志输出前缀
+// SetPrefix sets the log line prefix. SetPrefix 设置日志输出前缀。
 func (c *LoggerConfig) SetPrefix(prefix string) *LoggerConfig {
 	c.Prefix = prefix
 	return c
 }
 
-// SetLevel sets the minimum output log level 设置日志最低输出级别
+// SetLevel sets the minimum output log level. SetLevel 设置日志最低输出级别。
 func (c *LoggerConfig) SetLevel(level LogLevel) *LoggerConfig {
 	c.Level = level
 	return c
 }
 
-// SetTimeFormat sets the timestamp format in log lines 设置日志时间戳格式
+// SetTimeFormat sets the timestamp format in log lines. SetTimeFormat 设置日志时间戳格式。
 func (c *LoggerConfig) SetTimeFormat(format string) *LoggerConfig {
 	c.TimeFormat = format
 	return c
 }
 
-// SetStdout enables or disables console output 设置是否输出到控制台
+// SetStdout enables or disables console output. SetStdout 设置是否输出到控制台。
 func (c *LoggerConfig) SetStdout(enable bool) *LoggerConfig {
 	c.Stdout = enable
 	return c
 }
 
-// SetStdoutOnly enables console-only mode 设置仅输出到控制台模式
+// SetStdoutOnly enables console-only mode. SetStdoutOnly 设置仅输出到控制台模式。
 func (c *LoggerConfig) SetStdoutOnly(enable bool) *LoggerConfig {
 	c.StdoutOnly = enable
 	if enable {
@@ -91,37 +91,37 @@ func (c *LoggerConfig) SetStdoutOnly(enable bool) *LoggerConfig {
 	return c
 }
 
-// SetQueueSize sets the async write queue size 设置异步写入队列大小
+// SetQueueSize sets the async write queue size. SetQueueSize 设置异步写入队列大小。
 func (c *LoggerConfig) SetQueueSize(size int) *LoggerConfig {
 	c.QueueSize = size
 	return c
 }
 
-// SetRotateSize sets the file size threshold for log rotation 设置日志文件大小滚动阈值
+// SetRotateSize sets the file size threshold for log rotation. SetRotateSize 设置日志文件大小滚动阈值。
 func (c *LoggerConfig) SetRotateSize(size int64) *LoggerConfig {
 	c.RotateSize = size
 	return c
 }
 
-// SetRotateExpire sets the time based rotation interval 设置时间滚动间隔
+// SetRotateExpire sets the time based rotation interval. SetRotateExpire 设置时间滚动间隔。
 func (c *LoggerConfig) SetRotateExpire(d time.Duration) *LoggerConfig {
 	c.RotateExpire = d
 	return c
 }
 
-// SetRotateBackupLimit sets the maximum number of retained backup files 设置最大备份文件数量
+// SetRotateBackupLimit sets the maximum number of retained backup files. SetRotateBackupLimit 设置最大备份文件数量。
 func (c *LoggerConfig) SetRotateBackupLimit(limit int) *LoggerConfig {
 	c.RotateBackupLimit = limit
 	return c
 }
 
-// SetRotateBackupDays sets the backup retention days 设置日志备份保留天数
+// SetRotateBackupDays sets the backup retention days. SetRotateBackupDays 设置日志备份保留天数。
 func (c *LoggerConfig) SetRotateBackupDays(days int) *LoggerConfig {
 	c.RotateBackupDays = days
 	return c
 }
 
-// Clone returns a copy of the current logger configuration 返回当前日志配置的副本
+// Clone returns a copy of the current logger configuration. Clone 返回当前日志配置副本。
 func (c *LoggerConfig) Clone() *LoggerConfig {
 	if c == nil {
 		return &LoggerConfig{}
@@ -130,7 +130,7 @@ func (c *LoggerConfig) Clone() *LoggerConfig {
 	return &copyCfg
 }
 
-// normalizeConfig applies logger defaults normalizeConfig 应用日志默认配置
+// normalizeConfig applies logger defaults. normalizeConfig 应用日志默认配置。
 func normalizeConfig(cfg *LoggerConfig) *LoggerConfig {
 	if cfg == nil {
 		cfg = &LoggerConfig{}
@@ -174,7 +174,7 @@ func normalizeConfig(cfg *LoggerConfig) *LoggerConfig {
 	return &c
 }
 
-// validateNormalizedConfig checks normalized logger config validateNormalizedConfig 校验归一化后的日志配置
+// validateNormalizedConfig checks normalized logger config. validateNormalizedConfig 校验归一化后的日志配置。
 func validateNormalizedConfig(c *LoggerConfig) error {
 	if c == nil {
 		return nil

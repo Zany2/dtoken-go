@@ -480,24 +480,33 @@ func TestContextDisableFacades(t *testing.T) {
 	if err = dctx.Disable().Account(ctx, time.Minute, "risk"); err != nil {
 		t.Fatalf("Disable.Account() error = %v", err)
 	}
-	if !dctx.Disable().IsAccount(ctx) {
-		t.Fatal("Disable.IsAccount() = false, want true")
+	if !mgr.IsDisable(ctx, "disable-user") {
+		t.Fatal("manager.IsDisable() = false, want true")
 	}
-	if err = dctx.Disable().CheckAccount(ctx); !errors.Is(err, derror.ErrAccountDisabled) {
-		t.Fatalf("Disable.CheckAccount() error = %v, want ErrAccountDisabled", err)
+	if err = mgr.CheckDisable(ctx, "disable-user"); !errors.Is(err, derror.ErrAccountDisabled) {
+		t.Fatalf("manager.CheckDisable() error = %v, want ErrAccountDisabled", err)
 	}
-	accountInfo, err := dctx.Disable().AccountInfo(ctx)
+	accountInfo, err := mgr.GetDisableInfo(ctx, "disable-user")
 	if err != nil {
-		t.Fatalf("Disable.AccountInfo() error = %v", err)
+		t.Fatalf("manager.GetDisableInfo() error = %v", err)
 	}
 	if accountInfo.DisableReason != "risk" {
-		t.Fatalf("Disable.AccountInfo().DisableReason = %q, want risk", accountInfo.DisableReason)
+		t.Fatalf("manager.GetDisableInfo().DisableReason = %q, want risk", accountInfo.DisableReason)
 	}
-	if ttl, err := dctx.Disable().AccountTTL(ctx); err != nil || ttl <= 0 {
-		t.Fatalf("Disable.AccountTTL() = %d, %v, want positive ttl", ttl, err)
+	if ttl, err := mgr.GetDisableTTL(ctx, "disable-user"); err != nil || ttl <= 0 {
+		t.Fatalf("manager.GetDisableTTL() = %d, %v, want positive ttl", ttl, err)
 	}
-	if err = dctx.Disable().UntieAccount(ctx); err != nil {
-		t.Fatalf("Disable.UntieAccount() error = %v", err)
+	if err = mgr.Untie(ctx, "disable-user"); err != nil {
+		t.Fatalf("manager.Untie() error = %v", err)
+	}
+
+	token, err = dctx.Auth().Login(ctx, "disable-user", "web", "browser-1")
+	if err != nil {
+		t.Fatalf("Auth.Login(after account untie) error = %v", err)
+	}
+	req.headers[mgr.GetConfig().TokenName] = token
+	if !dctx.Auth().IsLogin(ctx) {
+		t.Fatal("Auth.IsLogin() after re-login = false, want true")
 	}
 
 	if err = dctx.Disable().ServiceLevel(ctx, "billing", 3, time.Minute, "quota"); err != nil {
@@ -526,24 +535,24 @@ func TestContextDisableFacades(t *testing.T) {
 	if err = dctx.Disable().DeviceAndDeviceId(ctx, "web", "browser-1", time.Minute, "lost"); err != nil {
 		t.Fatalf("Disable.DeviceAndDeviceId() error = %v", err)
 	}
-	if !dctx.Disable().IsDeviceAndDeviceId(ctx, "web", "browser-1") {
-		t.Fatal("Disable.IsDeviceAndDeviceId() = false, want true")
+	if !mgr.IsDisableDeviceAndDeviceId(ctx, "disable-user", "web", "browser-1") {
+		t.Fatal("manager.IsDisableDeviceAndDeviceId() = false, want true")
 	}
-	if err = dctx.Disable().CheckDeviceAndDeviceId(ctx, "web", "browser-1"); !errors.Is(err, derror.ErrDeviceDisabled) {
-		t.Fatalf("Disable.CheckDeviceAndDeviceId() error = %v, want ErrDeviceDisabled", err)
+	if err = mgr.CheckDisableDeviceAndDeviceId(ctx, "disable-user", "web", "browser-1"); !errors.Is(err, derror.ErrDeviceDisabled) {
+		t.Fatalf("manager.CheckDisableDeviceAndDeviceId() error = %v, want ErrDeviceDisabled", err)
 	}
-	deviceInfo, err := dctx.Disable().GetDeviceAndDeviceIdInfo(ctx, "web", "browser-1")
+	deviceInfo, err := mgr.GetDisableDeviceAndDeviceIdInfo(ctx, "disable-user", "web", "browser-1")
 	if err != nil {
-		t.Fatalf("Disable.GetDeviceAndDeviceIdInfo() error = %v", err)
+		t.Fatalf("manager.GetDisableDeviceAndDeviceIdInfo() error = %v", err)
 	}
 	if deviceInfo.Device != "web" || deviceInfo.DeviceId != "browser-1" || deviceInfo.DisableReason != "lost" {
-		t.Fatalf("Disable.GetDeviceAndDeviceIdInfo() = %+v, want web/browser-1 lost", deviceInfo)
+		t.Fatalf("manager.GetDisableDeviceAndDeviceIdInfo() = %+v, want web/browser-1 lost", deviceInfo)
 	}
-	if ttl, err := dctx.Disable().GetDeviceAndDeviceIdTTL(ctx, "web", "browser-1"); err != nil || ttl <= 0 {
-		t.Fatalf("Disable.GetDeviceAndDeviceIdTTL() = %d, %v, want positive ttl", ttl, err)
+	if ttl, err := mgr.GetDisableDeviceAndDeviceIdTTL(ctx, "disable-user", "web", "browser-1"); err != nil || ttl <= 0 {
+		t.Fatalf("manager.GetDisableDeviceAndDeviceIdTTL() = %d, %v, want positive ttl", ttl, err)
 	}
-	if err = dctx.Disable().UntieDeviceAndDeviceId(ctx, "web", "browser-1"); err != nil {
-		t.Fatalf("Disable.UntieDeviceAndDeviceId() error = %v", err)
+	if err = mgr.UntieDeviceAndDeviceId(ctx, "disable-user", "web", "browser-1"); err != nil {
+		t.Fatalf("manager.UntieDeviceAndDeviceId() error = %v", err)
 	}
 }
 

@@ -141,6 +141,29 @@ defaults.NewBuilder().
 
 如果三者都关闭，构建 Manager 会失败。
 
+## 可选模块
+
+默认情况下，基础 Manager 会启用登录、登出、会话、权限、角色、Refresh Token、封禁和终端管理等核心能力。下面这些模块需要显式开启：
+
+| 模块 | 默认状态 | 开启方式 |
+| --- | --- | --- |
+| Nonce | 关闭 | `EnableNonce()`、`NonceConfig(...)`、`NonceTTL(...)` 或 `SetNonceManager(...)` |
+| OAuth2 | 关闭 | `EnableOAuth2()`、`OAuth2Config(...)`、`OAuth2CodeExpiration(...)`、`OAuth2TokenExpiration(...)`、`OAuth2RefreshExpiration(...)` 或 `SetOAuth2Manager(...)` |
+| Ticket | 关闭 | `EnableTicket()`、`TicketConfig(...)`、`TicketTTL(...)` 或 `SetTicketManager(...)` |
+| ShortKey | 关闭 | `EnableShortKey()`、`ShortKeyConfig(...)`、`ShortKeyTTL(...)`、`ShortKeyLength(...)` 或 `SetShortKeyManager(...)` |
+| SSO | 独立模块 | 显式导入并初始化 `github.com/Zany2/dtoken-go/sso` |
+
+示例：
+
+```go
+mgr, err := defaults.NewBuilder().
+    EnableNonce().
+    EnableTicket().
+    ShortKeyTTL(5 * time.Minute). // 调用 ShortKey 配置方法也会自动启用 ShortKey
+    Build()
+```
+
+调用某个模块的专属配置方法时，会自动启用对应模块。Refresh Token 属于核心 Manager 能力，需要时直接使用 `LoginWithRefreshToken` 即可。
 ## Cookie 配置
 
 开启 Cookie 读取时，可以配置 Cookie 属性：

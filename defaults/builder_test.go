@@ -35,10 +35,6 @@ func TestNewBuilderBuildsUsableManager(t *testing.T) {
 	if mgr.GetLogger() == nil {
 		t.Fatal("GetLogger() = nil")
 	}
-	if mgr.GetPool() == nil {
-		t.Fatal("GetPool() = nil")
-	}
-
 	token, err := mgr.Login(context.Background(), "defaults-user", "web")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)

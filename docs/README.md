@@ -41,6 +41,7 @@ English | [中文文档](README_zh.md)
 
 - [Core API Cheatsheet](guide/reference/core-api-cheatsheet.md) - Common global API calls
 - [Configuration Example](guide/reference/configuration.md) - Common Builder configuration options
+- [API Stability](guide/reference/api-stability.md) - Public API compatibility and versioning notes
 - [DToken API](api/dtoken.md) - Complete global utility API reference
 
 ### Design Documentation

@@ -8,15 +8,15 @@ import (
 	"github.com/Zany2/dtoken-go/dtoken"
 )
 
-// DTokenContext exposes request scoped DToken context DTokenContext 鏆撮湶璇锋眰绾?DToken 涓婁笅鏂囩被鍨嬨€?
+// DTokenContext exposes the request-scoped DToken context type. DTokenContext 暴露请求级 DToken 上下文类型。
 type DTokenContext = corecontext.DTokenContext
 
-// NewBuilder creates a default DToken builder NewBuilder 鍒涘缓榛樿 DToken 鏋勫缓鍣ㄣ€?
+// NewBuilder creates a default DToken builder. NewBuilder 创建默认 DToken 构建器。
 func NewBuilder() *builder.Builder {
 	return defaults.NewBuilder()
 }
 
-// DToken manager operations DToken 绠＄悊鍣ㄦ搷浣溿€?
+// DToken manager operations. DToken 管理器相关操作。
 var (
 	SetManager       = dtoken.SetManager
 	GetManager       = dtoken.GetManager
@@ -25,7 +25,7 @@ var (
 	DeleteAllManager = dtoken.DeleteAllManager
 )
 
-// DToken login and token operations DToken 鐧诲綍鍜?Token 鎿嶄綔銆?
+// DToken login and token operations. DToken 登录与 Token 相关操作。
 var (
 	Login                                     = dtoken.Login
 	LoginWithTimeout                          = dtoken.LoginWithTimeout
@@ -75,7 +75,7 @@ var (
 	GetOnlineTerminalCountByDeviceAndDeviceId = dtoken.GetOnlineTerminalCountByDeviceAndDeviceId
 )
 
-// DToken disable operations DToken 灏佺鎿嶄綔銆?
+// DToken disable operations. DToken 封禁相关操作。
 var (
 	Disable                            = dtoken.Disable
 	Untie                              = dtoken.Untie
@@ -110,7 +110,7 @@ var (
 	GetDisableDeviceAndDeviceIdTTL     = dtoken.GetDisableDeviceAndDeviceIdTTL
 )
 
-// DToken permission operations DToken 鏉冮檺鎿嶄綔銆?
+// DToken permission operations. DToken 权限相关操作。
 var (
 	CheckPermission          = dtoken.CheckPermission
 	CheckPermissionAnd       = dtoken.CheckPermissionAnd
@@ -129,7 +129,7 @@ var (
 	HasPermissionsOrByToken  = dtoken.HasPermissionsOrByToken
 )
 
-// DToken role operations DToken 瑙掕壊鎿嶄綔銆?
+// DToken role operations. DToken 角色相关操作。
 var (
 	CheckRole          = dtoken.CheckRole
 	CheckRoleAnd       = dtoken.CheckRoleAnd
@@ -148,7 +148,7 @@ var (
 	HasRolesOrByToken  = dtoken.HasRolesOrByToken
 )
 
-// DToken nonce operations DToken nonce 鎿嶄綔銆?
+// DToken nonce operations. DToken nonce 相关操作。
 var (
 	GenerateNonce            = dtoken.GenerateNonce
 	GenerateNonceWithTimeout = dtoken.GenerateNonceWithTimeout
@@ -158,7 +158,7 @@ var (
 	GetNonceTTL              = dtoken.GetNonceTTL
 )
 
-// DToken OAuth2 operations DToken OAuth2 鎿嶄綔銆?
+// DToken OAuth2 operations. DToken OAuth2 相关操作。
 var (
 	RegisterOAuth2Client                    = dtoken.RegisterOAuth2Client
 	UnregisterOAuth2Client                  = dtoken.UnregisterOAuth2Client

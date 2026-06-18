@@ -91,14 +91,14 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	loginID, err := dCtx.GetLoginID(r.Context())
+	loginID, err := dCtx.Auth().GetLoginID(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, chidt.CodeNotLogin, err.Error(), nil)
 		return
 	}
 
-	roles, _ := dCtx.GetRoles(r.Context())
-	permissions, _ := dCtx.GetPermissions(r.Context())
+	roles, _ := dCtx.Access().GetRoles(r.Context())
+	permissions, _ := dCtx.Access().GetPermissions(r.Context())
 
 	writeJSON(w, http.StatusOK, chidt.CodeSuccess, "ok", map[string]interface{}{
 		"loginId":     loginID,
@@ -125,7 +125,7 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := dCtx.Logout(r.Context()); err != nil {
+	if err := dCtx.Auth().Logout(r.Context()); err != nil {
 		writeJSON(w, http.StatusInternalServerError, chidt.CodeServerError, err.Error(), nil)
 		return
 	}

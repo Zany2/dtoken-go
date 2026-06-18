@@ -63,7 +63,7 @@ r.GET("/user/info",
     gindt.CheckLoginMiddleware(ctx, nil, nil),
     func(c *gin.Context) {
         dCtx, _ := gindt.GetDTokenContext(c)
-        loginID, _ := dCtx.GetLoginID(ctx)
+        loginID, _ := dCtx.Auth().GetLoginID(ctx)
         c.JSON(200, gin.H{"loginId": loginID})
     },
 )

@@ -13,6 +13,8 @@
 *.test
 *.out
 go.work.sum
+.gocache/
+.gotestcache-*/
 
 # Logs
 *_logs/

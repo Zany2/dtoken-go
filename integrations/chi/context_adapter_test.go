@@ -104,8 +104,8 @@ func TestChiContextAdapterRequestAndResponse(t *testing.T) {
 	if payload["ok"] != "true" {
 		t.Fatalf("JSON payload = %v, want ok=true", payload)
 	}
-	if ext.GetRawRequest() != req {
-		t.Fatal("GetRawRequest() did not return original request")
+	if ext.GetRawRequest().Context().Value("name") != "dtoken" {
+		t.Fatal("GetRawRequest() context did not include adapter values")
 	}
 }
 

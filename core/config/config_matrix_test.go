@@ -283,6 +283,7 @@ func TestValidateAutoRenewRelationMatrix(t *testing.T) {
 		{name: "enabled accepts renew interval below timeout", mutate: func(cfg *Config) {
 			cfg.AutoRenew = true
 			cfg.Timeout = 60
+			cfg.RenewMaxRefresh = 30
 			cfg.RenewInterval = 30
 		}},
 		{name: "enabled rejects renew interval equal timeout", mutate: func(cfg *Config) {
@@ -293,11 +294,13 @@ func TestValidateAutoRenewRelationMatrix(t *testing.T) {
 		{name: "enabled accepts unlimited renew interval", mutate: func(cfg *Config) {
 			cfg.AutoRenew = true
 			cfg.Timeout = 60
+			cfg.RenewMaxRefresh = 30
 			cfg.RenewInterval = NoLimit
 		}},
 		{name: "enabled accepts active timeout no limit", mutate: func(cfg *Config) {
 			cfg.AutoRenew = true
 			cfg.Timeout = 60
+			cfg.RenewMaxRefresh = 30
 			cfg.RenewInterval = 30
 			cfg.ActiveTimeout = NoLimit
 		}},

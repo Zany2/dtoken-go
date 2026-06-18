@@ -84,13 +84,13 @@ func handleMe(c *gofiber.Ctx) error {
 		return writeJSON(c, http.StatusUnauthorized, fiberdt.CodeNotLogin, "not logged in", nil)
 	}
 
-	loginID, err := dCtx.GetLoginID(c.UserContext())
+	loginID, err := dCtx.Auth().GetLoginID(c.UserContext())
 	if err != nil {
 		return writeJSON(c, http.StatusUnauthorized, fiberdt.CodeNotLogin, err.Error(), nil)
 	}
 
-	roles, _ := dCtx.GetRoles(c.UserContext())
-	permissions, _ := dCtx.GetPermissions(c.UserContext())
+	roles, _ := dCtx.Access().GetRoles(c.UserContext())
+	permissions, _ := dCtx.Access().GetPermissions(c.UserContext())
 
 	return writeJSON(c, http.StatusOK, fiberdt.CodeSuccess, "ok", gofiber.Map{
 		"loginId":     loginID,
@@ -116,7 +116,7 @@ func handleLogout(c *gofiber.Ctx) error {
 		return writeJSON(c, http.StatusUnauthorized, fiberdt.CodeNotLogin, "not logged in", nil)
 	}
 
-	if err := dCtx.Logout(c.UserContext()); err != nil {
+	if err := dCtx.Auth().Logout(c.UserContext()); err != nil {
 		return writeJSON(c, http.StatusInternalServerError, fiberdt.CodeServerError, err.Error(), nil)
 	}
 

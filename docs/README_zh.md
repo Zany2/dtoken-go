@@ -41,6 +41,7 @@
 
 - [Core API 速查](guide/reference/core-api-cheatsheet_zh.md) - 常用全局 API 调用方式
 - [配置示例](guide/reference/configuration_zh.md) - Builder 常用配置说明
+- [API 稳定性](guide/reference/api-stability_zh.md) - 公开 API 兼容性与版本规则
 - [DToken API](api/dtoken_zh.md) - 全局工具类完整 API
 
 ### 设计文档

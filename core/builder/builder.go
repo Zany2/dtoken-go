@@ -449,7 +449,7 @@ func (b *Builder) Build() (*manager.Manager, error) {
 	cfg := b.cfg.Clone()
 
 	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("构建 Manager 失败，配置无效：%w", err)
+		return nil, fmt.Errorf("build manager failed: invalid config: %w", err)
 	}
 
 	// Resolve components per build so later config changes do not reuse stale factory products 每次构建独立装配组件，避免后续配置变化继续复用旧工厂产物
@@ -459,12 +459,12 @@ func (b *Builder) Build() (*manager.Manager, error) {
 		if b.factories.Generator != nil {
 			generator, err := b.factories.Generator(cfg)
 			if err != nil {
-				return nil, fmt.Errorf("构建 Manager 失败，创建 Token 生成器失败：%w", err)
+				return nil, fmt.Errorf("build manager failed: create token generator failed: %w", err)
 			}
 			components.Generator = generator
 		}
 		if components.Generator == nil {
-			return nil, fmt.Errorf("构建 Manager 失败，缺少 Token 生成器，请调用 SetGenerator 或 SetGeneratorFactory")
+			return nil, fmt.Errorf("build manager failed: token generator is missing, call SetGenerator or SetGeneratorFactory")
 		}
 	}
 
@@ -472,24 +472,24 @@ func (b *Builder) Build() (*manager.Manager, error) {
 		if b.factories.Storage != nil {
 			storage, err := b.factories.Storage(cfg)
 			if err != nil {
-				return nil, fmt.Errorf("构建 Manager 失败，创建存储适配器失败：%w", err)
+				return nil, fmt.Errorf("build manager failed: create storage adapter failed: %w", err)
 			}
 			components.Storage = storage
 		}
 		if components.Storage == nil {
-			return nil, fmt.Errorf("构建 Manager 失败，缺少存储适配器，请调用 SetStorage 或 SetStorageFactory")
+			return nil, fmt.Errorf("build manager failed: storage adapter is missing, call SetStorage or SetStorageFactory")
 		}
 	}
 	if components.Codec == nil {
 		if b.factories.Codec != nil {
 			codec, err := b.factories.Codec(cfg)
 			if err != nil {
-				return nil, fmt.Errorf("构建 Manager 失败，创建编解码适配器失败：%w", err)
+				return nil, fmt.Errorf("build manager failed: create codec adapter failed: %w", err)
 			}
 			components.Codec = codec
 		}
 		if components.Codec == nil {
-			return nil, fmt.Errorf("构建 Manager 失败，缺少编解码适配器，请调用 SetCodec 或 SetCodecFactory")
+			return nil, fmt.Errorf("build manager failed: codec adapter is missing, call SetCodec or SetCodecFactory")
 		}
 	}
 
@@ -498,12 +498,12 @@ func (b *Builder) Build() (*manager.Manager, error) {
 			if b.factories.Log != nil {
 				logger, err := b.factories.Log(cfg)
 				if err != nil {
-					return nil, fmt.Errorf("构建 Manager 失败，创建日志适配器失败：%w", err)
+					return nil, fmt.Errorf("build manager failed: create log adapter failed: %w", err)
 				}
 				components.Log = logger
 			}
 			if components.Log == nil {
-				return nil, fmt.Errorf("构建 Manager 失败，缺少日志适配器，请调用 SetLog 或 SetLogFactory")
+				return nil, fmt.Errorf("build manager failed: log adapter is missing, call SetLog or SetLogFactory")
 			}
 		}
 	} else {
@@ -513,7 +513,7 @@ func (b *Builder) Build() (*manager.Manager, error) {
 	if cfg.AutoRenew && components.Pool == nil && b.factories.Pool != nil {
 		pool, err := b.factories.Pool(cfg)
 		if err != nil {
-			return nil, fmt.Errorf("构建 Manager 失败，创建续期任务池失败：%w", err)
+			return nil, fmt.Errorf("build manager failed: create renew task pool failed: %w", err)
 		}
 		components.Pool = pool
 	}

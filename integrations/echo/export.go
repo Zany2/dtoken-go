@@ -8,15 +8,15 @@ import (
 	"github.com/Zany2/dtoken-go/dtoken"
 )
 
-// DTokenContext exposes request scoped DToken context DTokenContext 鏆撮湶璇锋眰绾?DToken 涓婁笅鏂囩被鍨嬨€?
+// DTokenContext exposes the request-scoped DToken context type. DTokenContext 暴露请求级 DToken 上下文类型。
 type DTokenContext = corecontext.DTokenContext
 
-// NewBuilder creates a default DToken builder NewBuilder 鍒涘缓榛樿 DToken 鏋勫缓鍣ㄣ€?
+// NewBuilder creates a default DToken builder. NewBuilder 创建默认 DToken 构建器。
 func NewBuilder() *builder.Builder {
 	return defaults.NewBuilder()
 }
 
-// DToken operations forward all exported dtoken APIs DToken 鎿嶄綔杞彂 dtoken 鐨勫叏閮ㄥ叕寮€ API銆?
+// DToken operations forward all exported dtoken APIs. DToken 操作转发 dtoken 的全部公开 API。
 var (
 	SetManager                                = dtoken.SetManager
 	GetManager                                = dtoken.GetManager

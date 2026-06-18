@@ -812,25 +812,25 @@ func (b *Builder) Build() (*manager.Manager, error) {
 	shortKeyConfig := b.shortKeyConfig.Clone()
 
 	if err := coreConfig.Validate(); err != nil {
-		return nil, fmt.Errorf("构建 Manager 失败，核心配置无效：%w", err)
+		return nil, fmt.Errorf("build manager failed: invalid core config: %w", err)
 	}
 	if err := renewPoolConfig.Validate(); err != nil {
-		return nil, fmt.Errorf("构建 Manager 失败，续期池配置无效：%w", err)
+		return nil, fmt.Errorf("build manager failed: invalid renew pool config: %w", err)
 	}
 	if err := loggerConfig.Validate(); err != nil {
-		return nil, fmt.Errorf("构建 Manager 失败，日志配置无效：%w", err)
+		return nil, fmt.Errorf("build manager failed: invalid logger config: %w", err)
 	}
 	if err := nonceConfig.Validate(); err != nil {
-		return nil, fmt.Errorf("构建 Manager 失败，Nonce 配置无效：%w", err)
+		return nil, fmt.Errorf("build manager failed: invalid nonce config: %w", err)
 	}
 	if err := oauth2Config.Validate(); err != nil {
-		return nil, fmt.Errorf("构建 Manager 失败，OAuth2 配置无效：%w", err)
+		return nil, fmt.Errorf("build manager failed: invalid OAuth2 config: %w", err)
 	}
 	if err := ticketConfig.Validate(); err != nil {
-		return nil, fmt.Errorf("构建 Manager 失败，Ticket 配置无效：%w", err)
+		return nil, fmt.Errorf("build manager failed: invalid ticket config: %w", err)
 	}
 	if err := shortKeyConfig.Validate(); err != nil {
-		return nil, fmt.Errorf("构建 Manager 失败，短 Key 配置无效：%w", err)
+		return nil, fmt.Errorf("build manager failed: invalid short key config: %w", err)
 	}
 
 	coreBuilder := b.inner.Clone().Config(coreConfig)

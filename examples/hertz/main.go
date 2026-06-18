@@ -89,14 +89,14 @@ func handleMe(ctx context.Context, c *hertzapp.RequestContext) {
 		return
 	}
 
-	loginID, err := dCtx.GetLoginID(ctx)
+	loginID, err := dCtx.Auth().GetLoginID(ctx)
 	if err != nil {
 		writeJSON(c, http.StatusUnauthorized, hertzdt.CodeNotLogin, err.Error(), nil)
 		return
 	}
 
-	roles, _ := dCtx.GetRoles(ctx)
-	permissions, _ := dCtx.GetPermissions(ctx)
+	roles, _ := dCtx.Access().GetRoles(ctx)
+	permissions, _ := dCtx.Access().GetPermissions(ctx)
 
 	writeJSON(c, http.StatusOK, hertzdt.CodeSuccess, "ok", map[string]interface{}{
 		"loginId":     loginID,
@@ -123,7 +123,7 @@ func handleLogout(ctx context.Context, c *hertzapp.RequestContext) {
 		return
 	}
 
-	if err := dCtx.Logout(ctx); err != nil {
+	if err := dCtx.Auth().Logout(ctx); err != nil {
 		writeJSON(c, http.StatusInternalServerError, hertzdt.CodeServerError, err.Error(), nil)
 		return
 	}

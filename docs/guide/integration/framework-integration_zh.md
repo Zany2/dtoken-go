@@ -26,6 +26,115 @@ go get github.com/Zany2/dtoken-go/integrations/kratos
 go get github.com/Zany2/dtoken-go/integrations/beego
 ```
 
+## 最小框架接入示例
+
+所有框架包都会转发常用 `dtoken` 门面 API，并提供对应框架的中间件。下面是登录接口加受保护接口的最小接入方式，完整可运行示例位于 `examples/gf`、`examples/gin`、`examples/echo` 和 `examples/fiber`。
+
+### GoFrame
+
+```go
+ctx := context.Background()
+mgr, err := gfdt.NewBuilder().IsPrintBanner(false).Build()
+if err != nil {
+    panic(err)
+}
+gfdt.SetManager(mgr)
+
+s := g.Server()
+s.Use(gfdt.RegisterDTokenContextMiddleware(ctx))
+s.Group("/", func(group *ghttp.RouterGroup) {
+    group.POST("/login", func(r *ghttp.Request) {
+        token, _ := gfdt.Login(r.Context(), "1000")
+        r.Response.WriteJson(g.Map{"token": token})
+    })
+    group.Group("/", func(group *ghttp.RouterGroup) {
+        group.Middleware(gfdt.AuthMiddleware(ctx))
+        group.GET("/me", func(r *ghttp.Request) {
+            dCtx, _ := gfdt.GetDTokenContext(r)
+            loginID, _ := dCtx.Auth().GetLoginID(r.Context())
+            r.Response.WriteJson(g.Map{"loginId": loginID})
+        })
+    })
+})
+```
+
+### Gin
+
+```go
+ctx := context.Background()
+mgr, err := gindt.NewBuilder().IsPrintBanner(false).Build()
+if err != nil {
+    panic(err)
+}
+gindt.SetManager(mgr)
+
+r := gin.Default()
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
+r.POST("/login", func(c *gin.Context) {
+    token, _ := gindt.Login(c.Request.Context(), "1000")
+    c.JSON(http.StatusOK, gin.H{"token": token})
+})
+
+auth := r.Group("/")
+auth.Use(gindt.AuthMiddleware(ctx))
+auth.GET("/me", func(c *gin.Context) {
+    dCtx, _ := gindt.GetDTokenContext(c)
+    loginID, _ := dCtx.Auth().GetLoginID(c.Request.Context())
+    c.JSON(http.StatusOK, gin.H{"loginId": loginID})
+})
+```
+
+### Echo
+
+```go
+ctx := context.Background()
+mgr, err := echodt.NewBuilder().IsPrintBanner(false).Build()
+if err != nil {
+    panic(err)
+}
+echodt.SetManager(mgr)
+
+e := echo4.New()
+e.Use(echodt.RegisterDTokenContextMiddleware(ctx))
+e.POST("/login", func(c echo4.Context) error {
+    token, _ := echodt.Login(c.Request().Context(), "1000")
+    return c.JSON(http.StatusOK, echo4.Map{"token": token})
+})
+
+auth := e.Group("")
+auth.Use(echodt.AuthMiddleware(ctx))
+auth.GET("/me", func(c echo4.Context) error {
+    dCtx, _ := echodt.GetDTokenContext(c)
+    loginID, _ := dCtx.Auth().GetLoginID(c.Request().Context())
+    return c.JSON(http.StatusOK, echo4.Map{"loginId": loginID})
+})
+```
+
+### Fiber
+
+```go
+ctx := context.Background()
+mgr, err := fiberdt.NewBuilder().IsPrintBanner(false).Build()
+if err != nil {
+    panic(err)
+}
+fiberdt.SetManager(mgr)
+
+app := gofiber.New()
+app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx))
+app.Post("/login", func(c *gofiber.Ctx) error {
+    token, _ := fiberdt.Login(c.UserContext(), "1000")
+    return c.JSON(gofiber.Map{"token": token})
+})
+
+auth := app.Group("")
+auth.Use(fiberdt.AuthMiddleware(ctx))
+auth.Get("/me", func(c *gofiber.Ctx) error {
+    dCtx, _ := fiberdt.GetDTokenContext(c)
+    loginID, _ := dCtx.Auth().GetLoginID(c.UserContext())
+    return c.JSON(gofiber.Map{"loginId": loginID})
+})
+```
 ## Gin 示例
 
 ```go

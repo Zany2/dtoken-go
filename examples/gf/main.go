@@ -114,14 +114,14 @@ func handleMe(r *ghttp.Request) {
 		return
 	}
 
-	loginID, err := dCtx.GetLoginID(r.Context())
+	loginID, err := dCtx.Auth().GetLoginID(r.Context())
 	if err != nil {
 		writeJSON(r, http.StatusUnauthorized, gfdt.CodeNotLogin, err.Error(), nil)
 		return
 	}
 
-	roles, _ := dCtx.GetRoles(r.Context())
-	permissions, _ := dCtx.GetPermissions(r.Context())
+	roles, _ := dCtx.Access().GetRoles(r.Context())
+	permissions, _ := dCtx.Access().GetPermissions(r.Context())
 
 	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", g.Map{
 		"loginId":     loginID,
@@ -159,7 +159,7 @@ func handleLogout(r *ghttp.Request) {
 		return
 	}
 
-	if err := dCtx.Logout(r.Context()); err != nil {
+	if err := dCtx.Auth().Logout(r.Context()); err != nil {
 		writeJSON(r, http.StatusInternalServerError, gfdt.CodeServerError, err.Error(), nil)
 		return
 	}

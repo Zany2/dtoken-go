@@ -8,10 +8,10 @@ import (
 	"github.com/Zany2/dtoken-go/dtoken"
 )
 
-// DTokenContext exposes request scoped DToken context DTokenContext 暴露请求级 DToken 上下文类型。
+// DTokenContext exposes the request-scoped DToken context type. DTokenContext 暴露请求级 DToken 上下文类型。
 type DTokenContext = corecontext.DTokenContext
 
-// NewBuilder creates a default DToken builder NewBuilder 创建默认 DToken 构建器。
+// NewBuilder creates a default DToken builder. NewBuilder 创建默认 DToken 构建器。
 func NewBuilder() *builder.Builder {
 	return defaults.NewBuilder()
 }

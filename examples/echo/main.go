@@ -84,13 +84,13 @@ func handleMe(c echo4.Context) error {
 		return writeJSON(c, http.StatusUnauthorized, echodt.CodeNotLogin, "not logged in", nil)
 	}
 
-	loginID, err := dCtx.GetLoginID(c.Request().Context())
+	loginID, err := dCtx.Auth().GetLoginID(c.Request().Context())
 	if err != nil {
 		return writeJSON(c, http.StatusUnauthorized, echodt.CodeNotLogin, err.Error(), nil)
 	}
 
-	roles, _ := dCtx.GetRoles(c.Request().Context())
-	permissions, _ := dCtx.GetPermissions(c.Request().Context())
+	roles, _ := dCtx.Access().GetRoles(c.Request().Context())
+	permissions, _ := dCtx.Access().GetPermissions(c.Request().Context())
 
 	return writeJSON(c, http.StatusOK, echodt.CodeSuccess, "ok", echo4.Map{
 		"loginId":     loginID,
@@ -116,7 +116,7 @@ func handleLogout(c echo4.Context) error {
 		return writeJSON(c, http.StatusUnauthorized, echodt.CodeNotLogin, "not logged in", nil)
 	}
 
-	if err := dCtx.Logout(c.Request().Context()); err != nil {
+	if err := dCtx.Auth().Logout(c.Request().Context()); err != nil {
 		return writeJSON(c, http.StatusInternalServerError, echodt.CodeServerError, err.Error(), nil)
 	}
 

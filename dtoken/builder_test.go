@@ -67,7 +67,7 @@ func TestBuilderRejectsInvalidModuleConfig(t *testing.T) {
 	if _, err := NewBuilder().IsPrintBanner(false).RenewPoolMinSize(0).Build(); err == nil {
 		t.Fatal("Build() error = nil, want invalid renew pool config error")
 	}
-	if _, err := NewBuilder().IsPrintBanner(false).LoggerQueueSize(0).Build(); err == nil {
+	if _, err := NewBuilder().IsPrintBanner(false).LoggerFileFormat("logs/app.log").Build(); err == nil {
 		t.Fatal("Build() error = nil, want invalid logger config error")
 	}
 	if _, err := NewBuilder().IsPrintBanner(false).NonceTTL(0).Build(); err == nil {
