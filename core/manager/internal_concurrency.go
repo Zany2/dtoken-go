@@ -183,7 +183,7 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 		}
 	}
 	// Set active timeout 设置最大不活跃时长
-	if m.config.ActiveTimeout > 0 {
+	if m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout) > 0 {
 		// Refresh active marker 刷新活跃标记。
 		if err := m.storage.Set(ctx, m.getActiveKey(terminalInfo.Token), time.Now().Unix(), expiration); err != nil {
 			m.logger.Errorf("manager.getTokenAndShare: failed to set active key, token=%s, error=%v", terminalInfo.Token, err)

@@ -287,7 +287,7 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 				m.logger.Errorf("manager.LoginByToken: failed to set renew key, token=%s, error=%v", tokenValue, err)
 			}
 		}
-		if m.config.ActiveTimeout > 0 {
+		if m.resolveActiveTimeoutFromSeconds(latestTokenInfo.ActiveTimeout) > 0 {
 			// Refresh active marker 刷新活跃标记。
 			if err := m.storage.Set(bg, m.getActiveKey(tokenValue), time.Now().Unix(), expiration); err != nil {
 				m.logger.Errorf("manager.LoginByToken: failed to set active key, token=%s, error=%v", tokenValue, err)
@@ -478,7 +478,7 @@ func (m *Manager) RenewTimeout(ctx context.Context, tokenValue string, timeout t
 		return err
 	}
 
-	if m.config.ActiveTimeout > 0 {
+	if m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout) > 0 {
 		// Load current active marker 加载当前活跃标记。
 		activeValue, activeErr := m.storage.Get(ctx, m.getActiveKey(tokenValue))
 		if activeErr != nil {

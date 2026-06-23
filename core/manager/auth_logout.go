@@ -21,6 +21,10 @@ func (m *Manager) Logout(ctx context.Context, tokenValue string) error {
 	// Load session by token 根据 Token 加载会话。
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
+		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
+		if isTokenInactiveError(err) {
+			return nil
+		}
 		return err
 	}
 
@@ -86,9 +90,17 @@ func (m *Manager) LogoutByLoginID(ctx context.Context, loginID string) error {
 
 // Kickout kicks out a user by token. Kickout 根据 Token 踢人下线。
 func (m *Manager) Kickout(ctx context.Context, tokenValue string) error {
+	// Validate token value 校验 Token 值。
+	if tokenValue == "" {
+		return derror.ErrInvalidToken
+	}
 	// Load session by token 根据 Token 加载会话。
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
+		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
+		if isTokenInactiveError(err) {
+			return nil
+		}
 		return err
 	}
 
@@ -155,9 +167,17 @@ func (m *Manager) KickoutByLoginID(ctx context.Context, loginID string) error {
 
 // Replace replaces a user session by token. Replace 根据 Token 顶人下线。
 func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
+	// Validate token value 校验 Token 值。
+	if tokenValue == "" {
+		return derror.ErrInvalidToken
+	}
 	// Load session by token 根据 Token 加载会话。
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
+		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
+		if isTokenInactiveError(err) {
+			return nil
+		}
 		return err
 	}
 
@@ -443,6 +463,11 @@ func (m *Manager) processTerminals(
 		// Delete active key 删除活跃时间 key
 		if err = m.storage.Delete(ctx, m.getActiveKey(token)); err != nil {
 			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
+
+		// Clean linked refresh token 清理关联的刷新令牌
+		if err = m.cleanRefreshTokenByAccessToken(ctx, token); err != nil {
+			return err
 		}
 	}
 

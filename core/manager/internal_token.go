@@ -59,7 +59,7 @@ func (m *Manager) setTokenState(ctx context.Context, tokenValue string, state To
 	}
 	// Remove legacy token key 删除历史 Token 键。
 	if err := m.storage.Delete(ctx, m.getLegacyTokenKey(tokenValue)); err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		m.logger.Errorf("manager.setTokenState: failed to delete legacy token key, token=%s, error=%v", tokenValue, err)
 	}
 	// Return state save success 返回状态保存成功。
 	return nil

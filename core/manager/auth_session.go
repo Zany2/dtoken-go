@@ -302,6 +302,10 @@ func (m *Manager) GetTokenValueByLoginID(ctx context.Context, loginID string, de
 	// Load session 加载会话。
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
+		// Treat missing session as no alive token 会话不存在视为无有效 Token
+		if errors.Is(err, derror.ErrSessionNotFound) {
+			return "", derror.ErrInvalidToken
+		}
 		return "", err
 	}
 
@@ -331,7 +335,7 @@ func (m *Manager) GetTokenValueByLoginID(ctx context.Context, loginID string, de
 func (m *Manager) SearchTokenValue(ctx context.Context, keyword string, start, size int) ([]string, error) {
 	// Build token search pattern 构建 Token 搜索模式。
 	prefix := m.config.KeyPrefix + m.config.AuthType + config.TokenKeyPrefix
-	pattern := prefix + "*" + keyword + "*"
+	pattern := prefix + "*" + escapeSearchKeyword(keyword) + "*"
 	return m.searchValues(ctx, pattern, prefix, start, size)
 }
 
@@ -339,8 +343,16 @@ func (m *Manager) SearchTokenValue(ctx context.Context, keyword string, start, s
 func (m *Manager) SearchSessionId(ctx context.Context, keyword string, start, size int) ([]string, error) {
 	// Build session search pattern 构建 Session 搜索模式。
 	prefix := m.config.KeyPrefix + m.config.AuthType + SessionKeyPrefix
-	pattern := prefix + "*" + keyword + "*"
+	pattern := prefix + "*" + escapeSearchKeyword(keyword) + "*"
 	return m.searchValues(ctx, pattern, prefix, start, size)
+}
+
+// escapeSearchKeyword escapes wildcard characters in a search keyword. escapeSearchKeyword 转义搜索关键词中的通配符字符。
+func escapeSearchKeyword(keyword string) string {
+	keyword = strings.ReplaceAll(keyword, "\\", "\\\\")
+	keyword = strings.ReplaceAll(keyword, "*", "\\*")
+	keyword = strings.ReplaceAll(keyword, "?", "\\?")
+	return keyword
 }
 
 // TerminalVisitor is a callback function for terminal traversal. TerminalVisitor 终端遍历回调函数。 Return false to stop traversal. 返回 false 停止遍历。

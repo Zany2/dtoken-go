@@ -15,6 +15,10 @@ func (m *Manager) AddRoles(ctx context.Context, loginID string, roles []string) 
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+	// Return early when nothing to change 无变更时直接返回。
+	if len(roles) == 0 {
+		return nil
+	}
 
 	// Lock account writes 锁定账号写操作
 	unlock := m.lockLoginWrite(loginID)
@@ -48,6 +52,10 @@ func (m *Manager) AddRoles(ctx context.Context, loginID string, roles []string) 
 
 // AddRolesByToken adds roles to a user by token AddRolesByToken 根据 Token 为用户添加角色
 func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles []string) error {
+	// Return early when nothing to change 无变更时直接返回。
+	if len(roles) == 0 {
+		return nil
+	}
 	// Validate token and load context 校验 Token 并加载上下文
 	_, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
@@ -94,6 +102,10 @@ func (m *Manager) RemoveRoles(ctx context.Context, loginID string, roles []strin
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+	// Return early when nothing to change 无变更时直接返回。
+	if len(roles) == 0 {
+		return nil
+	}
 
 	// Lock account writes 锁定账号写操作
 	unlock := m.lockLoginWrite(loginID)
@@ -127,6 +139,10 @@ func (m *Manager) RemoveRoles(ctx context.Context, loginID string, roles []strin
 
 // RemoveRolesByToken removes roles from a user by token RemoveRolesByToken 根据 Token 删除用户的指定角色
 func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, roles []string) error {
+	// Return early when nothing to change 无变更时直接返回。
+	if len(roles) == 0 {
+		return nil
+	}
 	// Validate token and load context 校验 Token 并加载上下文
 	_, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
@@ -374,6 +390,10 @@ func (m *Manager) CheckRole(ctx context.Context, loginID string, role string) er
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+	// Validate role is not empty 校验角色不为空。
+	if role == "" {
+		return derror.ErrInvalidParam
+	}
 
 	// Load roles 加载角色
 	roles, err := m.loadRolesByLoginID(ctx, loginID)
@@ -381,7 +401,7 @@ func (m *Manager) CheckRole(ctx context.Context, loginID string, role string) er
 		return err
 	}
 	// Calculate role result 计算角色结果
-	hasRole := role != "" && m.hasRoleInList(roles, role)
+	hasRole := m.hasRoleInList(roles, role)
 
 	// Trigger role check event 触发角色校验事件
 	m.triggerEvent(listener.EventRoleCheck, loginID, "", "", "", map[string]any{
@@ -397,6 +417,10 @@ func (m *Manager) CheckRole(ctx context.Context, loginID string, role string) er
 
 // CheckRoleByToken checks if a token user has a specific role CheckRoleByToken 根据 Token 校验用户是否拥有指定角色
 func (m *Manager) CheckRoleByToken(ctx context.Context, tokenValue string, role string) error {
+	// Validate role is not empty 校验角色不为空。
+	if role == "" {
+		return derror.ErrInvalidParam
+	}
 	// Validate token and load context 校验 Token 并加载上下文
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
@@ -415,7 +439,7 @@ func (m *Manager) CheckRoleByToken(ctx context.Context, tokenValue string, role 
 		return err
 	}
 	// Calculate role result 计算角色结果
-	hasRole := role != "" && m.hasRoleInList(roles, role)
+	hasRole := m.hasRoleInList(roles, role)
 
 	// Trigger role check event 触发角色校验事件
 	m.triggerEvent(listener.EventRoleCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{

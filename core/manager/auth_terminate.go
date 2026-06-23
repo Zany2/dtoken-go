@@ -49,6 +49,9 @@ func (m *Manager) Terminate(ctx context.Context, opts TerminateOptions) error {
 
 // terminateLogout dispatches logout by account or device scope terminateLogout 按账号或设备范围分发注销操作
 func (m *Manager) terminateLogout(ctx context.Context, opts TerminateOptions) error {
+	if opts.DeviceID != "" && opts.Device == "" {
+		return derror.ErrInvalidParam
+	}
 	if opts.Device != "" && opts.DeviceID != "" {
 		return m.LogoutByDeviceAndDeviceId(ctx, opts.LoginID, opts.Device, opts.DeviceID)
 	}
@@ -60,6 +63,9 @@ func (m *Manager) terminateLogout(ctx context.Context, opts TerminateOptions) er
 
 // terminateKickout dispatches kickout by account or device scope terminateKickout 按账号或设备范围分发踢下线操作
 func (m *Manager) terminateKickout(ctx context.Context, opts TerminateOptions) error {
+	if opts.DeviceID != "" && opts.Device == "" {
+		return derror.ErrInvalidParam
+	}
 	if opts.Device != "" && opts.DeviceID != "" {
 		return m.KickoutByDeviceAndDeviceId(ctx, opts.LoginID, opts.Device, opts.DeviceID)
 	}
@@ -71,6 +77,9 @@ func (m *Manager) terminateKickout(ctx context.Context, opts TerminateOptions) e
 
 // terminateReplace dispatches replace by account or device scope terminateReplace 按账号或设备范围分发顶替下线操作
 func (m *Manager) terminateReplace(ctx context.Context, opts TerminateOptions) error {
+	if opts.DeviceID != "" && opts.Device == "" {
+		return derror.ErrInvalidParam
+	}
 	if opts.Device != "" && opts.DeviceID != "" {
 		return m.ReplaceByDeviceAndDeviceId(ctx, opts.LoginID, opts.Device, opts.DeviceID)
 	}

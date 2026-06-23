@@ -51,6 +51,16 @@ func (m *Manager) IntrospectToken(ctx context.Context, tokenValue string) (*Toke
 		return result, nil
 	}
 
+	// Check account and device disable status 检查账号及设备封禁状态
+	if m.isDisable(ctx, tokenInfo.LoginID) {
+		result.Error = derror.ErrAccountDisabled.Error()
+		return result, nil
+	}
+	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceId) {
+		result.Error = derror.ErrDeviceDisabled.Error()
+		return result, nil
+	}
+
 	ttl, err := m.GetTokenTTL(ctx, tokenValue)
 	if err != nil {
 		return nil, err
@@ -63,11 +73,19 @@ func (m *Manager) IntrospectToken(ctx context.Context, tokenValue string) (*Toke
 		DeviceID: tokenInfo.DeviceId,
 		Token:    tokenValue,
 	}
-	permissions, err := m.loadPermissions(ctx, nil, subject)
+
+	// Load session for permission/role fallback 加载会话以获取权限/角色回退值
+	var sessionPermissions, sessionRoles []string
+	if sess, sessErr := m.getSession(ctx, tokenInfo.LoginID); sessErr == nil && sess != nil {
+		sessionPermissions = sess.Permissions
+		sessionRoles = sess.Roles
+	}
+
+	permissions, err := m.loadPermissions(ctx, sessionPermissions, subject)
 	if err != nil {
 		return nil, err
 	}
-	roles, err := m.loadRoles(ctx, nil, subject)
+	roles, err := m.loadRoles(ctx, sessionRoles, subject)
 	if err != nil {
 		return nil, err
 	}

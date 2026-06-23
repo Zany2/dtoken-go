@@ -63,8 +63,12 @@ func (m *Manager) DeleteSessionValue(ctx context.Context, loginID, key string) e
 	if err != nil {
 		return err
 	}
-	if sess.Data != nil {
-		delete(sess.Data, key)
+	if sess.Data == nil {
+		return nil
 	}
+	if _, exists := sess.Data[key]; !exists {
+		return nil
+	}
+	delete(sess.Data, key)
 	return m.saveToStorage(ctx, m.getSessionKey(loginID), *sess)
 }

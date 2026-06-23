@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/listener"
@@ -101,7 +102,19 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 	}
 
 	_ = m.Logout(ctx, info.AccessToken)
-	_ = m.storage.Delete(ctx, m.getRefreshTokenKey(refreshToken), m.getTokenRefreshKey(info.AccessToken))
+	// Atomically consume refresh token to prevent concurrent replay 原子消费刷新令牌，防止并发重放
+	if atomicStorage, ok := m.storage.(adapter.AtomicStorage); ok {
+		existing, delErr := atomicStorage.GetAndDelete(ctx, m.getRefreshTokenKey(refreshToken))
+		if delErr != nil {
+			return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, delErr)
+		}
+		if existing == nil {
+			return nil, derror.ErrInvalidRefreshToken
+		}
+		_ = m.storage.Delete(ctx, m.getTokenRefreshKey(info.AccessToken))
+	} else {
+		_ = m.storage.Delete(ctx, m.getRefreshTokenKey(refreshToken), m.getTokenRefreshKey(info.AccessToken))
+	}
 
 	pair, err := m.loginWithRefreshTokenOptions(ctx, RefreshTokenOptions{
 		LoginOptions: LoginOptions{

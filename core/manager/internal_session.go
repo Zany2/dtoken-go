@@ -232,8 +232,15 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) erro
 	if hasExpired {
 		// Replace terminal list 替换终端列表。
 		sess.TerminalInfos = validTerminals
-		if err := m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
-			return err
+		// Delete session when all terminals expired 所有终端均已过期时删除整个 session
+		if len(validTerminals) == 0 {
+			if err := m.storage.Delete(ctx, m.getSessionKey(sess.LoginID)); err != nil {
+				return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+			}
+		} else {
+			if err := m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
+				return err
+			}
 		}
 	}
 

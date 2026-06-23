@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// Disable disables an account for a specified duration. Disable 封禁账号指定时长。
+// Disable disables an account for a specified duration. Disable 封禁账号指定时长。duration=0 means permanent. duration=0 表示永久封禁。
 func (m *Manager) Disable(ctx context.Context, loginID string, duration time.Duration, reason ...string) error {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
@@ -175,41 +175,7 @@ func (m *Manager) GetDisableTTL(ctx context.Context, loginID string) (int64, err
 
 // DisableService disables a specific service for an account. DisableService 封禁账号的指定服务。
 func (m *Manager) DisableService(ctx context.Context, loginID, service string, duration time.Duration, reason ...string) error {
-	// Validate login ID 校验登录 ID。
-	if loginID == "" {
-		return derror.ErrIDIsEmpty
-	}
-	// Normalize service name 规范化服务名称。
-	service = strings.TrimSpace(service)
-	// Validate service name 校验服务名称。
-	if service == "" {
-		return derror.ErrInvalidParam
-	}
-
-	// Build service disable info 构建服务封禁信息。
-	info := ServiceDisableInfo{
-		Service:     service,
-		Level:       0,
-		DisableTime: time.Now().Unix(),
-	}
-	// Fill disable reason 填充封禁原因。
-	if len(reason) > 0 && reason[0] != "" {
-		info.DisableReason = reason[0]
-	}
-
-	// Save service disable marker 保存服务封禁标记。
-	if err := m.saveToStorage(ctx, m.getDisableServiceKey(loginID, service), info, duration); err != nil {
-		return err
-	}
-
-	// Trigger service disable event 触发服务封禁事件。
-	m.triggerEvent(listener.EventDisableService, loginID, "", "", "", map[string]any{
-		listener.ExtraKeyService: service,
-		"reason":                 info.DisableReason,
-		"duration":               duration.Seconds(),
-	})
-
-	return nil
+	return m.DisableServiceLevel(ctx, loginID, service, 0, duration, reason...)
 }
 
 // DisableServiceLevel disables a specific service for an account with a level. DisableServiceLevel 封禁账号的指定服务并设置封禁等级。
