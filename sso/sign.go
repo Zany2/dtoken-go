@@ -69,7 +69,8 @@ func (s Signer) canonical(values url.Values) string {
 		items := append([]string(nil), values[key]...)
 		sort.Strings(items)
 		for _, value := range items {
-			parts = append(parts, key+"="+value)
+			// URL-encode key and value to prevent signature collision对键值进行URL编码，防止签名碰撞
+			parts = append(parts, url.QueryEscape(key)+"="+url.QueryEscape(value))
 		}
 	}
 	return strings.Join(parts, "&")

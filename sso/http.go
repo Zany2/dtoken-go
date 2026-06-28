@@ -413,8 +413,13 @@ func (h *HTTPServer) pushLogoutCallbacks(r *http.Request, loginID string) error 
 	}
 	wg.Wait()
 	close(errCh)
-	if len(errCh) > 0 && !h.options.ServerOptions.LogoutCallbackBestEffort {
-		return <-errCh
+	if !h.options.ServerOptions.LogoutCallbackBestEffort {
+		// Return the first error if any返回第一个错误（如果有）
+		select {
+		case err := <-errCh:
+			return err
+		default:
+		}
 	}
 	return h.server.ClearClientSessions(r.Context(), loginID)
 }
@@ -477,13 +482,19 @@ func (h *HTTPServer) redirectToLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := target.Query()
-	query.Set(h.options.ServerOptions.Params.Back, r.URL.String())
+	// Only pass relative path to prevent open redirect只传递相对路径，防止开放重定向
+	backPath := r.URL.Path
+	if r.URL.RawQuery != "" {
+		backPath += "?" + r.URL.RawQuery
+	}
+	query.Set(h.options.ServerOptions.Params.Back, backPath)
 	target.RawQuery = query.Encode()
 	http.Redirect(w, r, target.String(), http.StatusFound)
 }
 
 func writeJSON(w http.ResponseWriter, status int, response Response) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(response)
 }

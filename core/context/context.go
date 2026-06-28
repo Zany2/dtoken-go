@@ -144,5 +144,9 @@ func extractBearerToken(auth string) string {
 	if len(auth) > len(bearerPrefix) && strings.EqualFold(auth[:len(bearerPrefix)], bearerPrefix) {
 		return strings.TrimSpace(auth[len(bearerPrefix):])
 	}
+	// Reject values containing spaces (likely non-Bearer schemes like Basic, Digest) 含空格的非 Bearer 格式视为其他认证方案，返回空
+	if strings.ContainsRune(auth, ' ') {
+		return ""
+	}
 	return auth
 }

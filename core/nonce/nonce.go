@@ -134,7 +134,10 @@ func (nm *NonceManager) Verify(ctx context.Context, nonce string) bool {
 	return nm.VerifyAndConsume(ctx, nonce) == nil
 }
 
-// VerifyAndConsume verifies nonce with error VerifyAndConsume 验证并消费 nonce 且在无效时返回错误
+// VerifyAndConsume verifies nonce with error VerifyAndConsume 验证并消费 nonce 且在无效时返回错误。
+// In distributed deployments, replay protection relies entirely on AtomicStorage.GetAndDelete being truly atomic (e.g. Redis GETDEL).
+// The local mutex only serializes access within a single process and has no effect across multiple instances.
+// 分布式部署下，防重放能力完全依赖 AtomicStorage.GetAndDelete 的原子性（如 Redis GETDEL），本地互斥锁仅保护单进程并发，对多实例场景无效。
 func (nm *NonceManager) VerifyAndConsume(ctx context.Context, nonce string) error {
 	if nonce == "" {
 		return derror.ErrInvalidNonce

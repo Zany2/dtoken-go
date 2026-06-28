@@ -11,7 +11,7 @@ import (
 // Login performs login and returns a token. Login 执行登录并返回 token。
 func Login(ctx context.Context, loginID string, params ...string) (string, error) {
 	device, deviceId, authType := parseDeviceAndAuthType(params...)
-	mgr, err := GetManager(authType)
+	mgr, err := getManagerAuto(authType)
 	if err != nil {
 		return "", err
 	}
@@ -21,7 +21,7 @@ func Login(ctx context.Context, loginID string, params ...string) (string, error
 // LoginWithTimeout performs login with a custom token timeout. LoginWithTimeout 使用自定义过期时间登录。
 func LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, params ...string) (string, error) {
 	device, deviceId, authType := parseDeviceAndAuthType(params...)
-	mgr, err := GetManager(authType)
+	mgr, err := getManagerAuto(authType)
 	if err != nil {
 		return "", err
 	}
@@ -31,7 +31,7 @@ func LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration
 // LoginWithRefreshToken logs in and returns access and refresh tokens. LoginWithRefreshToken 登录并返回访问令牌和刷新令牌。
 func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*manager.RefreshTokenPair, error) {
 	device, deviceId, authType := parseDeviceAndAuthType(params...)
-	mgr, err := GetManager(authType)
+	mgr, err := getManagerAuto(authType)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +95,7 @@ func Logout(ctx context.Context, tokenValue string, authType ...string) error {
 // LogoutByDeviceAndDeviceId logs out a terminal by device and device ID. LogoutByDeviceAndDeviceId 按设备与设备 ID 注销终端。
 func LogoutByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error {
 	device, deviceId, authType := parseDeviceAndAuthType(params...)
-	mgr, err := GetManager(authType)
+	mgr, err := getManagerAuto(authType)
 	if err != nil {
 		return err
 	}
@@ -141,7 +141,7 @@ func Replace(ctx context.Context, tokenValue string, authType ...string) error {
 // KickoutByDeviceAndDeviceId kicks out a terminal by device and device ID. KickoutByDeviceAndDeviceId 按设备与设备 ID 踢下线。
 func KickoutByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error {
 	device, deviceId, authType := parseDeviceAndAuthType(params...)
-	mgr, err := GetManager(authType)
+	mgr, err := getManagerAuto(authType)
 	if err != nil {
 		return err
 	}
@@ -169,7 +169,7 @@ func KickoutByLoginID(ctx context.Context, loginID string, authType ...string) e
 // ReplaceByDeviceAndDeviceId replaces a terminal by device and device ID. ReplaceByDeviceAndDeviceId 按设备与设备 ID 顶下线。
 func ReplaceByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error {
 	device, deviceId, authType := parseDeviceAndAuthType(params...)
-	mgr, err := GetManager(authType)
+	mgr, err := getManagerAuto(authType)
 	if err != nil {
 		return err
 	}

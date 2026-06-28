@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
@@ -137,6 +138,7 @@ type Manager struct {
 	maxGenerateRetries int
 	storage            adapter.Storage
 	serializer         adapter.Codec
+	mu                 sync.Mutex // Protects concurrent create operations 保护并发创建操作
 }
 
 // NewDefaultManager creates short key manager with default config. NewDefaultManager 使用默认配置创建短 Key 管理器。
@@ -182,6 +184,11 @@ func (m *Manager) CreateWithTimeout(ctx context.Context, opts CreateOptions, tim
 	if timeout <= 0 {
 		timeout = m.ttl
 	}
+
+	// Lock to prevent concurrent create races 加锁防止并发创建竞态（单进程保护）
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	var key string
 	for i := 0; i < m.maxGenerateRetries; i++ {
 		generated, err := generateKey(m.length)
@@ -364,8 +371,6 @@ func (m *Manager) Status(ctx context.Context, key string) (Status, error) {
 	}
 	if err = m.checkUsable(shortKey); err != nil {
 		switch {
-		case errors.Is(err, ErrShortKeyPending):
-			return StatusPending, nil
 		case errors.Is(err, ErrShortKeyConsumed):
 			return StatusConsumed, nil
 		case errors.Is(err, ErrShortKeyRevoked):

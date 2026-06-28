@@ -341,7 +341,7 @@ func (m *Manager) checkAlive(ticket *Ticket) error {
 		return ErrInvalidTicket
 	}
 	switch ticket.Status {
-	case "", StatusValid:
+	case StatusValid:
 	case StatusConsumed:
 		return ErrTicketConsumed
 	case StatusRevoked:

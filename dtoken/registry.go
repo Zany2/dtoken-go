@@ -67,6 +67,14 @@ func GetManager(authType ...string) (*manager.Manager, error) {
 	return loadManager(validAutoType)
 }
 
+// getManagerAuto resolves the auth type string (empty falls back to default). getManagerAuto 解析认证类型字符串，为空时回退到默认。
+func getManagerAuto(authType string) (*manager.Manager, error) {
+	if strings.TrimSpace(authType) != "" {
+		return GetManager(authType)
+	}
+	return GetManager()
+}
+
 // GetEventManager retrieves event manager by auth type. GetEventManager 根据认证类型获取事件监听管理器。
 func GetEventManager(authType ...string) (*listener.Manager, error) {
 	mgr, err := GetManager(authType...)

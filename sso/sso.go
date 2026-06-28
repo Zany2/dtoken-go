@@ -364,28 +364,13 @@ func (s *Server) ConsumeTicket(ctx context.Context, ticketValue, clientID, clien
 	}
 
 	key := s.getTicketKey(ticketValue)
-	// Pre-check all deterministic constraints before atomic deletion so a wrong redirect URI does not consume a valid ticket. 原子删除前先校验确定性约束，避免错误回调地址消耗合法 Ticket。
-	current, err := s.getTicket(ctx, ticketValue)
-	if err != nil {
-		return nil, err
-	}
-	if current.ClientID != clientID {
-		return nil, ErrClientMismatch
-	}
-	if current.RedirectURI != redirectURI {
-		return nil, ErrRedirectURIMismatch
-	}
-	if err = s.checkTicketAlive(current); err != nil {
-		return nil, err
-	}
 
-	// Consumption requires atomic get-and-delete to keep the one-time guarantee under concurrency. 消费必须使用原子读删，保证并发下的一次性语义。
+	// Atomically consume the ticket first to prevent concurrent replay原子消费票据，防止并发重放
 	atomicStorage, ok := s.storage.(adapter.AtomicStorage)
 	if !ok {
 		return nil, ErrStorageCapabilityUnsupported
 	}
 
-	// Another request may have consumed the ticket between the pre-check and this atomic operation. 预校验到原子操作之间可能已有其它请求消费了 Ticket。
 	value, err := atomicStorage.GetAndDelete(ctx, key)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
@@ -398,7 +383,8 @@ func (s *Server) ConsumeTicket(ctx context.Context, ticketValue, clientID, clien
 	if err != nil {
 		return nil, err
 	}
-	// Re-validate the deleted payload because storage is the final source of truth. 对原子删除得到的载荷再次校验，因为存储中的值才是最终事实。
+
+	// Validate the consumed ticket payload验证已消费的票据载荷
 	if ticket.Used {
 		return nil, ErrTicketUsed
 	}
@@ -680,20 +666,7 @@ func (s *Server) ConsumeOAuth2Code(ctx context.Context, codeValue, clientID, cli
 		return nil, ErrModeUnsupported
 	}
 
-	current, err := s.getOAuth2Code(ctx, codeValue)
-	if err != nil {
-		return nil, err
-	}
-	if current.ClientID != clientID {
-		return nil, ErrClientMismatch
-	}
-	if current.RedirectURI != redirectURI {
-		return nil, ErrRedirectURIMismatch
-	}
-	if err = s.checkOAuth2CodeAlive(current); err != nil {
-		return nil, err
-	}
-
+	// Atomically consume the OAuth2 code first to prevent concurrent replay原子消费授权码，防止并发重放
 	atomicStorage, ok := s.storage.(adapter.AtomicStorage)
 	if !ok {
 		return nil, ErrStorageCapabilityUnsupported
@@ -710,6 +683,8 @@ func (s *Server) ConsumeOAuth2Code(ctx context.Context, codeValue, clientID, cli
 	if err != nil {
 		return nil, err
 	}
+
+	// Validate the consumed code payload验证已消费的授权码载荷
 	if code.ClientID != clientID {
 		return nil, ErrClientMismatch
 	}
@@ -927,6 +902,7 @@ func (s *Server) saveOAuth2Code(ctx context.Context, code *OAuth2Code, timeout t
 }
 
 // saveClientSession serializes and stores a client session in the login index. saveClientSession 将客户端会话序列化并保存到登录索引。
+// Note: This read-modify-write sequence is not atomic. Concurrent registrations may cause session loss in multi-instance deployments. 注意：读-改-写序列非原子，多实例并发注册可能导致会话记录丢失。
 func (s *Server) saveClientSession(ctx context.Context, session *ClientSession) error {
 	sessions, err := s.GetClientSessions(ctx, session.LoginID)
 	if err != nil {

@@ -3,8 +3,10 @@ package context
 
 import (
 	"context"
+	"errors"
 	"time"
 
+	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
@@ -51,6 +53,9 @@ func (c *CookieContext) LoginWithOptions(ctx context.Context, opts manager.Login
 // Logout logs out current token and clears token cookie Logout 注销当前 Token 并清除 Cookie
 func (c *CookieContext) Logout(ctx context.Context) error {
 	err := c.d.Auth().Logout(ctx)
-	c.d.clearTokenCookie()
+	if err == nil || errors.Is(err, derror.ErrInvalidToken) || errors.Is(err, derror.ErrNotLogin) {
+		// Clear cookie on success or when token no longer exists server-side 注销成功或服务端 Token 不存在时清除 Cookie
+		c.d.clearTokenCookie()
+	}
 	return err
 }

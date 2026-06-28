@@ -71,7 +71,7 @@ func (m *Manager) Disable(ctx context.Context, loginID string, duration time.Dur
 	unlock()
 	unlock = func() {}
 
-	if sess != nil {
+	if sess != nil && len(sess.TerminalInfos) > 0 {
 		// Trigger session destroy event 触发销毁 Session 事件
 		m.triggerEvent(listener.EventDestroySession, loginID, "", "", "", nil)
 	}
@@ -301,8 +301,16 @@ func (m *Manager) CheckDisableServiceLevel(ctx context.Context, loginID, service
 	if service == "" {
 		return derror.ErrInvalidParam
 	}
+	// Load service disable info to propagate storage errors 加载服务封禁信息以传播存储错误，避免存储异常时静默放行
+	info, err := m.GetDisableServiceInfo(ctx, loginID, service)
+	if err != nil {
+		if errors.Is(err, derror.ErrServiceNotDisabled) {
+			return nil
+		}
+		return err
+	}
 	// Reject disabled service level 拒绝达到等级的封禁服务。
-	if m.IsDisableServiceLevel(ctx, loginID, service, level) {
+	if info.Level >= level {
 		return fmt.Errorf("%w: service=%s, level=%d", derror.ErrServiceDisabled, service, level)
 	}
 	return nil

@@ -79,6 +79,9 @@ func (m *Manager) IntrospectToken(ctx context.Context, tokenValue string) (*Toke
 	if sess, sessErr := m.getSession(ctx, tokenInfo.LoginID); sessErr == nil && sess != nil {
 		sessionPermissions = sess.Permissions
 		sessionRoles = sess.Roles
+	} else if sessErr != nil && !errors.Is(sessErr, derror.ErrSessionNotFound) {
+		// Log storage errors but don't fail introspection 记录存储错误但不中止自省
+		m.logger.Errorf("manager.IntrospectToken: failed to load session, loginID=%s, error=%v", tokenInfo.LoginID, sessErr)
 	}
 
 	permissions, err := m.loadPermissions(ctx, sessionPermissions, subject)

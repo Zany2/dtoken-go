@@ -171,6 +171,9 @@ func (s *OAuth2Server) RegisterClient(client *Client) error {
 	if client == nil || client.ClientID == "" {
 		return derror.ErrClientOrClientIDEmpty
 	}
+	if client.ClientSecret == "" {
+		return derror.ErrInvalidClientCredentials
+	}
 	return s.saveClient(context.Background(), client)
 }
 
@@ -215,6 +218,9 @@ func (s *OAuth2Server) GenerateAuthorizationCode(ctx context.Context, clientID, 
 
 // GenerateAuthorizationCodeWithPKCE generates authorization code with optional PKCE challenge.
 func (s *OAuth2Server) GenerateAuthorizationCodeWithPKCE(ctx context.Context, clientID, userID, redirectURI string, scopes []string, codeChallenge, codeChallengeMethod string) (*AuthorizationCode, error) {
+	if clientID == "" {
+		return nil, derror.ErrClientOrClientIDEmpty
+	}
 	if userID == "" {
 		return nil, derror.ErrUserIDEmpty
 	}
@@ -290,26 +296,42 @@ func (s *OAuth2Server) ExchangeCodeForTokenWithPKCE(ctx context.Context, code, c
 	}
 
 	key := s.getCodeKey(code)
-	data, err := s.storage.Get(ctx, key)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-	}
-	if data == nil {
-		return nil, derror.ErrInvalidAuthCode
-	}
 
-	rawData, err := utils.ToBytes(data)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
+	// Atomically consume the authorization code to prevent concurrent replay 原子消费授权码，防止并发重放攻击
+	var rawData []byte
+	if atomicStorage, ok := s.storage.(adapter.AtomicStorage); ok {
+		data, delErr := atomicStorage.GetAndDelete(ctx, key)
+		if delErr != nil {
+			return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, delErr)
+		}
+		if data == nil {
+			return nil, derror.ErrInvalidAuthCode
+		}
+		rawData, err = utils.ToBytes(data)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
+		}
+	} else {
+		// Non-atomic fallback: concurrent replay possible on storages without GetAndDelete 非原子回退：不支持 GetAndDelete 的存储无法防止并发重放
+		data, getErr := s.storage.Get(ctx, key)
+		if getErr != nil {
+			return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, getErr)
+		}
+		if data == nil {
+			return nil, derror.ErrInvalidAuthCode
+		}
+		rawData, err = utils.ToBytes(data)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
+		}
+		if err = s.storage.Delete(ctx, key); err != nil {
+			return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
 	}
 
 	var authCode AuthorizationCode
-	if err := s.serializer.Decode(rawData, &authCode); err != nil {
+	if err = s.serializer.Decode(rawData, &authCode); err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
-	}
-
-	if authCode.Used {
-		return nil, derror.ErrAuthCodeUsed
 	}
 
 	if authCode.ClientID != clientID {
@@ -321,21 +343,10 @@ func (s *OAuth2Server) ExchangeCodeForTokenWithPKCE(ctx context.Context, code, c
 	}
 
 	if time.Now().Unix() > authCode.CreateTime+authCode.ExpiresIn {
-		_ = s.storage.Delete(ctx, key)
 		return nil, derror.ErrAuthCodeExpired
 	}
 	if err = verifyCodeChallenge(authCode.CodeChallenge, authCode.CodeChallengeMethod, codeVerifier); err != nil {
 		return nil, err
-	}
-
-	authCode.Used = true
-	encodeData, err := s.serializer.Encode(authCode)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
-	}
-
-	if err = s.storage.Set(ctx, key, encodeData, time.Minute); err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
 	return s.generateAccessToken(ctx, authCode.UserID, authCode.ClientID, authCode.Scopes)
@@ -441,15 +452,16 @@ func (s *OAuth2Server) RefreshAccessToken(ctx context.Context, clientID, refresh
 		return nil, derror.ErrClientMismatch
 	}
 
+	// Delete refresh token first to prevent concurrent replay 先删除刷新令牌，防止并发重放
+	if err = s.storage.Delete(ctx, key); err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+
 	token, err := s.generateAccessToken(ctx, accessTokenInfo.UserID, accessTokenInfo.ClientID, accessTokenInfo.Scopes)
 	if err != nil {
 		return nil, err
 	}
 
-	if err = s.storage.Delete(ctx, key); err != nil {
-		_ = s.storage.Delete(ctx, s.getTokenKey(token.Token), s.getRefreshKey(token.RefreshToken))
-		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-	}
 	_ = s.storage.Delete(ctx, s.getTokenKey(accessTokenInfo.Token))
 
 	return token, nil
@@ -495,7 +507,7 @@ func (s *OAuth2Server) ValidateAccessTokenAndGetInfo(ctx context.Context, access
 // RevokeToken Revokes access token and its refresh token 撤销访问令牌及其刷新令牌
 func (s *OAuth2Server) RevokeToken(ctx context.Context, accessToken string) error {
 	if accessToken == "" {
-		return nil
+		return derror.ErrInvalidAccessToken
 	}
 
 	key := s.getTokenKey(accessToken)
@@ -518,15 +530,17 @@ func (s *OAuth2Server) RevokeToken(ctx context.Context, accessToken string) erro
 		return fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
 
+	// Delete access token first (higher security priority) 优先删除访问令牌
+	if err = s.storage.Delete(ctx, key); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+
 	if accessTokenInfo.RefreshToken != "" {
 		if err = s.storage.Delete(ctx, s.getRefreshKey(accessTokenInfo.RefreshToken)); err != nil {
 			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
 	}
 
-	if err = s.storage.Delete(ctx, key); err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-	}
 	return nil
 }
 
