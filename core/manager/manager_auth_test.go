@@ -809,6 +809,13 @@ type managerTestStorage struct {
 	items map[string]managerTestStorageItem
 }
 
+type managerTestFailingSetStorage struct {
+	*managerTestStorage
+	failKey         string
+	failKeyPrefix   string
+	failSetIfAbsent bool
+}
+
 type managerTestStorageItem struct {
 	value    any
 	expireAt time.Time
@@ -816,6 +823,13 @@ type managerTestStorageItem struct {
 
 func newManagerTestStorage() *managerTestStorage {
 	return &managerTestStorage{items: make(map[string]managerTestStorageItem)}
+}
+
+func newManagerTestFailingSetStorage(failKey string) *managerTestFailingSetStorage {
+	return &managerTestFailingSetStorage{
+		managerTestStorage: newManagerTestStorage(),
+		failKey:            failKey,
+	}
 }
 
 func newManagerTestStorageForTest(t *testing.T, cfg *config.Config) adapter.FullStorage {
@@ -860,6 +874,27 @@ func (s *managerTestStorage) Set(_ context.Context, key string, value any, expir
 	}
 	s.items[key] = managerTestStorageItem{value: value, expireAt: expireAt}
 	return nil
+}
+
+func (s *managerTestFailingSetStorage) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
+	if s.matchesFailKey(key) && !s.failSetIfAbsent {
+		return derror.ErrStorageUnavailable
+	}
+	return s.managerTestStorage.Set(ctx, key, value, expiration)
+}
+
+func (s *managerTestFailingSetStorage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	if s.matchesFailKey(key) && s.failSetIfAbsent {
+		return false, derror.ErrStorageUnavailable
+	}
+	return s.managerTestStorage.SetIfAbsent(ctx, key, value, expiration)
+}
+
+func (s *managerTestFailingSetStorage) matchesFailKey(key string) bool {
+	if s.failKey != "" && key == s.failKey {
+		return true
+	}
+	return s.failKeyPrefix != "" && strings.HasPrefix(key, s.failKeyPrefix)
 }
 
 func (s *managerTestStorage) Get(_ context.Context, key string) (any, error) {
@@ -958,6 +993,40 @@ func (s *managerTestStorage) GetAndDelete(ctx context.Context, key string) (any,
 		return nil, nil
 	}
 	return item.value, nil
+}
+
+func (s *managerTestStorage) GetAndDeleteMany(ctx context.Context, key string, deleteKeys ...string) (any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if !ok {
+		return nil, nil
+	}
+	delete(s.items, key)
+	if item.expired() {
+		return nil, nil
+	}
+	for _, deleteKey := range deleteKeys {
+		delete(s.items, deleteKey)
+	}
+	return item.value, nil
+}
+
+func (s *managerTestStorage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if ok && !item.expired() {
+		return false, nil
+	}
+	var expireAt time.Time
+	if expiration > 0 {
+		expireAt = time.Now().Add(expiration)
+	}
+	s.items[key] = managerTestStorageItem{value: value, expireAt: expireAt}
+	return true, nil
 }
 
 func (s *managerTestStorage) Keys(_ context.Context, pattern string) ([]string, error) {

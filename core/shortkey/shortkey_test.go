@@ -328,6 +328,40 @@ func (s *shortKeyTestStorage) GetAndDelete(_ context.Context, key string) (any, 
 	return item.value, nil
 }
 
+func (s *shortKeyTestStorage) GetAndDeleteMany(ctx context.Context, key string, deleteKeys ...string) (any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if !ok {
+		return nil, nil
+	}
+	delete(s.items, key)
+	if item.expired() {
+		return nil, nil
+	}
+	for _, deleteKey := range deleteKeys {
+		delete(s.items, deleteKey)
+	}
+	return item.value, nil
+}
+
+func (s *shortKeyTestStorage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if ok && !item.expired() {
+		return false, nil
+	}
+	next := shortKeyTestStorageItem{value: value}
+	if expiration > 0 {
+		next.expiresAt = time.Now().Add(expiration)
+	}
+	s.items[key] = next
+	return true, nil
+}
+
 func (item shortKeyTestStorageItem) expired() bool {
 	return !item.expiresAt.IsZero() && time.Now().After(item.expiresAt)
 }

@@ -5,6 +5,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/Zany2/dtoken-go/core/adapter"
 )
 
 // loginLockEntry tracks one login lock and its active users. loginLockEntry 跟踪单个登录锁及其活跃使用者。
@@ -91,24 +93,37 @@ func (m *Manager) expireTokenIfLimited(ctx context.Context, tokenValue string, e
 	return m.expireIfLimited(ctx, key, expiration)
 }
 
-// rollbackLogin removes data written by a failed login rollbackLogin 回滚失败登录已写入的数据
-func (m *Manager) rollbackLogin(ctx context.Context, sess *Session, loginID, token string, expiration time.Duration) {
+// rollbackLoginSession removes session data written by a failed login. rollbackLoginSession 回滚失败登录写入的会话数据。
+func (m *Manager) rollbackLoginSession(ctx context.Context, sess *Session, loginID, token string, originalTTL time.Duration) {
 	// Roll back session terminal 回滚会话终端。
 	if sess != nil {
-		if _, ok := sess.removeTerminalByToken(token); ok {
+		if removed, ok := sess.removeLatestTerminalByToken(token); ok {
+			// Restore the terminal sequence when the failed login consumed the newest index. 回滚失败登录占用的最新终端序号。
+			if removed.Index == sess.HistoryTerminalCount && sess.HistoryTerminalCount > 0 {
+				sess.HistoryTerminalCount--
+			}
 			// Delete empty session 删除空会话。
-			if len(sess.TerminalInfos) == 0 {
+			if len(sess.TerminalInfos) == 0 || originalTTL == adapter.TTLNotFound {
 				if err := m.storage.Delete(ctx, m.getSessionKey(loginID)); err != nil {
 					m.logger.Errorf("manager.rollbackLogin: failed to delete empty session, loginID=%s, token=%s, error=%v", loginID, token, err)
 				}
 			} else {
 				// Save restored session 保存回滚后的会话。
-				if err := m.saveSessionWithMinTTL(ctx, m.getSessionKey(loginID), *sess, expiration); err != nil {
+				expiration := originalTTL
+				if originalTTL == adapter.TTLNoExpire {
+					expiration = 0
+				}
+				if err := m.saveToStorage(ctx, m.getSessionKey(loginID), *sess, expiration); err != nil {
 					m.logger.Errorf("manager.rollbackLogin: failed to save session, loginID=%s, token=%s, error=%v", loginID, token, err)
 				}
 			}
 		}
 	}
+}
+
+// rollbackLogin removes data written by a failed login rollbackLogin 回滚失败登录已写入的数据
+func (m *Manager) rollbackLogin(ctx context.Context, sess *Session, loginID, token string, originalTTL time.Duration) {
+	m.rollbackLoginSession(ctx, sess, loginID, token, originalTTL)
 	// Delete token data 删除 Token 数据。
 	if err := m.storage.Delete(ctx, m.getTokenKey(token), m.getRenewKey(token), m.getActiveKey(token)); err != nil {
 		m.logger.Errorf("manager.rollbackLogin: failed to delete token data, loginID=%s, token=%s, error=%v", loginID, token, err)

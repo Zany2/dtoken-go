@@ -94,6 +94,55 @@ func (s *Storage) GetAndDelete(ctx context.Context, key string) (any, error) {
 	return stored.value, nil
 }
 
+// GetAndDeleteMany gets and deletes key and extra keys atomically. GetAndDeleteMany 原子地读取并删除主键，同时删除附加键。
+func (s *Storage) GetAndDeleteMany(ctx context.Context, key string, deleteKeys ...string) (any, error) {
+	if err := s.ensureReady(); err != nil {
+		return nil, err
+	}
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	stored, ok := s.values[key]
+	if !ok {
+		return nil, nil
+	}
+	if !stored.expireAt.IsZero() && time.Now().After(stored.expireAt) {
+		delete(s.values, key)
+		return nil, nil
+	}
+	delete(s.values, key)
+	for _, deleteKey := range deleteKeys {
+		delete(s.values, deleteKey)
+	}
+	return stored.value, nil
+}
+
+// SetIfAbsent stores a key only when it does not exist. SetIfAbsent 仅在键不存在时写入。
+func (s *Storage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	if err := s.ensureReady(); err != nil {
+		return false, err
+	}
+	if err := checkContext(ctx); err != nil {
+		return false, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	stored, ok := s.values[key]
+	if ok && (stored.expireAt.IsZero() || time.Now().Before(stored.expireAt)) {
+		return false, nil
+	}
+	next := item{value: value}
+	if expiration > 0 {
+		next.expireAt = time.Now().Add(expiration)
+	}
+	s.values[key] = next
+	return true, nil
+}
+
 // Delete deletes one or more keys. Delete 删除一个或多个键。
 func (s *Storage) Delete(ctx context.Context, keys ...string) error {
 	if err := s.ensureReady(); err != nil {

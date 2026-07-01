@@ -302,6 +302,40 @@ func (s *ticketTestStorage) GetAndDelete(_ context.Context, key string) (any, er
 	return item.value, nil
 }
 
+func (s *ticketTestStorage) GetAndDeleteMany(ctx context.Context, key string, deleteKeys ...string) (any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if !ok {
+		return nil, nil
+	}
+	delete(s.items, key)
+	if item.expired() {
+		return nil, nil
+	}
+	for _, deleteKey := range deleteKeys {
+		delete(s.items, deleteKey)
+	}
+	return item.value, nil
+}
+
+func (s *ticketTestStorage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if ok && !item.expired() {
+		return false, nil
+	}
+	next := ticketTestStorageItem{value: value}
+	if expiration > 0 {
+		next.expiresAt = time.Now().Add(expiration)
+	}
+	s.items[key] = next
+	return true, nil
+}
+
 func (item ticketTestStorageItem) expired() bool {
 	return !item.expiresAt.IsZero() && time.Now().After(item.expiresAt)
 }

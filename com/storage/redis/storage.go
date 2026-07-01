@@ -53,6 +53,15 @@ var _ adapter.Storage = (*Storage)(nil)
 var _ adapter.AtomicStorage = (*Storage)(nil)
 var _ adapter.FullStorage = (*Storage)(nil)
 
+var getAndDeleteManyScript = redis.NewScript(`
+local value = redis.call("GET", KEYS[1])
+if not value then
+	return false
+end
+redis.call("DEL", unpack(KEYS))
+return value
+`)
+
 // NewStorage creates storage from a Redis URL 通过 Redis URL 创建存储
 func NewStorage(url string) (*Storage, error) {
 	opts, err := redis.ParseURL(url)
@@ -166,6 +175,44 @@ func (s *Storage) GetAndDelete(ctx context.Context, key string) (any, error) {
 		return nil, err
 	}
 	return val, nil
+}
+
+// GetAndDeleteMany atomically gets and deletes a key and deletes extra keys 原子获取并删除主键，同时删除附加键
+func (s *Storage) GetAndDeleteMany(ctx context.Context, key string, deleteKeys ...string) (any, error) {
+	if err := s.ensureReady(); err != nil {
+		return nil, err
+	}
+	ctx, cancel := s.withOperationTimeout(ctx)
+	defer cancel()
+
+	keys := make([]string, 0, len(deleteKeys)+1)
+	keys = append(keys, key)
+	keys = append(keys, deleteKeys...)
+	val, err := getAndDeleteManyScript.Run(ctx, s.client, keys).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if val == nil {
+		return nil, nil
+	}
+	if missing, ok := val.(bool); ok && !missing {
+		return nil, nil
+	}
+	return val, nil
+}
+
+// SetIfAbsent stores a key only when it does not exist 仅当键不存在时写入
+func (s *Storage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	if err := s.ensureReady(); err != nil {
+		return false, err
+	}
+	ctx, cancel := s.withOperationTimeout(ctx)
+	defer cancel()
+
+	return s.client.SetNX(ctx, key, value, normalizeSetExpiration(expiration)).Result()
 }
 
 // Delete removes keys 删除键

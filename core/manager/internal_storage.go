@@ -143,6 +143,35 @@ func (m *Manager) saveToStorage(
 	return nil
 }
 
+// saveToStorageIfAbsent serializes and saves data only when key is absent. saveToStorageIfAbsent 仅当键不存在时序列化并保存数据。
+func (m *Manager) saveToStorageIfAbsent(
+	ctx context.Context,
+	key string,
+	value any,
+	expiration time.Duration,
+) (bool, error) {
+	// Serialize to bytes 序列化为字节。
+	bytesData, err := m.serializer.Encode(value)
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+	}
+
+	if atomicStorage, ok := m.storage.(adapter.AtomicStorage); ok {
+		ok, err := atomicStorage.SetIfAbsent(ctx, key, bytesData, expiration)
+		if err != nil {
+			return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
+		return ok, nil
+	}
+	if m.storage.Exists(ctx, key) {
+		return false, nil
+	}
+	if err = m.storage.Set(ctx, key, bytesData, expiration); err != nil {
+		return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	return true, nil
+}
+
 // searchKeys searches storage keys by pattern with pagination. searchKeys 根据模式搜索存储键并分页。
 func (m *Manager) searchKeys(ctx context.Context, pattern string, start, size int) ([]string, error) {
 	// Require scanner storage capability 要求存储支持扫描能力。

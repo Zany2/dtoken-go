@@ -58,6 +58,132 @@ func TestManagerLoginWithOptionsStoresOverrides(t *testing.T) {
 	}
 }
 
+func TestManagerLoginWithOptionsRejectsDuplicateToken(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.IsConcurrent = true
+		cfg.IsShare = false
+	})
+
+	token, err := mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID:  "first-custom-token-user",
+		Device:   "web",
+		DeviceID: "first",
+		Token:    "duplicate-custom-token",
+	})
+	if err != nil {
+		t.Fatalf("first LoginWithOptions() error = %v", err)
+	}
+	if token != "duplicate-custom-token" {
+		t.Fatalf("first token = %q, want duplicate-custom-token", token)
+	}
+	if _, err = mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID:  "first-custom-token-user",
+		Device:   "mobile",
+		DeviceID: "second",
+		Token:    "duplicate-custom-token",
+	}); !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("second LoginWithOptions() error = %v, want ErrInvalidParam", err)
+	}
+	if err = mgr.CheckLogin(ctx, token); err != nil {
+		t.Fatalf("existing token CheckLogin() error = %v, want nil", err)
+	}
+	terminals, err := mgr.GetTerminalListByLoginID(ctx, "first-custom-token-user")
+	if err != nil {
+		t.Fatalf("GetTerminalListByLoginID() error = %v", err)
+	}
+	if len(terminals) != 1 || terminals[0].Token != token || terminals[0].Device != "web" {
+		t.Fatalf("terminals = %+v, want only original web terminal", terminals)
+	}
+}
+
+func TestManagerLoginWithOptionsNormalizesDeviceAndRejectsBlankToken(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.IsConcurrent = true
+		cfg.IsShare = true
+	})
+
+	token, err := mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID:  "normalize-options",
+		Device:   " web ",
+		DeviceID: " browser ",
+	})
+	if err != nil {
+		t.Fatalf("LoginWithOptions() error = %v", err)
+	}
+	terminal, err := mgr.GetTerminalInfoByToken(ctx, token)
+	if err != nil {
+		t.Fatalf("GetTerminalInfoByToken() error = %v", err)
+	}
+	if terminal.Device != "web" || terminal.DeviceId != "browser" {
+		t.Fatalf("terminal device = %q/%q, want web/browser", terminal.Device, terminal.DeviceId)
+	}
+	shared, err := mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID:  "normalize-options",
+		Device:   "web",
+		DeviceID: "browser",
+	})
+	if err != nil {
+		t.Fatalf("second LoginWithOptions() error = %v", err)
+	}
+	if shared != token {
+		t.Fatalf("shared token = %q, want %q", shared, token)
+	}
+	if _, err = mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID: "normalize-options",
+		Token:   "   ",
+	}); !errors.Is(err, derror.ErrInvalidToken) {
+		t.Fatalf("blank token LoginWithOptions() error = %v, want ErrInvalidToken", err)
+	}
+}
+
+func TestManagerLoginWithOptionsRollbackPreservesSessionTTL(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.Timeout = 60
+		cfg.IsConcurrent = true
+		cfg.IsShare = false
+	})
+
+	first, err := mgr.Login(ctx, "rollback-ttl", "web", "first")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	storage := requireManagerTestStorage(t, mgr)
+	sessionKey := mgr.getSessionKey("rollback-ttl")
+	if err = storage.Expire(ctx, sessionKey, 5*time.Second); err != nil {
+		t.Fatalf("Expire(session) error = %v", err)
+	}
+	mgr.storage = &managerTestFailingSetStorage{
+		managerTestStorage: storage.(*managerTestStorage),
+		failKey:            mgr.getTokenKey("rollback-token"),
+		failSetIfAbsent:    true,
+	}
+	if _, err = mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID: "rollback-ttl",
+		Device:  "mobile",
+		Token:   "rollback-token",
+		Timeout: time.Hour,
+	}); !errors.Is(err, derror.ErrStorageUnavailable) {
+		t.Fatalf("failed LoginWithOptions() error = %v, want ErrStorageUnavailable", err)
+	}
+	ttl, err := mgr.GetStorage().TTL(ctx, sessionKey)
+	if err != nil {
+		t.Fatalf("TTL(session) error = %v", err)
+	}
+	if ttl <= 0 || ttl > 5*time.Second {
+		t.Fatalf("session TTL after rollback = %v, want preserved <= 5s", ttl)
+	}
+	terminals, err := mgr.GetTerminalListByLoginID(ctx, "rollback-ttl")
+	if err != nil {
+		t.Fatalf("GetTerminalListByLoginID() error = %v", err)
+	}
+	if len(terminals) != 1 || terminals[0].Token != first {
+		t.Fatalf("terminals after rollback = %+v, want original token %q", terminals, first)
+	}
+}
+
 func TestManagerLoginWithOptionsOverridesConcurrencyPolicy(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {

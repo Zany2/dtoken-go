@@ -88,6 +88,51 @@ func (s *Storage) GetAndDelete(ctx context.Context, key string) (any, error) {
 	return val, nil
 }
 
+// GetAndDeleteMany atomically gets and deletes a key and deletes extra keys 原子地获取并删除主键，同时删除附加键
+func (s *Storage) GetAndDeleteMany(ctx context.Context, key string, deleteKeys ...string) (any, error) {
+	if err := s.ensureReady(); err != nil {
+		return nil, err
+	}
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	val, found := s.c.Get(key)
+	if !found {
+		return nil, nil
+	}
+
+	s.c.Delete(key)
+	for _, deleteKey := range deleteKeys {
+		s.c.Delete(deleteKey)
+	}
+	return val, nil
+}
+
+// SetIfAbsent stores a key only when it does not exist 仅当键不存在时写入
+func (s *Storage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	if err := s.ensureReady(); err != nil {
+		return false, err
+	}
+	if err := checkContext(ctx); err != nil {
+		return false, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, found := s.c.Get(key); found {
+		return false, nil
+	}
+	if expiration <= 0 {
+		s.c.Set(key, value, cache.NoExpiration)
+	} else {
+		s.c.Set(key, value, expiration)
+	}
+	return true, nil
+}
+
 // Delete removes one or more keys 删除一个或多个键
 func (s *Storage) Delete(ctx context.Context, keys ...string) error {
 	if len(keys) == 0 {

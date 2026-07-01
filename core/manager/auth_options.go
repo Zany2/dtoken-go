@@ -63,12 +63,25 @@ type TerminateOptions struct {
 	DeviceID string `json:"deviceId"`
 }
 
+// loginPolicy stores the effective login policy for one login call. loginPolicy 存储单次登录最终生效的登录策略。
 type loginPolicy struct {
-	isConcurrent          bool
-	isShare               bool
-	maxLoginCount         int64
-	replacedLoginExitMode config.ReplacedLoginExitMode
-	overflowLogoutMode    config.LogoutMode
+	isConcurrent          bool                         // isConcurrent controls whether multiple terminals may coexist. isConcurrent 控制是否允许多端共存。
+	isShare               bool                         // isShare controls whether same-device login may reuse a token. isShare 控制同设备登录是否可复用 Token。
+	maxLoginCount         int64                        // maxLoginCount limits terminal count in the configured scope. maxLoginCount 限制配置作用域内的终端数量。
+	replacedLoginExitMode config.ReplacedLoginExitMode // replacedLoginExitMode controls non-concurrent replacement behavior. replacedLoginExitMode 控制非并发登录的顶替行为。
+	overflowLogoutMode    config.LogoutMode            // overflowLogoutMode controls how overflowed terminals are retired. overflowLogoutMode 控制超限终端的下线方式。
+}
+
+// loginInternalOptions carries manager-only login controls. loginInternalOptions 承载 manager 内部登录控制参数。
+type loginInternalOptions struct {
+	skipConcurrencyControl bool // skipConcurrencyControl skips login concurrency handling. skipConcurrencyControl 跳过登录并发策略处理。
+}
+
+// concurrencyResult describes the outcome of concurrency handling. concurrencyResult 描述并发策略处理结果。
+type concurrencyResult struct {
+	reuseToken       string // reuseToken stores a shared token when login can reuse one. reuseToken 保存可复用的共享 Token。
+	handled          bool   // handled reports whether concurrency logic already took an action. handled 表示并发逻辑是否已经处理。
+	destroyedSession bool   // destroyedSession reports whether the whole old session was removed. destroyedSession 表示是否移除了整个旧会话。
 }
 
 // resolveLoginPolicy merges global config with per-login overrides resolveLoginPolicy 合并全局配置和单次登录覆盖项

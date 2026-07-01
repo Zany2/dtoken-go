@@ -107,6 +107,28 @@ func (s *Session) removeTerminalByToken(tokenValue string) (TerminalInfo, bool) 
 	return TerminalInfo{}, false
 }
 
+// removeLatestTerminalByToken removes the newest terminal by token. removeLatestTerminalByToken 根据 token 值移除最新的终端信息。
+func (s *Session) removeLatestTerminalByToken(tokenValue string) (TerminalInfo, bool) {
+	// Validate token value. 校验 Token 值。
+	if tokenValue == "" {
+		return TerminalInfo{}, false
+	}
+
+	// Search matched terminal from newest to oldest. 从新到旧查找匹配终端。
+	for i := len(s.TerminalInfos) - 1; i >= 0; i-- {
+		ti := s.TerminalInfos[i]
+		if ti.Token == tokenValue {
+			removed := ti
+			// Remove matched terminal while preserving order. 保持顺序移除匹配终端。
+			s.TerminalInfos = append(s.TerminalInfos[:i], s.TerminalInfos[i+1:]...)
+			return removed, true
+		}
+	}
+
+	// Return not found. 返回未找到。
+	return TerminalInfo{}, false
+}
+
 // removeTerminalByDevice removes terminals by device. removeTerminalByDevice 根据设备类型移除全部匹配终端。
 func (s *Session) removeTerminalByDevice(device string) []TerminalInfo {
 	return s.removeTerminals(func(ti TerminalInfo) bool {

@@ -291,6 +291,16 @@ func (s *testStorage) Ping(ctx context.Context) error { return nil }
 // GetAndDelete gets and deletes a key atomically GetAndDelete 原子读取并删除键
 func (s *testStorage) GetAndDelete(ctx context.Context, key string) (any, error) { return nil, nil }
 
+// GetAndDeleteMany gets and deletes a key and extra keys atomically GetAndDeleteMany 原子读取并删除主键和附加键
+func (s *testStorage) GetAndDeleteMany(ctx context.Context, key string, deleteKeys ...string) (any, error) {
+	return nil, nil
+}
+
+// SetIfAbsent stores a key only when absent SetIfAbsent 仅当键不存在时写入
+func (s *testStorage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	return true, nil
+}
+
 // testBasicStorage provides storage without optional atomic capability testBasicStorage 提供不带可选原子能力的存储
 type testBasicStorage struct{}
 

@@ -312,6 +312,25 @@ func (s *authcheckTestStorage) GetAndDelete(ctx context.Context, key string) (an
 	return value, nil
 }
 
+func (s *authcheckTestStorage) GetAndDeleteMany(ctx context.Context, key string, deleteKeys ...string) (any, error) {
+	value, err := s.GetAndDelete(ctx, key)
+	if err != nil || value == nil {
+		return value, err
+	}
+	_ = s.Delete(ctx, deleteKeys...)
+	return value, nil
+}
+
+func (s *authcheckTestStorage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	if s.Exists(ctx, key) {
+		return false, nil
+	}
+	if err := s.Set(ctx, key, value, expiration); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *authcheckTestStorage) Keys(_ context.Context, pattern string) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

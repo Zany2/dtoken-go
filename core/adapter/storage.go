@@ -35,6 +35,10 @@ type Storage interface {
 type AtomicStorage interface {
 	// GetAndDelete gets and deletes key atomically. GetAndDelete 原子地读取并删除键。
 	GetAndDelete(ctx context.Context, key string) (any, error)
+	// GetAndDeleteMany gets and deletes key, then deletes extra keys atomically. GetAndDeleteMany 原子地读取并删除主键，同时删除附加键。
+	GetAndDeleteMany(ctx context.Context, key string, deleteKeys ...string) (any, error)
+	// SetIfAbsent stores a key only when it does not exist. SetIfAbsent 仅在键不存在时写入键值。
+	SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error)
 }
 
 // ScannerStorage defines optional key scanning capability. ScannerStorage 定义可选的键扫描能力。

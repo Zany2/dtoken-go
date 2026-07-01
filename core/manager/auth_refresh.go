@@ -16,6 +16,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/utils"
 )
 
+// refreshTokenByteLength defines random byte length before hex encoding. refreshTokenByteLength 定义十六进制编码前的随机字节长度。
 const refreshTokenByteLength = 32
 
 // RefreshTokenOptions describes refresh-token login options. RefreshTokenOptions 描述刷新令牌登录选项。
@@ -72,11 +73,26 @@ func (m *Manager) LoginWithRefreshTokenOptions(ctx context.Context, opts Refresh
 	return pair, nil
 }
 
+// loginWithRefreshTokenOptions logs in and issues refresh token pair. loginWithRefreshTokenOptions 登录并签发刷新令牌对。
 func (m *Manager) loginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions) (*RefreshTokenPair, error) {
-	accessToken, err := m.LoginWithOptions(ctx, opts.LoginOptions)
+	return m.loginWithRefreshTokenOptionsInternal(ctx, opts, loginInternalOptions{})
+}
+
+// loginWithRefreshTokenOptionsInternal logs in and issues a refresh token with internal login controls. loginWithRefreshTokenOptionsInternal 使用内部登录控制参数登录并签发刷新令牌。
+func (m *Manager) loginWithRefreshTokenOptionsInternal(ctx context.Context, opts RefreshTokenOptions, internal loginInternalOptions) (*RefreshTokenPair, error) {
+	// Disable sharing so refresh-token login always owns a dedicated access token. 禁用共享，确保刷新令牌登录独占新的访问 Token。
+	isShare := false
+	opts.LoginOptions.IsShare = &isShare
+	accessToken, err := m.loginWithOptionsInternal(ctx, opts.LoginOptions, internal)
 	if err != nil {
 		return nil, err
 	}
+	// Remove stale refresh mapping before issuing the new pair. 签发新令牌对前清理旧的刷新令牌映射。
+	if err = m.cleanRefreshTokenByAccessToken(ctx, accessToken); err != nil {
+		_ = m.Logout(ctx, accessToken)
+		return nil, err
+	}
+	// Roll back access token when refresh token persistence fails. 刷新令牌持久化失败时回滚访问 Token。
 	pair, err := m.issueRefreshToken(ctx, accessToken, opts.RefreshTimeout)
 	if err != nil {
 		_ = m.Logout(ctx, accessToken)
@@ -87,13 +103,16 @@ func (m *Manager) loginWithRefreshTokenOptions(ctx context.Context, opts Refresh
 
 // RefreshToken rotates a refresh token and returns a new token pair. RefreshToken 轮换刷新令牌并返回新的令牌对。
 func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*RefreshTokenPair, error) {
+	// Load refresh token metadata before consuming it. 消费刷新令牌前先加载其元数据。
 	info, err := m.getRefreshTokenInfo(ctx, refreshToken)
 	if err != nil {
 		return nil, err
 	}
+	// Reject malformed refresh token records. 拒绝不完整的刷新令牌记录。
 	if info.LoginID == "" {
 		return nil, derror.ErrInvalidRefreshToken
 	}
+	// Recheck account and device status at rotation time. 轮换时重新检查账号和设备状态。
 	if m.isDisable(ctx, info.LoginID) {
 		return nil, derror.ErrAccountDisabled
 	}
@@ -101,22 +120,21 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 		return nil, derror.ErrDeviceDisabled
 	}
 
-	_ = m.Logout(ctx, info.AccessToken)
-	// Atomically consume refresh token to prevent concurrent replay 原子消费刷新令牌，防止并发重放
-	if atomicStorage, ok := m.storage.(adapter.AtomicStorage); ok {
-		existing, delErr := atomicStorage.GetAndDelete(ctx, m.getRefreshTokenKey(refreshToken))
-		if delErr != nil {
-			return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, delErr)
-		}
-		if existing == nil {
-			return nil, derror.ErrInvalidRefreshToken
-		}
-		_ = m.storage.Delete(ctx, m.getTokenRefreshKey(info.AccessToken))
-	} else {
-		_ = m.storage.Delete(ctx, m.getRefreshTokenKey(refreshToken), m.getTokenRefreshKey(info.AccessToken))
+	// Atomically consume refresh token to prevent concurrent replay 原子消费刷新令牌，防止并发重放。
+	atomicStorage, ok := m.storage.(adapter.AtomicStorage)
+	if !ok {
+		return nil, fmt.Errorf("%w: refresh token rotation requires atomic storage", derror.ErrStorageUnavailable)
+	}
+	existing, delErr := atomicStorage.GetAndDeleteMany(ctx, m.getRefreshTokenKey(refreshToken), m.getTokenRefreshKey(info.AccessToken))
+	if delErr != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, delErr)
+	}
+	if existing == nil {
+		return nil, derror.ErrInvalidRefreshToken
 	}
 
-	pair, err := m.loginWithRefreshTokenOptions(ctx, RefreshTokenOptions{
+	// Create the replacement pair without applying normal concurrency eviction again. 创建替换令牌对时跳过常规并发顶替处理。
+	pair, err := m.loginWithRefreshTokenOptionsInternal(ctx, RefreshTokenOptions{
 		LoginOptions: LoginOptions{
 			LoginID:       info.LoginID,
 			Device:        info.Device,
@@ -126,8 +144,12 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 			Extra:         info.Extra,
 		},
 		RefreshTimeout: secondsToDuration(info.ExpiresIn),
-	})
+	}, loginInternalOptions{skipConcurrencyControl: true})
 	if err != nil {
+		return nil, err
+	}
+	// Retire old access token after the replacement pair is available. 新令牌对可用后再下线旧访问 Token。
+	if err = m.logoutRotatedAccessToken(ctx, info.AccessToken, pair); err != nil {
 		return nil, err
 	}
 	m.triggerRefreshTokenEvent(listener.EventRefreshTokenRotate, pair, listener.ActionRotate)
@@ -136,9 +158,11 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 
 // RevokeRefreshToken revokes a refresh token and its related access token. RevokeRefreshToken 撤销刷新令牌及其关联访问令牌。
 func (m *Manager) RevokeRefreshToken(ctx context.Context, refreshToken string) error {
+	// Treat empty revoke requests as idempotent no-op. 空撤销请求按幂等空操作处理。
 	if refreshToken == "" {
 		return nil
 	}
+	// Load refresh metadata and ignore already-invalid tokens. 加载刷新元数据，并忽略已失效的令牌。
 	info, err := m.getRefreshTokenInfo(ctx, refreshToken)
 	if err != nil {
 		if errors.Is(err, derror.ErrInvalidRefreshToken) {
@@ -147,8 +171,12 @@ func (m *Manager) RevokeRefreshToken(ctx context.Context, refreshToken string) e
 		return err
 	}
 	if info.AccessToken != "" {
-		_ = m.Logout(ctx, info.AccessToken)
+		// Revoke the related access token first when it is still active. 关联访问 Token 仍有效时优先撤销它。
+		if err = m.Logout(ctx, info.AccessToken); err != nil && !isTokenInactiveError(err) {
+			return err
+		}
 	}
+	// Delete both refresh token and reverse lookup keys. 同时删除刷新令牌键和反向索引键。
 	err = m.storage.Delete(ctx, m.getRefreshTokenKey(refreshToken), m.getTokenRefreshKey(info.AccessToken))
 	if err == nil {
 		m.triggerEvent(listener.EventRefreshTokenRevoke, info.LoginID, info.Device, info.DeviceID, info.AccessToken, map[string]any{
@@ -173,19 +201,23 @@ func (m *Manager) GetRefreshTokenTTL(ctx context.Context, refreshToken string) (
 
 // issueRefreshToken creates a refresh token for an existing access token. issueRefreshToken 为已有访问令牌创建刷新令牌。
 func (m *Manager) issueRefreshToken(ctx context.Context, accessToken string, refreshTimeout time.Duration) (*RefreshTokenPair, error) {
+	// Load access token metadata used to bind the refresh token. 加载用于绑定刷新令牌的访问 Token 元数据。
 	tokenInfo, err := m.getTokenInfo(ctx, accessToken)
 	if err != nil {
 		return nil, err
 	}
+	// Read access token TTL for response payload. 读取访问 Token TTL 用于响应载荷。
 	accessTTL, err := m.GetTokenTTL(ctx, accessToken)
 	if err != nil {
 		return nil, err
 	}
 
+	// Generate an opaque refresh token value. 生成不透明刷新令牌值。
 	refreshToken, err := generateRefreshToken()
 	if err != nil {
 		return nil, err
 	}
+	// Persist refresh metadata with the configured lifetime. 按配置生命周期持久化刷新令牌元数据。
 	expiration := m.resolveRefreshTokenExpiration(refreshTimeout)
 	info := RefreshTokenInfo{
 		AuthType:    m.config.AuthType,
@@ -199,14 +231,20 @@ func (m *Manager) issueRefreshToken(ctx context.Context, accessToken string, ref
 		ActiveTTL:   tokenInfo.ActiveTimeout,
 		Extra:       tokenInfo.Extra,
 	}
-	if err = m.saveToStorage(ctx, m.getRefreshTokenKey(refreshToken), info, expiration); err != nil {
+	saved, err := m.saveToStorageIfAbsent(ctx, m.getRefreshTokenKey(refreshToken), info, expiration)
+	if err != nil {
 		return nil, err
 	}
+	if !saved {
+		return nil, fmt.Errorf("%w: refresh token already exists", derror.ErrStorageUnavailable)
+	}
+	// Store reverse lookup from access token to refresh token. 存储访问 Token 到刷新令牌的反向索引。
 	if err = m.storage.Set(ctx, m.getTokenRefreshKey(accessToken), refreshToken, m.resolveTokenExpiration(tokenInfo)); err != nil {
 		_ = m.storage.Delete(ctx, m.getRefreshTokenKey(refreshToken))
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
+	// Read final refresh TTL because storage may normalize expiration values. 读取最终刷新 TTL，因为存储层可能会规范化过期值。
 	refreshTTL, err := m.GetRefreshTokenTTL(ctx, refreshToken)
 	if err != nil {
 		return nil, err
@@ -266,6 +304,24 @@ func (m *Manager) cleanRefreshTokenByAccessToken(ctx context.Context, accessToke
 	return m.storage.Delete(ctx, m.getRefreshTokenKey(refreshToken), m.getTokenRefreshKey(accessToken))
 }
 
+// logoutRotatedAccessToken logs out old access token after rotation. logoutRotatedAccessToken 在轮换后登出旧访问令牌。
+func (m *Manager) logoutRotatedAccessToken(ctx context.Context, oldAccessToken string, pair *RefreshTokenPair) error {
+	if oldAccessToken == "" {
+		return nil
+	}
+	if err := m.Logout(ctx, oldAccessToken); err != nil {
+		if isTokenInactiveError(err) {
+			return nil
+		}
+		if pair != nil {
+			_ = m.cleanRefreshTokenByAccessToken(ctx, pair.AccessToken)
+			_ = m.Logout(ctx, pair.AccessToken)
+		}
+		return err
+	}
+	return nil
+}
+
 // resolveRefreshTokenExpiration resolves refresh token ttl. resolveRefreshTokenExpiration 解析刷新令牌有效期。
 func (m *Manager) resolveRefreshTokenExpiration(timeout time.Duration) time.Duration {
 	if timeout > 0 {
@@ -286,6 +342,7 @@ func generateRefreshToken() (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
+// triggerRefreshTokenEvent emits refresh-token lifecycle events. triggerRefreshTokenEvent 触发刷新令牌生命周期事件。
 func (m *Manager) triggerRefreshTokenEvent(event listener.Event, pair *RefreshTokenPair, action string) {
 	if pair == nil {
 		return

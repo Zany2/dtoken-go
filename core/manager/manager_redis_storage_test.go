@@ -18,6 +18,15 @@ const (
 	managerRedisTestDatabase = 0
 )
 
+var managerRedisGetAndDeleteManyScript = redis.NewScript(`
+local value = redis.call("GET", KEYS[1])
+if not value then
+	return false
+end
+redis.call("DEL", unpack(KEYS))
+return value
+`)
+
 var _ adapter.FullStorage = (*managerRedisTestStorage)(nil)
 
 type managerRedisTestStorage struct {
@@ -123,6 +132,30 @@ func (s *managerRedisTestStorage) GetAndDelete(ctx context.Context, key string) 
 		return nil, err
 	}
 	return value, nil
+}
+
+func (s *managerRedisTestStorage) GetAndDeleteMany(ctx context.Context, key string, deleteKeys ...string) (any, error) {
+	keys := make([]string, 0, len(deleteKeys)+1)
+	keys = append(keys, key)
+	keys = append(keys, deleteKeys...)
+	value, err := managerRedisGetAndDeleteManyScript.Run(ctx, s.client, keys).Result()
+	if errors.Is(err, redis.Nil) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if value == nil {
+		return nil, nil
+	}
+	if missing, ok := value.(bool); ok && !missing {
+		return nil, nil
+	}
+	return value, nil
+}
+
+func (s *managerRedisTestStorage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	return s.client.SetNX(ctx, key, value, normalizeManagerRedisTestExpiration(expiration)).Result()
 }
 
 func (s *managerRedisTestStorage) Keys(ctx context.Context, pattern string) ([]string, error) {

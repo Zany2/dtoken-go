@@ -1096,6 +1096,40 @@ func (s *contextTestStorage) GetAndDelete(_ stdctx.Context, key string) (any, er
 	return item.value, nil
 }
 
+func (s *contextTestStorage) GetAndDeleteMany(ctx stdctx.Context, key string, deleteKeys ...string) (any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if !ok {
+		return nil, nil
+	}
+	delete(s.items, key)
+	if item.expired() {
+		return nil, nil
+	}
+	for _, deleteKey := range deleteKeys {
+		delete(s.items, deleteKey)
+	}
+	return item.value, nil
+}
+
+func (s *contextTestStorage) SetIfAbsent(ctx stdctx.Context, key string, value any, expiration time.Duration) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if ok && !item.expired() {
+		return false, nil
+	}
+	var expireAt time.Time
+	if expiration > 0 {
+		expireAt = time.Now().Add(expiration)
+	}
+	s.items[key] = contextTestStorageItem{value: value, expireAt: expireAt}
+	return true, nil
+}
+
 func (s *contextTestStorage) Keys(_ stdctx.Context, pattern string) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -8,6 +8,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/listener"
+	"strings"
 	"time"
 )
 
@@ -35,6 +36,11 @@ func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout 
 
 // LoginWithOptions performs user login with per-call options. LoginWithOptions 使用单次登录选项执行登录。
 func (m *Manager) LoginWithOptions(ctx context.Context, opts LoginOptions) (string, error) {
+	return m.loginWithOptionsInternal(ctx, opts, loginInternalOptions{})
+}
+
+// loginWithOptionsInternal performs login with internal control flags. loginWithOptionsInternal 使用内部控制参数执行登录。
+func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOptions, internal loginInternalOptions) (string, error) {
 	// Validate login ID 校验登录 ID。
 	if opts.LoginID == "" {
 		return "", derror.ErrIDIsEmpty
@@ -51,7 +57,11 @@ func (m *Manager) LoginWithOptions(ctx context.Context, opts LoginOptions) (stri
 	}
 
 	// Parse device fields 解析设备字段。
-	device, deviceId := opts.Device, opts.DeviceID
+	device, deviceId := strings.TrimSpace(opts.Device), strings.TrimSpace(opts.DeviceID)
+	token := strings.TrimSpace(opts.Token)
+	if opts.Token != "" && token == "" {
+		return "", derror.ErrInvalidToken
+	}
 	// Reject disabled device 拒绝已封禁设备。
 	if m.isDisableDeviceMatch(ctx, opts.LoginID, device, deviceId) {
 		return "", derror.ErrDeviceDisabled
@@ -67,45 +77,45 @@ func (m *Manager) LoginWithOptions(ctx context.Context, opts LoginOptions) (stri
 		return "", err
 	}
 
-	destroyedSession := false // destroyedSession records whether old terminals removed the whole session destroyedSession 记录旧终端是否清空整个会话
+	// Track whether concurrency handling removed the whole session. 记录并发处理是否移除了整个会话。
+	destroyedSession := false
 
 	// Handle concurrency strategy 处理并发策略
-	if sess != nil {
-		token, handled, sessionDestroyed, handleErr := m.handleConcurrency(ctx, sess, opts.LoginID, device, deviceId, m.resolveLoginPolicy(opts))
-		if handleErr != nil {
-			return "", handleErr
+	if sess != nil && !internal.skipConcurrencyControl {
+		result, err := m.handleConcurrency(ctx, sess, opts.LoginID, device, deviceId, m.resolveLoginPolicy(opts))
+		if err != nil {
+			return "", err
 		}
 		// Record session destroy result 记录会话销毁结果。
-		destroyedSession = sessionDestroyed
-		if handled {
+		destroyedSession = result.destroyedSession
+		if result.handled {
 			// Return shared token when reused 复用时直接返回共享 Token。
-			if token != "" {
+			if result.reuseToken != "" {
 				// Release lock before events 触发事件前释放锁。
 				unlock()
 				unlock = func() {}
 
 				// Trigger shared login event 触发共享 Token 登录事件。
-				m.triggerEvent(listener.EventLogin, opts.LoginID, device, deviceId, token, map[string]any{
+				m.triggerEvent(listener.EventLogin, opts.LoginID, device, deviceId, result.reuseToken, map[string]any{
 					listener.ExtraKeyShared: true,
 				})
-				return token, nil // 复用 token
+				return result.reuseToken, nil // 复用 token
 			}
 		}
 	}
 
 	// Generate new token 生成新 token
-	token := opts.Token
 	if token == "" {
 		token, err = m.generator.Generate(opts.LoginID, device, deviceId)
 		if err != nil {
 			return "", err
 		}
 	}
-
 	// Record create time 记录创建时间
 	createTime := time.Now().Unix()
 
-	createdSession := sess == nil || destroyedSession // createdSession records whether this login creates a new session createdSession 记录本次登录是否创建新会话
+	// Determine whether this login needs a fresh session object. 判断本次登录是否需要创建新的会话对象。
+	createdSession := sess == nil || destroyedSession
 	if createdSession {
 		// Initialize new session 初始化新会话。
 		sess = m.strategy.normalize().CreateSession(m.config.AuthType, opts.LoginID, createTime)
@@ -132,13 +142,18 @@ func (m *Manager) LoginWithOptions(ctx context.Context, opts LoginOptions) (stri
 		expiration = opts.Timeout
 	}
 
+	// Capture original session TTL so failure rollback can preserve lifetime. 捕获原始 Session TTL，便于失败回滚时保持生命周期。
+	originalSessionTTL, ttlErr := m.storage.TTL(ctx, m.getSessionKey(opts.LoginID))
+	if ttlErr != nil {
+		return "", fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, ttlErr)
+	}
 	// Save session without shortening existing TTL 保存 session，避免缩短已有 TTL
 	if err = m.saveSessionWithMinTTL(ctx, m.getSessionKey(opts.LoginID), *sess, expiration); err != nil {
 		return "", err
 	}
 
-	// Save token info 保存 token info
-	if err = m.saveToStorage(ctx, m.getTokenKey(token), TokenInfo{
+	// Build persisted token metadata from normalized login inputs. 根据规范化后的登录输入构建持久化 Token 元数据。
+	tokenInfo := TokenInfo{
 		AuthType:      m.config.AuthType,
 		LoginID:       opts.LoginID,
 		Device:        device,
@@ -147,25 +162,11 @@ func (m *Manager) LoginWithOptions(ctx context.Context, opts LoginOptions) (stri
 		Timeout:       m.timeoutToSeconds(expiration),
 		ActiveTimeout: m.activeTimeoutToSeconds(opts.ActiveTimeout),
 		Extra:         opts.Extra,
-	}, expiration); err != nil {
-		m.rollbackLogin(ctx, sess, opts.LoginID, token, expiration)
-		return "", err
 	}
 
-	// Initialize token metadata 初始化 token 元数据
-	if m.config.RenewInterval > 0 {
-		// Initialize renew marker 初始化续期标记。
-		if err = m.storage.Set(ctx, m.getRenewKey(token), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {
-			m.rollbackLogin(ctx, sess, opts.LoginID, token, expiration)
-			return "", fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-		}
-	}
-	if m.resolveActiveTimeoutFromSeconds(m.activeTimeoutToSeconds(opts.ActiveTimeout)) > 0 {
-		// Initialize active marker 初始化活跃标记。
-		if err = m.storage.Set(ctx, m.getActiveKey(token), time.Now().Unix(), expiration); err != nil {
-			m.rollbackLogin(ctx, sess, opts.LoginID, token, expiration)
-			return "", fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-		}
+	// Persist token data and clean this login's partial writes on failure. 持久化 Token 数据，并在失败时清理本次登录的部分写入。
+	if err = m.persistLoginToken(ctx, sess, opts.LoginID, token, tokenInfo, expiration, originalSessionTTL); err != nil {
+		return "", err
 	}
 
 	// Release lock before events 触发事件前释放锁。
@@ -185,6 +186,50 @@ func (m *Manager) LoginWithOptions(ctx context.Context, opts LoginOptions) (stri
 	m.triggerEvent(listener.EventLogin, opts.LoginID, device, deviceId, token, nil)
 
 	return token, nil
+}
+
+// persistLoginToken saves token data and initializes token metadata. persistLoginToken 保存 Token 数据并初始化 Token 元数据。
+func (m *Manager) persistLoginToken(
+	ctx context.Context,
+	sess *Session,
+	loginID, token string,
+	tokenInfo TokenInfo,
+	expiration time.Duration,
+	originalSessionTTL time.Duration,
+) error {
+	// Reject collisions with legacy token keys before writing the canonical key. 写入标准 Token 键前先拒绝旧版 Token 键冲突。
+	if m.storage.Exists(ctx, m.getLegacyTokenKey(token)) {
+		m.rollbackLoginSession(ctx, sess, loginID, token, originalSessionTTL)
+		return fmt.Errorf("%w: token already exists", derror.ErrInvalidParam)
+	}
+
+	// Save token info 保存 token info
+	saved, err := m.saveToStorageIfAbsent(ctx, m.getTokenKey(token), tokenInfo, expiration)
+	if err != nil {
+		m.rollbackLoginSession(ctx, sess, loginID, token, originalSessionTTL)
+		return err
+	}
+	if !saved {
+		m.rollbackLoginSession(ctx, sess, loginID, token, originalSessionTTL)
+		return fmt.Errorf("%w: token already exists", derror.ErrInvalidParam)
+	}
+
+	// Initialize token metadata 初始化 token 元数据
+	if m.config.RenewInterval > 0 {
+		// Initialize renew marker 初始化续期标记。
+		if err = m.storage.Set(ctx, m.getRenewKey(token), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {
+			m.rollbackLogin(ctx, sess, loginID, token, originalSessionTTL)
+			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
+	}
+	if m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout) > 0 {
+		// Initialize active marker 初始化活跃标记。
+		if err = m.storage.Set(ctx, m.getActiveKey(token), time.Now().Unix(), expiration); err != nil {
+			m.rollbackLogin(ctx, sess, loginID, token, originalSessionTTL)
+			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
+	}
+	return nil
 }
 
 // LoginByToken performs login renewal based on an existing token. LoginByToken 根据 Token 续期登录。

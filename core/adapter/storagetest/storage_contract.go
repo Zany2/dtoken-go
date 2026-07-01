@@ -68,6 +68,71 @@ func RunStorageContract(t *testing.T, factory StorageFactory) {
 		}
 	})
 
+	t.Run("atomic get delete many", func(t *testing.T) {
+		ctx := context.Background()
+		storage := factory(t)
+
+		if err := storage.Set(ctx, "contract:atomic:primary", "value", 0); err != nil {
+			t.Fatalf("Set(primary) error = %v", err)
+		}
+		if err := storage.Set(ctx, "contract:atomic:extra1", "a", 0); err != nil {
+			t.Fatalf("Set(extra1) error = %v", err)
+		}
+		if err := storage.Set(ctx, "contract:atomic:extra2", "b", 0); err != nil {
+			t.Fatalf("Set(extra2) error = %v", err)
+		}
+		got, err := storage.GetAndDeleteMany(ctx, "contract:atomic:primary", "contract:atomic:extra1", "contract:atomic:extra2")
+		if err != nil {
+			t.Fatalf("GetAndDeleteMany() error = %v", err)
+		}
+		if got != "value" {
+			t.Fatalf("GetAndDeleteMany() = %v, want value", got)
+		}
+		if storage.Exists(ctx, "contract:atomic:primary") ||
+			storage.Exists(ctx, "contract:atomic:extra1") ||
+			storage.Exists(ctx, "contract:atomic:extra2") {
+			t.Fatal("GetAndDeleteMany() should remove primary and extra keys")
+		}
+
+		if err := storage.Set(ctx, "contract:atomic:extra3", "c", 0); err != nil {
+			t.Fatalf("Set(extra3) error = %v", err)
+		}
+		got, err = storage.GetAndDeleteMany(ctx, "contract:atomic:missing", "contract:atomic:extra3")
+		if err != nil || got != nil {
+			t.Fatalf("GetAndDeleteMany(missing) = %v, %v, want nil nil", got, err)
+		}
+		if !storage.Exists(ctx, "contract:atomic:extra3") {
+			t.Fatal("GetAndDeleteMany(missing) should keep extra keys")
+		}
+	})
+
+	t.Run("atomic set if absent", func(t *testing.T) {
+		ctx := context.Background()
+		storage := factory(t)
+
+		ok, err := storage.SetIfAbsent(ctx, "contract:setnx", "first", 0)
+		if err != nil {
+			t.Fatalf("SetIfAbsent(first) error = %v", err)
+		}
+		if !ok {
+			t.Fatal("SetIfAbsent(first) = false, want true")
+		}
+		ok, err = storage.SetIfAbsent(ctx, "contract:setnx", "second", 0)
+		if err != nil {
+			t.Fatalf("SetIfAbsent(second) error = %v", err)
+		}
+		if ok {
+			t.Fatal("SetIfAbsent(second) = true, want false")
+		}
+		got, err := storage.Get(ctx, "contract:setnx")
+		if err != nil {
+			t.Fatalf("Get(setnx) error = %v", err)
+		}
+		if got != "first" {
+			t.Fatalf("Get(setnx) = %v, want first", got)
+		}
+	})
+
 	t.Run("ttl and expire", func(t *testing.T) {
 		ctx := context.Background()
 		storage := factory(t)

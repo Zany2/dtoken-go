@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
 )
@@ -175,6 +176,126 @@ func TestManagerRefreshTokenExpires(t *testing.T) {
 	}
 	if ttl, err := mgr.GetRefreshTokenTTL(ctx, pair.RefreshToken); err != nil || ttl != -2 {
 		t.Fatalf("GetRefreshTokenTTL(expired) = %d, %v, want -2, nil", ttl, err)
+	}
+}
+
+// TestManagerRefreshTokenLoginDoesNotShareAccessToken verifies refresh-token login always gets an independent access token. TestManagerRefreshTokenLoginDoesNotShareAccessToken 验证刷新令牌登录不会共享 access token。
+func TestManagerRefreshTokenLoginDoesNotShareAccessToken(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.Timeout = 60
+		cfg.RefreshTokenTimeout = 60
+		cfg.IsShare = true
+	})
+
+	first, err := mgr.LoginWithRefreshToken(ctx, "refresh-share", "web", "browser")
+	if err != nil {
+		t.Fatalf("first LoginWithRefreshToken() error = %v", err)
+	}
+	second, err := mgr.LoginWithRefreshToken(ctx, "refresh-share", "web", "browser")
+	if err != nil {
+		t.Fatalf("second LoginWithRefreshToken() error = %v", err)
+	}
+	if second.AccessToken == first.AccessToken {
+		t.Fatalf("second access token = %q, want independent token", second.AccessToken)
+	}
+	if _, err = mgr.RefreshToken(ctx, first.RefreshToken); err != nil {
+		t.Fatalf("RefreshToken(first refresh token) error = %v", err)
+	}
+	if _, err = mgr.RefreshToken(ctx, second.RefreshToken); err != nil {
+		t.Fatalf("RefreshToken(second refresh token) error = %v", err)
+	}
+}
+
+// TestManagerRefreshTokenKeepsOldAccessTokenOnNewTokenFailure verifies old access token is kept when rotation fails. TestManagerRefreshTokenKeepsOldAccessTokenOnNewTokenFailure 验证轮换失败时旧 access token 仍保留。
+func TestManagerRefreshTokenKeepsOldAccessTokenOnNewTokenFailure(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.DefaultConfig()
+	cfg.IsPrintBanner = false
+	cfg.IsLog = false
+	cfg.AsyncEvent = false
+	cfg.AutoRenew = false
+	cfg.RenewInterval = config.NoLimit
+	cfg.ActiveTimeout = config.NoLimit
+	cfg.Timeout = 60
+	cfg.RefreshTokenTimeout = 60
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("test config invalid: %v", err)
+	}
+
+	mgr := NewManager(
+		cfg,
+		&managerTestGenerator{},
+		newManagerTestStorage(),
+		managerTestCodec{},
+		adapter.NewNopLogger(),
+		nil,
+		nil,
+	)
+	t.Cleanup(mgr.CloseManager)
+
+	pair, err := mgr.LoginWithRefreshToken(ctx, "refresh-rollback", "web")
+	if err != nil {
+		t.Fatalf("LoginWithRefreshToken() error = %v", err)
+	}
+	baseStorage := requireManagerTestStorage(t, mgr).(*managerTestStorage)
+	mgr.storage = &managerTestFailingSetStorage{
+		managerTestStorage: baseStorage,
+		failKey:            mgr.getTokenKey("token-refresh-rollback-web--2"),
+		failSetIfAbsent:    true,
+	}
+	if _, err = mgr.RefreshToken(ctx, pair.RefreshToken); !errors.Is(err, derror.ErrStorageUnavailable) {
+		t.Fatalf("RefreshToken() error = %v, want ErrStorageUnavailable", err)
+	}
+	if err = mgr.CheckLogin(ctx, pair.AccessToken); err != nil {
+		t.Fatalf("old access token CheckLogin() error = %v, want nil", err)
+	}
+}
+
+// TestManagerRefreshTokenSkipsConcurrencyBeforeNewPairSucceeds verifies rotation failure does not replace old access. TestManagerRefreshTokenSkipsConcurrencyBeforeNewPairSucceeds 验证轮换失败不会提前顶替旧 access。
+func TestManagerRefreshTokenSkipsConcurrencyBeforeNewPairSucceeds(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.DefaultConfig()
+	cfg.IsPrintBanner = false
+	cfg.IsLog = false
+	cfg.AsyncEvent = false
+	cfg.AutoRenew = false
+	cfg.RenewInterval = config.NoLimit
+	cfg.ActiveTimeout = config.NoLimit
+	cfg.Timeout = 60
+	cfg.RefreshTokenTimeout = 60
+	cfg.IsConcurrent = false
+	cfg.ConcurrencyScope = config.ConcurrencyScopeAccount
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("test config invalid: %v", err)
+	}
+
+	mgr := NewManager(
+		cfg,
+		&managerTestGenerator{},
+		newManagerTestStorage(),
+		managerTestCodec{},
+		adapter.NewNopLogger(),
+		nil,
+		nil,
+	)
+	t.Cleanup(mgr.CloseManager)
+
+	pair, err := mgr.LoginWithRefreshToken(ctx, "refresh-no-replace-before-success", "web")
+	if err != nil {
+		t.Fatalf("LoginWithRefreshToken() error = %v", err)
+	}
+	baseStorage := requireManagerTestStorage(t, mgr).(*managerTestStorage)
+	mgr.storage = &managerTestFailingSetStorage{
+		managerTestStorage: baseStorage,
+		failKeyPrefix:      mgr.getRefreshTokenKey(""),
+		failSetIfAbsent:    true,
+	}
+	if _, err = mgr.RefreshToken(ctx, pair.RefreshToken); !errors.Is(err, derror.ErrStorageUnavailable) {
+		t.Fatalf("RefreshToken() error = %v, want ErrStorageUnavailable", err)
+	}
+	if err = mgr.CheckLogin(ctx, pair.AccessToken); err != nil {
+		t.Fatalf("old access token CheckLogin() error = %v, want nil", err)
 	}
 }
 
