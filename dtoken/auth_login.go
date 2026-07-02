@@ -316,6 +316,15 @@ func (a *Auth) GetDevice(ctx context.Context, token string) (string, error) {
 	return mgr.GetDevice(ctx, token)
 }
 
+// GetDeviceAndDeviceId resolves device and device id from token. GetDeviceAndDeviceId 根据 Token 解析设备类型和设备 ID。
+func (a *Auth) GetDeviceAndDeviceId(ctx context.Context, token string) (string, string, error) {
+	mgr, err := a.requireManager()
+	if err != nil {
+		return "", "", err
+	}
+	return mgr.GetDeviceAndDeviceId(ctx, token)
+}
+
 // GetDeviceId resolves device id from token. GetDeviceId 根据 Token 解析设备 ID。
 func (a *Auth) GetDeviceId(ctx context.Context, token string) (string, error) {
 	mgr, err := a.requireManager()

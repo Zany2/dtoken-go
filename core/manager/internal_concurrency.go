@@ -34,7 +34,7 @@ func (m *Manager) handleConcurrency(
 				terminals = sess.getTerminalsByDevice(device)
 			}
 			// Check active terminal 检查是否存在活跃终端。
-			hasActiveTerminal, activeErr := m.hasActiveTerminal(ctx, terminals)
+			hasActiveTerminal, activeErr := m.hasActiveTerminal(ctx, terminals, sess)
 			if activeErr != nil {
 				return concurrencyResult{}, activeErr
 			}
@@ -132,13 +132,22 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 	// Reuse latest alive token 复用最后一个仍在线的 token
 	// Scan candidates from newest to oldest 从新到旧扫描候选终端。
 	var terminalInfo TerminalInfo
+	var tokenInfo *TokenInfo
 	for i := len(candidates) - 1; i >= 0; i-- {
-		alive, err := m.checkTerminalTokenAlive(ctx, candidates[i].Token)
+		candidateInfo, err := m.getTokenInfo(ctx, candidates[i].Token)
+		if err != nil {
+			if isTokenInactiveError(err) {
+				continue
+			}
+			return "", err
+		}
+		alive, err := m.checkTerminalTokenAliveWithContext(ctx, candidates[i].Token, candidateInfo, sess)
 		if err != nil {
 			return "", err
 		}
 		if alive {
 			terminalInfo = candidates[i]
+			tokenInfo = candidateInfo
 			break
 		}
 	}
@@ -146,11 +155,6 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 		return "", nil
 	}
 
-	// Load reused token info 加载复用 Token 信息。
-	tokenInfo, err := m.getTokenInfo(ctx, terminalInfo.Token)
-	if err != nil {
-		return "", err
-	}
 	// Resolve reused token expiration 解析复用 Token 过期时间。
 	expiration := m.resolveTokenExpiration(tokenInfo)
 	// Preserve original timeout 保留原始过期秒数。

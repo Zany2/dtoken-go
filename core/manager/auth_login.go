@@ -405,6 +405,17 @@ func (m *Manager) GetDeviceId(ctx context.Context, tokenValue string) (string, e
 	return tokenInfo.DeviceId, nil
 }
 
+// GetDeviceAndDeviceId retrieves the device type and device ID for a token. GetDeviceAndDeviceId 获取 Token 的设备类型和设备 ID。
+func (m *Manager) GetDeviceAndDeviceId(ctx context.Context, tokenValue string) (string, string, error) {
+	// Validate token and load info once 单次校验 Token 并加载信息。
+	_, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	if err != nil {
+		return "", "", err
+	}
+	// Return device fields 返回设备字段。
+	return tokenInfo.Device, tokenInfo.DeviceId, nil
+}
+
 // GetTokenCreateTime retrieves the creation time for a token. GetTokenCreateTime 获取 Token 的创建时间戳。
 func (m *Manager) GetTokenCreateTime(ctx context.Context, tokenValue string) (int64, error) {
 	// Validate token and load info 校验 Token 并加载信息。

@@ -75,6 +75,13 @@ func TestGlobalFacadeLoginAndAccessFlow(t *testing.T) {
 	if device != "web" {
 		t.Fatalf("GetDevice() = %q, want web", device)
 	}
+	combinedDevice, combinedDeviceID, err := GetDeviceAndDeviceId(ctx, token, "facade")
+	if err != nil {
+		t.Fatalf("GetDeviceAndDeviceId() error = %v", err)
+	}
+	if combinedDevice != "web" || combinedDeviceID != "browser-1" {
+		t.Fatalf("GetDeviceAndDeviceId() = %q/%q, want web/browser-1", combinedDevice, combinedDeviceID)
+	}
 
 	if err = AddPermissions(ctx, "user-1", []string{"profile:read"}, "facade"); err != nil {
 		t.Fatalf("AddPermissions() error = %v", err)
@@ -143,6 +150,9 @@ func TestInstanceFacadeOptions(t *testing.T) {
 	}
 	if device, err := auth.GetDevice(ctx, token); err != nil || device != "mobile" {
 		t.Fatalf("Auth.GetDevice() = %q, %v, want mobile", device, err)
+	}
+	if device, deviceID, err := auth.GetDeviceAndDeviceId(ctx, token); err != nil || device != "mobile" || deviceID != "phone-1" {
+		t.Fatalf("Auth.GetDeviceAndDeviceId() = %q/%q, %v, want mobile/phone-1", device, deviceID, err)
 	}
 
 	cfg := mgr.GetConfig()

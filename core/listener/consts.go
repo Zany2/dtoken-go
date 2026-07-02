@@ -11,6 +11,8 @@ const (
 	EventLogout Event = "logout"
 	// EventKickout indicates kickout event. EventKickout 表示用户被踢下线事件。
 	EventKickout Event = "kickout"
+	// EventActiveTimeout indicates inactive timeout event. EventActiveTimeout 表示用户不活跃超时事件。
+	EventActiveTimeout Event = "activeTimeout"
 	// EventReplace indicates replace event. EventReplace 表示用户被顶下线事件。
 	EventReplace Event = "replace"
 	// EventDisable indicates account disable event. EventDisable 表示账号被禁用事件。
@@ -90,6 +92,7 @@ var KnownEvents = []Event{
 	EventLogin,
 	EventLogout,
 	EventKickout,
+	EventActiveTimeout,
 	EventReplace,
 	EventDisable,
 	EventUntie,

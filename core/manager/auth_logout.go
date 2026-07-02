@@ -450,9 +450,20 @@ func (m *Manager) processTerminals(
 		// Read removed token 读取被移除 Token。
 		token := info.Token
 
-		// Set token state 设置 token 状态
-		if err = m.setTokenState(ctx, token, state, m.tokenStateExpiration(ctx, token)); err != nil {
-			return err
+		// Active-timeout processing must persist its exact cause; other terminal states only apply to alive tokens. 不活跃超时必须保留精确原因；其他终端状态仅作用于仍有效的 Token。
+		shouldSetState := state == TokenStateActiveTimeout
+		if !shouldSetState {
+			alive, aliveErr := m.checkTerminalTokenAlive(ctx, token)
+			if aliveErr != nil {
+				return aliveErr
+			}
+			shouldSetState = alive
+		}
+		if shouldSetState {
+			// Set token state 设置 token 状态
+			if err = m.setTokenState(ctx, token, state, m.tokenStateExpiration(ctx, token)); err != nil {
+				return err
+			}
 		}
 
 		// Delete renew key 删除续期 key
@@ -503,8 +514,10 @@ func (m *Manager) processTerminals(
 	// Resolve event by token state 根据 Token 状态解析事件。
 	var event listener.Event
 	switch state {
-	case TokenStateKickOut, TokenStateActiveTimeout:
+	case TokenStateKickOut:
 		event = listener.EventKickout
+	case TokenStateActiveTimeout:
+		event = listener.EventActiveTimeout
 	case TokenStateReplaced:
 		event = listener.EventReplace
 	}

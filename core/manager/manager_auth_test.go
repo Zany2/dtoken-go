@@ -472,6 +472,53 @@ func TestManagerActiveTimeoutMarksTokenState(t *testing.T) {
 	}
 }
 
+// TestManagerScopedKickoutAndReplaceDoNotRewriteInactiveTokenState verifies scoped operations do not rewrite inactive token causes. TestManagerScopedKickoutAndReplaceDoNotRewriteInactiveTokenState 验证范围操作不会改写已失效 Token 的原因。
+func TestManagerScopedKickoutAndReplaceDoNotRewriteInactiveTokenState(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name   string
+		action func(context.Context, *Manager, string) error
+	}{
+		{
+			name: "kickout",
+			action: func(ctx context.Context, mgr *Manager, loginID string) error {
+				return mgr.KickoutByLoginID(ctx, loginID)
+			},
+		},
+		{
+			name: "replace",
+			action: func(ctx context.Context, mgr *Manager, loginID string) error {
+				return mgr.ReplaceByLoginID(ctx, loginID)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loginID := "inactive-scope-" + tt.name
+			mgr := newTestManager(t, nil)
+			token, err := mgr.Login(ctx, loginID, "web")
+			if err != nil {
+				t.Fatalf("Login() error = %v", err)
+			}
+			if err = requireManagerTestStorage(t, mgr).Delete(ctx, mgr.getTokenKey(token)); err != nil {
+				t.Fatalf("Delete(token key) error = %v", err)
+			}
+
+			if err = tt.action(ctx, mgr, loginID); err != nil {
+				t.Fatalf("scoped %s error = %v", tt.name, err)
+			}
+			if _, err = mgr.GetTokenInfo(ctx, token); !errors.Is(err, derror.ErrInvalidToken) {
+				t.Fatalf("GetTokenInfo(inactive token) error = %v, want ErrInvalidToken", err)
+			}
+			if terminals, err := mgr.GetTerminalListByLoginID(ctx, loginID); err != nil || len(terminals) != 0 {
+				t.Fatalf("terminals after scoped %s = %+v, %v, want empty", tt.name, terminals, err)
+			}
+		})
+	}
+}
+
 // TestManagerSessionTerminalQueries verifies terminal lookup, filtering, traversal, and search. TestManagerSessionTerminalQueries 验证终端查询、过滤、遍历和搜索。
 func TestManagerSessionTerminalQueries(t *testing.T) {
 	ctx := context.Background()

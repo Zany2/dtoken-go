@@ -42,7 +42,16 @@ func (m *Manager) IntrospectToken(ctx context.Context, tokenValue string) (*Toke
 		return nil, err
 	}
 
-	alive, err := m.checkTerminalTokenAlive(ctx, tokenValue)
+	sess, sessErr := m.getSession(ctx, tokenInfo.LoginID)
+	if sessErr != nil {
+		if errors.Is(sessErr, derror.ErrSessionNotFound) {
+			result.Error = "inactive_token"
+			return result, nil
+		}
+		return nil, sessErr
+	}
+
+	alive, err := m.checkTerminalTokenAliveWithContext(ctx, tokenValue, tokenInfo, sess)
 	if err != nil {
 		return nil, err
 	}
@@ -74,14 +83,11 @@ func (m *Manager) IntrospectToken(ctx context.Context, tokenValue string) (*Toke
 		Token:    tokenValue,
 	}
 
-	// Load session for permission/role fallback 加载会话以获取权限/角色回退值
+	// Reuse session for permission/role fallback 复用会话以获取权限/角色回退值
 	var sessionPermissions, sessionRoles []string
-	if sess, sessErr := m.getSession(ctx, tokenInfo.LoginID); sessErr == nil && sess != nil {
+	if sess != nil {
 		sessionPermissions = sess.Permissions
 		sessionRoles = sess.Roles
-	} else if sessErr != nil && !errors.Is(sessErr, derror.ErrSessionNotFound) {
-		// Log storage errors but don't fail introspection 记录存储错误但不中止自省
-		m.logger.Errorf("manager.IntrospectToken: failed to load session, loginID=%s, error=%v", tokenInfo.LoginID, sessErr)
 	}
 
 	permissions, err := m.loadPermissions(ctx, sessionPermissions, subject)

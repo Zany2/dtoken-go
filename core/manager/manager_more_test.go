@@ -81,6 +81,13 @@ func TestManagerLoginRenewAndTokenDetails(t *testing.T) {
 	if deviceID != "browser-1" {
 		t.Fatalf("GetDeviceId() = %q, want browser-1", deviceID)
 	}
+	combinedDevice, combinedDeviceID, err := mgr.GetDeviceAndDeviceId(ctx, token)
+	if err != nil {
+		t.Fatalf("GetDeviceAndDeviceId() error = %v", err)
+	}
+	if combinedDevice != "web" || combinedDeviceID != "browser-1" {
+		t.Fatalf("GetDeviceAndDeviceId() = %q/%q, want web/browser-1", combinedDevice, combinedDeviceID)
+	}
 	createdAt, err := mgr.GetTokenCreateTime(ctx, token)
 	if err != nil {
 		t.Fatalf("GetTokenCreateTime() error = %v", err)

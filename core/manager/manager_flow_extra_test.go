@@ -1301,6 +1301,38 @@ func TestManagerEventPayloadsForCoreFlows(t *testing.T) {
 	assertManagerEvent(t, events, listener.EventLogout, "event-user", "web", "browser", token, nil)
 }
 
+func TestManagerActiveTimeoutEmitsDedicatedEvent(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.Timeout = 60
+		cfg.ActiveTimeout = 1
+	})
+
+	var events []*listener.EventData
+	mgr.GetEventManager().RegisterFuncWithConfig(listener.EventAll, func(data *listener.EventData) {
+		copyData := *data
+		events = append(events, &copyData)
+	}, listener.ListenerConfig{Async: false})
+
+	token, err := mgr.Login(ctx, "event-active-timeout", "web", "browser")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if err = requireManagerTestStorage(t, mgr).Set(ctx, mgr.getActiveKey(token), time.Now().Add(-2*time.Second).Unix(), time.Minute); err != nil {
+		t.Fatalf("Set(active marker) error = %v", err)
+	}
+	if err = mgr.CheckLogin(ctx, token); !errors.Is(err, derror.ErrActiveTimeout) {
+		t.Fatalf("CheckLogin() error = %v, want ErrActiveTimeout", err)
+	}
+
+	assertManagerEvent(t, events, listener.EventActiveTimeout, "event-active-timeout", "web", "browser", token, nil)
+	for _, data := range events {
+		if data.Event == listener.EventKickout && data.Token == token {
+			t.Fatalf("active timeout emitted EventKickout: %+v", data)
+		}
+	}
+}
+
 func TestManagerSearchPaginationBoundaries(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {

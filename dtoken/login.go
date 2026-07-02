@@ -239,6 +239,15 @@ func GetDevice(ctx context.Context, tokenValue string, authType ...string) (stri
 	return mgr.GetDevice(ctx, tokenValue)
 }
 
+// GetDeviceAndDeviceId returns the device and device ID bound to a token. GetDeviceAndDeviceId 获取 token 绑定的设备和设备 ID。
+func GetDeviceAndDeviceId(ctx context.Context, tokenValue string, authType ...string) (string, string, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return "", "", err
+	}
+	return mgr.GetDeviceAndDeviceId(ctx, tokenValue)
+}
+
 // GetDeviceId returns the device ID bound to a token. GetDeviceId 获取 token 绑定的设备 ID。
 func GetDeviceId(ctx context.Context, tokenValue string, authType ...string) (string, error) {
 	mgr, err := GetManager(authType...)

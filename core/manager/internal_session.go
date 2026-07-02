@@ -85,21 +85,21 @@ func (m *Manager) getTokenInfo(ctx context.Context, tokenValue string) (*TokenIn
 	return &tokenInfo, nil
 }
 
-// checkLoginInternal performs the core login validation logic. checkLoginInternal 执行登录状态的核心验证逻辑。
-func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) error {
+// checkLoginAndGetContext validates login state and returns loaded context. checkLoginAndGetContext 校验登录态并返回已加载上下文。
+func (m *Manager) checkLoginAndGetContext(ctx context.Context, tokenValue string) (*Session, *TokenInfo, error) {
 	// Get tokenInfo 获取 tokenInfo
 	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	// Check disable status after token lookup 获取 token 后检查封禁状态
 	if m.isDisable(ctx, tokenInfo.LoginID) {
-		return derror.ErrAccountDisabled
+		return nil, nil, derror.ErrAccountDisabled
 	}
 	// Check device disable state 检查设备封禁状态。
 	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceId) {
-		return derror.ErrDeviceDisabled
+		return nil, nil, derror.ErrDeviceDisabled
 	}
 
 	// Load session 加载会话。
@@ -107,13 +107,13 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 	if err != nil {
 		// Map missing session to invalid token 会话不存在时映射为无效 Token。
 		if errors.Is(err, derror.ErrSessionNotFound) {
-			return derror.ErrInvalidToken
+			return nil, nil, derror.ErrInvalidToken
 		}
-		return err
+		return nil, nil, err
 	}
 	// Validate token attachment 校验 Token 是否属于会话。
 	if sess == nil || !sess.hasTerminalToken(tokenValue) {
-		return derror.ErrInvalidToken
+		return nil, nil, derror.ErrInvalidToken
 	}
 
 	// Check max inactive timeout 检查最大不活跃时长
@@ -122,17 +122,17 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 		// Load active timestamp 加载活跃时间戳。
 		timeStampAny, err := m.storage.Get(ctx, m.getActiveKey(tokenValue))
 		if err != nil {
-			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+			return nil, nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
 		// Reject missing active marker 拒绝缺失的活跃标记。
 		if timeStampAny == nil {
-			return derror.ErrInvalidToken
+			return nil, nil, derror.ErrInvalidToken
 		}
 		// Convert active timestamp 转换活跃时间戳。
 		timeStamp, err := utils.ToInt64(timeStampAny)
 		if err != nil {
 			_ = m.storage.Delete(ctx, m.getActiveKey(tokenValue))
-			return derror.ErrInvalidToken
+			return nil, nil, derror.ErrInvalidToken
 		}
 		// Handle inactive timeout 处理不活跃超时。
 		if time.Now().Unix()-timeStamp > activeTimeout {
@@ -143,9 +143,9 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 				}
 				return nil
 			}, TokenStateActiveTimeout); err != nil {
-				return err
+				return nil, nil, err
 			}
-			return derror.ErrActiveTimeout
+			return nil, nil, derror.ErrActiveTimeout
 		}
 	}
 
@@ -197,8 +197,15 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 		m.submitAsync("checkLoginInternal active", activeFunc)
 	}
 
-	// Return login valid 返回登录有效。
-	return nil
+	// Return checked context 返回已校验上下文。
+	return sess, tokenInfo, nil
+}
+
+// checkLoginInternal performs the core login validation logic. checkLoginInternal 执行登录状态的核心验证逻辑。
+func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) error {
+	// Validate and discard loaded context 校验并丢弃已加载上下文。
+	_, _, err := m.checkLoginAndGetContext(ctx, tokenValue)
+	return err
 }
 
 // cleanExpiredTerminals removes expired tokens from session. cleanExpiredTerminals 清理会话中已过期的 token。
@@ -215,7 +222,7 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) erro
 	// Check each terminal 逐个检查终端。
 	for _, ti := range sess.TerminalInfos {
 		// Check token by full alive rules 按完整存活规则检查 token
-		alive, err := m.checkTerminalTokenAlive(ctx, ti.Token)
+		alive, err := m.checkTerminalTokenAliveWithContext(ctx, ti.Token, nil, sess)
 		if err != nil {
 			return err
 		}

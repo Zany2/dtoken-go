@@ -110,23 +110,8 @@ func (m *Manager) applyLogoutModeToToken(ctx context.Context, tokenValue string,
 
 // getCheckedTokenSession gets token session after full login validation. getCheckedTokenSession 完整校验登录态后获取 Token 对应 Session。
 func (m *Manager) getCheckedTokenSession(ctx context.Context, tokenValue string) (*Session, *TokenInfo, error) {
-	// Validate login state 校验登录状态。
-	if err := m.checkLoginInternal(ctx, tokenValue); err != nil {
-		return nil, nil, err
-	}
-
-	// Load token info 加载 Token 信息。
-	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
-	if err != nil {
-		return nil, nil, err
-	}
-	// Load session by token 根据 Token 加载会话。
-	sess, err := m.GetSessionByToken(ctx, tokenValue)
-	if err != nil {
-		return nil, nil, err
-	}
-	// Return checked context 返回已校验上下文。
-	return sess, tokenInfo, nil
+	// Validate login and reuse loaded context 校验登录并复用已加载上下文。
+	return m.checkLoginAndGetContext(ctx, tokenValue)
 }
 
 // ensureTerminalTokenAlive ensures token is still alive without renew side effects. ensureTerminalTokenAlive 无续期副作用地确认 Token 仍有效。
@@ -145,10 +130,10 @@ func (m *Manager) ensureTerminalTokenAlive(ctx context.Context, tokenValue strin
 }
 
 // hasActiveTerminal reports whether any terminal is still alive. hasActiveTerminal 判断是否存在仍有效的终端。
-func (m *Manager) hasActiveTerminal(ctx context.Context, terminals []TerminalInfo) (bool, error) {
+func (m *Manager) hasActiveTerminal(ctx context.Context, terminals []TerminalInfo, sess *Session) (bool, error) {
 	// Check each terminal 逐个检查终端。
 	for _, terminal := range terminals {
-		alive, err := m.checkTerminalTokenAlive(ctx, terminal.Token)
+		alive, err := m.checkTerminalTokenAliveWithContext(ctx, terminal.Token, nil, sess)
 		if err != nil {
 			return false, err
 		}
@@ -170,8 +155,17 @@ func (m *Manager) isTerminalTokenAlive(ctx context.Context, tokenValue string) b
 
 // checkTerminalTokenAlive checks token validity without renew side effects. checkTerminalTokenAlive 无续期副作用地检查 Token 是否有效。
 func (m *Manager) checkTerminalTokenAlive(ctx context.Context, tokenValue string) (bool, error) {
-	// Load token info 加载 Token 信息。
-	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	// Check token with loaded context fallback 使用可复用上下文检查 Token。
+	return m.checkTerminalTokenAliveWithContext(ctx, tokenValue, nil, nil)
+}
+
+// checkTerminalTokenAliveWithContext checks token validity with optional loaded data. checkTerminalTokenAliveWithContext 使用可选已加载数据检查 Token 是否有效。
+func (m *Manager) checkTerminalTokenAliveWithContext(ctx context.Context, tokenValue string, tokenInfo *TokenInfo, sess *Session) (bool, error) {
+	var err error
+	// Load token info when caller has not provided it 调用方未提供时加载 Token 信息。
+	if tokenInfo == nil {
+		tokenInfo, err = m.getTokenInfo(ctx, tokenValue)
+	}
 	if err != nil {
 		// Treat known token states as not alive 已知 Token 状态视为不存活。
 		if errors.Is(err, derror.ErrInvalidToken) ||
@@ -192,8 +186,14 @@ func (m *Manager) checkTerminalTokenAlive(ctx context.Context, tokenValue string
 		return false, nil
 	}
 
+	// Reuse session only when it matches token owner 仅当会话归属匹配时复用。
+	if sess != nil && sess.LoginID != tokenInfo.LoginID {
+		sess = nil
+	}
 	// Load session 加载会话。
-	sess, err := m.getSession(ctx, tokenInfo.LoginID)
+	if sess == nil {
+		sess, err = m.getSession(ctx, tokenInfo.LoginID)
+	}
 	if err != nil || sess == nil || !sess.hasTerminalToken(tokenValue) {
 		// Treat missing session as not alive 会话不存在视为不存活。
 		if errors.Is(err, derror.ErrSessionNotFound) {

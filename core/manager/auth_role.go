@@ -56,25 +56,25 @@ func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles 
 	if len(roles) == 0 {
 		return nil
 	}
-	// Validate token and load context 校验 Token 并加载上下文
-	_, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	// Load token info to choose account lock 读取 Token 信息以选择账号锁
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return err
 	}
+	lockedLoginID := tokenInfo.LoginID
 
 	// Lock account writes 锁定账号写操作
-	unlock := m.lockLoginWrite(tokenInfo.LoginID)
+	unlock := m.lockLoginWrite(lockedLoginID)
 	// Release lock on function exit 函数退出时释放锁
 	defer func() { unlock() }()
 
-	// Ensure token is still alive 确认 Token 仍然有效
-	if err = m.ensureTerminalTokenAlive(ctx, tokenValue); err != nil {
-		return err
-	}
-	// Load session by token 根据 Token 加载会话
-	sess, err := m.GetSessionByToken(ctx, tokenValue)
+	// Revalidate under lock and reuse loaded session 锁内重新校验并复用已加载会话
+	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
 		return err
+	}
+	if tokenInfo.LoginID != lockedLoginID {
+		return derror.ErrInvalidToken
 	}
 
 	// Add roles to session 向会话追加角色
@@ -143,25 +143,25 @@ func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, rol
 	if len(roles) == 0 {
 		return nil
 	}
-	// Validate token and load context 校验 Token 并加载上下文
-	_, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	// Load token info to choose account lock 读取 Token 信息以选择账号锁
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return err
 	}
+	lockedLoginID := tokenInfo.LoginID
 
 	// Lock account writes 锁定账号写操作
-	unlock := m.lockLoginWrite(tokenInfo.LoginID)
+	unlock := m.lockLoginWrite(lockedLoginID)
 	// Release lock on function exit 函数退出时释放锁
 	defer func() { unlock() }()
 
-	// Ensure token is still alive 确认 Token 仍然有效
-	if err = m.ensureTerminalTokenAlive(ctx, tokenValue); err != nil {
-		return err
-	}
-	// Load session by token 根据 Token 加载会话
-	sess, err := m.GetSessionByToken(ctx, tokenValue)
+	// Revalidate under lock and reuse loaded session 锁内重新校验并复用已加载会话
+	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
 		return err
+	}
+	if tokenInfo.LoginID != lockedLoginID {
+		return derror.ErrInvalidToken
 	}
 
 	// Remove roles from session 从会话移除角色
