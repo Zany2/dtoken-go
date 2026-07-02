@@ -47,21 +47,14 @@ func (m *Manager) getTokenInfo(ctx context.Context, tokenValue string) (*TokenIn
 		return nil, derror.ErrInvalidToken
 	}
 
-	// Load current token data 加载当前 Token 数据。
+	// Load token data 加载 Token 数据。
 	tokenInfoData, err := m.storage.Get(ctx, m.getTokenKey(tokenValue))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
-	// Fallback to legacy token key 回退到历史 Token 键。
+	// Return invalid token when missing Token 不存在时返回无效 Token。
 	if tokenInfoData == nil {
-		tokenInfoData, err = m.storage.Get(ctx, m.getLegacyTokenKey(tokenValue))
-		if err != nil {
-			return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-		}
-		// Return invalid token when both keys miss 两种键都不存在时返回无效 Token。
-		if tokenInfoData == nil {
-			return nil, derror.ErrInvalidToken
-		}
+		return nil, derror.ErrInvalidToken
 	}
 
 	// Convert token storage value 转换 Token 存储值。
@@ -87,6 +80,27 @@ func (m *Manager) getTokenInfo(ctx context.Context, tokenValue string) (*TokenIn
 
 // checkLoginAndGetContext validates login state and returns loaded context. checkLoginAndGetContext 校验登录态并返回已加载上下文。
 func (m *Manager) checkLoginAndGetContext(ctx context.Context, tokenValue string) (*Session, *TokenInfo, error) {
+	return m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{allowRenew: true})
+}
+
+// checkLoginAndGetContextNoRenew validates login state without renew side effects. checkLoginAndGetContextNoRenew 校验登录态但不触发续期副作用。
+func (m *Manager) checkLoginAndGetContextNoRenew(ctx context.Context, tokenValue string) (*Session, *TokenInfo, error) {
+	return m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{})
+}
+
+// checkLoginAndGetContextNoRenewLocked validates login state while caller holds login lock. checkLoginAndGetContextNoRenewLocked 在调用方已持有登录锁时校验登录态。
+func (m *Manager) checkLoginAndGetContextNoRenewLocked(ctx context.Context, tokenValue string) (*Session, *TokenInfo, error) {
+	return m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{lockHeld: true})
+}
+
+// checkLoginOptions controls login-state validation side effects. checkLoginOptions 控制登录态校验副作用。
+type checkLoginOptions struct {
+	allowRenew bool // allowRenew enables async renew and active refresh tasks. allowRenew 启用异步续期和活跃刷新任务。
+	lockHeld   bool // lockHeld indicates caller already holds the login write lock. lockHeld 表示调用方已持有登录写锁。
+}
+
+// checkLoginAndGetContextWithOptions validates login state with optional side effects. checkLoginAndGetContextWithOptions 按选项校验登录态。
+func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenValue string, opts checkLoginOptions) (*Session, *TokenInfo, error) {
 	// Get tokenInfo 获取 tokenInfo
 	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
 	if err != nil {
@@ -136,21 +150,28 @@ func (m *Manager) checkLoginAndGetContext(ctx context.Context, tokenValue string
 		}
 		// Handle inactive timeout 处理不活跃超时。
 		if time.Now().Unix()-timeStamp > activeTimeout {
-			// Mark inactive timeout separately so later checks keep the exact cause. 单独标记不活跃超时以保留精确原因。
-			if err = m.processTerminals(ctx, tokenInfo.LoginID, func(sess *Session) []TerminalInfo {
-				if info, ok := sess.removeTerminalByToken(tokenValue); ok {
-					return []TerminalInfo{info}
+			if opts.lockHeld {
+				// Mark active timeout without reentering the same login lock. 已持锁时不重复进入同一登录锁。
+				if err = m.markActiveTimeoutLocked(ctx, tokenInfo.LoginID, tokenValue, sess); err != nil {
+					return nil, nil, err
 				}
-				return nil
-			}, TokenStateActiveTimeout); err != nil {
-				return nil, nil, err
+			} else {
+				// Mark inactive timeout separately so later checks keep the exact cause. 单独标记不活跃超时以保留精确原因。
+				if err = m.processTerminals(ctx, tokenInfo.LoginID, func(sess *Session) []TerminalInfo {
+					if info, ok := sess.removeTerminalByToken(tokenValue); ok {
+						return []TerminalInfo{info}
+					}
+					return nil
+				}, TokenStateActiveTimeout); err != nil {
+					return nil, nil, err
+				}
 			}
 			return nil, nil, derror.ErrActiveTimeout
 		}
 	}
 
-	// Renew asynchronously 异步续期
-	if m.config.AutoRenew && m.config.Timeout > 0 {
+	// Renew asynchronously when allowed 允许时异步续期
+	if opts.allowRenew && m.config.AutoRenew && m.config.Timeout > 0 {
 		// Read token TTL 读取 Token TTL。
 		if ttl, err := m.storage.TTL(ctx, m.getTokenKey(tokenValue)); err == nil && ttl > 0 {
 			ttlSeconds := int64(ttl.Seconds())
@@ -170,8 +191,8 @@ func (m *Manager) checkLoginAndGetContext(ctx context.Context, tokenValue string
 		}
 	}
 
-	// Update active timeout asynchronously 异步活跃时长
-	if activeTimeout > 0 {
+	// Update active timeout asynchronously when allowed 允许时异步刷新活跃时长
+	if opts.allowRenew && activeTimeout > 0 {
 		// Build async active refresh task 构建异步活跃刷新任务。
 		activeFunc := func() {
 			bg := context.Background()
@@ -201,6 +222,29 @@ func (m *Manager) checkLoginAndGetContext(ctx context.Context, tokenValue string
 	return sess, tokenInfo, nil
 }
 
+// markActiveTimeoutLocked marks one token inactive while login lock is already held. markActiveTimeoutLocked 在已持有登录锁时标记 Token 不活跃超时。
+func (m *Manager) markActiveTimeoutLocked(ctx context.Context, loginID, tokenValue string, sess *Session) error {
+	if sess == nil {
+		return nil
+	}
+	if _, ok := sess.removeTerminalByToken(tokenValue); !ok {
+		return nil
+	}
+	if err := m.setTokenState(ctx, tokenValue, TokenStateActiveTimeout, m.tokenStateExpiration(ctx, tokenValue)); err != nil {
+		return err
+	}
+	if err := m.cleanTokenMetadata(ctx, []string{tokenValue}); err != nil {
+		return err
+	}
+	if len(sess.TerminalInfos) == 0 {
+		if err := m.storage.Delete(ctx, m.getSessionKey(loginID)); err != nil {
+			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
+		return nil
+	}
+	return m.saveToStorage(ctx, m.getSessionKey(loginID), *sess)
+}
+
 // checkLoginInternal performs the core login validation logic. checkLoginInternal 执行登录状态的核心验证逻辑。
 func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) error {
 	// Validate and discard loaded context 校验并丢弃已加载上下文。
@@ -209,10 +253,10 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 }
 
 // cleanExpiredTerminals removes expired tokens from session. cleanExpiredTerminals 清理会话中已过期的 token。
-func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) error {
+func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (bool, error) {
 	// Skip empty session 跳过空会话。
 	if sess == nil || len(sess.TerminalInfos) == 0 {
-		return nil
+		return false, nil
 	}
 
 	// Prepare valid terminal list 准备有效终端列表。
@@ -224,7 +268,7 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) erro
 		// Check token by full alive rules 按完整存活规则检查 token
 		alive, err := m.checkTerminalTokenAliveWithContext(ctx, ti.Token, nil, sess)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if alive {
 			validTerminals = append(validTerminals, ti)
@@ -242,14 +286,15 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) erro
 		// Delete session when all terminals expired 所有终端均已过期时删除整个 session
 		if len(validTerminals) == 0 {
 			if err := m.storage.Delete(ctx, m.getSessionKey(sess.LoginID)); err != nil {
-				return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+				return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 			}
+			return true, nil
 		} else {
 			if err := m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
-				return err
+				return false, err
 			}
 		}
 	}
 
-	return nil
+	return false, nil
 }

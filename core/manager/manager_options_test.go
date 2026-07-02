@@ -97,6 +97,142 @@ func TestManagerLoginWithOptionsRejectsDuplicateToken(t *testing.T) {
 	}
 }
 
+func TestManagerLoginWithOptionsRejectsDuplicateTokenBeforeConcurrency(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.IsConcurrent = false
+		cfg.IsShare = false
+		cfg.ReplacedLoginExitMode = config.ReplacedLoginExitModeOldDevice
+	})
+
+	oldToken, err := mgr.Login(ctx, "duplicate-before-concurrency", "web")
+	if err != nil {
+		t.Fatalf("first Login() error = %v", err)
+	}
+	duplicate, err := mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID: "duplicate-holder",
+		Device:  "pc",
+		Token:   "duplicate-before-concurrency-token",
+	})
+	if err != nil {
+		t.Fatalf("holder LoginWithOptions() error = %v", err)
+	}
+	if duplicate != "duplicate-before-concurrency-token" {
+		t.Fatalf("holder token = %q, want duplicate-before-concurrency-token", duplicate)
+	}
+
+	if _, err = mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID: "duplicate-before-concurrency",
+		Device:  "mobile",
+		Token:   "duplicate-before-concurrency-token",
+	}); !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("duplicate LoginWithOptions() error = %v, want ErrInvalidParam", err)
+	}
+	if err = mgr.CheckLogin(ctx, oldToken); err != nil {
+		t.Fatalf("old token CheckLogin() error = %v, want still alive", err)
+	}
+	terminals, err := mgr.GetTerminalListByLoginID(ctx, "duplicate-before-concurrency")
+	if err != nil {
+		t.Fatalf("GetTerminalListByLoginID() error = %v", err)
+	}
+	if len(terminals) != 1 || terminals[0].Token != oldToken {
+		t.Fatalf("terminals = %+v, want only old token %q", terminals, oldToken)
+	}
+}
+
+func TestManagerLoginWithOptionsCreatesFreshSessionAfterExpiredTerminals(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.IsConcurrent = true
+		cfg.IsShare = false
+	})
+
+	first, err := mgr.Login(ctx, "expired-session-user", "web")
+	if err != nil {
+		t.Fatalf("first Login() error = %v", err)
+	}
+	if err = mgr.SetSessionValue(ctx, "expired-session-user", "theme", "dark"); err != nil {
+		t.Fatalf("SetSessionValue() error = %v", err)
+	}
+	if err = requireManagerTestStorage(t, mgr).Delete(ctx, mgr.getTokenKey(first)); err != nil {
+		t.Fatalf("Delete(token) error = %v", err)
+	}
+
+	second, err := mgr.Login(ctx, "expired-session-user", "mobile")
+	if err != nil {
+		t.Fatalf("second Login() error = %v", err)
+	}
+	if second == first {
+		t.Fatalf("second token = %q, want a new token", second)
+	}
+	value, ok, err := mgr.GetSessionValue(ctx, "expired-session-user", "theme")
+	if err != nil {
+		t.Fatalf("GetSessionValue() error = %v", err)
+	}
+	if ok || value != nil {
+		t.Fatalf("GetSessionValue() = %v, %v, want fresh session without old data", value, ok)
+	}
+	terminals, err := mgr.GetTerminalListByLoginID(ctx, "expired-session-user")
+	if err != nil {
+		t.Fatalf("GetTerminalListByLoginID() error = %v", err)
+	}
+	if len(terminals) != 1 || terminals[0].Token != second {
+		t.Fatalf("terminals = %+v, want only new token %q", terminals, second)
+	}
+}
+
+func TestManagerLoginWithOptionsDoesNotShareForeignSessionToken(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.IsConcurrent = true
+		cfg.IsShare = true
+	})
+
+	foreignToken, err := mgr.Login(ctx, "foreign-session-owner", "web", "browser")
+	if err != nil {
+		t.Fatalf("foreign Login() error = %v", err)
+	}
+	originalInfo, err := mgr.GetTokenInfo(ctx, foreignToken)
+	if err != nil {
+		t.Fatalf("GetTokenInfo(foreign) error = %v", err)
+	}
+	staleSession := mgr.strategy.normalize().CreateSession(mgr.config.AuthType, "stale-session-owner", time.Now().Unix())
+	staleSession.HistoryTerminalCount = 1
+	staleSession.TerminalInfos = append(staleSession.TerminalInfos, TerminalInfo{
+		Token:      foreignToken,
+		LoginID:    "stale-session-owner",
+		Device:     "web",
+		DeviceId:   "browser",
+		CreateTime: time.Now().Unix(),
+		Index:      1,
+	})
+	if err = mgr.saveToStorage(ctx, mgr.getSessionKey("stale-session-owner"), *staleSession); err != nil {
+		t.Fatalf("save stale session error = %v", err)
+	}
+
+	newToken, err := mgr.Login(ctx, "stale-session-owner", "web", "browser")
+	if err != nil {
+		t.Fatalf("stale owner Login() error = %v", err)
+	}
+	if newToken == foreignToken {
+		t.Fatalf("Login() reused foreign token %q, want new token", newToken)
+	}
+	latestInfo, err := mgr.GetTokenInfo(ctx, foreignToken)
+	if err != nil {
+		t.Fatalf("GetTokenInfo(foreign after login) error = %v", err)
+	}
+	if latestInfo.LoginID != originalInfo.LoginID {
+		t.Fatalf("foreign token owner = %q, want %q", latestInfo.LoginID, originalInfo.LoginID)
+	}
+	terminals, err := mgr.GetTerminalListByLoginID(ctx, "stale-session-owner")
+	if err != nil {
+		t.Fatalf("GetTerminalListByLoginID() error = %v", err)
+	}
+	if len(terminals) != 1 || terminals[0].Token != newToken {
+		t.Fatalf("stale owner terminals = %+v, want only new token %q", terminals, newToken)
+	}
+}
+
 func TestManagerLoginWithOptionsNormalizesDeviceAndRejectsBlankToken(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -138,7 +274,7 @@ func TestManagerLoginWithOptionsNormalizesDeviceAndRejectsBlankToken(t *testing.
 	}
 }
 
-func TestManagerLoginWithOptionsRollbackPreservesSessionTTL(t *testing.T) {
+func TestManagerLoginWithOptionsReturnsStorageErrorWithoutRollback(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
 		cfg.Timeout = 60
@@ -146,24 +282,23 @@ func TestManagerLoginWithOptionsRollbackPreservesSessionTTL(t *testing.T) {
 		cfg.IsShare = false
 	})
 
-	first, err := mgr.Login(ctx, "rollback-ttl", "web", "first")
-	if err != nil {
+	if _, err := mgr.Login(ctx, "login-write-failure", "web", "first"); err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
 	storage := requireManagerTestStorage(t, mgr)
-	sessionKey := mgr.getSessionKey("rollback-ttl")
+	sessionKey := mgr.getSessionKey("login-write-failure")
 	if err = storage.Expire(ctx, sessionKey, 5*time.Second); err != nil {
 		t.Fatalf("Expire(session) error = %v", err)
 	}
 	mgr.storage = &managerTestFailingSetStorage{
 		managerTestStorage: storage.(*managerTestStorage),
-		failKey:            mgr.getTokenKey("rollback-token"),
+		failKey:            mgr.getTokenKey("failed-token"),
 		failSetIfAbsent:    true,
 	}
 	if _, err = mgr.LoginWithOptions(ctx, LoginOptions{
-		LoginID: "rollback-ttl",
+		LoginID: "login-write-failure",
 		Device:  "mobile",
-		Token:   "rollback-token",
+		Token:   "failed-token",
 		Timeout: time.Hour,
 	}); !errors.Is(err, derror.ErrStorageUnavailable) {
 		t.Fatalf("failed LoginWithOptions() error = %v, want ErrStorageUnavailable", err)
@@ -172,15 +307,15 @@ func TestManagerLoginWithOptionsRollbackPreservesSessionTTL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TTL(session) error = %v", err)
 	}
-	if ttl <= 0 || ttl > 5*time.Second {
-		t.Fatalf("session TTL after rollback = %v, want preserved <= 5s", ttl)
+	if ttl <= 0 || ttl > time.Hour {
+		t.Fatalf("session TTL after failed login = %v, want positive and no more than requested timeout", ttl)
 	}
-	terminals, err := mgr.GetTerminalListByLoginID(ctx, "rollback-ttl")
+	terminals, err := mgr.GetTerminalListByLoginID(ctx, "login-write-failure")
 	if err != nil {
 		t.Fatalf("GetTerminalListByLoginID() error = %v", err)
 	}
-	if len(terminals) != 1 || terminals[0].Token != first {
-		t.Fatalf("terminals after rollback = %+v, want original token %q", terminals, first)
+	if len(terminals) != 2 || terminals[1].Token != "failed-token" {
+		t.Fatalf("terminals after failed login = %+v, want failed terminal kept by non-rollback strategy", terminals)
 	}
 }
 

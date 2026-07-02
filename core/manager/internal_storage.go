@@ -169,6 +169,7 @@ func (m *Manager) saveToStorageIfAbsent(
 	if err = m.storage.Set(ctx, key, bytesData, expiration); err != nil {
 		return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
+
 	return true, nil
 }
 

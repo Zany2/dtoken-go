@@ -12,6 +12,10 @@ import (
 	"github.com/Zany2/dtoken-go/core/derror"
 )
 
+type nonAtomicManagerStorage struct {
+	adapter.Storage
+}
+
 // TestManagerRefreshTokenFlow verifies login, rotation, and revocation. TestManagerRefreshTokenFlow 验证登录、轮换和撤销流程。
 func TestManagerRefreshTokenFlow(t *testing.T) {
 	ctx := context.Background()
@@ -93,6 +97,37 @@ func TestManagerRefreshTokenAllowsExpiredAccessToken(t *testing.T) {
 	if nextPair.AccessToken == "" || nextPair.RefreshToken == "" {
 		t.Fatalf("RefreshToken() pair = %+v, want non-empty tokens", nextPair)
 	}
+	tokens, err := mgr.GetTokenValueListByLoginID(ctx, "expired-access-user")
+	if err != nil {
+		t.Fatalf("GetTokenValueListByLoginID() error = %v", err)
+	}
+	if len(tokens) != 1 || tokens[0] != nextPair.AccessToken {
+		t.Fatalf("session tokens after refresh = %+v, want only new access token %q", tokens, nextPair.AccessToken)
+	}
+}
+
+func TestManagerRefreshTokenReverseLookupTTLDoesNotExceedRefreshTTL(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.Timeout = config.NoLimit
+		cfg.RefreshTokenTimeout = 60
+		cfg.AutoRenew = false
+	})
+
+	pair, err := mgr.LoginWithRefreshTokenOptions(ctx, RefreshTokenOptions{
+		LoginOptions:   LoginOptions{LoginID: "refresh-reverse-ttl"},
+		RefreshTimeout: time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("LoginWithRefreshTokenOptions() error = %v", err)
+	}
+	reverseTTL, err := mgr.storage.TTL(ctx, mgr.getTokenRefreshKey(pair.AccessToken))
+	if err != nil {
+		t.Fatalf("TTL(reverse key) error = %v", err)
+	}
+	if reverseTTL <= 0 || reverseTTL > time.Minute {
+		t.Fatalf("reverse TTL = %v, want positive and <= refresh ttl", reverseTTL)
+	}
 }
 
 // TestManagerRefreshTokenBoundaries verifies invalid, ttl, revoke, and expiry behavior. TestManagerRefreshTokenBoundaries 验证刷新令牌非法值、TTL、撤销和过期行为。
@@ -155,6 +190,62 @@ func TestManagerRefreshTokenBoundaries(t *testing.T) {
 	}
 }
 
+// TestManagerRefreshTokenRejectsMalformedInfo verifies malformed refresh metadata is handled safely. TestManagerRefreshTokenRejectsMalformedInfo 验证畸形刷新令牌元数据会被安全处理。
+func TestManagerRefreshTokenRejectsMalformedInfo(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.Timeout = 60
+		cfg.RefreshTokenTimeout = 60
+	})
+
+	malformedRefreshToken := "malformed-refresh"
+	if err := mgr.saveToStorage(ctx, mgr.getRefreshTokenKey(malformedRefreshToken), RefreshTokenInfo{
+		AuthType:  mgr.config.AuthType,
+		LoginID:   "malformed-user",
+		ExpiresIn: 60,
+	}, time.Minute); err != nil {
+		t.Fatalf("save malformed refresh token error = %v", err)
+	}
+	if err := mgr.storage.Set(ctx, mgr.getTokenRefreshKey(""), malformedRefreshToken, time.Minute); err != nil {
+		t.Fatalf("save empty access reverse key error = %v", err)
+	}
+
+	if _, err := mgr.RefreshToken(ctx, malformedRefreshToken); !errors.Is(err, derror.ErrInvalidRefreshToken) {
+		t.Fatalf("RefreshToken(malformed) error = %v, want ErrInvalidRefreshToken", err)
+	}
+	if err := mgr.RevokeRefreshToken(ctx, malformedRefreshToken); err != nil {
+		t.Fatalf("RevokeRefreshToken(malformed) error = %v", err)
+	}
+	if !mgr.storage.Exists(ctx, mgr.getTokenRefreshKey("")) {
+		t.Fatal("RevokeRefreshToken(malformed) deleted empty access reverse key")
+	}
+	if mgr.storage.Exists(ctx, mgr.getRefreshTokenKey(malformedRefreshToken)) {
+		t.Fatal("RevokeRefreshToken(malformed) did not delete refresh token key")
+	}
+}
+
+func TestManagerRefreshTokenCleanupIgnoresCorruptReverseLookup(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.Timeout = 60
+		cfg.RefreshTokenTimeout = 60
+	})
+
+	pair, err := mgr.LoginWithRefreshToken(ctx, "refresh-corrupt-reverse", "web")
+	if err != nil {
+		t.Fatalf("LoginWithRefreshToken() error = %v", err)
+	}
+	if err = mgr.storage.Set(ctx, mgr.getTokenRefreshKey(pair.AccessToken), 12345, time.Minute); err != nil {
+		t.Fatalf("Set(corrupt reverse key) error = %v", err)
+	}
+	if err = mgr.Logout(ctx, pair.AccessToken); err != nil {
+		t.Fatalf("Logout() with corrupt reverse key error = %v", err)
+	}
+	if mgr.storage.Exists(ctx, mgr.getTokenRefreshKey(pair.AccessToken)) {
+		t.Fatal("corrupt reverse key still exists after cleanup")
+	}
+}
+
 // TestManagerRefreshTokenExpires verifies expired refresh tokens cannot rotate. TestManagerRefreshTokenExpires 验证过期刷新令牌不能轮换。
 func TestManagerRefreshTokenExpires(t *testing.T) {
 	ctx := context.Background()
@@ -204,6 +295,21 @@ func TestManagerRefreshTokenLoginDoesNotShareAccessToken(t *testing.T) {
 	}
 	if _, err = mgr.RefreshToken(ctx, second.RefreshToken); err != nil {
 		t.Fatalf("RefreshToken(second refresh token) error = %v", err)
+	}
+}
+
+// TestManagerRefreshTokenRequiresAtomicStorage verifies refresh tokens fail closed without atomic storage. TestManagerRefreshTokenRequiresAtomicStorage 验证缺少原子存储时刷新令牌会安全失败。
+func TestManagerRefreshTokenRequiresAtomicStorage(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.Timeout = 60
+		cfg.RefreshTokenTimeout = 60
+	})
+	baseStorage := requireManagerTestStorage(t, mgr)
+	mgr.storage = nonAtomicManagerStorage{Storage: baseStorage}
+
+	if _, err := mgr.LoginWithRefreshToken(ctx, "refresh-non-atomic", "web"); !errors.Is(err, derror.ErrStorageUnavailable) {
+		t.Fatalf("LoginWithRefreshToken(non-atomic storage) error = %v, want ErrStorageUnavailable", err)
 	}
 }
 

@@ -17,7 +17,8 @@ func (m *Manager) handleConcurrency(
 	policy loginPolicy,
 ) (concurrencyResult, error) {
 	// Clean expired tokens 清理已过期的 token
-	if err := m.cleanExpiredTerminals(ctx, sess); err != nil {
+	destroyedByClean, err := m.cleanExpiredTerminals(ctx, sess)
+	if err != nil {
 		return concurrencyResult{}, err
 	}
 
@@ -43,20 +44,23 @@ func (m *Manager) handleConcurrency(
 				return concurrencyResult{}, derror.ErrLoginLimitExceeded
 			}
 			// Allow login when no active terminal 无活跃终端时允许继续登录。
-			return concurrencyResult{}, nil
+			return concurrencyResult{destroyedSession: destroyedByClean}, nil
 		}
 
 		// Replace old sessions when concurrency is disabled 不允许并发：顶掉旧会话
 		// Replace terminals by configured scope 按配置作用域顶掉旧终端。
-		destroyedSession := false
-		var err error
+		destroyedSession := destroyedByClean
 		if m.config.ConcurrencyScope == config.ConcurrencyScopeAccount {
-			if destroyedSession, err = m.removeTerminalInfosAndTokens(ctx, sess, config.LogoutModeReplaced); err != nil {
+			if destroyedByReplace, err := m.removeTerminalInfosAndTokens(ctx, sess, config.LogoutModeReplaced); err != nil {
 				return concurrencyResult{}, err
+			} else {
+				destroyedSession = destroyedSession || destroyedByReplace
 			}
 		} else if m.config.ConcurrencyScope == config.ConcurrencyScopeDevice {
-			if destroyedSession, err = m.removeTerminalInfosAndTokens(ctx, sess, config.LogoutModeReplaced, device); err != nil {
+			if destroyedByReplace, err := m.removeTerminalInfosAndTokens(ctx, sess, config.LogoutModeReplaced, device); err != nil {
 				return concurrencyResult{}, err
+			} else {
+				destroyedSession = destroyedSession || destroyedByReplace
 			}
 		}
 		return concurrencyResult{handled: true, destroyedSession: destroyedSession}, nil
@@ -70,7 +74,7 @@ func (m *Manager) handleConcurrency(
 			return concurrencyResult{}, shareErr
 		}
 		if token != "" {
-			return concurrencyResult{reuseToken: token, handled: true}, nil
+			return concurrencyResult{reuseToken: token, handled: true, destroyedSession: destroyedByClean}, nil
 		}
 	}
 
@@ -84,7 +88,7 @@ func (m *Manager) handleConcurrency(
 			removedOverflow = true
 		}
 		if removedOverflow {
-			return concurrencyResult{handled: true}, nil
+			return concurrencyResult{handled: true, destroyedSession: destroyedByClean}, nil
 		}
 	} else if m.config.ConcurrencyScope == config.ConcurrencyScopeDevice {
 		// Enforce device-level max login count 执行设备级最大登录数限制。
@@ -96,12 +100,12 @@ func (m *Manager) handleConcurrency(
 			removedOverflow = true
 		}
 		if removedOverflow {
-			return concurrencyResult{handled: true}, nil
+			return concurrencyResult{handled: true, destroyedSession: destroyedByClean}, nil
 		}
 	}
 
 	// No concurrency action needed 无需并发处理。
-	return concurrencyResult{}, nil
+	return concurrencyResult{destroyedSession: destroyedByClean}, nil
 }
 
 // getTokenAndShare retrieves and shares a token within one device dimension. getTokenAndShare 在同一设备维度内获取并共享 token。

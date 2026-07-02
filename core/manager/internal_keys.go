@@ -10,16 +10,6 @@ func (m *Manager) getTokenKey(tokenValue string) string {
 	return m.config.KeyPrefix + m.config.AuthType + config.TokenKeyPrefix + tokenValue
 }
 
-// getLegacyTokenKey generates legacy token key before token namespace was added. getLegacyTokenKey 获取历史版本 Token 存储键。
-func (m *Manager) getLegacyTokenKey(tokenValue string) string {
-	return m.config.KeyPrefix + m.config.AuthType + tokenValue
-}
-
-// getTokenStorageKeys returns all token storage keys for cleanup. getTokenStorageKeys 返回 Token 清理需要覆盖的全部存储键。
-func (m *Manager) getTokenStorageKeys(tokenValue string) []string {
-	return []string{m.getTokenKey(tokenValue), m.getLegacyTokenKey(tokenValue)}
-}
-
 // getSessionKey generates the storage key for a session. getSessionKey 获取会话存储键。
 func (m *Manager) getSessionKey(loginID string) string {
 	return m.config.KeyPrefix + m.config.AuthType + SessionKeyPrefix + loginID

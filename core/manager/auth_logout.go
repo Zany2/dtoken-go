@@ -273,6 +273,9 @@ func (m *Manager) removeTerminalInfosAndTokens(ctx context.Context, sess *Sessio
 		// Remove all terminals 移除所有终端信息
 		terminalInfos = sess.removeAllTerminals()
 	}
+	if len(terminalInfos) == 0 {
+		return false, nil
+	}
 
 	// Apply mode to all removed tokens 按模式处理所有被移除 Token
 	for _, terminalInfo := range terminalInfos {
@@ -341,13 +344,13 @@ func (m *Manager) logoutTerminals(
 
 	// Extract token list 提取 token 列表
 	tokens := make([]string, len(removed))
-	tokenKeys := make([]string, 0, len(removed)*2)
+	tokenKeys := make([]string, 0, len(removed))
 	for i, info := range removed {
 		tokens[i] = info.Token
-		tokenKeys = append(tokenKeys, m.getTokenStorageKeys(info.Token)...)
+		tokenKeys = append(tokenKeys, m.getTokenKey(info.Token))
 	}
 
-	// Delete primary token keys 删除主 token keys
+	// Delete token keys 删除 Token 键。
 	if err = m.storage.Delete(ctx, tokenKeys...); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
@@ -399,15 +402,23 @@ func (m *Manager) cleanTokenMetadata(ctx context.Context, tokens []string) error
 	// Build metadata keys 构建元数据键。
 	keys := make([]string, 0, len(tokens)*2)
 	for _, token := range tokens {
+		if token == "" {
+			continue
+		}
 		keys = append(keys, m.getRenewKey(token), m.getActiveKey(token))
 	}
 
 	// Delete metadata keys 删除元数据键。
-	if err := m.storage.Delete(ctx, keys...); err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	if len(keys) > 0 {
+		if err := m.storage.Delete(ctx, keys...); err != nil {
+			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
 	}
 
 	for _, token := range tokens {
+		if token == "" {
+			continue
+		}
 		if err := m.cleanRefreshTokenByAccessToken(ctx, token); err != nil {
 			return err
 		}
@@ -419,6 +430,18 @@ func (m *Manager) cleanTokenMetadata(ctx context.Context, tokens []string) error
 
 // TerminalRemovalFunc defines how to remove terminals from a session. TerminalRemovalFunc 定义如何从 Session 中移除终端。
 type TerminalRemovalFunc func(sess *Session) []TerminalInfo
+
+// cloneSessionForAliveCheck copies session slices used by alive checks. cloneSessionForAliveCheck 拷贝存活校验依赖的会话切片。
+func cloneSessionForAliveCheck(sess *Session) Session {
+	if sess == nil {
+		return Session{}
+	}
+	clone := *sess
+	clone.TerminalInfos = append([]TerminalInfo(nil), sess.TerminalInfos...)
+	clone.Permissions = append([]string(nil), sess.Permissions...)
+	clone.Roles = append([]string(nil), sess.Roles...)
+	return clone
+}
 
 // processTerminals performs common terminal processing logic. processTerminals 通用终端处理逻辑。
 func (m *Manager) processTerminals(
@@ -442,6 +465,9 @@ func (m *Manager) processTerminals(
 		return err
 	}
 
+	// Keep original session for alive checks before terminals are removed. 保留移除前的原始会话用于存活校验。
+	originalSession := cloneSessionForAliveCheck(sess)
+
 	// Apply removal strategy 执行移除策略
 	removedTerminals := removalFunc(sess)
 
@@ -453,7 +479,7 @@ func (m *Manager) processTerminals(
 		// Active-timeout processing must persist its exact cause; other terminal states only apply to alive tokens. 不活跃超时必须保留精确原因；其他终端状态仅作用于仍有效的 Token。
 		shouldSetState := state == TokenStateActiveTimeout
 		if !shouldSetState {
-			alive, aliveErr := m.checkTerminalTokenAlive(ctx, token)
+			alive, aliveErr := m.checkTerminalTokenAliveWithContext(ctx, token, nil, &originalSession)
 			if aliveErr != nil {
 				return aliveErr
 			}

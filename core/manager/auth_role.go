@@ -15,6 +15,8 @@ func (m *Manager) AddRoles(ctx context.Context, loginID string, roles []string) 
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+	// Normalize role values 规范化角色值。
+	roles = normalizeAccessValues(roles)
 	// Return early when nothing to change 无变更时直接返回。
 	if len(roles) == 0 {
 		return nil
@@ -52,6 +54,8 @@ func (m *Manager) AddRoles(ctx context.Context, loginID string, roles []string) 
 
 // AddRolesByToken adds roles to a user by token AddRolesByToken 根据 Token 为用户添加角色
 func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles []string) error {
+	// Normalize role values 规范化角色值。
+	roles = normalizeAccessValues(roles)
 	// Return early when nothing to change 无变更时直接返回。
 	if len(roles) == 0 {
 		return nil
@@ -102,6 +106,8 @@ func (m *Manager) RemoveRoles(ctx context.Context, loginID string, roles []strin
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+	// Normalize role values 规范化角色值。
+	roles = normalizeAccessValues(roles)
 	// Return early when nothing to change 无变更时直接返回。
 	if len(roles) == 0 {
 		return nil
@@ -139,6 +145,8 @@ func (m *Manager) RemoveRoles(ctx context.Context, loginID string, roles []strin
 
 // RemoveRolesByToken removes roles from a user by token RemoveRolesByToken 根据 Token 删除用户的指定角色
 func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, roles []string) error {
+	// Normalize role values 规范化角色值。
+	roles = normalizeAccessValues(roles)
 	// Return early when nothing to change 无变更时直接返回。
 	if len(roles) == 0 {
 		return nil

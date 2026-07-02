@@ -57,10 +57,6 @@ func (m *Manager) setTokenState(ctx context.Context, tokenValue string, state To
 	if err := m.storage.Set(ctx, m.getTokenKey(tokenValue), string(state), expiration); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
-	// Remove legacy token key 删除历史 Token 键。
-	if err := m.storage.Delete(ctx, m.getLegacyTokenKey(tokenValue)); err != nil {
-		m.logger.Errorf("manager.setTokenState: failed to delete legacy token key, token=%s, error=%v", tokenValue, err)
-	}
 	// Return state save success 返回状态保存成功。
 	return nil
 }
@@ -92,7 +88,7 @@ func (m *Manager) applyLogoutModeToToken(ctx context.Context, tokenValue string,
 	switch mode {
 	case config.LogoutModeLogout:
 		// Delete mapping for normal logout 普通登出直接删除映射。
-		if err := m.storage.Delete(ctx, m.getTokenStorageKeys(tokenValue)...); err != nil {
+		if err := m.storage.Delete(ctx, m.getTokenKey(tokenValue)); err != nil {
 			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
 	case config.LogoutModeKickout:
@@ -186,9 +182,9 @@ func (m *Manager) checkTerminalTokenAliveWithContext(ctx context.Context, tokenV
 		return false, nil
 	}
 
-	// Reuse session only when it matches token owner 仅当会话归属匹配时复用。
+	// Reject foreign token when caller provided a session. 传入会话时拒绝不属于该会话的 Token。
 	if sess != nil && sess.LoginID != tokenInfo.LoginID {
-		sess = nil
+		return false, nil
 	}
 	// Load session 加载会话。
 	if sess == nil {

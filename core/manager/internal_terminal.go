@@ -61,6 +61,26 @@ func addUniqueStrings(items []string, values ...string) []string {
 	return items
 }
 
+// normalizeAccessValues removes empty values and keeps first occurrence order. normalizeAccessValues 移除空值并保留首次出现顺序。
+func normalizeAccessValues(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		normalized = append(normalized, value)
+	}
+	return normalized
+}
+
 // removeStrings removes matched non-empty strings. removeStrings 移除匹配的非空字符串。
 func removeStrings(items []string, values ...string) []string {
 	// Return original list when no removal needed. 无需移除时返回原列表。

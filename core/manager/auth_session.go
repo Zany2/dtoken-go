@@ -257,9 +257,10 @@ func (m *Manager) GetTerminalListByLoginID(ctx context.Context, loginID string, 
 	// Filter by optional device 按可选设备过滤。
 	if len(device) > 0 {
 		targetDevice := strings.TrimSpace(device[0])
-		if targetDevice != "" {
-			return sess.getTerminalsByDevice(targetDevice), nil
+		if targetDevice == "" {
+			return nil, derror.ErrInvalidParam
 		}
+		return sess.getTerminalsByDevice(targetDevice), nil
 	}
 
 	// Return copy to avoid external mutation 返回副本，避免外部修改影响内部数据

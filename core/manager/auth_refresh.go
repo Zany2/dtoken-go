@@ -80,6 +80,11 @@ func (m *Manager) loginWithRefreshTokenOptions(ctx context.Context, opts Refresh
 
 // loginWithRefreshTokenOptionsInternal logs in and issues a refresh token with internal login controls. loginWithRefreshTokenOptionsInternal 使用内部登录控制参数登录并签发刷新令牌。
 func (m *Manager) loginWithRefreshTokenOptionsInternal(ctx context.Context, opts RefreshTokenOptions, internal loginInternalOptions) (*RefreshTokenPair, error) {
+	// Require atomic storage before issuing a refresh token pair. 签发刷新令牌对前要求原子存储能力。
+	if _, err := m.requireAtomicStorageForRefreshToken(); err != nil {
+		return nil, err
+	}
+
 	// Disable sharing so refresh-token login always owns a dedicated access token. 禁用共享，确保刷新令牌登录独占新的访问 Token。
 	isShare := false
 	opts.LoginOptions.IsShare = &isShare
@@ -92,7 +97,7 @@ func (m *Manager) loginWithRefreshTokenOptionsInternal(ctx context.Context, opts
 		_ = m.Logout(ctx, accessToken)
 		return nil, err
 	}
-	// Roll back access token when refresh token persistence fails. 刷新令牌持久化失败时回滚访问 Token。
+	// Keep token-pair creation all-or-nothing for callers. 对调用方保持令牌对创建的整体一致性。
 	pair, err := m.issueRefreshToken(ctx, accessToken, opts.RefreshTimeout)
 	if err != nil {
 		_ = m.Logout(ctx, accessToken)
@@ -109,21 +114,22 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 		return nil, err
 	}
 	// Reject malformed refresh token records. 拒绝不完整的刷新令牌记录。
-	if info.LoginID == "" {
+	if info.LoginID == "" || info.AccessToken == "" {
 		return nil, derror.ErrInvalidRefreshToken
 	}
 	// Recheck account and device status at rotation time. 轮换时重新检查账号和设备状态。
 	if m.isDisable(ctx, info.LoginID) {
 		return nil, derror.ErrAccountDisabled
 	}
+	// Reject refresh when the bound device is disabled. 绑定设备被禁用时拒绝刷新。
 	if m.isDisableDeviceMatch(ctx, info.LoginID, info.Device, info.DeviceID) {
 		return nil, derror.ErrDeviceDisabled
 	}
 
 	// Atomically consume refresh token to prevent concurrent replay 原子消费刷新令牌，防止并发重放。
-	atomicStorage, ok := m.storage.(adapter.AtomicStorage)
-	if !ok {
-		return nil, fmt.Errorf("%w: refresh token rotation requires atomic storage", derror.ErrStorageUnavailable)
+	atomicStorage, err := m.requireAtomicStorageForRefreshToken()
+	if err != nil {
+		return nil, err
 	}
 	existing, delErr := atomicStorage.GetAndDeleteMany(ctx, m.getRefreshTokenKey(refreshToken), m.getTokenRefreshKey(info.AccessToken))
 	if delErr != nil {
@@ -149,7 +155,7 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 		return nil, err
 	}
 	// Retire old access token after the replacement pair is available. 新令牌对可用后再下线旧访问 Token。
-	if err = m.logoutRotatedAccessToken(ctx, info.AccessToken, pair); err != nil {
+	if err = m.logoutRotatedAccessToken(ctx, info, pair); err != nil {
 		return nil, err
 	}
 	m.triggerRefreshTokenEvent(listener.EventRefreshTokenRotate, pair, listener.ActionRotate)
@@ -171,13 +177,17 @@ func (m *Manager) RevokeRefreshToken(ctx context.Context, refreshToken string) e
 		return err
 	}
 	if info.AccessToken != "" {
-		// Revoke the related access token first when it is still active. 关联访问 Token 仍有效时优先撤销它。
-		if err = m.Logout(ctx, info.AccessToken); err != nil && !isTokenInactiveError(err) {
+		// Remove the related access terminal even when access token already expired. 即使访问 Token 已过期，也移除关联访问终端。
+		if err = m.removeRefreshAccessToken(ctx, info); err != nil {
 			return err
 		}
 	}
-	// Delete both refresh token and reverse lookup keys. 同时删除刷新令牌键和反向索引键。
-	err = m.storage.Delete(ctx, m.getRefreshTokenKey(refreshToken), m.getTokenRefreshKey(info.AccessToken))
+	// Delete refresh token and its reverse lookup when available. 删除刷新令牌，并在存在时删除反向索引。
+	keys := []string{m.getRefreshTokenKey(refreshToken)}
+	if info.AccessToken != "" {
+		keys = append(keys, m.getTokenRefreshKey(info.AccessToken))
+	}
+	err = m.storage.Delete(ctx, keys...)
 	if err == nil {
 		m.triggerEvent(listener.EventRefreshTokenRevoke, info.LoginID, info.Device, info.DeviceID, info.AccessToken, map[string]any{
 			listener.ExtraKeyAction:       listener.ActionRevoke,
@@ -238,8 +248,12 @@ func (m *Manager) issueRefreshToken(ctx context.Context, accessToken string, ref
 	if !saved {
 		return nil, fmt.Errorf("%w: refresh token already exists", derror.ErrStorageUnavailable)
 	}
-	// Store reverse lookup from access token to refresh token. 存储访问 Token 到刷新令牌的反向索引。
-	if err = m.storage.Set(ctx, m.getTokenRefreshKey(accessToken), refreshToken, m.resolveTokenExpiration(tokenInfo)); err != nil {
+	// Store reverse lookup no longer than either side. 反向索引有效期不超过访问令牌或刷新令牌任一侧。
+	reverseExpiration := m.resolveTokenExpiration(tokenInfo)
+	if expiration > 0 && (reverseExpiration <= 0 || reverseExpiration > expiration) {
+		reverseExpiration = expiration
+	}
+	if err = m.storage.Set(ctx, m.getTokenRefreshKey(accessToken), refreshToken, reverseExpiration); err != nil {
 		_ = m.storage.Delete(ctx, m.getRefreshTokenKey(refreshToken))
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
@@ -298,21 +312,47 @@ func (m *Manager) cleanRefreshTokenByAccessToken(ctx context.Context, accessToke
 	}
 	refreshBytes, err := utils.ToBytes(data)
 	if err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
+		// Drop corrupt reverse metadata and keep cleanup idempotent. 删除损坏的反向元数据并保持清理幂等。
+		if deleteErr := m.storage.Delete(ctx, m.getTokenRefreshKey(accessToken)); deleteErr != nil {
+			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, deleteErr)
+		}
+		return nil
 	}
 	refreshToken := string(refreshBytes)
+	if refreshToken == "" {
+		return m.storage.Delete(ctx, m.getTokenRefreshKey(accessToken))
+	}
 	return m.storage.Delete(ctx, m.getRefreshTokenKey(refreshToken), m.getTokenRefreshKey(accessToken))
 }
 
-// logoutRotatedAccessToken logs out old access token after rotation. logoutRotatedAccessToken 在轮换后登出旧访问令牌。
-func (m *Manager) logoutRotatedAccessToken(ctx context.Context, oldAccessToken string, pair *RefreshTokenPair) error {
-	if oldAccessToken == "" {
+// requireAtomicStorageForRefreshToken returns atomic storage required by refresh-token rotation. requireAtomicStorageForRefreshToken 返回刷新令牌轮换所需的原子存储。
+func (m *Manager) requireAtomicStorageForRefreshToken() (adapter.AtomicStorage, error) {
+	atomicStorage, ok := m.storage.(adapter.AtomicStorage)
+	if !ok {
+		return nil, fmt.Errorf("%w: refresh token requires atomic storage", derror.ErrStorageUnavailable)
+	}
+	return atomicStorage, nil
+}
+
+// removeRefreshAccessToken removes the access terminal bound to refresh metadata. removeRefreshAccessToken 移除刷新元数据绑定的访问终端。
+func (m *Manager) removeRefreshAccessToken(ctx context.Context, info *RefreshTokenInfo) error {
+	if info == nil || info.LoginID == "" || info.AccessToken == "" {
 		return nil
 	}
-	if err := m.Logout(ctx, oldAccessToken); err != nil {
-		if isTokenInactiveError(err) {
-			return nil
+	return m.logoutTerminals(ctx, info.LoginID, func(sess *Session) []TerminalInfo {
+		if terminal, ok := sess.removeTerminalByToken(info.AccessToken); ok {
+			return []TerminalInfo{terminal}
 		}
+		return nil
+	})
+}
+
+// logoutRotatedAccessToken logs out old access token after rotation. logoutRotatedAccessToken 在轮换后登出旧访问令牌。
+func (m *Manager) logoutRotatedAccessToken(ctx context.Context, oldInfo *RefreshTokenInfo, pair *RefreshTokenPair) error {
+	if oldInfo == nil || oldInfo.AccessToken == "" {
+		return nil
+	}
+	if err := m.removeRefreshAccessToken(ctx, oldInfo); err != nil {
 		if pair != nil {
 			_ = m.cleanRefreshTokenByAccessToken(ctx, pair.AccessToken)
 			_ = m.Logout(ctx, pair.AccessToken)

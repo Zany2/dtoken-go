@@ -15,6 +15,8 @@ func (m *Manager) AddPermissions(ctx context.Context, loginID string, permission
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+	// Normalize permission values 规范化权限值。
+	permissions = normalizeAccessValues(permissions)
 	// Return early when nothing to change 无变更时直接返回。
 	if len(permissions) == 0 {
 		return nil
@@ -52,6 +54,8 @@ func (m *Manager) AddPermissions(ctx context.Context, loginID string, permission
 
 // AddPermissionsByToken adds permissions to a user by token. AddPermissionsByToken 根据 Token 为用户添加权限。
 func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, permissions []string) error {
+	// Normalize permission values 规范化权限值。
+	permissions = normalizeAccessValues(permissions)
 	// Return early when nothing to change 无变更时直接返回。
 	if len(permissions) == 0 {
 		return nil
@@ -102,6 +106,8 @@ func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permiss
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+	// Normalize permission values 规范化权限值。
+	permissions = normalizeAccessValues(permissions)
 	// Return early when nothing to change 无变更时直接返回。
 	if len(permissions) == 0 {
 		return nil
@@ -139,6 +145,8 @@ func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permiss
 
 // RemovePermissionsByToken removes permissions from a user by token. RemovePermissionsByToken 根据 Token 删除用户的指定权限。
 func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue string, permissions []string) error {
+	// Normalize permission values 规范化权限值。
+	permissions = normalizeAccessValues(permissions)
 	// Return early when nothing to change 无变更时直接返回。
 	if len(permissions) == 0 {
 		return nil

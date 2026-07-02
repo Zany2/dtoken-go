@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -1164,6 +1165,109 @@ func TestManagerGetTokenInfoStateSemantics(t *testing.T) {
 				t.Fatalf("GetTokenInfo() error = %v, want %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestManagerTerminalStateActionsPreserveReason(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name    string
+		action  func(*Manager, string, string) error
+		wantErr error
+	}{
+		{
+			name: "kickout by token",
+			action: func(mgr *Manager, _, token string) error {
+				return mgr.Kickout(ctx, token)
+			},
+			wantErr: derror.ErrTokenKickout,
+		},
+		{
+			name: "kickout by login id",
+			action: func(mgr *Manager, loginID, _ string) error {
+				return mgr.KickoutByLoginID(ctx, loginID)
+			},
+			wantErr: derror.ErrTokenKickout,
+		},
+		{
+			name: "replace by token",
+			action: func(mgr *Manager, _, token string) error {
+				return mgr.Replace(ctx, token)
+			},
+			wantErr: derror.ErrTokenReplaced,
+		},
+		{
+			name: "replace by login id",
+			action: func(mgr *Manager, loginID, _ string) error {
+				return mgr.ReplaceByLoginID(ctx, loginID)
+			},
+			wantErr: derror.ErrTokenReplaced,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mgr := newTestManager(t, nil)
+			loginID := "terminal-state-" + tt.name
+			token, err := mgr.Login(ctx, loginID, "web")
+			if err != nil {
+				t.Fatalf("Login() error = %v", err)
+			}
+			keptToken, err := mgr.Login(ctx, loginID, "mobile")
+			if err != nil {
+				t.Fatalf("Login(kept) error = %v", err)
+			}
+			if err = tt.action(mgr, loginID, token); err != nil {
+				t.Fatalf("action() error = %v", err)
+			}
+			if err = mgr.CheckLogin(ctx, token); !errors.Is(err, tt.wantErr) {
+				t.Fatalf("CheckLogin() error = %v, want %v", err, tt.wantErr)
+			}
+			if strings.Contains(tt.name, "by token") {
+				if err = mgr.CheckLogin(ctx, keptToken); err != nil {
+					t.Fatalf("kept token CheckLogin() error = %v, want nil", err)
+				}
+			}
+		})
+	}
+}
+
+func TestManagerLogoutHelpersHandleNoopAndEmptyTokenMetadata(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, nil)
+
+	token, err := mgr.Login(ctx, "logout-noop-helper", "web")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	sess, err := mgr.getSession(ctx, "logout-noop-helper")
+	if err != nil {
+		t.Fatalf("getSession() error = %v", err)
+	}
+	destroyed, err := mgr.removeTerminalInfosAndTokens(ctx, sess, config.LogoutModeLogout, "mobile")
+	if err != nil {
+		t.Fatalf("removeTerminalInfosAndTokens(no match) error = %v", err)
+	}
+	if destroyed {
+		t.Fatal("removeTerminalInfosAndTokens(no match) destroyed session")
+	}
+	if err = mgr.CheckLogin(ctx, token); err != nil {
+		t.Fatalf("CheckLogin() after no-op remove error = %v", err)
+	}
+
+	emptyRenewKey := mgr.getRenewKey("")
+	emptyActiveKey := mgr.getActiveKey("")
+	if err = mgr.storage.Set(ctx, emptyRenewKey, "keep", time.Minute); err != nil {
+		t.Fatalf("Set(empty renew key) error = %v", err)
+	}
+	if err = mgr.storage.Set(ctx, emptyActiveKey, "keep", time.Minute); err != nil {
+		t.Fatalf("Set(empty active key) error = %v", err)
+	}
+	if err = mgr.cleanTokenMetadata(ctx, []string{"", token}); err != nil {
+		t.Fatalf("cleanTokenMetadata() error = %v", err)
+	}
+	if !mgr.storage.Exists(ctx, emptyRenewKey) || !mgr.storage.Exists(ctx, emptyActiveKey) {
+		t.Fatal("cleanTokenMetadata() deleted empty-token metadata keys")
 	}
 }
 
