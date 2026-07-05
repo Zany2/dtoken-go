@@ -171,6 +171,29 @@ func TestConsumeConstraintMismatchDoesNotConsumeTicket(t *testing.T) {
 	}
 }
 
+func TestRevokeDoesNotOverwriteConsumedTicket(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestTicketManager(time.Minute)
+
+	created, err := mgr.Create(ctx, CreateOptions{LoginID: "user-1"})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err = mgr.Consume(ctx, created.Ticket); err != nil {
+		t.Fatalf("Consume() error = %v", err)
+	}
+	if err = mgr.Revoke(ctx, created.Ticket); err != nil {
+		t.Fatalf("Revoke(consumed) error = %v", err)
+	}
+	status, err := mgr.Status(ctx, created.Ticket)
+	if err != nil {
+		t.Fatalf("Status(consumed after revoke) error = %v", err)
+	}
+	if status != StatusConsumed {
+		t.Fatalf("Status(consumed after revoke) = %s, want %s", status, StatusConsumed)
+	}
+}
+
 func newTestTicketManager(ttl time.Duration) *Manager {
 	return NewManagerWithConfig("test", "dt:", newTicketTestStorage(), ticketTestCodec{}, &Config{TTL: ttl})
 }
@@ -298,24 +321,6 @@ func (s *ticketTestStorage) GetAndDelete(_ context.Context, key string) (any, er
 	delete(s.items, key)
 	if item.expired() {
 		return nil, nil
-	}
-	return item.value, nil
-}
-
-func (s *ticketTestStorage) GetAndDeleteMany(ctx context.Context, key string, deleteKeys ...string) (any, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	item, ok := s.items[key]
-	if !ok {
-		return nil, nil
-	}
-	delete(s.items, key)
-	if item.expired() {
-		return nil, nil
-	}
-	for _, deleteKey := range deleteKeys {
-		delete(s.items, deleteKey)
 	}
 	return item.value, nil
 }

@@ -78,16 +78,17 @@ func (m *Manager) RevokeShortKey(ctx context.Context, key string) error {
 	if m.shortKeyManager == nil {
 		return derror.ErrModuleNotEnabled
 	}
-	value, _ := m.shortKeyManager.Validate(ctx, key)
+	value, validateErr := m.shortKeyManager.Validate(ctx, key)
+	status, statusErr := m.shortKeyManager.Status(ctx, key)
 	err := m.shortKeyManager.Revoke(ctx, key)
-	if err == nil {
-		if value != nil {
-			m.triggerShortKeyEvent(listener.EventShortKeyRevoke, value, listener.ActionRevoke)
-		} else if key != "" {
-			m.triggerEvent(listener.EventShortKeyRevoke, "", "", "", key, map[string]any{
-				listener.ExtraKeyAction: listener.ActionRevoke,
-			})
-		}
+	if err == nil && validateErr == nil && value != nil {
+		value.Status = shortkey.StatusRevoked
+		m.triggerShortKeyEvent(listener.EventShortKeyRevoke, value, listener.ActionRevoke)
+	} else if err == nil && statusErr == nil && status == shortkey.StatusPending && key != "" {
+		m.triggerEvent(listener.EventShortKeyRevoke, "", "", "", key, map[string]any{
+			listener.ExtraKeyAction: listener.ActionRevoke,
+			listener.ExtraKeyStatus: shortkey.StatusRevoked,
+		})
 	}
 	return err
 }
@@ -119,6 +120,18 @@ func (m *Manager) triggerShortKeyEvent(event listener.Event, value *shortkey.Sho
 		listener.ExtraKeyTargetApp: value.TargetApp,
 		listener.ExtraKeyScopes:    value.Scopes,
 		listener.ExtraKeyStatus:    value.Status,
-		listener.ExtraKeyTTL:       value.ExpiresIn,
+		listener.ExtraKeyTTL:       remainingShortKeyTTLSeconds(value),
 	})
+}
+
+// remainingShortKeyTTLSeconds calculates remaining short key seconds for event data. remainingShortKeyTTLSeconds 计算事件数据中的短 Key 剩余秒数。
+func remainingShortKeyTTLSeconds(value *shortkey.ShortKey) int64 {
+	if value == nil || value.ExpiresIn <= 0 {
+		return 0
+	}
+	remaining := value.CreateTime + value.ExpiresIn - time.Now().Unix()
+	if remaining <= 0 {
+		return 0
+	}
+	return remaining
 }

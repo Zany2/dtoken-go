@@ -193,6 +193,52 @@ func TestConsumeConstraintMismatchDoesNotConsumeShortKey(t *testing.T) {
 	}
 }
 
+func TestConfirmDoesNotOverwriteConfirmedShortKey(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestShortKeyManager(time.Minute)
+
+	created, err := mgr.Create(ctx, CreateOptions{Scene: "login"})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err = mgr.Confirm(ctx, created.Key, ConfirmOptions{LoginID: "user-1"}); err != nil {
+		t.Fatalf("Confirm() error = %v", err)
+	}
+	if _, err = mgr.Confirm(ctx, created.Key, ConfirmOptions{LoginID: "user-2"}); !errors.Is(err, ErrShortKeyMismatch) {
+		t.Fatalf("Confirm(overwrite) error = %v, want ErrShortKeyMismatch", err)
+	}
+	validated, err := mgr.Validate(ctx, created.Key, ValidateOptions{LoginID: "user-1"})
+	if err != nil {
+		t.Fatalf("Validate(original user) error = %v", err)
+	}
+	if validated.LoginID != "user-1" {
+		t.Fatalf("Validate(original user) loginID = %q, want user-1", validated.LoginID)
+	}
+}
+
+func TestRevokeDoesNotOverwriteConsumedShortKey(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestShortKeyManager(time.Minute)
+
+	created, err := mgr.Create(ctx, CreateOptions{LoginID: "user-1"})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err = mgr.Consume(ctx, created.Key); err != nil {
+		t.Fatalf("Consume() error = %v", err)
+	}
+	if err = mgr.Revoke(ctx, created.Key); err != nil {
+		t.Fatalf("Revoke(consumed) error = %v", err)
+	}
+	status, err := mgr.Status(ctx, created.Key)
+	if err != nil {
+		t.Fatalf("Status(consumed after revoke) error = %v", err)
+	}
+	if status != StatusConsumed {
+		t.Fatalf("Status(consumed after revoke) = %s, want %s", status, StatusConsumed)
+	}
+}
+
 func newTestShortKeyManager(ttl time.Duration) *Manager {
 	return NewManagerWithConfig("test", "dt:", newShortKeyTestStorage(), shortKeyTestCodec{}, &Config{
 		TTL:                ttl,
@@ -324,24 +370,6 @@ func (s *shortKeyTestStorage) GetAndDelete(_ context.Context, key string) (any, 
 	delete(s.items, key)
 	if item.expired() {
 		return nil, nil
-	}
-	return item.value, nil
-}
-
-func (s *shortKeyTestStorage) GetAndDeleteMany(ctx context.Context, key string, deleteKeys ...string) (any, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	item, ok := s.items[key]
-	if !ok {
-		return nil, nil
-	}
-	delete(s.items, key)
-	if item.expired() {
-		return nil, nil
-	}
-	for _, deleteKey := range deleteKeys {
-		delete(s.items, deleteKey)
 	}
 	return item.value, nil
 }

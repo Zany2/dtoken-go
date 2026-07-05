@@ -42,6 +42,16 @@ func (m *Manager) IntrospectToken(ctx context.Context, tokenValue string) (*Toke
 		return nil, err
 	}
 
+	// Check account and device disable status before session validation. 会话校验前先检查账号与设备封禁状态。
+	if m.isDisable(ctx, tokenInfo.LoginID) {
+		result.Error = derror.ErrAccountDisabled.Error()
+		return result, nil
+	}
+	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceId) {
+		result.Error = derror.ErrDeviceDisabled.Error()
+		return result, nil
+	}
+
 	sess, sessErr := m.getSession(ctx, tokenInfo.LoginID)
 	if sessErr != nil {
 		if errors.Is(sessErr, derror.ErrSessionNotFound) {
@@ -57,16 +67,6 @@ func (m *Manager) IntrospectToken(ctx context.Context, tokenValue string) (*Toke
 	}
 	if !alive {
 		result.Error = "inactive_token"
-		return result, nil
-	}
-
-	// Check account and device disable status 检查账号及设备封禁状态
-	if m.isDisable(ctx, tokenInfo.LoginID) {
-		result.Error = derror.ErrAccountDisabled.Error()
-		return result, nil
-	}
-	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceId) {
-		result.Error = derror.ErrDeviceDisabled.Error()
 		return result, nil
 	}
 

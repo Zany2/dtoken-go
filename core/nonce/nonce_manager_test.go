@@ -143,15 +143,6 @@ func (s *nonceTestStorage) GetAndDelete(ctx context.Context, key string) (any, e
 	return value, nil
 }
 
-func (s *nonceTestStorage) GetAndDeleteMany(ctx context.Context, key string, deleteKeys ...string) (any, error) {
-	value, err := s.GetAndDelete(ctx, key)
-	if err != nil || value == nil {
-		return value, err
-	}
-	_ = s.Delete(ctx, deleteKeys...)
-	return value, nil
-}
-
 func (s *nonceTestStorage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
 	if s.Exists(ctx, key) {
 		return false, nil
@@ -167,10 +158,6 @@ type nonceFailingAtomicStorage struct {
 }
 
 func (nonceFailingAtomicStorage) GetAndDelete(context.Context, string) (any, error) {
-	return nil, errors.New("storage down")
-}
-
-func (nonceFailingAtomicStorage) GetAndDeleteMany(context.Context, string, ...string) (any, error) {
 	return nil, errors.New("storage down")
 }
 

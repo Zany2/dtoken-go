@@ -233,6 +233,9 @@ func (s *OAuth2Server) GenerateAuthorizationCodeWithPKCE(ctx context.Context, cl
 	if !s.isValidRedirectURI(client, redirectURI) {
 		return nil, derror.ErrInvalidRedirectURI
 	}
+	if !s.isValidGrantType(client, GrantTypeAuthorizationCode) {
+		return nil, derror.ErrInvalidGrantType
+	}
 
 	if !s.isValidScopes(client, scopes) {
 		return nil, derror.ErrInvalidScope
@@ -295,43 +298,12 @@ func (s *OAuth2Server) ExchangeCodeForTokenWithPKCE(ctx context.Context, code, c
 		return nil, derror.ErrInvalidGrantType
 	}
 
-	key := s.getCodeKey(code)
-
-	// Atomically consume the authorization code to prevent concurrent replay 原子消费授权码，防止并发重放攻击
-	var rawData []byte
-	if atomicStorage, ok := s.storage.(adapter.AtomicStorage); ok {
-		data, delErr := atomicStorage.GetAndDelete(ctx, key)
-		if delErr != nil {
-			return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, delErr)
-		}
-		if data == nil {
-			return nil, derror.ErrInvalidAuthCode
-		}
-		rawData, err = utils.ToBytes(data)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
-		}
-	} else {
-		// Non-atomic fallback: concurrent replay possible on storages without GetAndDelete 非原子回退：不支持 GetAndDelete 的存储无法防止并发重放
-		data, getErr := s.storage.Get(ctx, key)
-		if getErr != nil {
-			return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, getErr)
-		}
-		if data == nil {
-			return nil, derror.ErrInvalidAuthCode
-		}
-		rawData, err = utils.ToBytes(data)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
-		}
-		if err = s.storage.Delete(ctx, key); err != nil {
-			return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-		}
+	authCode, err := s.getAuthorizationCode(ctx, code)
+	if err != nil {
+		return nil, err
 	}
-
-	var authCode AuthorizationCode
-	if err = s.serializer.Decode(rawData, &authCode); err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+	if authCode.Used {
+		return nil, derror.ErrAuthCodeUsed
 	}
 
 	if authCode.ClientID != clientID {
@@ -348,8 +320,63 @@ func (s *OAuth2Server) ExchangeCodeForTokenWithPKCE(ctx context.Context, code, c
 	if err = verifyCodeChallenge(authCode.CodeChallenge, authCode.CodeChallengeMethod, codeVerifier); err != nil {
 		return nil, err
 	}
+	if err = s.markAuthorizationCodeUsed(ctx, authCode); err != nil {
+		return nil, err
+	}
 
 	return s.generateAccessToken(ctx, authCode.UserID, authCode.ClientID, authCode.Scopes)
+}
+
+func (s *OAuth2Server) getAuthorizationCode(ctx context.Context, code string) (*AuthorizationCode, error) {
+	if code == "" {
+		return nil, derror.ErrInvalidAuthCode
+	}
+	data, err := s.storage.Get(ctx, s.getCodeKey(code))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	if data == nil {
+		return nil, derror.ErrInvalidAuthCode
+	}
+	rawData, err := utils.ToBytes(data)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
+	}
+	var authCode AuthorizationCode
+	if err = s.serializer.Decode(rawData, &authCode); err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+	}
+	return &authCode, nil
+}
+
+func (s *OAuth2Server) markAuthorizationCodeUsed(ctx context.Context, authCode *AuthorizationCode) error {
+	if authCode == nil || authCode.Code == "" {
+		return derror.ErrInvalidAuthCode
+	}
+	ttl := remainingAuthCodeDuration(authCode)
+	if ttl <= 0 {
+		return derror.ErrAuthCodeExpired
+	}
+	authCode.Used = true
+	encoded, err := s.serializer.Encode(authCode)
+	if err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+	}
+	if err = s.storage.Set(ctx, s.getCodeKey(authCode.Code), encoded, ttl); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	return nil
+}
+
+func remainingAuthCodeDuration(authCode *AuthorizationCode) time.Duration {
+	if authCode == nil || authCode.ExpiresIn <= 0 {
+		return 0
+	}
+	remainingSeconds := authCode.CreateTime + authCode.ExpiresIn - time.Now().Unix()
+	if remainingSeconds <= 0 {
+		return 0
+	}
+	return time.Duration(remainingSeconds) * time.Second
 }
 
 // ClientCredentialsToken Gets access token using client credentials grant 使用客户端凭证模式获取访问令牌
@@ -452,19 +479,49 @@ func (s *OAuth2Server) RefreshAccessToken(ctx context.Context, clientID, refresh
 		return nil, derror.ErrClientMismatch
 	}
 
-	// Delete refresh token first to prevent concurrent replay 先删除刷新令牌，防止并发重放
-	if err = s.storage.Delete(ctx, key); err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-	}
-
 	token, err := s.generateAccessToken(ctx, accessTokenInfo.UserID, accessTokenInfo.ClientID, accessTokenInfo.Scopes)
 	if err != nil {
+		return nil, err
+	}
+	if err = s.consumeRefreshToken(ctx, key); err != nil {
+		_ = s.deleteTokenPair(ctx, token)
 		return nil, err
 	}
 
 	_ = s.storage.Delete(ctx, s.getTokenKey(accessTokenInfo.Token))
 
 	return token, nil
+}
+
+func (s *OAuth2Server) consumeRefreshToken(ctx context.Context, key string) error {
+	if atomicStorage, ok := s.storage.(adapter.AtomicStorage); ok {
+		value, err := atomicStorage.GetAndDelete(ctx, key)
+		if err != nil {
+			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
+		if value == nil {
+			return derror.ErrInvalidRefreshToken
+		}
+		return nil
+	}
+	if err := s.storage.Delete(ctx, key); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	return nil
+}
+
+func (s *OAuth2Server) deleteTokenPair(ctx context.Context, token *AccessToken) error {
+	if token == nil {
+		return nil
+	}
+	keys := []string{s.getTokenKey(token.Token)}
+	if token.RefreshToken != "" {
+		keys = append(keys, s.getRefreshKey(token.RefreshToken))
+	}
+	if err := s.storage.Delete(ctx, keys...); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	return nil
 }
 
 // ValidateAccessToken Validates access token 验证访问令牌
@@ -530,15 +587,13 @@ func (s *OAuth2Server) RevokeToken(ctx context.Context, accessToken string) erro
 		return fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
 
-	// Delete access token first (higher security priority) 优先删除访问令牌
-	if err = s.storage.Delete(ctx, key); err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-	}
-
 	if accessTokenInfo.RefreshToken != "" {
 		if err = s.storage.Delete(ctx, s.getRefreshKey(accessTokenInfo.RefreshToken)); err != nil {
 			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
+	}
+	if err = s.storage.Delete(ctx, key); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
 	return nil

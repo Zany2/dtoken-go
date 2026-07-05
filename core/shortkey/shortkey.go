@@ -189,44 +189,40 @@ func (m *Manager) CreateWithTimeout(ctx context.Context, opts CreateOptions, tim
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	var key string
+	now := time.Now().Unix()
 	for i := 0; i < m.maxGenerateRetries; i++ {
 		generated, err := generateKey(m.length)
 		if err != nil {
 			return nil, err
 		}
-		if !m.storage.Exists(ctx, m.getKey(generated)) {
-			key = generated
-			break
+		shortKey := &ShortKey{
+			Key:        generated,
+			AuthType:   m.authType,
+			LoginID:    opts.LoginID,
+			Device:     opts.Device,
+			DeviceId:   opts.DeviceId,
+			Scene:      opts.Scene,
+			SourceApp:  opts.SourceApp,
+			TargetApp:  opts.TargetApp,
+			Scopes:     append([]string(nil), opts.Scopes...),
+			Extra:      cloneMap(opts.Extra),
+			CreateTime: now,
+			UpdateTime: now,
+			ExpiresIn:  int64(timeout.Seconds()),
+			Status:     StatusPending,
+		}
+		if shortKey.LoginID != "" {
+			shortKey.Status = StatusConfirmed
+		}
+		ok, err := m.saveIfAbsent(ctx, shortKey, timeout)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			return shortKey, nil
 		}
 	}
-	if key == "" {
-		return nil, fmt.Errorf("short key collision retry limit reached")
-	}
-	now := time.Now().Unix()
-	shortKey := &ShortKey{
-		Key:        key,
-		AuthType:   m.authType,
-		LoginID:    opts.LoginID,
-		Device:     opts.Device,
-		DeviceId:   opts.DeviceId,
-		Scene:      opts.Scene,
-		SourceApp:  opts.SourceApp,
-		TargetApp:  opts.TargetApp,
-		Scopes:     append([]string(nil), opts.Scopes...),
-		Extra:      cloneMap(opts.Extra),
-		CreateTime: now,
-		UpdateTime: now,
-		ExpiresIn:  int64(timeout.Seconds()),
-		Status:     StatusPending,
-	}
-	if shortKey.LoginID != "" {
-		shortKey.Status = StatusConfirmed
-	}
-	if err := m.save(ctx, shortKey, timeout); err != nil {
-		return nil, err
-	}
-	return shortKey, nil
+	return nil, fmt.Errorf("short key collision retry limit reached")
 }
 
 // Confirm confirms a pending short key. Confirm 确认待处理短 Key。
@@ -238,8 +234,8 @@ func (m *Manager) Confirm(ctx context.Context, key string, opts ConfirmOptions) 
 	if err = m.checkUsable(shortKey); err != nil {
 		return nil, err
 	}
-	if shortKey.Status != StatusPending && shortKey.Status != StatusConfirmed {
-		return nil, ErrInvalidShortKey
+	if shortKey.Status != StatusPending {
+		return nil, ErrShortKeyMismatch
 	}
 	if opts.LoginID != "" {
 		shortKey.LoginID = opts.LoginID
@@ -348,6 +344,14 @@ func (m *Manager) Revoke(ctx context.Context, key string) error {
 		}
 		return err
 	}
+	if err = m.checkUsable(shortKey); err != nil {
+		switch {
+		case errors.Is(err, ErrShortKeyConsumed), errors.Is(err, ErrShortKeyRevoked), errors.Is(err, ErrShortKeyExpired):
+			return nil
+		default:
+			return err
+		}
+	}
 	shortKey.Status = StatusRevoked
 	shortKey.UpdateTime = time.Now().Unix()
 	ttl := remainingDuration(shortKey)
@@ -414,6 +418,28 @@ func (m *Manager) save(ctx context.Context, shortKey *ShortKey, timeout time.Dur
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 	return nil
+}
+
+func (m *Manager) saveIfAbsent(ctx context.Context, shortKey *ShortKey, timeout time.Duration) (bool, error) {
+	encoded, err := m.serializer.Encode(shortKey)
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+	}
+	key := m.getKey(shortKey.Key)
+	if atomicStorage, ok := m.storage.(adapter.AtomicStorage); ok {
+		ok, err := atomicStorage.SetIfAbsent(ctx, key, encoded, timeout)
+		if err != nil {
+			return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
+		return ok, nil
+	}
+	if m.storage.Exists(ctx, key) {
+		return false, nil
+	}
+	if err = m.storage.Set(ctx, key, encoded, timeout); err != nil {
+		return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	return true, nil
 }
 
 func (m *Manager) get(ctx context.Context, key string) (*ShortKey, error) {

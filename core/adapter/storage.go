@@ -31,12 +31,10 @@ type Storage interface {
 	Ping(ctx context.Context) error
 }
 
-// AtomicStorage defines optional storage operations that must be atomic. AtomicStorage 定义必须具备原子性的可选存储操作。
+// AtomicStorage defines optional storage operations with atomic primary-key semantics. AtomicStorage 定义具备主键原子语义的可选存储操作。
 type AtomicStorage interface {
 	// GetAndDelete gets and deletes key atomically. GetAndDelete 原子地读取并删除键。
 	GetAndDelete(ctx context.Context, key string) (any, error)
-	// GetAndDeleteMany gets and deletes key, then deletes extra keys atomically. GetAndDeleteMany 原子地读取并删除主键，同时删除附加键。
-	GetAndDeleteMany(ctx context.Context, key string, deleteKeys ...string) (any, error)
 	// SetIfAbsent stores a key only when it does not exist. SetIfAbsent 仅在键不存在时写入键值。
 	SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error)
 }

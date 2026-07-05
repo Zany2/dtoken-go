@@ -65,16 +65,11 @@ func (m *Manager) RevokeTicket(ctx context.Context, ticketValue string) error {
 	if m.ticketManager == nil {
 		return derror.ErrModuleNotEnabled
 	}
-	value, _ := m.ticketManager.Validate(ctx, ticketValue)
+	value, validateErr := m.ticketManager.Validate(ctx, ticketValue)
 	err := m.ticketManager.Revoke(ctx, ticketValue)
-	if err == nil {
-		if value != nil {
-			m.triggerTicketEvent(listener.EventTicketRevoke, value, listener.ActionRevoke)
-		} else if ticketValue != "" {
-			m.triggerEvent(listener.EventTicketRevoke, "", "", "", ticketValue, map[string]any{
-				listener.ExtraKeyAction: listener.ActionRevoke,
-			})
-		}
+	if err == nil && validateErr == nil && value != nil {
+		value.Status = ticket.StatusRevoked
+		m.triggerTicketEvent(listener.EventTicketRevoke, value, listener.ActionRevoke)
 	}
 	return err
 }
@@ -106,6 +101,18 @@ func (m *Manager) triggerTicketEvent(event listener.Event, value *ticket.Ticket,
 		listener.ExtraKeyTargetApp: value.TargetApp,
 		listener.ExtraKeyScopes:    value.Scopes,
 		listener.ExtraKeyStatus:    value.Status,
-		listener.ExtraKeyTTL:       value.ExpiresIn,
+		listener.ExtraKeyTTL:       remainingTicketTTLSeconds(value),
 	})
+}
+
+// remainingTicketTTLSeconds calculates remaining ticket seconds for event data. remainingTicketTTLSeconds 计算事件数据中的 Ticket 剩余秒数。
+func remainingTicketTTLSeconds(value *ticket.Ticket) int64 {
+	if value == nil || value.ExpiresIn <= 0 {
+		return 0
+	}
+	remaining := value.CreateTime + value.ExpiresIn - time.Now().Unix()
+	if remaining <= 0 {
+		return 0
+	}
+	return remaining
 }

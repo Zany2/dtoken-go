@@ -19,6 +19,10 @@ func (m *Manager) Disable(ctx context.Context, loginID string, duration time.Dur
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+	// Validate disable duration 校验封禁时长。
+	if duration < 0 {
+		return derror.ErrInvalidParam
+	}
 
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(loginID)
@@ -190,6 +194,14 @@ func (m *Manager) DisableServiceLevel(ctx context.Context, loginID, service stri
 	if service == "" {
 		return derror.ErrInvalidParam
 	}
+	// Validate service level 校验服务封禁等级。
+	if level < 0 {
+		return derror.ErrInvalidParam
+	}
+	// Validate disable duration 校验封禁时长。
+	if duration < 0 {
+		return derror.ErrInvalidParam
+	}
 
 	// Build service disable info 构建服务封禁信息。
 	info := ServiceDisableInfo{
@@ -258,6 +270,10 @@ func (m *Manager) IsDisableService(ctx context.Context, loginID, service string)
 
 // IsDisableServiceLevel checks if a specific service is disabled at or above the given level. IsDisableServiceLevel 检查账号的指定服务是否达到指定封禁等级。
 func (m *Manager) IsDisableServiceLevel(ctx context.Context, loginID, service string, level int) bool {
+	// Reject invalid service level 拒绝非法服务封禁等级。
+	if level < 0 {
+		return false
+	}
 	// Load service disable info 加载服务封禁信息。
 	info, err := m.GetDisableServiceInfo(ctx, loginID, service)
 	if err != nil {
@@ -281,9 +297,11 @@ func (m *Manager) CheckDisableService(ctx context.Context, loginID string, servi
 		if service == "" {
 			return derror.ErrInvalidParam
 		}
-		// Reject disabled service 拒绝已封禁服务。
-		if m.IsDisableService(ctx, loginID, service) {
+		// Load service disable info to propagate storage errors 加载服务封禁信息以传递存储错误。
+		if _, err := m.GetDisableServiceInfo(ctx, loginID, service); err == nil {
 			return fmt.Errorf("%w: service=%s", derror.ErrServiceDisabled, service)
+		} else if !errors.Is(err, derror.ErrServiceNotDisabled) {
+			return err
 		}
 	}
 	return nil
@@ -299,6 +317,10 @@ func (m *Manager) CheckDisableServiceLevel(ctx context.Context, loginID, service
 	service = strings.TrimSpace(service)
 	// Validate service name 校验服务名称。
 	if service == "" {
+		return derror.ErrInvalidParam
+	}
+	// Validate service level 校验服务封禁等级。
+	if level < 0 {
 		return derror.ErrInvalidParam
 	}
 	// Load service disable info to propagate storage errors 加载服务封禁信息以传播存储错误，避免存储异常时静默放行
@@ -399,6 +421,10 @@ func (m *Manager) DisableDevice(ctx context.Context, loginID, device string, dur
 	if device == "" {
 		return derror.ErrInvalidParam
 	}
+	// Validate disable duration 校验封禁时长。
+	if duration < 0 {
+		return derror.ErrInvalidParam
+	}
 
 	// Build device disable info 构建设备封禁信息。
 	info := DeviceDisableInfo{
@@ -435,6 +461,10 @@ func (m *Manager) DisableDeviceAndDeviceId(ctx context.Context, loginID, device,
 	deviceId = strings.TrimSpace(deviceId)
 	// Validate device fields 校验设备字段。
 	if device == "" || deviceId == "" {
+		return derror.ErrInvalidParam
+	}
+	// Validate disable duration 校验封禁时长。
+	if duration < 0 {
 		return derror.ErrInvalidParam
 	}
 
@@ -533,8 +563,8 @@ func (m *Manager) IsDisableDeviceAndDeviceId(ctx context.Context, loginID, devic
 	if loginID == "" || device == "" || deviceId == "" {
 		return false
 	}
-	// Check concrete device disable marker 检查具体设备封禁标记。
-	return m.storage.Exists(ctx, m.getDisableDeviceAndDeviceIdKey(loginID, device, deviceId))
+	// Match both device type and concrete device disable rules 同时匹配设备类型与具体设备封禁规则。
+	return m.isDisableDeviceMatch(ctx, loginID, device, deviceId)
 }
 
 // CheckDisableDevice validates device type disable state. CheckDisableDevice 校验设备类型封禁状态。
@@ -549,9 +579,11 @@ func (m *Manager) CheckDisableDevice(ctx context.Context, loginID, device string
 	if device == "" {
 		return derror.ErrInvalidParam
 	}
-	// Reject disabled device 拒绝已封禁设备。
-	if m.IsDisableDevice(ctx, loginID, device) {
+	// Load device disable info to propagate storage errors 加载设备封禁信息以传递存储错误。
+	if _, err := m.GetDisableDeviceInfo(ctx, loginID, device); err == nil {
 		return derror.ErrDeviceDisabled
+	} else if !errors.Is(err, derror.ErrDeviceNotDisabled) {
+		return err
 	}
 	return nil
 }
@@ -569,9 +601,17 @@ func (m *Manager) CheckDisableDeviceAndDeviceId(ctx context.Context, loginID, de
 	if device == "" || deviceId == "" {
 		return derror.ErrInvalidParam
 	}
-	// Reject matched disabled device 拒绝命中的已封禁设备。
-	if m.isDisableDeviceMatch(ctx, loginID, device, deviceId) {
+	// Check device type disable first 先检查设备类型封禁。
+	if _, err := m.getDisableDeviceInfo(ctx, m.getDisableDeviceKey(loginID, device)); err == nil {
 		return derror.ErrDeviceDisabled
+	} else if !errors.Is(err, derror.ErrDeviceNotDisabled) {
+		return err
+	}
+	// Check concrete device disable 再检查具体设备封禁。
+	if _, err := m.getDisableDeviceInfo(ctx, m.getDisableDeviceAndDeviceIdKey(loginID, device, deviceId)); err == nil {
+		return derror.ErrDeviceDisabled
+	} else if !errors.Is(err, derror.ErrDeviceNotDisabled) {
+		return err
 	}
 	return nil
 }
@@ -697,9 +737,11 @@ func (m *Manager) CheckDisable(ctx context.Context, loginID string) error {
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
-	// Reject disabled account 拒绝已封禁账号。
-	if m.IsDisable(ctx, loginID) {
+	// Load account disable info to propagate storage errors 加载账号封禁信息以传递存储错误。
+	if _, err := m.GetDisableInfo(ctx, loginID); err == nil {
 		return derror.ErrAccountDisabled
+	} else if !errors.Is(err, derror.ErrAccountNotDisabled) {
+		return err
 	}
 	return nil
 }

@@ -3,6 +3,7 @@ package manager
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Zany2/dtoken-go/core/derror"
 )
@@ -12,6 +13,8 @@ func (m *Manager) SetSessionValue(ctx context.Context, loginID, key string, valu
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+	// Normalize session data key before validation and storage 规范化会话扩展数据键后再校验和存储。
+	key = strings.TrimSpace(key)
 	if key == "" {
 		return derror.ErrInvalidParam
 	}
@@ -34,6 +37,8 @@ func (m *Manager) GetSessionValue(ctx context.Context, loginID, key string) (any
 	if loginID == "" {
 		return nil, false, derror.ErrIDIsEmpty
 	}
+	// Normalize session data key before lookup 规范化会话扩展数据键后再查询。
+	key = strings.TrimSpace(key)
 	if key == "" {
 		return nil, false, derror.ErrInvalidParam
 	}
@@ -53,6 +58,8 @@ func (m *Manager) DeleteSessionValue(ctx context.Context, loginID, key string) e
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+	// Normalize session data key before deletion 规范化会话扩展数据键后再删除。
+	key = strings.TrimSpace(key)
 	if key == "" {
 		return derror.ErrInvalidParam
 	}

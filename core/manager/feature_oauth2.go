@@ -30,8 +30,9 @@ func (m *Manager) UnregisterOAuth2Client(clientID string) error {
 	if m.oauth2Manager == nil {
 		return derror.ErrModuleNotEnabled
 	}
+	client, getErr := m.oauth2Manager.GetClient(clientID)
 	err := m.oauth2Manager.UnregisterClient(clientID)
-	if err == nil {
+	if err == nil && getErr == nil && client != nil {
 		m.triggerEvent(listener.EventOAuth2ClientUnregister, "", "", "", "", map[string]any{
 			listener.ExtraKeyAction:   listener.ActionUnregister,
 			listener.ExtraKeyClientID: clientID,
@@ -195,10 +196,6 @@ func (m *Manager) RevokeOAuth2Token(ctx context.Context, accessToken string) err
 	if err == nil {
 		if token != nil {
 			m.triggerOAuth2TokenEvent(listener.EventOAuth2TokenRevoke, token, listener.ActionRevoke, "")
-		} else {
-			m.triggerEvent(listener.EventOAuth2TokenRevoke, "", "", "", accessToken, map[string]any{
-				listener.ExtraKeyAction: listener.ActionRevoke,
-			})
 		}
 	}
 	return err

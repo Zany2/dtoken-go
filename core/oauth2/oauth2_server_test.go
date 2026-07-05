@@ -184,6 +184,15 @@ func TestOAuth2AuthorizationCodeBoundaries(t *testing.T) {
 	if _, err := server.GenerateAuthorizationCode(ctx, client.ClientID, "user-1", client.RedirectURIs[0], []string{"admin"}); !errors.Is(err, derror.ErrInvalidScope) {
 		t.Fatalf("GenerateAuthorizationCode(invalid scope) error = %v, want ErrInvalidScope", err)
 	}
+	limited := oauth2TestClient()
+	limited.ClientID = "client-no-code"
+	limited.GrantTypes = []GrantType{GrantTypeClientCredentials}
+	if err := server.RegisterClient(limited); err != nil {
+		t.Fatalf("RegisterClient(limited) error = %v", err)
+	}
+	if _, err := server.GenerateAuthorizationCode(ctx, limited.ClientID, "user-1", limited.RedirectURIs[0], nil); !errors.Is(err, derror.ErrInvalidGrantType) {
+		t.Fatalf("GenerateAuthorizationCode(disallowed grant) error = %v, want ErrInvalidGrantType", err)
+	}
 }
 
 // TestOAuth2ScopesAreDefensivelyCopied verifies scope slices are copied. TestOAuth2ScopesAreDefensivelyCopied 验证 scopes 切片会被防御性复制。

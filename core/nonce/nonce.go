@@ -80,6 +80,11 @@ func NewNonceManager(authType, prefix string, storage adapter.Storage, ttl time.
 	}
 }
 
+// TTL returns the effective default nonce ttl. TTL 返回实际生效的默认 Nonce 有效期。
+func (nm *NonceManager) TTL() time.Duration {
+	return nm.ttl
+}
+
 // Generate creates nonce with default ttl Generate 使用默认有效期生成并存储 nonce
 func (nm *NonceManager) Generate(ctx context.Context) (string, error) {
 	return nm.GenerateWithTimeout(ctx, nm.ttl)

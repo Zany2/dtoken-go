@@ -287,7 +287,7 @@ func TestManagerLoginWithOptionsReturnsStorageErrorWithoutRollback(t *testing.T)
 	}
 	storage := requireManagerTestStorage(t, mgr)
 	sessionKey := mgr.getSessionKey("login-write-failure")
-	if err = storage.Expire(ctx, sessionKey, 5*time.Second); err != nil {
+	if err := storage.Expire(ctx, sessionKey, 5*time.Second); err != nil {
 		t.Fatalf("Expire(session) error = %v", err)
 	}
 	mgr.storage = &managerTestFailingSetStorage{
@@ -295,7 +295,7 @@ func TestManagerLoginWithOptionsReturnsStorageErrorWithoutRollback(t *testing.T)
 		failKey:            mgr.getTokenKey("failed-token"),
 		failSetIfAbsent:    true,
 	}
-	if _, err = mgr.LoginWithOptions(ctx, LoginOptions{
+	if _, err := mgr.LoginWithOptions(ctx, LoginOptions{
 		LoginID: "login-write-failure",
 		Device:  "mobile",
 		Token:   "failed-token",
@@ -526,8 +526,8 @@ func TestManagerPermissionShortcutMatrix(t *testing.T) {
 	if err = mgr.CheckPermissionAnd(ctx, "permission-shortcuts", []string{"article:update", "order:read"}); !errors.Is(err, derror.ErrPermissionDenied) {
 		t.Fatalf("CheckPermissionAnd(removed) error = %v, want ErrPermissionDenied", err)
 	}
-	if err = mgr.CheckPermission(ctx, "permission-shortcuts", ""); !errors.Is(err, derror.ErrPermissionDenied) {
-		t.Fatalf("CheckPermission(empty) error = %v, want ErrPermissionDenied", err)
+	if err = mgr.CheckPermission(ctx, "permission-shortcuts", ""); !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("CheckPermission(empty) error = %v, want ErrInvalidParam", err)
 	}
 }
 
@@ -582,8 +582,8 @@ func TestManagerRoleShortcutMatrix(t *testing.T) {
 	if err = mgr.CheckRoleAnd(ctx, "role-shortcuts", []string{"admin", "editor"}); !errors.Is(err, derror.ErrRoleDenied) {
 		t.Fatalf("CheckRoleAnd(removed) error = %v, want ErrRoleDenied", err)
 	}
-	if err = mgr.CheckRole(ctx, "role-shortcuts", ""); !errors.Is(err, derror.ErrRoleDenied) {
-		t.Fatalf("CheckRole(empty) error = %v, want ErrRoleDenied", err)
+	if err = mgr.CheckRole(ctx, "role-shortcuts", ""); !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("CheckRole(empty) error = %v, want ErrInvalidParam", err)
 	}
 }
 

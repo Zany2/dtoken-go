@@ -112,6 +112,10 @@ func (m *Manager) loadPermissions(ctx context.Context, fallback []string, subjec
 
 // providerPermissions resolves permissions from provider. providerPermissions 从提供器解析权限。
 func (m *Manager) providerPermissions(ctx context.Context, fallback []string, subject AccessSubject) ([]string, error) {
+	// Use fallback when provider is absent 提供器不存在时使用回退值。
+	if m.accessProvider == nil {
+		return fallback, nil
+	}
 	// Query access provider 查询访问提供器。
 	permissions, err := m.accessProvider.Permissions(ctx, subject)
 	if err != nil {
@@ -121,8 +125,8 @@ func (m *Manager) providerPermissions(ctx context.Context, fallback []string, su
 	if permissions == nil {
 		return fallback, nil
 	}
-	// Return provider permissions 返回提供器权限。
-	return permissions, nil
+	// Return normalized provider permissions 返回规范化后的提供器权限。
+	return normalizeProviderAccessValues(permissions), nil
 }
 
 // resolvePermissions resolves permissions and fails closed on provider errors. resolvePermissions 解析权限并在提供器出错时安全拒绝。
@@ -153,6 +157,10 @@ func (m *Manager) loadRoles(ctx context.Context, fallback []string, subject Acce
 
 // providerRoles resolves roles from provider. providerRoles 从提供器解析角色。
 func (m *Manager) providerRoles(ctx context.Context, fallback []string, subject AccessSubject) ([]string, error) {
+	// Use fallback when provider is absent 提供器不存在时使用回退值。
+	if m.accessProvider == nil {
+		return fallback, nil
+	}
 	// Query access provider 查询访问提供器。
 	roles, err := m.accessProvider.Roles(ctx, subject)
 	if err != nil {
@@ -162,8 +170,22 @@ func (m *Manager) providerRoles(ctx context.Context, fallback []string, subject 
 	if roles == nil {
 		return fallback, nil
 	}
-	// Return provider roles 返回提供器角色。
-	return roles, nil
+	// Return normalized provider roles 返回规范化后的提供器角色。
+	return normalizeProviderAccessValues(roles), nil
+}
+
+// normalizeProviderAccessValues normalizes provider values while preserving non-nil empty meaning. normalizeProviderAccessValues 规范化提供器返回值，并保留非 nil 空列表语义。
+func normalizeProviderAccessValues(values []string) []string {
+	// Preserve nil as fallback signal 保留 nil 作为回退信号。
+	if values == nil {
+		return nil
+	}
+	// Normalize non-nil provider values 规范化非 nil 提供器返回值。
+	normalized := normalizeAccessValues(values)
+	if normalized == nil {
+		return []string{}
+	}
+	return normalized
 }
 
 // resolveRoles resolves roles and fails closed on provider errors. resolveRoles 解析角色并在提供器出错时安全拒绝。

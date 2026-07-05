@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/config"
+	"github.com/Zany2/dtoken-go/core/listener"
 	"github.com/Zany2/dtoken-go/core/ticket"
 )
 
@@ -112,6 +113,24 @@ func TestManagerTicketBoundaries(t *testing.T) {
 	}
 	if ttl != -2 {
 		t.Fatalf("GetTicketTTL() = %d, want -2", ttl)
+	}
+}
+
+func TestManagerRevokeMissingTicketDoesNotTriggerEvent(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManagerWithTicket(t, nil)
+
+	var events []*listener.EventData
+	mgr.GetEventManager().RegisterFuncWithConfig(listener.EventTicketRevoke, func(data *listener.EventData) {
+		copyData := *data
+		events = append(events, &copyData)
+	}, listener.ListenerConfig{Async: false})
+
+	if err := mgr.RevokeTicket(ctx, "missing-ticket"); err != nil {
+		t.Fatalf("RevokeTicket(missing) error = %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("RevokeTicket(missing) events = %d, want 0", len(events))
 	}
 }
 

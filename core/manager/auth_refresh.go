@@ -131,12 +131,15 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 	if err != nil {
 		return nil, err
 	}
-	existing, delErr := atomicStorage.GetAndDeleteMany(ctx, m.getRefreshTokenKey(refreshToken), m.getTokenRefreshKey(info.AccessToken))
+	existing, delErr := atomicStorage.GetAndDelete(ctx, m.getRefreshTokenKey(refreshToken))
 	if delErr != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, delErr)
 	}
 	if existing == nil {
 		return nil, derror.ErrInvalidRefreshToken
+	}
+	if err = m.storage.Delete(ctx, m.getTokenRefreshKey(info.AccessToken)); err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
 	// Create the replacement pair without applying normal concurrency eviction again. 创建替换令牌对时跳过常规并发顶替处理。

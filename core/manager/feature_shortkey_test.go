@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/config"
+	"github.com/Zany2/dtoken-go/core/listener"
 	"github.com/Zany2/dtoken-go/core/shortkey"
 )
 
@@ -121,6 +122,49 @@ func TestManagerShortKeyBoundaries(t *testing.T) {
 	}
 	if ttl != -2 {
 		t.Fatalf("GetShortKeyTTL() = %d, want -2", ttl)
+	}
+}
+
+func TestManagerRevokeMissingShortKeyDoesNotTriggerEvent(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManagerWithShortKey(t, nil)
+
+	var events []*listener.EventData
+	mgr.GetEventManager().RegisterFuncWithConfig(listener.EventShortKeyRevoke, func(data *listener.EventData) {
+		copyData := *data
+		events = append(events, &copyData)
+	}, listener.ListenerConfig{Async: false})
+
+	if err := mgr.RevokeShortKey(ctx, "missing-short-key"); err != nil {
+		t.Fatalf("RevokeShortKey(missing) error = %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("RevokeShortKey(missing) events = %d, want 0", len(events))
+	}
+}
+
+func TestManagerRevokePendingShortKeyTriggersEvent(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManagerWithShortKey(t, nil)
+
+	var events []*listener.EventData
+	mgr.GetEventManager().RegisterFuncWithConfig(listener.EventShortKeyRevoke, func(data *listener.EventData) {
+		copyData := *data
+		events = append(events, &copyData)
+	}, listener.ListenerConfig{Async: false})
+
+	created, err := mgr.CreateShortKey(ctx, shortkey.CreateOptions{Scene: "qr-login"})
+	if err != nil {
+		t.Fatalf("CreateShortKey() error = %v", err)
+	}
+	if err = mgr.RevokeShortKey(ctx, created.Key); err != nil {
+		t.Fatalf("RevokeShortKey(pending) error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("RevokeShortKey(pending) events = %d, want 1", len(events))
+	}
+	if events[0].Value != created.Key {
+		t.Fatalf("RevokeShortKey(pending) event value = %q, want %q", events[0].Value, created.Key)
 	}
 }
 

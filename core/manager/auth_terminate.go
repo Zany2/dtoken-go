@@ -3,12 +3,19 @@ package manager
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Zany2/dtoken-go/core/derror"
 )
 
 // Terminate applies one terminal operation by options Terminate 根据选项执行一次终端下线操作
 func (m *Manager) Terminate(ctx context.Context, opts TerminateOptions) error {
+	// Normalize option fields before dispatching 规范化选项字段后再分发。
+	opts.Token = strings.TrimSpace(opts.Token)
+	opts.LoginID = strings.TrimSpace(opts.LoginID)
+	opts.Device = strings.TrimSpace(opts.Device)
+	opts.DeviceID = strings.TrimSpace(opts.DeviceID)
+
 	// Use logout as the default terminal action 默认使用注销作为终端操作
 	action := opts.Action
 	if action == "" {

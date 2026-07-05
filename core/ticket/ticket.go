@@ -240,6 +240,14 @@ func (m *Manager) Revoke(ctx context.Context, ticketValue string) error {
 		}
 		return err
 	}
+	if err = m.checkAlive(ticket); err != nil {
+		switch {
+		case errors.Is(err, ErrTicketConsumed), errors.Is(err, ErrTicketRevoked), errors.Is(err, ErrTicketExpired):
+			return nil
+		default:
+			return err
+		}
+	}
 	ticket.Status = StatusRevoked
 	ttl := remainingDuration(ticket)
 	if ttl <= 0 {

@@ -200,6 +200,10 @@ func TestManagerNonceEvents(t *testing.T) {
 		events = append(events, &copyData)
 	}, listener.ListenerConfig{Async: false})
 
+	defaultValue, err := mgr.GenerateNonce(ctx)
+	if err != nil {
+		t.Fatalf("GenerateNonce() error = %v", err)
+	}
 	value, err := mgr.GenerateNonceWithTimeout(ctx, time.Minute)
 	if err != nil {
 		t.Fatalf("GenerateNonceWithTimeout() error = %v", err)
@@ -214,6 +218,10 @@ func TestManagerNonceEvents(t *testing.T) {
 	assertManagerEvent(t, events, listener.EventNonceGenerate, "", "", "", value, map[string]any{
 		listener.ExtraKeyAction: listener.ActionCreate,
 		listener.ExtraKeyTTL:    int64(60),
+	})
+	assertManagerEvent(t, events, listener.EventNonceGenerate, "", "", "", defaultValue, map[string]any{
+		listener.ExtraKeyAction: listener.ActionCreate,
+		listener.ExtraKeyTTL:    int64(300),
 	})
 	assertManagerEvent(t, events, listener.EventNonceVerify, "", "", "", value, map[string]any{
 		listener.ExtraKeyAction: listener.ActionConsume,
