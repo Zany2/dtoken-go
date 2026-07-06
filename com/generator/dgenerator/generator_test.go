@@ -10,7 +10,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/derror"
 )
 
-// TestGenerateRejectsEmptyLoginID verifies empty loginID validation 测试空 loginID 校验
+// TestGenerateRejectsEmptyLoginID verifies empty loginID validation 测试。loginID 校验
 func TestGenerateRejectsEmptyLoginID(t *testing.T) {
 	g := NewDefaultGenerator()
 	if _, err := g.Generate("", "web", "device-1"); !errors.Is(err, derror.ErrEmptyLoginID) {
@@ -72,7 +72,7 @@ func TestJWTLifecycle(t *testing.T) {
 	if err = g.ValidateJWT(token); err != nil {
 		t.Fatalf("ValidateJWT() error = %v", err)
 	}
-	loginID, device, deviceId, err := g.GetLoginInfoFromJWT(token)
+	loginID, device, deviceID, err := g.GetLoginInfoFromJWT(token)
 	if err != nil {
 		t.Fatalf("GetLoginInfoFromJWT() error = %v", err)
 	}
@@ -82,8 +82,8 @@ func TestJWTLifecycle(t *testing.T) {
 	if device != "web" {
 		t.Fatalf("GetLoginInfoFromJWT() device = %q, want %q", device, "web")
 	}
-	if deviceId != "device-1" {
-		t.Fatalf("GetLoginInfoFromJWT() deviceId = %q, want %q", deviceId, "device-1")
+	if deviceID != "device-1" {
+		t.Fatalf("GetLoginInfoFromJWT() deviceId = %q, want %q", deviceID, "device-1")
 	}
 }
 
@@ -101,7 +101,7 @@ func TestJWTInvalidInputs(t *testing.T) {
 	}
 }
 
-// TestRandomStringFromCharsetValidation verifies random string input validation 测试随机字符串输入校验
+// TestRandomStringFromCharsetValidation verifies random string input validation 测试随机字符串输入校。
 func TestRandomStringFromCharsetValidation(t *testing.T) {
 	if _, err := randomStringFromCharset("", 1); err == nil {
 		t.Fatal("randomStringFromCharset() should fail for empty charset")

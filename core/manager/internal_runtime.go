@@ -3,8 +3,11 @@ package manager
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
+
+	"github.com/Zany2/dtoken-go/core/derror"
 )
 
 // loginLockEntry tracks one login lock and its active users. loginLockEntry 跟踪单个登录锁及其活跃使用者。
@@ -15,7 +18,7 @@ type loginLockEntry struct {
 
 // lockLoginWrite locks write operations for one login ID lockLoginWrite 锁定指定账号的写操作
 func (m *Manager) lockLoginWrite(loginID string) func() {
-	// Return no-op unlock for empty ID 空 ID 返回空解锁函数。
+	// Return no-op unlock for empty ID 。ID 返回空解锁函数。
 	if loginID == "" {
 		return func() {}
 	}
@@ -49,7 +52,7 @@ func (m *Manager) lockLoginWrite(loginID string) func() {
 	}
 }
 
-// submitAsync submits async work with goroutine fallback submitAsync 提交异步任务并在池不可用时回退到 goroutine
+// submitAsync submits async work with goroutine fallback submitAsync 提交异步任务并在池不可用时回退。goroutine
 func (m *Manager) submitAsync(name string, task func()) {
 	// Fallback when pool is absent 协程池不存在时回退。
 	if m.pool == nil {
@@ -65,14 +68,17 @@ func (m *Manager) submitAsync(name string, task func()) {
 	}
 }
 
-// expireIfLimited renews key only when duration is limited expireIfLimited 仅在有限过期时间下续期 key
+// expireIfLimited renews key only when duration is limited expireIfLimited 仅在有限过期时间下续。key
 func (m *Manager) expireIfLimited(ctx context.Context, key string, expiration time.Duration) error {
 	// Skip unlimited expiration 跳过无限有效期。
 	if expiration <= 0 {
 		return nil
 	}
 	// Renew key expiration 续期键过期时间。
-	return m.storage.Expire(ctx, key, expiration)
+	if err := m.storage.Expire(ctx, key, expiration); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	return nil
 }
 
 // expireTokenIfLimited renews token key when expiration is limited. expireTokenIfLimited 在存在过期时间时续期 Token 键。

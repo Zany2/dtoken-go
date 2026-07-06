@@ -52,8 +52,8 @@ type RefreshTokenInfo struct {
 }
 
 // LoginWithRefreshToken logs in and returns access and refresh tokens. LoginWithRefreshToken 登录并返回访问令牌和刷新令牌。
-func (m *Manager) LoginWithRefreshToken(ctx context.Context, loginID string, deviceAndDeviceId ...string) (*RefreshTokenPair, error) {
-	device, deviceID := m.getDeviceAndDeviceId(deviceAndDeviceId...)
+func (m *Manager) LoginWithRefreshToken(ctx context.Context, loginID string, deviceAndDeviceID ...string) (*RefreshTokenPair, error) {
+	device, deviceID := m.getDeviceAndDeviceID(deviceAndDeviceID...)
 	return m.LoginWithRefreshTokenOptions(ctx, RefreshTokenOptions{
 		LoginOptions: LoginOptions{
 			LoginID:  loginID,
@@ -236,7 +236,7 @@ func (m *Manager) issueRefreshToken(ctx context.Context, accessToken string, ref
 		AuthType:    m.config.AuthType,
 		LoginID:     tokenInfo.LoginID,
 		Device:      tokenInfo.Device,
-		DeviceID:    tokenInfo.DeviceId,
+		DeviceID:    tokenInfo.DeviceID,
 		AccessToken: accessToken,
 		CreateTime:  time.Now().Unix(),
 		ExpiresIn:   m.timeoutToSeconds(expiration),
@@ -274,7 +274,7 @@ func (m *Manager) issueRefreshToken(ctx context.Context, accessToken string, ref
 		RefreshExpiresIn: refreshTTL,
 		LoginID:          tokenInfo.LoginID,
 		Device:           tokenInfo.Device,
-		DeviceID:         tokenInfo.DeviceId,
+		DeviceID:         tokenInfo.DeviceID,
 	}, nil
 }
 

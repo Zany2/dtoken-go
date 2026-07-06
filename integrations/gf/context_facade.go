@@ -11,7 +11,7 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// GetTokenValueByCtx gets token value from current GF context GetTokenValueByCtx 从当前 GF 上下文获取 token 值
+// GetTokenValueByCtx gets token value from current GF context GetTokenValueByCtx 从当。GF 上下文获。token 。
 func GetTokenValueByCtx(ctx context.Context) (string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -25,7 +25,7 @@ func GetTokenValueByCtx(ctx context.Context) (string, error) {
 	return tokenValue, nil
 }
 
-// GetRequestContextByCtx gets raw request context GetRequestContextByCtx 获取原始请求上下文
+// GetRequestContextByCtx gets raw request context GetRequestContextByCtx 获取原始请求上下文。
 func GetRequestContextByCtx(ctx context.Context) (adapter.RequestContext, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -34,7 +34,7 @@ func GetRequestContextByCtx(ctx context.Context) (adapter.RequestContext, error)
 	return dCtx.GetRequestContext(), nil
 }
 
-// GetManagerByCtx gets current DToken manager GetManagerByCtx 获取当前 DToken 管理器
+// GetManagerByCtx gets current DToken manager GetManagerByCtx 获取当前 DToken 管理。
 func GetManagerByCtx(ctx context.Context) (*manager.Manager, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -43,7 +43,7 @@ func GetManagerByCtx(ctx context.Context) (*manager.Manager, error) {
 	return dCtx.GetManager(), nil
 }
 
-// IsLoginByCtx checks current request login state IsLoginByCtx 检查当前请求登录状态
+// IsLoginByCtx checks current request login state IsLoginByCtx 检查当前请求登录状。
 func IsLoginByCtx(ctx context.Context) bool {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -52,7 +52,7 @@ func IsLoginByCtx(ctx context.Context) bool {
 	return dCtx.Auth().IsLogin(ctx)
 }
 
-// CheckLoginByCtx checks current request login state CheckLoginByCtx 校验当前请求登录状态
+// CheckLoginByCtx checks current request login state CheckLoginByCtx 校验当前请求登录状。
 func CheckLoginByCtx(ctx context.Context) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -61,7 +61,7 @@ func CheckLoginByCtx(ctx context.Context) error {
 	return dCtx.Auth().CheckLogin(ctx)
 }
 
-// LoginByTokenByCtx renews current token login state LoginByTokenByCtx 使用当前 token 续期登录态
+// LoginByTokenByCtx renews current token login state LoginByTokenByCtx 使用当前 token 续期登录。
 func LoginByTokenByCtx(ctx context.Context) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -97,7 +97,7 @@ func ReplaceByCtx(ctx context.Context) error {
 	return dCtx.Auth().Replace(ctx)
 }
 
-// LogoutByDeviceByCtx logs out current user by device LogoutByDeviceByCtx 按设备登出当前用户
+// LogoutByDeviceByCtx logs out current user by device LogoutByDeviceByCtx 按设备登出当前用。
 func LogoutByDeviceByCtx(ctx context.Context, device string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -106,16 +106,16 @@ func LogoutByDeviceByCtx(ctx context.Context, device string) error {
 	return dCtx.Terminal().LogoutByDevice(ctx, device)
 }
 
-// LogoutByDeviceAndDeviceIdByCtx logs out current user by device and id LogoutByDeviceAndDeviceIdByCtx 按设备和设备 ID 登出当前用户
-func LogoutByDeviceAndDeviceIdByCtx(ctx context.Context, deviceAndDeviceId ...string) error {
+// LogoutByDeviceAndDeviceIDByCtx logs out current user by device and id LogoutByDeviceAndDeviceIDByCtx 按设备和设备 ID 登出当前用户
+func LogoutByDeviceAndDeviceIDByCtx(ctx context.Context, deviceAndDeviceID ...string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
 		return err
 	}
-	return dCtx.Terminal().LogoutByDeviceAndDeviceId(ctx, deviceAndDeviceId...)
+	return dCtx.Terminal().LogoutByDeviceAndDeviceID(ctx, deviceAndDeviceID...)
 }
 
-// LogoutByLoginIDByCtx logs out all terminals of current user LogoutByLoginIDByCtx 登出当前用户所有终端
+// LogoutByLoginIDByCtx logs out all terminals of current user LogoutByLoginIDByCtx 登出当前用户所有终。
 func LogoutByLoginIDByCtx(ctx context.Context) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -139,10 +139,10 @@ func GetDeviceIDByCtx(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return dCtx.Auth().GetDeviceId(ctx)
+	return dCtx.Auth().GetDeviceID(ctx)
 }
 
-// GetTokenTTLByCtx gets current token TTL GetTokenTTLByCtx 获取当前 token 剩余有效期
+// GetTokenTTLByCtx gets current token TTL GetTokenTTLByCtx 获取当前 token 剩余有效。
 func GetTokenTTLByCtx(ctx context.Context) (int64, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -223,7 +223,7 @@ func GetRolesByTokenByCtx(ctx context.Context) ([]string, error) {
 	return dCtx.Access().GetRolesByToken(ctx)
 }
 
-// HasRoleByCtx checks current user role HasRoleByCtx 检查当前用户角色
+// HasRoleByCtx checks current user role HasRoleByCtx 检查当前用户角。
 func HasRoleByCtx(ctx context.Context, role string) bool {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -246,7 +246,7 @@ func HasRolesOrByCtx(ctx context.Context, roles []string) bool {
 	return HasRolesByCtx(ctx, roles)
 }
 
-// HasRolesAndByCtx checks whether current user has all roles HasRolesAndByCtx 检查当前用户是否拥有全部角色
+// HasRolesAndByCtx checks whether current user has all roles HasRolesAndByCtx 检查当前用户是否拥有全部角。
 func HasRolesAndByCtx(ctx context.Context, roles []string) bool {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -273,7 +273,7 @@ func GetPermissionsByTokenByCtx(ctx context.Context) ([]string, error) {
 	return dCtx.Access().GetPermissionsByToken(ctx)
 }
 
-// HasPermissionByCtx checks current user permission HasPermissionByCtx 检查当前用户权限
+// HasPermissionByCtx checks current user permission HasPermissionByCtx 检查当前用户权。
 func HasPermissionByCtx(ctx context.Context, permission string) bool {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -296,7 +296,7 @@ func HasPermissionsOrByCtx(ctx context.Context, permissions []string) bool {
 	return HasPermissionsByCtx(ctx, permissions)
 }
 
-// HasPermissionsAndByCtx checks whether current user has all permissions HasPermissionsAndByCtx 检查当前用户是否拥有全部权限
+// HasPermissionsAndByCtx checks whether current user has all permissions HasPermissionsAndByCtx 检查当前用户是否拥有全部权。
 func HasPermissionsAndByCtx(ctx context.Context, permissions []string) bool {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -305,7 +305,7 @@ func HasPermissionsAndByCtx(ctx context.Context, permissions []string) bool {
 	return dCtx.Access().HasPermissionsAnd(ctx, permissions)
 }
 
-// AddRolesByCtx adds roles to current token AddRolesByCtx 为当前 token 添加角色
+// AddRolesByCtx adds roles to current token AddRolesByCtx 为当。token 添加角色
 func AddRolesByCtx(ctx context.Context, roles []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -314,7 +314,7 @@ func AddRolesByCtx(ctx context.Context, roles []string) error {
 	return dCtx.Access().AddRoles(ctx, roles)
 }
 
-// RemoveRolesByCtx removes roles from current token RemoveRolesByCtx 从当前 token 移除角色
+// RemoveRolesByCtx removes roles from current token RemoveRolesByCtx 从当。token 移除角色
 func RemoveRolesByCtx(ctx context.Context, roles []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -323,7 +323,7 @@ func RemoveRolesByCtx(ctx context.Context, roles []string) error {
 	return dCtx.Access().RemoveRoles(ctx, roles)
 }
 
-// AddPermissionsByCtx adds permissions to current token AddPermissionsByCtx 为当前 token 添加权限
+// AddPermissionsByCtx adds permissions to current token AddPermissionsByCtx 为当。token 添加权限
 func AddPermissionsByCtx(ctx context.Context, permissions []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -332,7 +332,7 @@ func AddPermissionsByCtx(ctx context.Context, permissions []string) error {
 	return dCtx.Access().AddPermissions(ctx, permissions)
 }
 
-// RemovePermissionsByCtx removes permissions from current token RemovePermissionsByCtx 从当前 token 移除权限
+// RemovePermissionsByCtx removes permissions from current token RemovePermissionsByCtx 从当。token 移除权限
 func RemovePermissionsByCtx(ctx context.Context, permissions []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -395,7 +395,7 @@ func GenerateNonceByCtx(ctx context.Context) (string, error) {
 	return dCtx.Nonce().Generate(ctx)
 }
 
-// VerifyNonceByCtx verifies and consumes nonce with current manager VerifyNonceByCtx 使用当前管理器验证并消费 nonce
+// VerifyNonceByCtx verifies nonce with current manager VerifyNonceByCtx 使用当前管理器校验 nonce。
 func VerifyNonceByCtx(ctx context.Context, nonce string) bool {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -404,7 +404,7 @@ func VerifyNonceByCtx(ctx context.Context, nonce string) bool {
 	return dCtx.Nonce().Verify(ctx, nonce)
 }
 
-// VerifyAndConsumeNonceByCtx verifies nonce with current manager VerifyAndConsumeNonceByCtx 使用当前管理器验证 nonce
+// VerifyAndConsumeNonceByCtx verifies nonce with current manager VerifyAndConsumeNonceByCtx 使用当前管理器校验并消费 nonce
 func VerifyAndConsumeNonceByCtx(ctx context.Context, nonce string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -413,7 +413,7 @@ func VerifyAndConsumeNonceByCtx(ctx context.Context, nonce string) error {
 	return dCtx.Nonce().VerifyAndConsume(ctx, nonce)
 }
 
-// requireDTokenContextByCtx gets required DToken context requireDTokenContextByCtx 获取必需的 DToken 上下文
+// requireDTokenContextByCtx gets required DToken context requireDTokenContextByCtx 获取必需的 DToken 上下文。
 func requireDTokenContextByCtx(ctx context.Context, authType ...string) (*DTokenContext, error) {
 	dCtx, ok := GetDTokenContextByCtx(ctx)
 	if ok && len(authType) == 0 {

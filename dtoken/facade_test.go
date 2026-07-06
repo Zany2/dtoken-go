@@ -75,12 +75,12 @@ func TestGlobalFacadeLoginAndAccessFlow(t *testing.T) {
 	if device != "web" {
 		t.Fatalf("GetDevice() = %q, want web", device)
 	}
-	combinedDevice, combinedDeviceID, err := GetDeviceAndDeviceId(ctx, token, "facade")
+	combinedDevice, combinedDeviceID, err := GetDeviceAndDeviceID(ctx, token, "facade")
 	if err != nil {
-		t.Fatalf("GetDeviceAndDeviceId() error = %v", err)
+		t.Fatalf("GetDeviceAndDeviceID() error = %v", err)
 	}
 	if combinedDevice != "web" || combinedDeviceID != "browser-1" {
-		t.Fatalf("GetDeviceAndDeviceId() = %q/%q, want web/browser-1", combinedDevice, combinedDeviceID)
+		t.Fatalf("GetDeviceAndDeviceID() = %q/%q, want web/browser-1", combinedDevice, combinedDeviceID)
 	}
 
 	if err = AddPermissions(ctx, "user-1", []string{"profile:read"}, "facade"); err != nil {
@@ -96,8 +96,8 @@ func TestGlobalFacadeLoginAndAccessFlow(t *testing.T) {
 		t.Fatal("HasRoleByToken() = false, want true")
 	}
 
-	if err = LogoutByDeviceAndDeviceId(ctx, "user-1", "web", "browser-1", "facade"); err != nil {
-		t.Fatalf("LogoutByDeviceAndDeviceId() error = %v", err)
+	if err = LogoutByDeviceAndDeviceID(ctx, "user-1", "web", "browser-1", "facade"); err != nil {
+		t.Fatalf("LogoutByDeviceAndDeviceID() error = %v", err)
 	}
 	if IsLogin(ctx, token, "facade") {
 		t.Fatal("IsLogin() after logout = true, want false")
@@ -151,8 +151,8 @@ func TestInstanceFacadeOptions(t *testing.T) {
 	if device, err := auth.GetDevice(ctx, token); err != nil || device != "mobile" {
 		t.Fatalf("Auth.GetDevice() = %q, %v, want mobile", device, err)
 	}
-	if device, deviceID, err := auth.GetDeviceAndDeviceId(ctx, token); err != nil || device != "mobile" || deviceID != "phone-1" {
-		t.Fatalf("Auth.GetDeviceAndDeviceId() = %q/%q, %v, want mobile/phone-1", device, deviceID, err)
+	if device, deviceID, err := auth.GetDeviceAndDeviceID(ctx, token); err != nil || device != "mobile" || deviceID != "phone-1" {
+		t.Fatalf("Auth.GetDeviceAndDeviceID() = %q/%q, %v, want mobile/phone-1", device, deviceID, err)
 	}
 
 	cfg := mgr.GetConfig()

@@ -85,7 +85,7 @@ func TestGlobalTicketAndShortKeyFacades(t *testing.T) {
 	createdTicket, err := CreateTicketWithOptions(ctx, ticket.CreateOptions{
 		LoginID:   "ticket-user",
 		Device:    "web",
-		DeviceId:  "browser",
+		DeviceID:  "browser",
 		SourceApp: "issuer",
 		TargetApp: "target",
 		Timeout:   time.Minute,
@@ -131,7 +131,7 @@ func TestGlobalTicketAndShortKeyFacades(t *testing.T) {
 	confirmed, err := ConfirmShortKeyWithOptions(ctx, createdKey.Key, shortkey.ConfirmOptions{
 		LoginID:  "short-user",
 		Device:   "mobile",
-		DeviceId: "phone",
+		DeviceID: "phone",
 	}, "credential-facade")
 	if err != nil {
 		t.Fatalf("ConfirmShortKeyWithOptions() error = %v", err)
@@ -174,8 +174,8 @@ func TestInstanceTerminalShortcutFacades(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Auth.Login() error = %v", err)
 	}
-	if err = auth.KickoutByDeviceAndDeviceId(ctx, "terminal-user", "web", "browser"); err != nil {
-		t.Fatalf("KickoutByDeviceAndDeviceId() error = %v", err)
+	if err = auth.KickoutByDeviceAndDeviceID(ctx, "terminal-user", "web", "browser"); err != nil {
+		t.Fatalf("KickoutByDeviceAndDeviceID() error = %v", err)
 	}
 	if auth.IsLogin(ctx, token) {
 		t.Fatal("token should not be logged in after kickout")

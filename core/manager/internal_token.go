@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// tokenStateError maps stored token state to public errors. tokenStateError 将已存 token 状态映射为公开错误。
+// tokenStateError maps stored token state to public errors. tokenStateError 将已。token 状态映射为公开错误。
 func tokenStateError(state TokenState) error {
 	// Map state to error 按状态映射错误。
 	switch state {
@@ -178,7 +178,7 @@ func (m *Manager) checkTerminalTokenAliveWithContext(ctx context.Context, tokenV
 		return false, nil
 	}
 	// Reject disabled device 拒绝已封禁设备。
-	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceId) {
+	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID) {
 		return false, nil
 	}
 

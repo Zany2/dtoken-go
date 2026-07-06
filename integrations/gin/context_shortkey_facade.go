@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CreateShortKeyByContext creates short key CreateShortKeyByContext 鍒涘缓鐭?Key
+// CreateShortKeyByContext creates short key CreateShortKeyByContext 创建 ShortKey
 func CreateShortKeyByContext(c *gin.Context, opts shortkey.CreateOptions) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -17,7 +17,7 @@ func CreateShortKeyByContext(c *gin.Context, opts shortkey.CreateOptions) (*shor
 	return dCtx.ShortKey().Create(requestContext(c), opts)
 }
 
-// CreateShortKeyWithTimeoutByContext creates short key with timeout CreateShortKeyWithTimeoutByContext 浣跨敤鎸囧畾鏈夋晥鏈熷垱寤虹煭 Key
+// CreateShortKeyWithTimeoutByContext creates short key with timeout CreateShortKeyWithTimeoutByContext 使用指定有效期创建 ShortKey
 func CreateShortKeyWithTimeoutByContext(c *gin.Context, opts shortkey.CreateOptions, timeout time.Duration) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -35,7 +35,7 @@ func ConfirmShortKeyByContext(c *gin.Context, key string, opts shortkey.ConfirmO
 	return dCtx.ShortKey().Confirm(requestContext(c), key, opts)
 }
 
-// ConfirmShortKeyForCurrentLoginByContext confirms short key for current user ConfirmShortKeyForCurrentLoginByContext 浣跨敤褰撳墠鐢ㄦ埛纭鐭?Key
+// ConfirmShortKeyForCurrentLoginByContext confirms short key for current user ConfirmShortKeyForCurrentLoginByContext 使用当前用户确认 ShortKey
 func ConfirmShortKeyForCurrentLoginByContext(c *gin.Context, key string, opts shortkey.ConfirmOptions) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -44,7 +44,7 @@ func ConfirmShortKeyForCurrentLoginByContext(c *gin.Context, key string, opts sh
 	return dCtx.ShortKey().ConfirmForCurrentLogin(requestContext(c), key, opts)
 }
 
-// ValidateShortKeyByContext validates short key ValidateShortKeyByContext 鏍￠獙鐭?Key
+// ValidateShortKeyByContext validates short key ValidateShortKeyByContext 校验 ShortKey
 func ValidateShortKeyByContext(c *gin.Context, key string, opts ...shortkey.ValidateOptions) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -71,7 +71,7 @@ func RevokeShortKeyByContext(c *gin.Context, key string) error {
 	return dCtx.ShortKey().Revoke(requestContext(c), key)
 }
 
-// GetShortKeyStatusByContext gets short key status GetShortKeyStatusByContext 鑾峰彇鐭?Key 鐘舵€?
+// GetShortKeyStatusByContext gets short key status GetShortKeyStatusByContext 获取 ShortKey 状态
 func GetShortKeyStatusByContext(c *gin.Context, key string) (shortkey.Status, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -80,7 +80,7 @@ func GetShortKeyStatusByContext(c *gin.Context, key string) (shortkey.Status, er
 	return dCtx.ShortKey().GetStatus(requestContext(c), key)
 }
 
-// GetShortKeyTTLByContext gets short key TTL GetShortKeyTTLByContext 鑾峰彇鐭?Key 鍓╀綑鏈夋晥鏈?
+// GetShortKeyTTLByContext gets short key TTL GetShortKeyTTLByContext 获取 ShortKey 剩余有效期
 func GetShortKeyTTLByContext(c *gin.Context, key string) (int64, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

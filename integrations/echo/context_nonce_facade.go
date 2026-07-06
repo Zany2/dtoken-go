@@ -7,7 +7,7 @@ import (
 	echo4 "github.com/labstack/echo/v4"
 )
 
-// GenerateNonceWithTimeoutByContext generates nonce with timeout GenerateNonceWithTimeoutByContext 浣跨敤鎸囧畾鏈夋晥鏈熺敓鎴?Nonce
+// GenerateNonceWithTimeoutByContext generates nonce with timeout GenerateNonceWithTimeoutByContext 使用指定有效期生成 Nonce
 func GenerateNonceWithTimeoutByContext(c echo4.Context, timeout time.Duration) (string, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -16,7 +16,7 @@ func GenerateNonceWithTimeoutByContext(c echo4.Context, timeout time.Duration) (
 	return dCtx.Nonce().GenerateWithTimeout(requestContext(c), timeout)
 }
 
-// IsValidNonceByContext checks nonce state IsValidNonceByContext 妫€鏌?Nonce 鐘舵€?
+// IsValidNonceByContext checks nonce state IsValidNonceByContext 检查 Nonce 状态
 func IsValidNonceByContext(c echo4.Context, nonce string) bool {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -25,7 +25,7 @@ func IsValidNonceByContext(c echo4.Context, nonce string) bool {
 	return dCtx.Nonce().IsValid(requestContext(c), nonce)
 }
 
-// GetNonceTTLByContext gets nonce TTL GetNonceTTLByContext 鑾峰彇 Nonce 鍓╀綑鏈夋晥鏈?
+// GetNonceTTLByContext gets nonce TTL GetNonceTTLByContext 获取 Nonce 剩余有效期
 func GetNonceTTLByContext(c echo4.Context, nonce string) (int64, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

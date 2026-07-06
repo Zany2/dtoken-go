@@ -8,19 +8,19 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
-// Value gets current request token value Value 获取当前请求 Token 值
+// Value gets current request token value Value 获取当前请求 Token 。
 func (c *AuthContext) Value() string {
 	return c.d.GetTokenValue()
 }
 
 // Login logs in a subject Login 登录指定主体
-func (c *AuthContext) Login(ctx context.Context, loginID string, deviceAndDeviceId ...string) (string, error) {
-	return c.d.manager.Login(ctx, loginID, deviceAndDeviceId...)
+func (c *AuthContext) Login(ctx context.Context, loginID string, deviceAndDeviceID ...string) (string, error) {
+	return c.d.manager.Login(ctx, loginID, deviceAndDeviceID...)
 }
 
-// LoginWithTimeout logs in with timeout LoginWithTimeout 使用指定有效期登录
-func (c *AuthContext) LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, deviceAndDeviceId ...string) (string, error) {
-	return c.d.manager.LoginWithTimeout(ctx, loginID, timeout, deviceAndDeviceId...)
+// LoginWithTimeout logs in with timeout LoginWithTimeout 使用指定有效期登录。
+func (c *AuthContext) LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, deviceAndDeviceID ...string) (string, error) {
+	return c.d.manager.LoginWithTimeout(ctx, loginID, timeout, deviceAndDeviceID...)
 }
 
 // LoginWithOptions logs in with options LoginWithOptions 使用选项登录
@@ -28,7 +28,7 @@ func (c *AuthContext) LoginWithOptions(ctx context.Context, opts manager.LoginOp
 	return c.d.manager.LoginWithOptions(ctx, opts)
 }
 
-// IsLogin checks current token login state IsLogin 检查当前 Token 是否已登录
+// IsLogin checks current token login state IsLogin 检查当前 Token 是否已登录。
 func (c *AuthContext) IsLogin(ctx context.Context) bool {
 	token := c.d.GetTokenValue()
 	if token == "" {
@@ -37,7 +37,7 @@ func (c *AuthContext) IsLogin(ctx context.Context) bool {
 	return c.d.manager.IsLogin(ctx, token)
 }
 
-// CheckLogin checks current token login state CheckLogin 校验当前 Token 登录状态
+// CheckLogin checks current token login state CheckLogin 校验当前 Token 登录状。
 func (c *AuthContext) CheckLogin(ctx context.Context) error {
 	token, err := c.d.requireToken()
 	if err != nil {
@@ -96,13 +96,13 @@ func (c *AuthContext) GetDevice(ctx context.Context) (string, error) {
 	return c.d.manager.GetDevice(ctx, token)
 }
 
-// GetDeviceId gets current token device ID GetDeviceId 获取当前 Token 设备 ID
-func (c *AuthContext) GetDeviceId(ctx context.Context) (string, error) {
+// GetDeviceID gets current token device ID GetDeviceID 获取当前 Token 设备 ID
+func (c *AuthContext) GetDeviceID(ctx context.Context) (string, error) {
 	token, err := c.d.requireToken()
 	if err != nil {
 		return "", err
 	}
-	return c.d.manager.GetDeviceId(ctx, token)
+	return c.d.manager.GetDeviceID(ctx, token)
 }
 
 // GetTokenCreateTime gets current token create time GetTokenCreateTime 获取当前 Token 创建时间
@@ -114,7 +114,7 @@ func (c *AuthContext) GetTokenCreateTime(ctx context.Context) (int64, error) {
 	return c.d.manager.GetTokenCreateTime(ctx, token)
 }
 
-// GetTokenTTL gets current token TTL GetTokenTTL 获取当前 Token 剩余有效期
+// GetTokenTTL gets current token TTL GetTokenTTL 获取当前 Token 剩余有效。
 func (c *AuthContext) GetTokenTTL(ctx context.Context) (int64, error) {
 	token, err := c.d.requireToken()
 	if err != nil {

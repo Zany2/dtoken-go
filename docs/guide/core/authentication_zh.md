@@ -101,7 +101,7 @@ if err == nil {
     fmt.Println("认证体系:", info.AuthType)
     fmt.Println("登录 ID:", info.LoginID)
     fmt.Println("设备类型:", info.Device)
-    fmt.Println("设备 ID:", info.DeviceId)
+    fmt.Println("设备 ID:", info.DeviceID)
     fmt.Println("创建时间:", info.CreateTime)
 }
 ```
@@ -111,7 +111,7 @@ if err == nil {
 - `AuthType`
 - `LoginID`
 - `Device`
-- `DeviceId`
+- `DeviceID`
 - `CreateTime`
 
 ### 获取 Token 其他信息
@@ -120,7 +120,7 @@ if err == nil {
 ctx := context.Background()
 
 device, err := dtoken.GetDevice(ctx, token)
-deviceId, err := dtoken.GetDeviceId(ctx, token)
+deviceID, err := dtoken.GetDeviceID(ctx, token)
 createTime, err := dtoken.GetTokenCreateTime(ctx, token)
 ttl, err := dtoken.GetTokenTTL(ctx, token)
 ```
@@ -147,7 +147,7 @@ err := dtoken.LogoutByLoginID(ctx, "10001")
 err = dtoken.LogoutByDevice(ctx, "10001", "web")
 
 // 登出指定账号下某个设备类型 + 设备 ID 的终端
-err = dtoken.LogoutByDeviceAndDeviceId(ctx, "10001", "app", "ios-iphone-15")
+err = dtoken.LogoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ## 踢人下线
@@ -167,7 +167,7 @@ ctx := context.Background()
 
 err := dtoken.KickoutByLoginID(ctx, "10001")
 err = dtoken.KickoutByDevice(ctx, "10001", "web")
-err = dtoken.KickoutByDeviceAndDeviceId(ctx, "10001", "app", "ios-iphone-15")
+err = dtoken.KickoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 被踢下线的 token 不会立即从存储中删除，而是会被标记为 `kickout` 状态，后续校验时会返回对应错误。
@@ -189,7 +189,7 @@ ctx := context.Background()
 
 err := dtoken.ReplaceByLoginID(ctx, "10001")
 err = dtoken.ReplaceByDevice(ctx, "10001", "web")
-err = dtoken.ReplaceByDeviceAndDeviceId(ctx, "10001", "app", "ios-iphone-15")
+err = dtoken.ReplaceByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 被顶下线的 token 会被标记为 `replaced` 状态，适合用在“新登录挤掉旧登录”的场景中。
@@ -201,7 +201,7 @@ ctx := context.Background()
 
 count, err := dtoken.GetOnlineTerminalCount(ctx, "10001")
 webCount, err := dtoken.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
-singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, "10001", "app", "ios-iphone-15")
+singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ## 登录配置

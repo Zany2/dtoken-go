@@ -63,7 +63,7 @@ type Ticket struct {
 	AuthType   string         `json:"authType,omitempty"`  // AuthType stores auth namespace. AuthType 存储认证命名空间。
 	LoginID    string         `json:"loginId,omitempty"`   // LoginID stores subject id. LoginID 存储登录主体 ID。
 	Device     string         `json:"device,omitempty"`    // Device stores device type. Device 存储设备类型。
-	DeviceId   string         `json:"deviceId,omitempty"`  // DeviceId stores concrete device id. DeviceId 存储具体设备 ID。
+	DeviceID   string         `json:"deviceId,omitempty"`  // DeviceID stores concrete device id. DeviceID 存储具体设备 ID。
 	Source     string         `json:"source,omitempty"`    // Source stores business source. Source 存储业务来源。
 	SourceApp  string         `json:"sourceApp,omitempty"` // SourceApp stores issuing application. SourceApp 存储签发应用。
 	TargetApp  string         `json:"targetApp,omitempty"` // TargetApp stores consuming application. TargetApp 存储目标应用。
@@ -78,7 +78,7 @@ type Ticket struct {
 type CreateOptions struct {
 	LoginID   string         // LoginID stores subject id. LoginID 存储登录主体 ID。
 	Device    string         // Device stores device type. Device 存储设备类型。
-	DeviceId  string         // DeviceId stores concrete device id. DeviceId 存储具体设备 ID。
+	DeviceID  string         // DeviceID stores concrete device id. DeviceID 存储具体设备 ID。
 	Source    string         // Source stores business source. Source 存储业务来源。
 	SourceApp string         // SourceApp stores issuing application. SourceApp 存储签发应用。
 	TargetApp string         // TargetApp stores consuming application. TargetApp 存储目标应用。
@@ -91,7 +91,7 @@ type CreateOptions struct {
 type ValidateOptions struct {
 	LoginID   string // LoginID requires matching subject id when set. LoginID 非空时要求主体 ID 匹配。
 	Device    string // Device requires matching device type when set. Device 非空时要求设备类型匹配。
-	DeviceId  string // DeviceId requires matching concrete device id when set. DeviceId 非空时要求具体设备 ID 匹配。
+	DeviceID  string // DeviceID requires matching concrete device id when set. DeviceID 非空时要求具体设备 ID 匹配。
 	Source    string // Source requires matching business source when set. Source 非空时要求业务来源匹配。
 	SourceApp string // SourceApp requires matching issuing application when set. SourceApp 非空时要求签发应用匹配。
 	TargetApp string // TargetApp requires matching consuming application when set. TargetApp 非空时要求目标应用匹配。
@@ -134,12 +134,12 @@ func NewManagerWithConfig(authType, prefix string, storage adapter.Storage, seri
 	}
 }
 
-// Create creates a ticket with default ttl. Create 使用默认有效期创建 Ticket。
+// Create creates a ticket with default ttl. Create 使用默认有效期创。Ticket。
 func (m *Manager) Create(ctx context.Context, opts CreateOptions) (*Ticket, error) {
 	return m.CreateWithTimeout(ctx, opts, opts.Timeout)
 }
 
-// CreateWithTimeout creates a ticket with timeout. CreateWithTimeout 使用指定有效期创建 Ticket。
+// CreateWithTimeout creates a ticket with timeout. CreateWithTimeout 使用指定有效期创。Ticket。
 func (m *Manager) CreateWithTimeout(ctx context.Context, opts CreateOptions, timeout time.Duration) (*Ticket, error) {
 	if timeout <= 0 {
 		timeout = m.ttl
@@ -154,7 +154,7 @@ func (m *Manager) CreateWithTimeout(ctx context.Context, opts CreateOptions, tim
 		AuthType:   m.authType,
 		LoginID:    opts.LoginID,
 		Device:     opts.Device,
-		DeviceId:   opts.DeviceId,
+		DeviceID:   opts.DeviceID,
 		Source:     opts.Source,
 		SourceApp:  opts.SourceApp,
 		TargetApp:  opts.TargetApp,
@@ -187,7 +187,7 @@ func (m *Manager) Validate(ctx context.Context, ticketValue string, opts ...Vali
 	return ticket, nil
 }
 
-// Consume validates and consumes a one-time ticket. Consume 校验并消费一次性 Ticket。
+// Consume validates and consumes a one-time ticket. Consume 校验并消费一次。Ticket。
 func (m *Manager) Consume(ctx context.Context, ticketValue string, opts ...ValidateOptions) (*ConsumeResult, error) {
 	if _, err := m.Validate(ctx, ticketValue, opts...); err != nil {
 		return nil, err
@@ -376,7 +376,7 @@ func checkConstraints(ticket *Ticket, opts ValidateOptions) error {
 	if opts.Device != "" && ticket.Device != opts.Device {
 		return ErrTicketMismatch
 	}
-	if opts.DeviceId != "" && ticket.DeviceId != opts.DeviceId {
+	if opts.DeviceID != "" && ticket.DeviceID != opts.DeviceID {
 		return ErrTicketMismatch
 	}
 	if opts.Source != "" && ticket.Source != opts.Source {

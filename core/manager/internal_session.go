@@ -107,12 +107,12 @@ func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenV
 		return nil, nil, err
 	}
 
-	// Check disable status after token lookup 获取 token 后检查封禁状态
+	// Check disable status after token lookup 获取 token 后检查封禁状态。
 	if m.isDisable(ctx, tokenInfo.LoginID) {
 		return nil, nil, derror.ErrAccountDisabled
 	}
 	// Check device disable state 检查设备封禁状态。
-	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceId) {
+	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID) {
 		return nil, nil, derror.ErrDeviceDisabled
 	}
 
@@ -170,7 +170,7 @@ func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenV
 		}
 	}
 
-	// Renew asynchronously when allowed 允许时异步续期
+	// Renew asynchronously when allowed 允许时异步续。
 	if opts.allowRenew && m.config.AutoRenew && m.config.Timeout > 0 {
 		// Read token TTL 读取 Token TTL。
 		if ttl, err := m.storage.TTL(ctx, m.getTokenKey(tokenValue)); err == nil && ttl > 0 {
@@ -191,7 +191,7 @@ func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenV
 		}
 	}
 
-	// Update active timeout asynchronously when allowed 允许时异步刷新活跃时长
+	// Update active timeout asynchronously when allowed 允许时异步刷新活跃时。
 	if opts.allowRenew && activeTimeout > 0 {
 		// Build async active refresh task 构建异步活跃刷新任务。
 		activeFunc := func() {
@@ -199,7 +199,7 @@ func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenV
 			unlock := m.lockLoginWrite(tokenInfo.LoginID)
 			defer func() { unlock() }()
 
-			// Recheck token attachment before writing metadata 写入元数据前重新确认 Token 仍属于会话
+			// Recheck token attachment before writing metadata 写入元数据前重新确认 Token 仍属于会话。
 			latestTokenInfo, err := m.getTokenInfo(bg, tokenValue)
 			if err != nil {
 				return
@@ -252,7 +252,7 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 	return err
 }
 
-// cleanExpiredTerminals removes expired tokens from session. cleanExpiredTerminals 清理会话中已过期的 token。
+// cleanExpiredTerminals removes expired tokens from session. cleanExpiredTerminals 清理会话中已过期。token。
 func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (bool, error) {
 	// Skip empty session 跳过空会话。
 	if sess == nil || len(sess.TerminalInfos) == 0 {
@@ -265,7 +265,7 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (boo
 
 	// Check each terminal 逐个检查终端。
 	for _, ti := range sess.TerminalInfos {
-		// Check token by full alive rules 按完整存活规则检查 token
+		// Check token by full alive rules 按完整存活规则检。token
 		alive, err := m.checkTerminalTokenAliveWithContext(ctx, ti.Token, nil, sess)
 		if err != nil {
 			return false, err
@@ -279,7 +279,7 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (boo
 		hasExpired = true
 	}
 
-	// Update session when expired tokens exist 如果有过期的 token，更新 session
+	// Update session when expired tokens exist 如果有过期的 token，更。session
 	if hasExpired {
 		// Replace terminal list 替换终端列表。
 		sess.TerminalInfos = validTerminals

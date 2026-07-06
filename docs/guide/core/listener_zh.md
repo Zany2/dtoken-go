@@ -67,7 +67,7 @@ type EventData struct {
     AuthType  string
     LoginID   string
     Device    string
-    DeviceId  string
+    DeviceID  string
     Token     string
     Extra     map[string]any
     Timestamp int64
@@ -78,7 +78,7 @@ type EventData struct {
 
 - `AuthType`：当前认证体系
 - `LoginID`：账号 ID
-- `Device` / `DeviceId`：终端信息
+- `Device` / `DeviceID`：终端信息
 - `Token`：相关 token
 - `Extra`：额外信息，比如权限校验结果、服务封禁等级等
 

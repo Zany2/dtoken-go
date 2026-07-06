@@ -1,4 +1,4 @@
-﻿[English](architecture.md) | 中文文档
+[English](architecture.md) | 中文文档
 
 # 架构设计
 
@@ -166,7 +166,7 @@ mgr, err := dtoken.GetManager()
   ↓
 dtoken.Login(ctx, loginID, ...)
   ↓
-1. 解析 device / deviceId / authType
+1. 解析 device / deviceID / authType
   ↓
 2. 生成 Token
   ↓
@@ -266,7 +266,7 @@ type TokenInfo struct {
     AuthType   string
     LoginID    string
     Device     string
-    DeviceId   string
+    DeviceID   string
     CreateTime int64
 }
 ```

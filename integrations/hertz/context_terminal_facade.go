@@ -6,7 +6,7 @@ import (
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 )
 
-// KickoutByDeviceByContext kicks out current user by device KickoutByDeviceByContext ?
+// KickoutByDeviceByContext kicks out current user by device KickoutByDeviceByContext 按设备踢出当前用户
 func KickoutByDeviceByContext(ctx *hertzapp.RequestContext, device string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -15,16 +15,16 @@ func KickoutByDeviceByContext(ctx *hertzapp.RequestContext, device string) error
 	return dCtx.Terminal().KickoutByDevice(requestContext(ctx), device)
 }
 
-// KickoutByDeviceAndDeviceIDByContext delegates to DToken context KickoutByDeviceAndDeviceIDByContext 转发到 DToken 上下文。
-func KickoutByDeviceAndDeviceIDByContext(ctx *hertzapp.RequestContext, deviceAndDeviceId ...string) error {
+// KickoutByDeviceAndDeviceIDByContext kicks out current user by device ID KickoutByDeviceAndDeviceIDByContext 按设备和设备 ID 踢出当前用户
+func KickoutByDeviceAndDeviceIDByContext(ctx *hertzapp.RequestContext, deviceAndDeviceID ...string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
 		return err
 	}
-	return dCtx.Terminal().KickoutByDeviceAndDeviceId(requestContext(ctx), deviceAndDeviceId...)
+	return dCtx.Terminal().KickoutByDeviceAndDeviceID(requestContext(ctx), deviceAndDeviceID...)
 }
 
-// ReplaceByDeviceByContext replaces current user by device ReplaceByDeviceByContext ?
+// ReplaceByDeviceByContext replaces current user by device ReplaceByDeviceByContext 按设备顶替当前用户
 func ReplaceByDeviceByContext(ctx *hertzapp.RequestContext, device string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -33,16 +33,16 @@ func ReplaceByDeviceByContext(ctx *hertzapp.RequestContext, device string) error
 	return dCtx.Terminal().ReplaceByDevice(requestContext(ctx), device)
 }
 
-// ReplaceByDeviceAndDeviceIDByContext delegates to DToken context ReplaceByDeviceAndDeviceIDByContext 转发到 DToken 上下文。
-func ReplaceByDeviceAndDeviceIDByContext(ctx *hertzapp.RequestContext, deviceAndDeviceId ...string) error {
+// ReplaceByDeviceAndDeviceIDByContext replaces current user by device ID ReplaceByDeviceAndDeviceIDByContext 按设备和设备 ID 顶替当前用户
+func ReplaceByDeviceAndDeviceIDByContext(ctx *hertzapp.RequestContext, deviceAndDeviceID ...string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
 		return err
 	}
-	return dCtx.Terminal().ReplaceByDeviceAndDeviceId(requestContext(ctx), deviceAndDeviceId...)
+	return dCtx.Terminal().ReplaceByDeviceAndDeviceID(requestContext(ctx), deviceAndDeviceID...)
 }
 
-// KickoutByLoginIDByContext delegates to DToken context KickoutByLoginIDByContext 转发到 DToken 上下文。
+// KickoutByLoginIDByContext kicks out all terminals of current user KickoutByLoginIDByContext 踢出当前用户全部终端
 func KickoutByLoginIDByContext(ctx *hertzapp.RequestContext) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -51,7 +51,7 @@ func KickoutByLoginIDByContext(ctx *hertzapp.RequestContext) error {
 	return dCtx.Terminal().KickoutAll(requestContext(ctx))
 }
 
-// ReplaceByLoginIDByContext delegates to DToken context ReplaceByLoginIDByContext 转发到 DToken 上下文。
+// ReplaceByLoginIDByContext replaces all terminals of current user ReplaceByLoginIDByContext 顶替当前用户全部终端
 func ReplaceByLoginIDByContext(ctx *hertzapp.RequestContext) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -60,7 +60,7 @@ func ReplaceByLoginIDByContext(ctx *hertzapp.RequestContext) error {
 	return dCtx.Terminal().ReplaceAll(requestContext(ctx))
 }
 
-// TerminateByContext terminates current or specified terminal TerminateByContext ?
+// TerminateByContext terminates current or specified terminal TerminateByContext 下线当前或指定终端
 func TerminateByContext(ctx *hertzapp.RequestContext, opts manager.TerminateOptions) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -69,7 +69,7 @@ func TerminateByContext(ctx *hertzapp.RequestContext, opts manager.TerminateOpti
 	return dCtx.Terminal().Terminate(requestContext(ctx), opts)
 }
 
-// GetTokenValueListByDeviceByContext delegates to DToken context GetTokenValueListByDeviceByContext 转发到 DToken 上下文。
+// GetTokenValueListByDeviceByContext gets current user tokens by device GetTokenValueListByDeviceByContext 按设备获取当前用户 Token 列表
 func GetTokenValueListByDeviceByContext(ctx *hertzapp.RequestContext, device string, checkAlive ...bool) ([]string, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -78,16 +78,16 @@ func GetTokenValueListByDeviceByContext(ctx *hertzapp.RequestContext, device str
 	return dCtx.Terminal().GetTokenValueListByDevice(requestContext(ctx), device, checkAlive...)
 }
 
-// GetTokenValueListByDeviceAndDeviceIDByContext delegates to DToken context GetTokenValueListByDeviceAndDeviceIDByContext 转发到 DToken 上下文。
-func GetTokenValueListByDeviceAndDeviceIDByContext(ctx *hertzapp.RequestContext, device, deviceId string, checkAlive ...bool) ([]string, error) {
+// GetTokenValueListByDeviceAndDeviceIDByContext gets current user tokens by device ID GetTokenValueListByDeviceAndDeviceIDByContext 按设备和设备 ID 获取当前用户 Token 列表
+func GetTokenValueListByDeviceAndDeviceIDByContext(ctx *hertzapp.RequestContext, device, deviceID string, checkAlive ...bool) ([]string, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return dCtx.Terminal().GetTokenValueListByDeviceAndDeviceId(requestContext(ctx), device, deviceId, checkAlive...)
+	return dCtx.Terminal().GetTokenValueListByDeviceAndDeviceID(requestContext(ctx), device, deviceID, checkAlive...)
 }
 
-// GetOnlineTerminalCountByDeviceByContext delegates to DToken context GetOnlineTerminalCountByDeviceByContext 转发到 DToken 上下文。
+// GetOnlineTerminalCountByDeviceByContext gets online count by device GetOnlineTerminalCountByDeviceByContext 按设备获取在线终端数量
 func GetOnlineTerminalCountByDeviceByContext(ctx *hertzapp.RequestContext, device string) (int, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -96,16 +96,16 @@ func GetOnlineTerminalCountByDeviceByContext(ctx *hertzapp.RequestContext, devic
 	return dCtx.Terminal().GetOnlineTerminalCountByDevice(requestContext(ctx), device)
 }
 
-// GetOnlineTerminalCountByDeviceAndDeviceIDByContext gets online count by device ID GetOnlineTerminalCountByDeviceAndDeviceIDByContext ?ID ?
-func GetOnlineTerminalCountByDeviceAndDeviceIDByContext(ctx *hertzapp.RequestContext, device, deviceId string) (int, error) {
+// GetOnlineTerminalCountByDeviceAndDeviceIDByContext gets online count by device ID GetOnlineTerminalCountByDeviceAndDeviceIDByContext 按设备和设备 ID 获取在线终端数量
+func GetOnlineTerminalCountByDeviceAndDeviceIDByContext(ctx *hertzapp.RequestContext, device, deviceID string) (int, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
 		return 0, err
 	}
-	return dCtx.Terminal().GetOnlineTerminalCountByDeviceAndDeviceId(requestContext(ctx), device, deviceId)
+	return dCtx.Terminal().GetOnlineTerminalCountByDeviceAndDeviceID(requestContext(ctx), device, deviceID)
 }
 
-// GetTerminalInfoByContext gets current terminal info GetTerminalInfoByContext
+// GetTerminalInfoByContext gets current terminal info GetTerminalInfoByContext 获取当前终端信息
 func GetTerminalInfoByContext(ctx *hertzapp.RequestContext) (*manager.TerminalInfo, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -114,7 +114,7 @@ func GetTerminalInfoByContext(ctx *hertzapp.RequestContext) (*manager.TerminalIn
 	return dCtx.Terminal().GetTerminalInfo(requestContext(ctx))
 }
 
-// GetTerminalListByContext delegates to DToken context GetTerminalListByContext 转发到 DToken 上下文。
+// GetTerminalListByContext gets current user terminal list GetTerminalListByContext 获取当前用户终端列表
 func GetTerminalListByContext(ctx *hertzapp.RequestContext, device ...string) ([]manager.TerminalInfo, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -123,7 +123,7 @@ func GetTerminalListByContext(ctx *hertzapp.RequestContext, device ...string) ([
 	return dCtx.Terminal().GetTerminalList(requestContext(ctx), device...)
 }
 
-// GetLatestTokenValueByContext gets latest current user token GetLatestTokenValueByContext ?Token
+// GetLatestTokenValueByContext gets latest current user token GetLatestTokenValueByContext 获取当前用户最新 Token
 func GetLatestTokenValueByContext(ctx *hertzapp.RequestContext, device ...string) (string, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -132,7 +132,7 @@ func GetLatestTokenValueByContext(ctx *hertzapp.RequestContext, device ...string
 	return dCtx.Terminal().GetLatestTokenValue(requestContext(ctx), device...)
 }
 
-// SearchTokenValueByContext searches token values SearchTokenValueByContext ?Token ?
+// SearchTokenValueByContext searches token values SearchTokenValueByContext 搜索 Token 值
 func SearchTokenValueByContext(ctx *hertzapp.RequestContext, keyword string, start, size int) ([]string, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -150,7 +150,7 @@ func SearchSessionIDByContext(ctx *hertzapp.RequestContext, keyword string, star
 	return dCtx.Terminal().SearchSessionId(requestContext(ctx), keyword, start, size)
 }
 
-// ForEachTerminalByContext visits current user terminals ForEachTerminalByContext
+// ForEachTerminalByContext visits current user terminals ForEachTerminalByContext 遍历当前用户终端
 func ForEachTerminalByContext(ctx *hertzapp.RequestContext, visitor manager.TerminalVisitor) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -159,7 +159,7 @@ func ForEachTerminalByContext(ctx *hertzapp.RequestContext, visitor manager.Term
 	return dCtx.Terminal().ForEachTerminal(requestContext(ctx), visitor)
 }
 
-// ForEachTerminalByDeviceByContext visits current user terminals by device ForEachTerminalByDeviceByContext ?
+// ForEachTerminalByDeviceByContext visits current user terminals by device ForEachTerminalByDeviceByContext 按设备遍历当前用户终端
 func ForEachTerminalByDeviceByContext(ctx *hertzapp.RequestContext, device string, visitor manager.TerminalVisitor) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {

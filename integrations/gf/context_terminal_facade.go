@@ -7,7 +7,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
-// KickoutByDeviceByCtx kicks out current user by device KickoutByDeviceByCtx 鎸夎澶囪涪鍑哄綋鍓嶇敤鎴?
+// KickoutByDeviceByCtx kicks out current user by device KickoutByDeviceByCtx 按设备踢出当前用户
 func KickoutByDeviceByCtx(ctx context.Context, device string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -16,16 +16,16 @@ func KickoutByDeviceByCtx(ctx context.Context, device string) error {
 	return dCtx.Terminal().KickoutByDevice(ctx, device)
 }
 
-// KickoutByDeviceAndDeviceIDByCtx kicks out current user by device ID KickoutByDeviceAndDeviceIDByCtx 鎸夎澶囧拰璁惧 ID 韪㈠嚭褰撳墠鐢ㄦ埛
-func KickoutByDeviceAndDeviceIDByCtx(ctx context.Context, deviceAndDeviceId ...string) error {
+// KickoutByDeviceAndDeviceIDByCtx kicks out current user by device ID KickoutByDeviceAndDeviceIDByCtx 按设备和设备 ID 踢出当前用户
+func KickoutByDeviceAndDeviceIDByCtx(ctx context.Context, deviceAndDeviceID ...string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
 		return err
 	}
-	return dCtx.Terminal().KickoutByDeviceAndDeviceId(ctx, deviceAndDeviceId...)
+	return dCtx.Terminal().KickoutByDeviceAndDeviceID(ctx, deviceAndDeviceID...)
 }
 
-// ReplaceByDeviceByCtx replaces current user by device ReplaceByDeviceByCtx 鎸夎澶囬《鏇垮綋鍓嶇敤鎴?
+// ReplaceByDeviceByCtx replaces current user by device ReplaceByDeviceByCtx 按设备顶替当前用户
 func ReplaceByDeviceByCtx(ctx context.Context, device string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -34,16 +34,16 @@ func ReplaceByDeviceByCtx(ctx context.Context, device string) error {
 	return dCtx.Terminal().ReplaceByDevice(ctx, device)
 }
 
-// ReplaceByDeviceAndDeviceIDByCtx replaces current user by device ID ReplaceByDeviceAndDeviceIDByCtx 鎸夎澶囧拰璁惧 ID 椤舵浛褰撳墠鐢ㄦ埛
-func ReplaceByDeviceAndDeviceIDByCtx(ctx context.Context, deviceAndDeviceId ...string) error {
+// ReplaceByDeviceAndDeviceIDByCtx replaces current user by device ID ReplaceByDeviceAndDeviceIDByCtx 按设备和设备 ID 顶替当前用户
+func ReplaceByDeviceAndDeviceIDByCtx(ctx context.Context, deviceAndDeviceID ...string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
 		return err
 	}
-	return dCtx.Terminal().ReplaceByDeviceAndDeviceId(ctx, deviceAndDeviceId...)
+	return dCtx.Terminal().ReplaceByDeviceAndDeviceID(ctx, deviceAndDeviceID...)
 }
 
-// KickoutByLoginIDByCtx kicks out all terminals of current user KickoutByLoginIDByCtx 韪㈠嚭褰撳墠鐢ㄦ埛鍏ㄩ儴缁堢
+// KickoutByLoginIDByCtx kicks out all terminals of current user KickoutByLoginIDByCtx 踢出当前用户全部终端
 func KickoutByLoginIDByCtx(ctx context.Context) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -52,7 +52,7 @@ func KickoutByLoginIDByCtx(ctx context.Context) error {
 	return dCtx.Terminal().KickoutAll(ctx)
 }
 
-// ReplaceByLoginIDByCtx replaces all terminals of current user ReplaceByLoginIDByCtx 椤舵浛褰撳墠鐢ㄦ埛鍏ㄩ儴缁堢
+// ReplaceByLoginIDByCtx replaces all terminals of current user ReplaceByLoginIDByCtx 顶替当前用户全部终端
 func ReplaceByLoginIDByCtx(ctx context.Context) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -61,7 +61,7 @@ func ReplaceByLoginIDByCtx(ctx context.Context) error {
 	return dCtx.Terminal().ReplaceAll(ctx)
 }
 
-// TerminateByCtx terminates current or specified terminal TerminateByCtx 涓嬬嚎褰撳墠鎴栨寚瀹氱粓绔?
+// TerminateByCtx terminates current or specified terminal TerminateByCtx 下线当前或指定终端
 func TerminateByCtx(ctx context.Context, opts manager.TerminateOptions) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -70,7 +70,7 @@ func TerminateByCtx(ctx context.Context, opts manager.TerminateOptions) error {
 	return dCtx.Terminal().Terminate(ctx, opts)
 }
 
-// GetTokenValueListByDeviceByCtx gets current user tokens by device GetTokenValueListByDeviceByCtx 鎸夎澶囪幏鍙栧綋鍓嶇敤鎴?Token 鍒楄〃
+// GetTokenValueListByDeviceByCtx gets current user tokens by device GetTokenValueListByDeviceByCtx 按设备获取当前用户 Token 列表
 func GetTokenValueListByDeviceByCtx(ctx context.Context, device string, checkAlive ...bool) ([]string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -79,16 +79,16 @@ func GetTokenValueListByDeviceByCtx(ctx context.Context, device string, checkAli
 	return dCtx.Terminal().GetTokenValueListByDevice(ctx, device, checkAlive...)
 }
 
-// GetTokenValueListByDeviceAndDeviceIDByCtx gets current user tokens by device ID GetTokenValueListByDeviceAndDeviceIDByCtx 鎸夎澶囧拰璁惧 ID 鑾峰彇褰撳墠鐢ㄦ埛 Token 鍒楄〃
-func GetTokenValueListByDeviceAndDeviceIDByCtx(ctx context.Context, device, deviceId string, checkAlive ...bool) ([]string, error) {
+// GetTokenValueListByDeviceAndDeviceIDByCtx gets current user tokens by device ID GetTokenValueListByDeviceAndDeviceIDByCtx 按设备和设备 ID 获取当前用户 Token 列表
+func GetTokenValueListByDeviceAndDeviceIDByCtx(ctx context.Context, device, deviceID string, checkAlive ...bool) ([]string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return dCtx.Terminal().GetTokenValueListByDeviceAndDeviceId(ctx, device, deviceId, checkAlive...)
+	return dCtx.Terminal().GetTokenValueListByDeviceAndDeviceID(ctx, device, deviceID, checkAlive...)
 }
 
-// GetOnlineTerminalCountByDeviceByCtx gets online count by device GetOnlineTerminalCountByDeviceByCtx 鎸夎澶囪幏鍙栧湪绾跨粓绔暟
+// GetOnlineTerminalCountByDeviceByCtx gets online count by device GetOnlineTerminalCountByDeviceByCtx 按设备获取在线终端数量
 func GetOnlineTerminalCountByDeviceByCtx(ctx context.Context, device string) (int, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -97,16 +97,16 @@ func GetOnlineTerminalCountByDeviceByCtx(ctx context.Context, device string) (in
 	return dCtx.Terminal().GetOnlineTerminalCountByDevice(ctx, device)
 }
 
-// GetOnlineTerminalCountByDeviceAndDeviceIDByCtx gets online count by device ID GetOnlineTerminalCountByDeviceAndDeviceIDByCtx 鎸夎澶囧拰璁惧 ID 鑾峰彇鍦ㄧ嚎缁堢鏁?
-func GetOnlineTerminalCountByDeviceAndDeviceIDByCtx(ctx context.Context, device, deviceId string) (int, error) {
+// GetOnlineTerminalCountByDeviceAndDeviceIDByCtx gets online count by device ID GetOnlineTerminalCountByDeviceAndDeviceIDByCtx 按设备和设备 ID 获取在线终端数量
+func GetOnlineTerminalCountByDeviceAndDeviceIDByCtx(ctx context.Context, device, deviceID string) (int, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
 		return 0, err
 	}
-	return dCtx.Terminal().GetOnlineTerminalCountByDeviceAndDeviceId(ctx, device, deviceId)
+	return dCtx.Terminal().GetOnlineTerminalCountByDeviceAndDeviceID(ctx, device, deviceID)
 }
 
-// GetTerminalInfoByCtx gets current terminal info GetTerminalInfoByCtx 鑾峰彇褰撳墠缁堢淇℃伅
+// GetTerminalInfoByCtx gets current terminal info GetTerminalInfoByCtx 获取当前终端信息
 func GetTerminalInfoByCtx(ctx context.Context) (*manager.TerminalInfo, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -115,7 +115,7 @@ func GetTerminalInfoByCtx(ctx context.Context) (*manager.TerminalInfo, error) {
 	return dCtx.Terminal().GetTerminalInfo(ctx)
 }
 
-// GetTerminalListByCtx gets current user terminal list GetTerminalListByCtx 鑾峰彇褰撳墠鐢ㄦ埛缁堢鍒楄〃
+// GetTerminalListByCtx gets current user terminal list GetTerminalListByCtx 获取当前用户终端列表
 func GetTerminalListByCtx(ctx context.Context, device ...string) ([]manager.TerminalInfo, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -124,7 +124,7 @@ func GetTerminalListByCtx(ctx context.Context, device ...string) ([]manager.Term
 	return dCtx.Terminal().GetTerminalList(ctx, device...)
 }
 
-// GetLatestTokenValueByCtx gets latest current user token GetLatestTokenValueByCtx 鑾峰彇褰撳墠鐢ㄦ埛鏈€鏂?Token
+// GetLatestTokenValueByCtx gets latest current user token GetLatestTokenValueByCtx 获取当前用户最新 Token
 func GetLatestTokenValueByCtx(ctx context.Context, device ...string) (string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -133,7 +133,7 @@ func GetLatestTokenValueByCtx(ctx context.Context, device ...string) (string, er
 	return dCtx.Terminal().GetLatestTokenValue(ctx, device...)
 }
 
-// SearchTokenValueByCtx searches token values SearchTokenValueByCtx 鎼滅储 Token 鍊?
+// SearchTokenValueByCtx searches token values SearchTokenValueByCtx 搜索 Token 值
 func SearchTokenValueByCtx(ctx context.Context, keyword string, start, size int) ([]string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -142,7 +142,7 @@ func SearchTokenValueByCtx(ctx context.Context, keyword string, start, size int)
 	return dCtx.Terminal().SearchTokenValue(ctx, keyword, start, size)
 }
 
-// SearchSessionIDByCtx searches session ids SearchSessionIDByCtx 鎼滅储 Session ID
+// SearchSessionIDByCtx searches session ids SearchSessionIDByCtx 鎼滅。Session ID
 func SearchSessionIDByCtx(ctx context.Context, keyword string, start, size int) ([]string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -151,7 +151,7 @@ func SearchSessionIDByCtx(ctx context.Context, keyword string, start, size int) 
 	return dCtx.Terminal().SearchSessionId(ctx, keyword, start, size)
 }
 
-// ForEachTerminalByCtx visits current user terminals ForEachTerminalByCtx 閬嶅巻褰撳墠鐢ㄦ埛缁堢
+// ForEachTerminalByCtx visits current user terminals ForEachTerminalByCtx 遍历当前用户终端
 func ForEachTerminalByCtx(ctx context.Context, visitor manager.TerminalVisitor) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -160,7 +160,7 @@ func ForEachTerminalByCtx(ctx context.Context, visitor manager.TerminalVisitor) 
 	return dCtx.Terminal().ForEachTerminal(ctx, visitor)
 }
 
-// ForEachTerminalByDeviceByCtx visits current user terminals by device ForEachTerminalByDeviceByCtx 鎸夎澶囬亶鍘嗗綋鍓嶇敤鎴风粓绔?
+// ForEachTerminalByDeviceByCtx visits current user terminals by device ForEachTerminalByDeviceByCtx 按设备遍历当前用户终端
 func ForEachTerminalByDeviceByCtx(ctx context.Context, device string, visitor manager.TerminalVisitor) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {

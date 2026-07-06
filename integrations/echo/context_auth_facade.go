@@ -8,25 +8,25 @@ import (
 	echo4 "github.com/labstack/echo/v4"
 )
 
-// LoginByContext logs in current Echo request LoginByContext 在当前 Echo 请求中登录
-func LoginByContext(c echo4.Context, loginID string, deviceAndDeviceId ...string) (string, error) {
+// LoginByContext logs in current Gin request LoginByContext 在当前 Gin 请求中登录
+func LoginByContext(c echo4.Context, loginID string, deviceAndDeviceID ...string) (string, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return "", err
 	}
-	return dCtx.Auth().Login(requestContext(c), loginID, deviceAndDeviceId...)
+	return dCtx.Auth().Login(requestContext(c), loginID, deviceAndDeviceID...)
 }
 
-// LoginWithTimeoutByContext logs in current Echo request with timeout LoginWithTimeoutByContext 使用指定有效期登录当前 Echo 请求
-func LoginWithTimeoutByContext(c echo4.Context, loginID string, timeout time.Duration, deviceAndDeviceId ...string) (string, error) {
+// LoginWithTimeoutByContext logs in current Gin request with timeout LoginWithTimeoutByContext 使用指定有效期登录当前 Gin 请求
+func LoginWithTimeoutByContext(c echo4.Context, loginID string, timeout time.Duration, deviceAndDeviceID ...string) (string, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return "", err
 	}
-	return dCtx.Auth().LoginWithTimeout(requestContext(c), loginID, timeout, deviceAndDeviceId...)
+	return dCtx.Auth().LoginWithTimeout(requestContext(c), loginID, timeout, deviceAndDeviceID...)
 }
 
-// LoginWithOptionsByContext logs in current Echo request with options LoginWithOptionsByContext 使用登录选项登录当前 Echo 请求
+// LoginWithOptionsByContext logs in current Gin request with options LoginWithOptionsByContext 使用登录选项登录当前 Gin 请求
 func LoginWithOptionsByContext(c echo4.Context, opts manager.LoginOptions) (string, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

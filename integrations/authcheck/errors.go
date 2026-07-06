@@ -6,7 +6,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/derror"
 )
 
-// GetErrorCodeAndMessage maps core errors to stable integration responses GetErrorCodeAndMessage 灏嗘牳蹇冮敊璇槧灏勪负绋冲畾鐨勯泦鎴愬眰鍝嶅簲銆?
+// GetErrorCodeAndMessage maps core errors to stable integration responses GetErrorCodeAndMessage 将核心错误映射为稳定的集成层响应。
 func GetErrorCodeAndMessage(err error) (int, string) {
 	var dErr *derror.DTokenError
 	if errors.As(err, &dErr) {

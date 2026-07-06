@@ -26,25 +26,10 @@ func (m *Manager) GetSessionByToken(ctx context.Context, tokenValue string) (*Se
 		return nil, derror.ErrInvalidToken
 	}
 
-	// Get tokenInfo 获取 tokenInfo
-	// Load token info 加载 Token 信息。
-	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	// Validate login context without renew side effects 校验登录上下文但不触发续期副作用。
+	sess, _, err := m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
 	if err != nil {
 		return nil, err
-	}
-
-	// Load session by login ID 根据登录 ID 加载会话。
-	sess, err := m.getSession(ctx, tokenInfo.LoginID)
-	if err != nil {
-		// Map missing session to invalid token 会话不存在时映射为无效 Token。
-		if errors.Is(err, derror.ErrSessionNotFound) {
-			return nil, derror.ErrInvalidToken
-		}
-		return nil, err
-	}
-	// Ensure token still belongs to session 确认 Token 仍属于会话。
-	if sess == nil || !sess.hasTerminalToken(tokenValue) {
-		return nil, derror.ErrInvalidToken
 	}
 
 	// Return session 返回会话。
@@ -61,7 +46,7 @@ func (m *Manager) GetTokenValueListByLoginID(ctx context.Context, loginID string
 	// Load session 加载会话。
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
-		// Return errors only for real storage failures 仅当存储层真正出错时才返回 error；session 不存在视为 nil
+		// Return errors only for real storage failures 仅当存储层真正出错时才返。error；session 不存在视。nil
 		// Ignore missing session 忽略不存在的会话。
 		if !errors.Is(err, derror.ErrSessionNotFound) {
 			return nil, err
@@ -111,17 +96,17 @@ func (m *Manager) GetTokenValueListByDevice(ctx context.Context, loginID, device
 	return m.filterTokens(ctx, matched, len(checkAlive) > 0 && checkAlive[0], sess)
 }
 
-// GetTokenValueListByDeviceAndDeviceId retrieves all tokens for a specific device type and device ID. GetTokenValueListByDeviceAndDeviceId 获取指定设备类型和设备 ID 的所有 Token。
-func (m *Manager) GetTokenValueListByDeviceAndDeviceId(ctx context.Context, loginID, device, deviceId string, checkAlive ...bool) ([]string, error) {
+// GetTokenValueListByDeviceAndDeviceID retrieves all tokens for a specific device type and device ID. GetTokenValueListByDeviceAndDeviceID 获取指定设备类型和设备 ID 的所有 Token。
+func (m *Manager) GetTokenValueListByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string, checkAlive ...bool) ([]string, error) {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return []string{}, derror.ErrIDIsEmpty
 	}
 	// Normalize device fields 规范化设备字段。
 	device = strings.TrimSpace(device)
-	deviceId = strings.TrimSpace(deviceId)
+	deviceID = strings.TrimSpace(deviceID)
 	// Validate device fields 校验设备字段。
-	if device == "" || deviceId == "" {
+	if device == "" || deviceID == "" {
 		return []string{}, derror.ErrInvalidParam
 	}
 
@@ -141,7 +126,7 @@ func (m *Manager) GetTokenValueListByDeviceAndDeviceId(ctx context.Context, logi
 	}
 
 	// Filter by concrete device 过滤具体设备终端。
-	matched := sess.getTerminalsByDeviceAndDeviceId(device, deviceId)
+	matched := sess.getTerminalsByDeviceAndDeviceID(device, deviceID)
 	return m.filterTokens(ctx, matched, len(checkAlive) > 0 && checkAlive[0], sess)
 }
 
@@ -155,13 +140,13 @@ func (m *Manager) GetOnlineTerminalCount(ctx context.Context, loginID string) (i
 	// Load session 加载会话。
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
-		// Treat missing session as zero count 会话不存在视为 0。
+		// Treat missing session as zero count 会话不存在视。0。
 		if errors.Is(err, derror.ErrSessionNotFound) {
 			return 0, nil
 		}
 		return 0, err
 	}
-	// Return zero when session missing 会话为空时返回 0。
+	// Return zero when session missing 会话为空时返。0。
 	if sess == nil {
 		return 0, nil
 	}
@@ -186,13 +171,13 @@ func (m *Manager) GetOnlineTerminalCountByDevice(ctx context.Context, loginID, d
 	// Load session 加载会话。
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
-		// Treat missing session as zero count 会话不存在视为 0。
+		// Treat missing session as zero count 会话不存在视。0。
 		if errors.Is(err, derror.ErrSessionNotFound) {
 			return 0, nil
 		}
 		return 0, err
 	}
-	// Return zero when session missing 会话为空时返回 0。
+	// Return zero when session missing 会话为空时返。0。
 	if sess == nil {
 		return 0, nil
 	}
@@ -201,36 +186,36 @@ func (m *Manager) GetOnlineTerminalCountByDevice(ctx context.Context, loginID, d
 	return m.countAliveTokens(ctx, sess.getTerminalsByDevice(device), sess)
 }
 
-// GetOnlineTerminalCountByDeviceAndDeviceId retrieves the count of online terminals for a specific device type and device ID. GetOnlineTerminalCountByDeviceAndDeviceId 获取用户在指定设备类型和设备ID的在线终端数量。
-func (m *Manager) GetOnlineTerminalCountByDeviceAndDeviceId(ctx context.Context, loginID, device, deviceId string) (int, error) {
+// GetOnlineTerminalCountByDeviceAndDeviceID retrieves the count of online terminals for a specific device type and device ID. GetOnlineTerminalCountByDeviceAndDeviceID 获取用户在指定设备类型和设备ID的在线终端数量。
+func (m *Manager) GetOnlineTerminalCountByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) (int, error) {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return 0, derror.ErrIDIsEmpty
 	}
 	// Normalize device fields 规范化设备字段。
 	device = strings.TrimSpace(device)
-	deviceId = strings.TrimSpace(deviceId)
+	deviceID = strings.TrimSpace(deviceID)
 	// Validate device fields 校验设备字段。
-	if device == "" || deviceId == "" {
+	if device == "" || deviceID == "" {
 		return 0, derror.ErrInvalidParam
 	}
 
 	// Load session 加载会话。
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
-		// Treat missing session as zero count 会话不存在视为 0。
+		// Treat missing session as zero count 会话不存在视。0。
 		if errors.Is(err, derror.ErrSessionNotFound) {
 			return 0, nil
 		}
 		return 0, err
 	}
-	// Return zero when session missing 会话为空时返回 0。
+	// Return zero when session missing 会话为空时返。0。
 	if sess == nil {
 		return 0, nil
 	}
 
 	// Count alive tokens by concrete device 按具体设备统计存活 Token。
-	return m.countAliveTokens(ctx, sess.getTerminalsByDeviceAndDeviceId(device, deviceId), sess)
+	return m.countAliveTokens(ctx, sess.getTerminalsByDeviceAndDeviceID(device, deviceID), sess)
 }
 
 // GetTerminalListByLoginID retrieves all terminal info for a login ID, optionally filtered by device. GetTerminalListByLoginID 获取指定登录 ID 的所有终端信息列表，可选按设备类型过滤。
@@ -263,7 +248,7 @@ func (m *Manager) GetTerminalListByLoginID(ctx context.Context, loginID string, 
 		return sess.getTerminalsByDevice(targetDevice), nil
 	}
 
-	// Return copy to avoid external mutation 返回副本，避免外部修改影响内部数据
+	// Return copy to avoid external mutation 返回副本，避免外部修改影响内部数。
 	// Copy terminal list 拷贝终端列表。
 	result := make([]TerminalInfo, len(sess.TerminalInfos))
 	copy(result, sess.TerminalInfos)
@@ -313,12 +298,14 @@ func (m *Manager) GetTokenValueByLoginID(ctx context.Context, loginID string, de
 	// Select target terminals 选择目标终端。
 	terminals := sess.TerminalInfos
 	if len(device) > 0 {
-		if targetDevice := strings.TrimSpace(device[0]); targetDevice != "" {
-			terminals = sess.getTerminalsByDevice(targetDevice)
+		targetDevice := strings.TrimSpace(device[0])
+		if targetDevice == "" {
+			return "", derror.ErrInvalidParam
 		}
+		terminals = sess.getTerminalsByDevice(targetDevice)
 	}
 
-	// Walk backward so the newest alive token wins. 反向遍历以返回最新仍有效的 token。
+	// Walk backward so the newest alive token wins. 反向遍历以返回最新仍有效。token。
 	for i := len(terminals) - 1; i >= 0; i-- {
 		alive, err := m.checkTerminalTokenAliveWithContext(ctx, terminals[i].Token, nil, sess)
 		if err != nil {
@@ -332,7 +319,7 @@ func (m *Manager) GetTokenValueByLoginID(ctx context.Context, loginID string, de
 	return "", derror.ErrInvalidToken
 }
 
-// SearchTokenValue searches token values by keyword with pagination. SearchTokenValue 根据关键词搜索 Token 值，支持分页。 keyword: 搜索关键词（模糊匹配），start: 起始索引，size: 返回数量（-1 返回全部）
+// SearchTokenValue searches token values by keyword with pagination. SearchTokenValue 根据关键词搜索 Token 值，支持分页。keyword: 搜索关键词（模糊匹配），start: 起始索引，size: 返回数量。1 返回全部。
 func (m *Manager) SearchTokenValue(ctx context.Context, keyword string, start, size int) ([]string, error) {
 	// Build token search pattern 构建 Token 搜索模式。
 	prefix := m.config.KeyPrefix + m.config.AuthType + config.TokenKeyPrefix
@@ -340,7 +327,7 @@ func (m *Manager) SearchTokenValue(ctx context.Context, keyword string, start, s
 	return m.searchValues(ctx, pattern, prefix, start, size)
 }
 
-// SearchSessionId searches session IDs by keyword with pagination. SearchSessionId 根据关键词搜索 Session ID，支持分页。 keyword: 搜索关键词（模糊匹配），start: 起始索引，size: 返回数量（-1 返回全部）
+// SearchSessionId searches session IDs by keyword with pagination. SearchSessionId 根据关键词搜。Session ID，支持分页。keyword: 搜索关键词（模糊匹配），start: 起始索引，size: 返回数量。1 返回全部。
 func (m *Manager) SearchSessionId(ctx context.Context, keyword string, start, size int) ([]string, error) {
 	// Build session search pattern 构建 Session 搜索模式。
 	prefix := m.config.KeyPrefix + m.config.AuthType + SessionKeyPrefix
@@ -356,7 +343,7 @@ func escapeSearchKeyword(keyword string) string {
 	return keyword
 }
 
-// TerminalVisitor is a callback function for terminal traversal. TerminalVisitor 终端遍历回调函数。 Return false to stop traversal. 返回 false 停止遍历。
+// TerminalVisitor is a callback function for terminal traversal. TerminalVisitor 终端遍历回调函数。Return false to stop traversal. 返回 false 停止遍历。
 type TerminalVisitor func(terminal TerminalInfo) bool
 
 // ForEachTerminal iterates over all terminals for a login ID and calls the visitor function. ForEachTerminal 遍历指定登录 ID 的所有终端，对每个终端调用回调函数。
@@ -427,7 +414,7 @@ func (m *Manager) ForEachTerminalByDevice(ctx context.Context, loginID, device s
 	return nil
 }
 
-// filterTokens filters tokens based on checkAlive flag. filterTokens 根据 checkAlive 决定是否验证 token 有效性，并返回 token 列表。
+// filterTokens filters tokens based on checkAlive flag. filterTokens 根据 checkAlive 决定是否验证 token 有效性，并返。token 列表。
 func (m *Manager) filterTokens(ctx context.Context, terminals []TerminalInfo, checkAlive bool, sess *Session) ([]string, error) {
 	// Return empty list when no terminals exist 没有终端时返回空列表。
 	if len(terminals) == 0 {
@@ -436,7 +423,7 @@ func (m *Manager) filterTokens(ctx context.Context, terminals []TerminalInfo, ch
 
 	// Return all tokens directly if no alive check 不检查存活时直接返回所有 Token。
 	if !checkAlive {
-		// Return all tokens without alive check 不检查存活：直接返回所有 token（预分配容量）
+		// Return all tokens without alive check 不检查存活：直接返回所。token（预分配容量。
 		tokens := make([]string, len(terminals))
 		for i, ti := range terminals {
 			tokens[i] = ti.Token
@@ -444,7 +431,7 @@ func (m *Manager) filterTokens(ctx context.Context, terminals []TerminalInfo, ch
 		return tokens, nil
 	}
 
-	// Check each token by full alive rules 按完整存活规则检查每个 token
+	// Check each token by full alive rules 按完整存活规则检查每。token
 	// Filter alive tokens 过滤存活 Token。
 	tokens := make([]string, 0, len(terminals))
 	for _, ti := range terminals {
@@ -455,14 +442,14 @@ func (m *Manager) filterTokens(ctx context.Context, terminals []TerminalInfo, ch
 		if alive {
 			tokens = append(tokens, ti.Token)
 		}
-		// Skip invalid tokens 若 token 无效（过期/被踢等），跳过
+		// Skip invalid tokens 。token 无效（过。被踢等），跳。
 	}
 	return tokens, nil
 }
 
-// countAliveTokens counts alive tokens without collecting token values. countAliveTokens 不收集 token 直接统计存活数量。
+// countAliveTokens counts alive tokens without collecting token values. countAliveTokens 不收。token 直接统计存活数量。
 func (m *Manager) countAliveTokens(ctx context.Context, terminals []TerminalInfo, sess *Session) (int, error) {
-	// Return zero when no terminals exist 没有终端时返回 0。
+	// Return zero when no terminals exist 没有终端时返。0。
 	if len(terminals) == 0 {
 		return 0, nil
 	}

@@ -47,7 +47,7 @@ func (m *Manager) IntrospectToken(ctx context.Context, tokenValue string) (*Toke
 		result.Error = derror.ErrAccountDisabled.Error()
 		return result, nil
 	}
-	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceId) {
+	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID) {
 		result.Error = derror.ErrDeviceDisabled.Error()
 		return result, nil
 	}
@@ -79,11 +79,11 @@ func (m *Manager) IntrospectToken(ctx context.Context, tokenValue string) (*Toke
 		AuthType: m.config.AuthType,
 		LoginID:  tokenInfo.LoginID,
 		Device:   tokenInfo.Device,
-		DeviceID: tokenInfo.DeviceId,
+		DeviceID: tokenInfo.DeviceID,
 		Token:    tokenValue,
 	}
 
-	// Reuse session for permission/role fallback 复用会话以获取权限/角色回退值
+	// Reuse session for permission/role fallback 复用会话以获取权。角色回退。
 	var sessionPermissions, sessionRoles []string
 	if sess != nil {
 		sessionPermissions = sess.Permissions
@@ -103,7 +103,7 @@ func (m *Manager) IntrospectToken(ctx context.Context, tokenValue string) (*Toke
 	result.AuthType = tokenInfo.AuthType
 	result.LoginID = tokenInfo.LoginID
 	result.Device = tokenInfo.Device
-	result.DeviceID = tokenInfo.DeviceId
+	result.DeviceID = tokenInfo.DeviceID
 	result.CreateTime = tokenInfo.CreateTime
 	result.ExpiresIn = ttl
 	result.Timeout = tokenInfo.Timeout

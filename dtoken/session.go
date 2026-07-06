@@ -25,13 +25,13 @@ func GetOnlineTerminalCountByDevice(ctx context.Context, loginID string, device 
 	return mgr.GetOnlineTerminalCountByDevice(ctx, loginID, device)
 }
 
-// GetOnlineTerminalCountByDeviceAndDeviceId returns online terminal count for a device ID. GetOnlineTerminalCountByDeviceAndDeviceId 获取指定设备 ID 在线终端数量。
-func GetOnlineTerminalCountByDeviceAndDeviceId(ctx context.Context, loginID string, device string, deviceId string, authType ...string) (int, error) {
+// GetOnlineTerminalCountByDeviceAndDeviceID returns online terminal count for a device ID. GetOnlineTerminalCountByDeviceAndDeviceID 获取指定设备 ID 在线终端数量。
+func GetOnlineTerminalCountByDeviceAndDeviceID(ctx context.Context, loginID string, device string, deviceID string, authType ...string) (int, error) {
 	mgr, err := GetManager(authType...)
 	if err != nil {
 		return 0, err
 	}
-	return mgr.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, loginID, device, deviceId)
+	return mgr.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, loginID, device, deviceID)
 }
 
 // ForEachTerminal visits each terminal for a login ID. ForEachTerminal 遍历指定账号的终端。
@@ -61,7 +61,7 @@ func GetSession(ctx context.Context, loginID string, authType ...string) (*manag
 	return mgr.GetSession(ctx, loginID)
 }
 
-// GetSessionByToken returns a session by token. GetSessionByToken 按 token 获取会话。
+// GetSessionByToken returns a session by token. GetSessionByToken 。token 获取会话。
 func GetSessionByToken(ctx context.Context, tokenValue string, authType ...string) (*manager.Session, error) {
 	mgr, err := GetManager(authType...)
 	if err != nil {
@@ -70,7 +70,7 @@ func GetSessionByToken(ctx context.Context, tokenValue string, authType ...strin
 	return mgr.GetSessionByToken(ctx, tokenValue)
 }
 
-// GetTokenValueListByLoginID returns token values for a login ID. GetTokenValueListByLoginID 获取账号的 token 列表。
+// GetTokenValueListByLoginID returns token values for a login ID. GetTokenValueListByLoginID 获取账号。token 列表。
 func GetTokenValueListByLoginID(ctx context.Context, loginID string, checkAlive bool, authType ...string) ([]string, error) {
 	mgr, err := GetManager(authType...)
 	if err != nil {
@@ -79,16 +79,16 @@ func GetTokenValueListByLoginID(ctx context.Context, loginID string, checkAlive 
 	return mgr.GetTokenValueListByLoginID(ctx, loginID, checkAlive)
 }
 
-// GetTokenValueListByDeviceAndDeviceId returns token values for a device ID. GetTokenValueListByDeviceAndDeviceId 获取指定设备 ID 的 token 列表。
-func GetTokenValueListByDeviceAndDeviceId(ctx context.Context, loginID string, device string, deviceId string, checkAlive bool, authType ...string) ([]string, error) {
+// GetTokenValueListByDeviceAndDeviceID returns token values for a device ID. GetTokenValueListByDeviceAndDeviceID 获取指定设备 ID 。token 列表。
+func GetTokenValueListByDeviceAndDeviceID(ctx context.Context, loginID string, device string, deviceID string, checkAlive bool, authType ...string) ([]string, error) {
 	mgr, err := GetManager(authType...)
 	if err != nil {
 		return nil, err
 	}
-	return mgr.GetTokenValueListByDeviceAndDeviceId(ctx, loginID, device, deviceId, checkAlive)
+	return mgr.GetTokenValueListByDeviceAndDeviceID(ctx, loginID, device, deviceID, checkAlive)
 }
 
-// GetTokenValueListByDevice returns token values for a device. GetTokenValueListByDevice 获取指定设备的 token 列表。
+// GetTokenValueListByDevice returns token values for a device. GetTokenValueListByDevice 获取指定设备。token 列表。
 func GetTokenValueListByDevice(ctx context.Context, loginID string, device string, checkAlive bool, authType ...string) ([]string, error) {
 	mgr, err := GetManager(authType...)
 	if err != nil {
@@ -115,7 +115,7 @@ func GetTerminalListByLoginIDAndDevice(ctx context.Context, loginID string, devi
 	return mgr.GetTerminalListByLoginID(ctx, loginID, device)
 }
 
-// GetTerminalInfoByToken returns terminal information by token. GetTerminalInfoByToken 按 token 获取终端信息。
+// GetTerminalInfoByToken returns terminal information by token. GetTerminalInfoByToken 。token 获取终端信息。
 func GetTerminalInfoByToken(ctx context.Context, tokenValue string, authType ...string) (*manager.TerminalInfo, error) {
 	mgr, err := GetManager(authType...)
 	if err != nil {
@@ -151,7 +151,7 @@ func DeleteSessionValue(ctx context.Context, loginID, key string, authType ...st
 	return mgr.DeleteSessionValue(ctx, loginID, key)
 }
 
-// GetTokenValueByLoginID returns the latest token for a login ID. GetTokenValueByLoginID 获取账号最新 token。
+// GetTokenValueByLoginID returns the latest token for a login ID. GetTokenValueByLoginID 获取账号最。token。
 func GetTokenValueByLoginID(ctx context.Context, loginID string, authType ...string) (string, error) {
 	mgr, err := GetManager(authType...)
 	if err != nil {
@@ -160,7 +160,7 @@ func GetTokenValueByLoginID(ctx context.Context, loginID string, authType ...str
 	return mgr.GetTokenValueByLoginID(ctx, loginID)
 }
 
-// GetTokenValueByLoginIDAndDevice returns the latest token for a device. GetTokenValueByLoginIDAndDevice 获取指定设备的最新 token。
+// GetTokenValueByLoginIDAndDevice returns the latest token for a device. GetTokenValueByLoginIDAndDevice 获取指定设备的最。token。
 func GetTokenValueByLoginIDAndDevice(ctx context.Context, loginID string, device string, authType ...string) (string, error) {
 	mgr, err := GetManager(authType...)
 	if err != nil {

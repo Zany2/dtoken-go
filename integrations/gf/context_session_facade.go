@@ -14,7 +14,7 @@ func SetSessionValueByCtx(ctx context.Context, key string, value any) error {
 	return dCtx.Session().SetValue(ctx, key, value)
 }
 
-// GetSessionValueByCtx gets current session value GetSessionValueByCtx 鑾峰彇褰撳墠浼氳瘽鍊?
+// GetSessionValueByCtx gets current session value GetSessionValueByCtx 获取当前会话值
 func GetSessionValueByCtx(ctx context.Context, key string) (any, bool, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -23,7 +23,7 @@ func GetSessionValueByCtx(ctx context.Context, key string) (any, bool, error) {
 	return dCtx.Session().GetValue(ctx, key)
 }
 
-// DeleteSessionValueByCtx deletes current session value DeleteSessionValueByCtx 鍒犻櫎褰撳墠浼氳瘽鍊?
+// DeleteSessionValueByCtx deletes current session value DeleteSessionValueByCtx 删除当前会话值
 func DeleteSessionValueByCtx(ctx context.Context, key string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {

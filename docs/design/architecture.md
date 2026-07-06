@@ -1,4 +1,4 @@
-﻿English | [中文文档](architecture_zh.md)
+English | [中文文档](architecture_zh.md)
 
 # Architecture Design
 
@@ -166,7 +166,7 @@ Request
   ↓
 dtoken.Login(ctx, loginID, ...)
   ↓
-1. Parse device / deviceId / authType
+1. Parse device / deviceID / authType
   ↓
 2. Generate token
   ↓
@@ -266,7 +266,7 @@ type TokenInfo struct {
     AuthType   string
     LoginID    string
     Device     string
-    DeviceId   string
+    DeviceID   string
     CreateTime int64
 }
 ```

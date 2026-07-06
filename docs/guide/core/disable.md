@@ -91,10 +91,10 @@ err = dtoken.CheckDisableDevice(ctx, "10001", "app")
 err = dtoken.UntieDevice(ctx, "10001", "app")
 
 // Disable one concrete device.
-err = dtoken.DisableDeviceAndDeviceId(ctx, "10001", "app", "iphone-001", time.Hour)
-disabled = dtoken.IsDisableDeviceAndDeviceId(ctx, "10001", "app", "iphone-001")
-err = dtoken.CheckDisableDeviceAndDeviceId(ctx, "10001", "app", "iphone-001")
-err = dtoken.UntieDeviceAndDeviceId(ctx, "10001", "app", "iphone-001")
+err = dtoken.DisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001", time.Hour)
+disabled = dtoken.IsDisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
+err = dtoken.CheckDisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
+err = dtoken.UntieDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
 ```
 
 Query disable details:
@@ -103,8 +103,8 @@ Query disable details:
 deviceInfo, err := dtoken.GetDisableDeviceInfo(ctx, "10001", "app")
 deviceTTL, err := dtoken.GetDisableDeviceTTL(ctx, "10001", "app")
 
-concreteInfo, err := dtoken.GetDisableDeviceAndDeviceIdInfo(ctx, "10001", "app", "iphone-001")
-concreteTTL, err := dtoken.GetDisableDeviceAndDeviceIdTTL(ctx, "10001", "app", "iphone-001")
+concreteInfo, err := dtoken.GetDisableDeviceAndDeviceIDInfo(ctx, "10001", "app", "iphone-001")
+concreteTTL, err := dtoken.GetDisableDeviceAndDeviceIDTTL(ctx, "10001", "app", "iphone-001")
 ```
 
 ## Relationship With Login Checks
@@ -113,7 +113,7 @@ Account disable and device disable participate in Token checks:
 
 - After an account is disabled, existing Tokens for that account fail login checks.
 - After a device type is disabled, Tokens matching that `device` fail.
-- After a concrete device is disabled, Tokens matching `device + deviceId` fail.
+- After a concrete device is disabled, Tokens matching `device + deviceID` fail.
 - Service disable does not block all login state automatically. Call `CheckDisableService` or `CheckDisableServiceLevel` explicitly in the corresponding business entry.
 
 ## Multi-Auth Systems

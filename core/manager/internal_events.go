@@ -8,7 +8,7 @@ import (
 )
 
 // triggerEvent triggers an event through the event manager. triggerEvent 通过事件管理器触发事件。
-func (m *Manager) triggerEvent(event listener.Event, loginID, device, deviceId, token string, extra map[string]any) {
+func (m *Manager) triggerEvent(event listener.Event, loginID, device, deviceID, token string, extra map[string]any) {
 	// Skip when event manager is absent 事件管理器不存在时跳过。
 	if m.eventManager == nil {
 		return
@@ -20,7 +20,7 @@ func (m *Manager) triggerEvent(event listener.Event, loginID, device, deviceId, 
 		AuthType:  m.config.AuthType,
 		LoginID:   loginID,
 		Device:    device,
-		DeviceId:  deviceId,
+		DeviceID:  deviceID,
 		Token:     token,
 		Extra:     extra,
 		Timestamp: time.Now().Unix(),

@@ -1,4 +1,4 @@
-﻿[English](dtoken.md) | 中文文档
+[English](dtoken.md) | 中文文档
 
 # DToken API 文档
 
@@ -44,7 +44,7 @@ func Login(ctx context.Context, loginID string, params ...string) (string, error
 **参数**：
 - `ctx` - 请求上下文
 - `loginID` - 登录 ID
-- `params` - 可选参数，顺序为 `[device, deviceId, authType]`
+- `params` - 可选参数，顺序为 `[device, deviceID, authType]`
 
 **返回**：
 - `string` - Token 值
@@ -187,18 +187,18 @@ func IntrospectToken(ctx context.Context, tokenValue string, authType ...string)
 func LoginByToken(ctx context.Context, tokenValue string, authType ...string) error
 func CheckLogin(ctx context.Context, tokenValue string, authType ...string) error
 func LogoutByDevice(ctx context.Context, loginID string, device string, authType ...string) error
-func LogoutByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error
+func LogoutByDeviceAndDeviceID(ctx context.Context, loginID string, params ...string) error
 func LogoutByLoginID(ctx context.Context, loginID string, authType ...string) error
 func KickoutByDevice(ctx context.Context, loginID string, device string, authType ...string) error
-func KickoutByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error
+func KickoutByDeviceAndDeviceID(ctx context.Context, loginID string, params ...string) error
 func KickoutByLoginID(ctx context.Context, loginID string, authType ...string) error
 func Replace(ctx context.Context, tokenValue string, authType ...string) error
 func ReplaceByDevice(ctx context.Context, loginID string, device string, authType ...string) error
-func ReplaceByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error
+func ReplaceByDeviceAndDeviceID(ctx context.Context, loginID string, params ...string) error
 func ReplaceByLoginID(ctx context.Context, loginID string, authType ...string) error
 func GetTokenInfo(ctx context.Context, tokenValue string, authType ...string) (*manager.TokenInfo, error)
 func GetDevice(ctx context.Context, tokenValue string, authType ...string) (string, error)
-func GetDeviceId(ctx context.Context, tokenValue string, authType ...string) (string, error)
+func GetDeviceID(ctx context.Context, tokenValue string, authType ...string) (string, error)
 func GetTokenCreateTime(ctx context.Context, tokenValue string, authType ...string) (int64, error)
 func GetTokenTTL(ctx context.Context, tokenValue string, authType ...string) (int64, error)
 func RenewTimeout(ctx context.Context, tokenValue string, timeout time.Duration, authType ...string) error
@@ -435,11 +435,11 @@ _ = nickname
 ```go
 func GetOnlineTerminalCount(ctx context.Context, loginID string, authType ...string) (int, error)
 func GetOnlineTerminalCountByDevice(ctx context.Context, loginID string, device string, authType ...string) (int, error)
-func GetOnlineTerminalCountByDeviceAndDeviceId(ctx context.Context, loginID string, device string, deviceId string, authType ...string) (int, error)
+func GetOnlineTerminalCountByDeviceAndDeviceID(ctx context.Context, loginID string, device string, deviceID string, authType ...string) (int, error)
 func ForEachTerminal(ctx context.Context, loginID string, visitor manager.TerminalVisitor, authType ...string) error
 func ForEachTerminalByDevice(ctx context.Context, loginID, device string, visitor manager.TerminalVisitor, authType ...string) error
 func GetTokenValueListByLoginID(ctx context.Context, loginID string, checkAlive bool, authType ...string) ([]string, error)
-func GetTokenValueListByDeviceAndDeviceId(ctx context.Context, loginID string, device string, deviceId string, checkAlive bool, authType ...string) ([]string, error)
+func GetTokenValueListByDeviceAndDeviceID(ctx context.Context, loginID string, device string, deviceID string, checkAlive bool, authType ...string) ([]string, error)
 func GetTokenValueListByDevice(ctx context.Context, loginID string, device string, checkAlive bool, authType ...string) ([]string, error)
 func GetTerminalListByLoginID(ctx context.Context, loginID string, authType ...string) ([]manager.TerminalInfo, error)
 func GetTerminalListByLoginIDAndDevice(ctx context.Context, loginID string, device string, authType ...string) ([]manager.TerminalInfo, error)
@@ -467,7 +467,7 @@ type TokenInfo struct {
     AuthType   string `json:"authType"`
     LoginID    string `json:"loginId"`
     Device     string `json:"device"`
-    DeviceId   string `json:"deviceId"`
+    DeviceID   string `json:"deviceId"`
     CreateTime int64  `json:"createTime"`
 }
 ```
@@ -530,15 +530,15 @@ func DeleteAllManager()
 - `IntrospectToken`
 - `LoginByToken`
 - `Logout`
-- `LogoutByDeviceAndDeviceId`
+- `LogoutByDeviceAndDeviceID`
 - `LogoutByDevice`
 - `LogoutByLoginID`
 - `Kickout`
 - `Replace`
-- `KickoutByDeviceAndDeviceId`
+- `KickoutByDeviceAndDeviceID`
 - `KickoutByDevice`
 - `KickoutByLoginID`
-- `ReplaceByDeviceAndDeviceId`
+- `ReplaceByDeviceAndDeviceID`
 - `ReplaceByDevice`
 - `ReplaceByLoginID`
 - `IsLogin`
@@ -546,7 +546,7 @@ func DeleteAllManager()
 - `GetLoginID`
 - `GetTokenInfo`
 - `GetDevice`
-- `GetDeviceId`
+- `GetDeviceID`
 - `GetTokenCreateTime`
 - `GetTokenTTL`
 - `RenewTimeout`
@@ -554,13 +554,13 @@ func DeleteAllManager()
 ### 在线终端 / Session
 - `GetOnlineTerminalCount`
 - `GetOnlineTerminalCountByDevice`
-- `GetOnlineTerminalCountByDeviceAndDeviceId`
+- `GetOnlineTerminalCountByDeviceAndDeviceID`
 - `ForEachTerminal`
 - `ForEachTerminalByDevice`
 - `GetSession`
 - `GetSessionByToken`
 - `GetTokenValueListByLoginID`
-- `GetTokenValueListByDeviceAndDeviceId`
+- `GetTokenValueListByDeviceAndDeviceID`
 - `GetTokenValueListByDevice`
 - `GetTerminalListByLoginID`
 - `GetTerminalListByLoginIDAndDevice`

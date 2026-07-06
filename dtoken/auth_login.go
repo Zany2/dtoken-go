@@ -130,13 +130,13 @@ func (a *Auth) LogoutByToken(ctx context.Context, token string) error {
 	return mgr.Logout(ctx, token)
 }
 
-// LogoutByDeviceAndDeviceId logs out a concrete terminal. LogoutByDeviceAndDeviceId 注销具体终端。
-func (a *Auth) LogoutByDeviceAndDeviceId(ctx context.Context, loginID, device, deviceID string) error {
+// LogoutByDeviceAndDeviceID logs out a concrete terminal. LogoutByDeviceAndDeviceID 注销具体终端。
+func (a *Auth) LogoutByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) error {
 	mgr, err := a.requireManager()
 	if err != nil {
 		return err
 	}
-	return mgr.LogoutByDeviceAndDeviceId(ctx, loginID, device, deviceID)
+	return mgr.LogoutByDeviceAndDeviceID(ctx, loginID, device, deviceID)
 }
 
 // LogoutByDevice logs out all terminals on a device type. LogoutByDevice 注销指定设备类型下的所有终端。
@@ -181,13 +181,13 @@ func (a *Auth) KickoutByToken(ctx context.Context, token string) error {
 	return mgr.Kickout(ctx, token)
 }
 
-// KickoutByDeviceAndDeviceId kicks out a concrete terminal. KickoutByDeviceAndDeviceId 踢下具体终端。
-func (a *Auth) KickoutByDeviceAndDeviceId(ctx context.Context, loginID, device, deviceID string) error {
+// KickoutByDeviceAndDeviceID kicks out a concrete terminal. KickoutByDeviceAndDeviceID 踢下具体终端。
+func (a *Auth) KickoutByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) error {
 	mgr, err := a.requireManager()
 	if err != nil {
 		return err
 	}
-	return mgr.KickoutByDeviceAndDeviceId(ctx, loginID, device, deviceID)
+	return mgr.KickoutByDeviceAndDeviceID(ctx, loginID, device, deviceID)
 }
 
 // KickoutByDevice kicks out all terminals on a device type. KickoutByDevice 踢下指定设备类型下的所有终端。
@@ -232,13 +232,13 @@ func (a *Auth) ReplaceByToken(ctx context.Context, token string) error {
 	return mgr.Replace(ctx, token)
 }
 
-// ReplaceByDeviceAndDeviceId replaces a concrete terminal. ReplaceByDeviceAndDeviceId 顶下具体终端。
-func (a *Auth) ReplaceByDeviceAndDeviceId(ctx context.Context, loginID, device, deviceID string) error {
+// ReplaceByDeviceAndDeviceID replaces a concrete terminal. ReplaceByDeviceAndDeviceID 顶下具体终端。
+func (a *Auth) ReplaceByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) error {
 	mgr, err := a.requireManager()
 	if err != nil {
 		return err
 	}
-	return mgr.ReplaceByDeviceAndDeviceId(ctx, loginID, device, deviceID)
+	return mgr.ReplaceByDeviceAndDeviceID(ctx, loginID, device, deviceID)
 }
 
 // ReplaceByDevice replaces all terminals on a device type. ReplaceByDevice 顶下指定设备类型下的所有终端。
@@ -316,22 +316,22 @@ func (a *Auth) GetDevice(ctx context.Context, token string) (string, error) {
 	return mgr.GetDevice(ctx, token)
 }
 
-// GetDeviceAndDeviceId resolves device and device id from token. GetDeviceAndDeviceId 根据 Token 解析设备类型和设备 ID。
-func (a *Auth) GetDeviceAndDeviceId(ctx context.Context, token string) (string, string, error) {
+// GetDeviceAndDeviceID resolves device and device id from token. GetDeviceAndDeviceID 根据 Token 解析设备类型和设备 ID。
+func (a *Auth) GetDeviceAndDeviceID(ctx context.Context, token string) (string, string, error) {
 	mgr, err := a.requireManager()
 	if err != nil {
 		return "", "", err
 	}
-	return mgr.GetDeviceAndDeviceId(ctx, token)
+	return mgr.GetDeviceAndDeviceID(ctx, token)
 }
 
-// GetDeviceId resolves device id from token. GetDeviceId 根据 Token 解析设备 ID。
-func (a *Auth) GetDeviceId(ctx context.Context, token string) (string, error) {
+// GetDeviceID resolves device id from token. GetDeviceID 根据 Token 解析设备 ID。
+func (a *Auth) GetDeviceID(ctx context.Context, token string) (string, error) {
 	mgr, err := a.requireManager()
 	if err != nil {
 		return "", err
 	}
-	return mgr.GetDeviceId(ctx, token)
+	return mgr.GetDeviceID(ctx, token)
 }
 
 // GetTokenCreateTime resolves token creation time. GetTokenCreateTime 获取 Token 创建时间。

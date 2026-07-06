@@ -21,7 +21,7 @@ func (m *Manager) getExpiration() time.Duration {
 	return 0
 }
 
-// timeoutToSeconds converts duration to storage seconds timeoutToSeconds 将时长转换为存储层秒数
+// timeoutToSeconds converts duration to storage seconds timeoutToSeconds 将时长转换为存储层秒。
 func (m *Manager) timeoutToSeconds(timeout time.Duration) int64 {
 	// Map non-positive duration to no limit 非正时长映射为无限制。
 	if timeout <= 0 {
@@ -82,24 +82,24 @@ func (m *Manager) saveSessionWithMinTTL(
 	return m.saveToStorage(ctx, key, value, finalExpiration)
 }
 
-// getDeviceAndDeviceId extracts device type and device ID from parameters. getDeviceAndDeviceId 获取设备类型和设备 ID。 规则：device 和 deviceId 是两个独立的过滤维度，互不影响
-func (m *Manager) getDeviceAndDeviceId(deviceAndDeviceId ...string) (string, string) {
+// getDeviceAndDeviceID extracts device type and device ID from parameters. getDeviceAndDeviceID 获取设备类型和设备 ID。规则：device 。deviceID 是两个独立的过滤维度，互不影响。
+func (m *Manager) getDeviceAndDeviceID(deviceAndDeviceID ...string) (string, string) {
 	// Initialize empty device fields 初始化空设备字段。
 	device := ""
-	deviceId := ""
+	deviceID := ""
 
 	// Read device type 读取设备类型。
-	if len(deviceAndDeviceId) > 0 {
-		device = strings.TrimSpace(deviceAndDeviceId[0])
+	if len(deviceAndDeviceID) > 0 {
+		device = strings.TrimSpace(deviceAndDeviceID[0])
 	}
 
 	// Read device ID 读取设备 ID。
-	if len(deviceAndDeviceId) > 1 {
-		deviceId = strings.TrimSpace(deviceAndDeviceId[1])
+	if len(deviceAndDeviceID) > 1 {
+		deviceID = strings.TrimSpace(deviceAndDeviceID[1])
 	}
 
 	// Return normalized device fields 返回规范化设备字段。
-	return device, deviceId
+	return device, deviceID
 }
 
 // saveToStorage serializes and saves data to storage backend. saveToStorage 将指定类型的数据序列化并存储到存储后端。
@@ -134,7 +134,7 @@ func (m *Manager) saveToStorage(
 		}
 	}
 
-	// Persist to storage 存储到后端
+	// Persist to storage 存储到后。
 	if err = m.storage.Set(ctx, key, bytesData, duration); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}

@@ -67,7 +67,7 @@ type EventData struct {
     AuthType  string
     LoginID   string
     Device    string
-    DeviceId  string
+    DeviceID  string
     Token     string
     Extra     map[string]any
     Timestamp int64

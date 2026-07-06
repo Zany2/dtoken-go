@@ -240,17 +240,17 @@ dtoken.SetManager(
 )
 ```
 
-扩展回调还支持拿到 `device`、`deviceId`：
+扩展回调还支持拿到 `device`、`deviceID`：
 
 ```go
 defaults.NewBuilder().
-    SetCustomPermissionListExtFunc(func(loginID, device, deviceId, authType string) ([]string, error) {
+    SetCustomPermissionListExtFunc(func(loginID, device, deviceID, authType string) ([]string, error) {
         if device == "app" {
             return []string{"mobile:read", "mobile:write"}, nil
         }
         return []string{"web:read"}, nil
     }).
-    SetCustomRoleListExtFunc(func(loginID, device, deviceId, authType string) ([]string, error) {
+    SetCustomRoleListExtFunc(func(loginID, device, deviceID, authType string) ([]string, error) {
         if device == "app" {
             return []string{"mobile-user"}, nil
         }

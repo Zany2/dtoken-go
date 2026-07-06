@@ -8,7 +8,7 @@ DToken-Go 使用 Session 记录一个登录 ID 下的在线终端列表。每个
 
 - `LoginID`
 - `Device`
-- `DeviceId`
+- `DeviceID`
 - `Token`
 - `Index`
 
@@ -36,7 +36,7 @@ terminal, err := dtoken.GetTerminalInfoByToken(ctx, token)
 ```go
 count, err := dtoken.GetOnlineTerminalCount(ctx, "10001")
 webCount, err := dtoken.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
-deviceCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, "10001", "web", "browser-1")
+deviceCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "web", "browser-1")
 ```
 
 ## 查询 Token 列表
@@ -44,7 +44,7 @@ deviceCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, "10001
 ```go
 tokens, err := dtoken.GetTokenValueListByLoginID(ctx, "10001", true)
 tokens, err = dtoken.GetTokenValueListByDevice(ctx, "10001", "web", true)
-tokens, err = dtoken.GetTokenValueListByDeviceAndDeviceId(ctx, "10001", "web", "browser-1", true)
+tokens, err = dtoken.GetTokenValueListByDeviceAndDeviceID(ctx, "10001", "web", "browser-1", true)
 ```
 
 最后一个布尔参数表示是否只返回仍然有效的 Token。
@@ -67,7 +67,7 @@ token, err = dtoken.GetTokenValueByLoginIDAndDevice(ctx, "10001", "web")
 
 ```go
 err := dtoken.ForEachTerminal(ctx, "10001", func(info manager.TerminalInfo) bool {
-    fmt.Println(info.Device, info.DeviceId, info.Token)
+    fmt.Println(info.Device, info.DeviceID, info.Token)
     return true
 })
 

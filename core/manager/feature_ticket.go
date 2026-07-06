@@ -23,7 +23,7 @@ func (m *Manager) CreateTicket(ctx context.Context, opts ticket.CreateOptions) (
 	return value, nil
 }
 
-// CreateTicketWithTimeout creates a temporary ticket with timeout. CreateTicketWithTimeout 使用指定有效期创建临时 Ticket。
+// CreateTicketWithTimeout creates a temporary ticket with timeout. CreateTicketWithTimeout 使用指定有效期创建临。Ticket。
 func (m *Manager) CreateTicketWithTimeout(ctx context.Context, opts ticket.CreateOptions, timeout time.Duration) (*ticket.Ticket, error) {
 	if m.ticketManager == nil {
 		return nil, derror.ErrModuleNotEnabled
@@ -48,7 +48,7 @@ func (m *Manager) ValidateTicket(ctx context.Context, ticketValue string, opts .
 	return value, err
 }
 
-// ConsumeTicket validates and consumes a ticket. ConsumeTicket 校验并消费 Ticket。
+// ConsumeTicket validates and consumes a ticket. ConsumeTicket 校验并消。Ticket。
 func (m *Manager) ConsumeTicket(ctx context.Context, ticketValue string, opts ...ticket.ValidateOptions) (*ticket.ConsumeResult, error) {
 	if m.ticketManager == nil {
 		return nil, derror.ErrModuleNotEnabled
@@ -94,7 +94,7 @@ func (m *Manager) triggerTicketEvent(event listener.Event, value *ticket.Ticket,
 	if value == nil {
 		return
 	}
-	m.triggerEvent(event, value.LoginID, value.Device, value.DeviceId, value.Ticket, map[string]any{
+	m.triggerEvent(event, value.LoginID, value.Device, value.DeviceID, value.Ticket, map[string]any{
 		listener.ExtraKeyAction:    action,
 		listener.ExtraKeySource:    value.Source,
 		listener.ExtraKeySourceApp: value.SourceApp,

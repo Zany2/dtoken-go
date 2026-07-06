@@ -8,9 +8,10 @@ import (
 
 // managerBackground stores lifecycle state for manager background tasks. managerBackground 存储管理器后台任务生命周期状态。
 type managerBackground struct {
-	closeCh   chan struct{}  // closeCh stops background tasks. closeCh 停止后台任务。
-	closeOnce sync.Once      // closeOnce closes closeCh once. closeOnce 确保 closeCh 只关闭一次。
-	wg        sync.WaitGroup // wg waits background tasks. wg 等待后台任务退出。
+	closeCh          chan struct{}  // closeCh stops background tasks. closeCh 停止后台任务。
+	closeOnce        sync.Once      // closeOnce closes closeCh once. closeOnce 确保 closeCh 只关闭一次。
+	statusLoggerOnce sync.Once      // statusLoggerOnce starts status logger once. statusLoggerOnce 确保状态日志只启动一次。
+	wg               sync.WaitGroup // wg waits background tasks. wg 等待后台任务退出。
 }
 
 // managerBackgrounds maps managers to background lifecycle. managerBackgrounds 映射管理器后台生命周期。
@@ -35,36 +36,39 @@ func (m *Manager) StartRenewPoolStatusLogger(interval time.Duration) {
 
 	// Get background lifecycle 获取后台生命周期。
 	background := backgroundForManager(m)
-	// Track logger goroutine 跟踪日志协程。
-	background.wg.Add(1)
-	go func() {
-		// Mark goroutine done 标记协程结束。
-		defer background.wg.Done()
+	// Start only one logger per manager lifecycle 每个管理器生命周期只启动一个日志协程。
+	background.statusLoggerOnce.Do(func() {
+		// Track logger goroutine 跟踪日志协程。
+		background.wg.Add(1)
+		go func() {
+			// Mark goroutine done 标记协程结束。
+			defer background.wg.Done()
 
-		// Create interval ticker 创建间隔定时器。
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
+			// Create interval ticker 创建间隔定时器。
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
 
-		// Run until stopped 运行直到停止。
-		for {
-			select {
-			case <-ticker.C:
-				// Skip when dependencies are gone 依赖缺失时跳过。
-				if m.pool == nil || m.logger == nil {
-					continue
+			// Run until stopped 运行直到停止。
+			for {
+				select {
+				case <-ticker.C:
+					// Skip when dependencies are gone 依赖缺失时跳过。
+					if m.pool == nil || m.logger == nil {
+						continue
+					}
+					// Read pool status 读取协程池状态。
+					running, capacity, usage := m.pool.Stats()
+					m.logger.Infof(
+						"manager.StartRenewPoolStatusLogger: renew pool status, capacity=%d, running=%d, usage=%.2f%%",
+						capacity, running, usage*100,
+					)
+				case <-background.closeCh:
+					// Stop logger goroutine 停止日志协程。
+					return
 				}
-				// Read pool status 读取协程池状态。
-				running, capacity, usage := m.pool.Stats()
-				m.logger.Infof(
-					"manager.StartRenewPoolStatusLogger: renew pool status, capacity=%d, running=%d, usage=%.2f%%",
-					capacity, running, usage*100,
-				)
-			case <-background.closeCh:
-				// Stop logger goroutine 停止日志协程。
-				return
 			}
-		}
-	}()
+		}()
+	})
 }
 
 // stopBackgroundTasks stops manager background tasks. stopBackgroundTasks 停止管理器后台任务。

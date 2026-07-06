@@ -21,7 +21,7 @@ func (m *Manager) Logout(ctx context.Context, tokenValue string) error {
 	// Load session by token 根据 Token 加载会话。
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
-		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
+		// Treat inactive token errors as idempotent success 已下。token 视为幂等成功
 		if isTokenInactiveError(err) {
 			return nil
 		}
@@ -56,22 +56,22 @@ func (m *Manager) LogoutByDevice(ctx context.Context, loginID string, device str
 	})
 }
 
-// LogoutByDeviceAndDeviceId logs out a user by device type and device ID. LogoutByDeviceAndDeviceId 根据设备类型和设备ID登出用户。
-func (m *Manager) LogoutByDeviceAndDeviceId(ctx context.Context, loginID string, deviceAndDeviceId ...string) error {
+// LogoutByDeviceAndDeviceID logs out a user by device type and device ID. LogoutByDeviceAndDeviceID 根据设备类型和设备ID登出用户。
+func (m *Manager) LogoutByDeviceAndDeviceID(ctx context.Context, loginID string, deviceAndDeviceID ...string) error {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
 
 	// Parse device fields 解析设备字段。
-	device, deviceId := m.getDeviceAndDeviceId(deviceAndDeviceId...)
+	device, deviceID := m.getDeviceAndDeviceID(deviceAndDeviceID...)
 	// Validate device fields 校验设备字段。
-	if device == "" || deviceId == "" {
+	if device == "" || deviceID == "" {
 		return derror.ErrInvalidParam
 	}
 	// Remove terminals by concrete device 按具体设备移除终端。
 	return m.logoutTerminals(ctx, loginID, func(sess *Session) []TerminalInfo {
-		return sess.removeTerminalByDeviceAndDeviceId(device, deviceId)
+		return sess.removeTerminalByDeviceAndDeviceID(device, deviceID)
 	})
 }
 
@@ -97,7 +97,7 @@ func (m *Manager) Kickout(ctx context.Context, tokenValue string) error {
 	// Load session by token 根据 Token 加载会话。
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
-		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
+		// Treat inactive token errors as idempotent success 已下。token 视为幂等成功
 		if isTokenInactiveError(err) {
 			return nil
 		}
@@ -132,23 +132,23 @@ func (m *Manager) KickoutByDevice(ctx context.Context, loginID string, device st
 	}, TokenStateKickOut)
 }
 
-// KickoutByDeviceAndDeviceId kicks out a user by device type and device ID. KickoutByDeviceAndDeviceId 根据设备类型和设备ID踢人下线。
-func (m *Manager) KickoutByDeviceAndDeviceId(ctx context.Context, loginID string, deviceAndDeviceId ...string) error {
+// KickoutByDeviceAndDeviceID kicks out a user by device type and device ID. KickoutByDeviceAndDeviceID 根据设备类型和设备ID踢人下线。
+func (m *Manager) KickoutByDeviceAndDeviceID(ctx context.Context, loginID string, deviceAndDeviceID ...string) error {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
 
 	// Parse device fields 解析设备字段。
-	device, deviceId := m.getDeviceAndDeviceId(deviceAndDeviceId...)
+	device, deviceID := m.getDeviceAndDeviceID(deviceAndDeviceID...)
 	// Validate device fields 校验设备字段。
-	if device == "" || deviceId == "" {
+	if device == "" || deviceID == "" {
 		return derror.ErrInvalidParam
 	}
 
 	// Mark concrete device terminal as kicked out 将具体设备终端标记为踢下线。
 	return m.processTerminals(ctx, loginID, func(sess *Session) []TerminalInfo {
-		return sess.removeTerminalByDeviceAndDeviceId(device, deviceId)
+		return sess.removeTerminalByDeviceAndDeviceID(device, deviceID)
 	}, TokenStateKickOut)
 }
 
@@ -174,7 +174,7 @@ func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
 	// Load session by token 根据 Token 加载会话。
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
-		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
+		// Treat inactive token errors as idempotent success 已下。token 视为幂等成功
 		if isTokenInactiveError(err) {
 			return nil
 		}
@@ -209,22 +209,22 @@ func (m *Manager) ReplaceByDevice(ctx context.Context, loginID string, device st
 	}, TokenStateReplaced)
 }
 
-// ReplaceByDeviceAndDeviceId replaces a user session by device type and device ID. ReplaceByDeviceAndDeviceId 根据设备类型和设备ID顶人下线。
-func (m *Manager) ReplaceByDeviceAndDeviceId(ctx context.Context, loginID string, deviceAndDeviceId ...string) error {
+// ReplaceByDeviceAndDeviceID replaces a user session by device type and device ID. ReplaceByDeviceAndDeviceID 根据设备类型和设备ID顶人下线。
+func (m *Manager) ReplaceByDeviceAndDeviceID(ctx context.Context, loginID string, deviceAndDeviceID ...string) error {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
 
 	// Parse device fields 解析设备字段。
-	device, deviceId := m.getDeviceAndDeviceId(deviceAndDeviceId...)
+	device, deviceID := m.getDeviceAndDeviceID(deviceAndDeviceID...)
 	// Validate device fields 校验设备字段。
-	if device == "" || deviceId == "" {
+	if device == "" || deviceID == "" {
 		return derror.ErrInvalidParam
 	}
 	// Mark concrete device terminal as replaced 将具体设备终端标记为顶下线。
 	return m.processTerminals(ctx, loginID, func(sess *Session) []TerminalInfo {
-		return sess.removeTerminalByDeviceAndDeviceId(device, deviceId)
+		return sess.removeTerminalByDeviceAndDeviceID(device, deviceID)
 	}, TokenStateReplaced)
 }
 
@@ -267,10 +267,10 @@ func (m *Manager) removeTerminalInfosAndTokens(ctx context.Context, sess *Sessio
 	// Prepare removed terminals 准备被移除终端列表。
 	var terminalInfos []TerminalInfo
 	if len(device) > 0 {
-		// Remove terminals for specified device 移除指定设备类型的终端信息
+		// Remove terminals for specified device 移除指定设备类型的终端信。
 		terminalInfos = sess.removeTerminalByDevice(device[0])
 	} else {
-		// Remove all terminals 移除所有终端信息
+		// Remove all terminals 移除所有终端信。
 		terminalInfos = sess.removeAllTerminals()
 	}
 	if len(terminalInfos) == 0 {
@@ -310,7 +310,7 @@ func (m *Manager) removeTerminalInfosAndTokens(ctx context.Context, sess *Sessio
 	return destroyedSession, nil
 }
 
-// logoutTerminals performs common logout logic. logoutTerminals 通用登出逻辑：移除终端 + 删除 token + 清理 metadata。
+// logoutTerminals performs common logout logic. logoutTerminals 通用登出逻辑：移除终。+ 删除 token + 清理 metadata。
 func (m *Manager) logoutTerminals(
 	ctx context.Context,
 	loginID string,
@@ -380,19 +380,19 @@ func (m *Manager) logoutTerminals(
 	unlock = func() {}
 
 	if destroySession {
-		// Trigger session destroy event 触发销毁 Session 事件
+		// Trigger session destroy event 触发销。Session 事件
 		m.triggerEvent(listener.EventDestroySession, loginID, "", "", "", nil)
 	}
 
 	// Trigger logout event 触发登出事件
 	for _, info := range removed {
-		m.triggerEvent(listener.EventLogout, loginID, info.Device, info.DeviceId, info.Token, nil)
+		m.triggerEvent(listener.EventLogout, loginID, info.Device, info.DeviceID, info.Token, nil)
 	}
 
 	return nil
 }
 
-// cleanTokenMetadata cleans token metadata in batch. cleanTokenMetadata 批量清理 token 的附属元数据（续期 key、活跃时间 key）。
+// cleanTokenMetadata cleans token metadata in batch. cleanTokenMetadata 批量清理 token 的附属元数据（续。key、活跃时。key）。
 func (m *Manager) cleanTokenMetadata(ctx context.Context, tokens []string) error {
 	// Return when token list is empty Token 列表为空时直接返回。
 	if len(tokens) == 0 {
@@ -428,7 +428,7 @@ func (m *Manager) cleanTokenMetadata(ctx context.Context, tokens []string) error
 	return nil
 }
 
-// TerminalRemovalFunc defines how to remove terminals from a session. TerminalRemovalFunc 定义如何从 Session 中移除终端。
+// TerminalRemovalFunc defines how to remove terminals from a session. TerminalRemovalFunc 定义如何。Session 中移除终端。
 type TerminalRemovalFunc func(sess *Session) []TerminalInfo
 
 // cloneSessionForAliveCheck copies session slices used by alive checks. cloneSessionForAliveCheck 拷贝存活校验依赖的会话切片。
@@ -471,12 +471,12 @@ func (m *Manager) processTerminals(
 	// Apply removal strategy 执行移除策略
 	removedTerminals := removalFunc(sess)
 
-	// Clean each removed token 对每个被移除的 token 执行清理
+	// Clean each removed token 对每个被移除。token 执行清理
 	for _, info := range removedTerminals {
 		// Read removed token 读取被移除 Token。
 		token := info.Token
 
-		// Active-timeout processing must persist its exact cause; other terminal states only apply to alive tokens. 不活跃超时必须保留精确原因；其他终端状态仅作用于仍有效的 Token。
+		// Active-timeout processing must persist its exact cause; other terminal states only apply to alive tokens. 不活跃超时必须保留精确原因；其他终端状态仅作用于仍有效 Token。
 		shouldSetState := state == TokenStateActiveTimeout
 		if !shouldSetState {
 			alive, aliveErr := m.checkTerminalTokenAliveWithContext(ctx, token, nil, &originalSession)
@@ -486,7 +486,7 @@ func (m *Manager) processTerminals(
 			shouldSetState = alive
 		}
 		if shouldSetState {
-			// Set token state 设置 token 状态
+			// Set token state 设置 token 状。
 			if err = m.setTokenState(ctx, token, state, m.tokenStateExpiration(ctx, token)); err != nil {
 				return err
 			}
@@ -502,7 +502,7 @@ func (m *Manager) processTerminals(
 			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
 
-		// Clean linked refresh token 清理关联的刷新令牌
+		// Clean linked refresh token 清理关联的刷新令。
 		if err = m.cleanRefreshTokenByAccessToken(ctx, token); err != nil {
 			return err
 		}
@@ -511,7 +511,7 @@ func (m *Manager) processTerminals(
 	// Track whether session is destroyed 跟踪会话是否被销毁。
 	destroySession := false
 
-	// Update session when terminals are removed 如果有移除项，更新 session
+	// Update session when terminals are removed 如果有移除项，更。session
 	if len(removedTerminals) > 0 {
 		// Delete session when no terminals remain 如果 session 中没有剩余终端，删除整个 session
 		if len(sess.TerminalInfos) == 0 {
@@ -532,7 +532,7 @@ func (m *Manager) processTerminals(
 	unlock = func() {}
 
 	if destroySession {
-		// Trigger session destroy event 触发销毁 Session 事件
+		// Trigger session destroy event 触发销。Session 事件
 		m.triggerEvent(listener.EventDestroySession, loginID, "", "", "", nil)
 	}
 
@@ -551,7 +551,7 @@ func (m *Manager) processTerminals(
 	if event != "" {
 		// Trigger event for each removed terminal 为每个被移除终端触发事件。
 		for _, info := range removedTerminals {
-			m.triggerEvent(event, loginID, info.Device, info.DeviceId, info.Token, nil)
+			m.triggerEvent(event, loginID, info.Device, info.DeviceID, info.Token, nil)
 		}
 	}
 

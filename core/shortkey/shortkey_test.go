@@ -62,7 +62,7 @@ func TestManagerCreateConfirmValidateConsume(t *testing.T) {
 	confirmed, err := mgr.Confirm(ctx, created.Key, ConfirmOptions{
 		LoginID:  "user-1",
 		Device:   "web",
-		DeviceId: "browser-1",
+		DeviceID: "browser-1",
 		Scopes:   []string{"profile", "email"},
 		Extra:    map[string]any{"confirmed": true},
 	})
@@ -82,7 +82,7 @@ func TestManagerCreateConfirmValidateConsume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}
-	if validated.DeviceId != "browser-1" || len(validated.Scopes) != 2 {
+	if validated.DeviceID != "browser-1" || len(validated.Scopes) != 2 {
 		t.Fatalf("Validate() = %+v, want confirmed data", validated)
 	}
 

@@ -4,7 +4,7 @@ package adapter
 // Generator defines token generator interface Generator 定义 Token 生成接口
 type Generator interface {
 	// Generate creates a token Generate 生成 Token
-	Generate(loginId, device, deviceId string) (string, error)
+	Generate(loginId, device, deviceID string) (string, error)
 }
 
 // TokenStyle defines token generation style TokenStyle 定义 Token 生成风格
@@ -25,8 +25,8 @@ const (
 	TokenStyleJWT TokenStyle = "jwt"
 	// TokenStyleHash uses SHA256 hash style TokenStyleHash 使用 SHA256 哈希风格
 	TokenStyleHash TokenStyle = "hash"
-	// TokenStyleTimestamp uses timestamp style TokenStyleTimestamp 使用时间戳风格
+	// TokenStyleTimestamp uses timestamp style TokenStyleTimestamp 使用时间戳风。
 	TokenStyleTimestamp TokenStyle = "timestamp"
-	// TokenStyleTik uses Tik short ID style TokenStyleTik 使用 Tik 短 ID 风格
+	// TokenStyleTik uses Tik short ID style TokenStyleTik 使用 Tik 。ID 风格
 	TokenStyleTik TokenStyle = "tik"
 )

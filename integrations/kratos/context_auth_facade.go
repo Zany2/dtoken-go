@@ -9,21 +9,21 @@ import (
 )
 
 // LoginByCtx logs in current Kratos request LoginByCtx  Kratos
-func LoginByCtx(ctx context.Context, loginID string, deviceAndDeviceId ...string) (string, error) {
+func LoginByCtx(ctx context.Context, loginID string, deviceAndDeviceID ...string) (string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
 		return "", err
 	}
-	return dCtx.Auth().Login(ctx, loginID, deviceAndDeviceId...)
+	return dCtx.Auth().Login(ctx, loginID, deviceAndDeviceID...)
 }
 
 // LoginWithTimeoutByCtx logs in current Kratos request with timeout LoginWithTimeoutByCtx  Kratos
-func LoginWithTimeoutByCtx(ctx context.Context, loginID string, timeout time.Duration, deviceAndDeviceId ...string) (string, error) {
+func LoginWithTimeoutByCtx(ctx context.Context, loginID string, timeout time.Duration, deviceAndDeviceID ...string) (string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
 		return "", err
 	}
-	return dCtx.Auth().LoginWithTimeout(ctx, loginID, timeout, deviceAndDeviceId...)
+	return dCtx.Auth().LoginWithTimeout(ctx, loginID, timeout, deviceAndDeviceID...)
 }
 
 // LoginWithOptionsByCtx logs in current Kratos request with options LoginWithOptionsByCtx  Kratos

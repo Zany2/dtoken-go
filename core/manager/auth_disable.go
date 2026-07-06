@@ -29,17 +29,17 @@ func (m *Manager) Disable(ctx context.Context, loginID string, duration time.Dur
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
-	// Load session before disable 先尝试加载 Session（如果存储出错，在保存封禁信息前就返回，保证原子性）
+	// Load session before disable 先尝试加。Session（如果存储出错，在保存封禁信息前就返回，保证原子性）
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
 		// Ignore missing session and return other storage errors 如果只是 session 不存在，不算错误；其他存储错误则返回
 		if !errors.Is(err, derror.ErrSessionNotFound) {
 			return err
 		}
-		// Continue disable when sess is nil 否则 sess == nil，继续执行封禁操作（幂等）
+		// Continue disable when sess is nil 否则 sess == nil，继续执行封禁操作（幂等。
 	}
 
-	// Build and save disable info 构建并保存封禁信息
+	// Build and save disable info 构建并保存封禁信。
 	disableInfo := DisableInfo{
 		DisableTime: time.Now().Unix(),
 	}
@@ -76,7 +76,7 @@ func (m *Manager) Disable(ctx context.Context, loginID string, duration time.Dur
 	unlock = func() {}
 
 	if sess != nil && len(sess.TerminalInfos) > 0 {
-		// Trigger session destroy event 触发销毁 Session 事件
+		// Trigger session destroy event 触发销。Session 事件
 		m.triggerEvent(listener.EventDestroySession, loginID, "", "", "", nil)
 	}
 
@@ -130,7 +130,7 @@ func (m *Manager) GetDisableInfo(ctx context.Context, loginID string) (*DisableI
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
-	// Return explicit error when disable key is missing 如果 key 不存在（用户未被封禁），返回明确的错误
+	// Return explicit error when disable key is missing 如果 key 不存在（用户未被封禁），返回明确的错。
 	if disableInfoData == nil {
 		return nil, derror.ErrAccountNotDisabled
 	}
@@ -151,7 +151,7 @@ func (m *Manager) GetDisableInfo(ctx context.Context, loginID string) (*DisableI
 	return &disableInfo, nil
 }
 
-// GetDisableTTL retrieves the remaining disable time for an account in seconds. GetDisableTTL 获取账号剩余封禁时间（秒）。 Returns: -2: account is not disabled (未封禁) -1: account is permanently disabled (永久封禁) >0: remaining seconds until unban (剩余封禁秒数)
+// GetDisableTTL retrieves the remaining disable time for an account in seconds. GetDisableTTL 获取账号剩余封禁时间（秒）。Returns: -2: account is not disabled (未封。 -1: account is permanently disabled (永久封禁) >0: remaining seconds until unban (剩余封禁秒数)
 func (m *Manager) GetDisableTTL(ctx context.Context, loginID string) (int64, error) {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
@@ -164,10 +164,10 @@ func (m *Manager) GetDisableTTL(ctx context.Context, loginID string) (int64, err
 		return 0, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
-	// Explain TTL semantics 存储适配器返回 time.Duration 类型，按哨兵值和正数 TTL 语义转换为秒
+	// Explain TTL semantics 存储适配器返。time.Duration 类型，按哨兵值和正数 TTL 语义转换为秒
 	switch {
 	case ttl == adapter.TTLNotFound:
-		return -2, nil // 未封禁
+		return -2, nil // 未封。
 	case ttl == adapter.TTLNoExpire:
 		return -1, nil // 永久封禁
 	case ttl > 0:
@@ -283,7 +283,7 @@ func (m *Manager) IsDisableServiceLevel(ctx context.Context, loginID, service st
 	return info.Level >= level
 }
 
-// CheckDisableService checks if any of the specified services are disabled, returns error if disabled. CheckDisableService 校验账号的指定服务是否被封禁，被封禁则返回 error。
+// CheckDisableService checks if any of the specified services are disabled, returns error if disabled. CheckDisableService 校验账号的指定服务是否被封禁，被封禁则返。error。
 func (m *Manager) CheckDisableService(ctx context.Context, loginID string, services ...string) error {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
@@ -307,7 +307,7 @@ func (m *Manager) CheckDisableService(ctx context.Context, loginID string, servi
 	return nil
 }
 
-// CheckDisableServiceLevel checks if a service is disabled at or above the given level, returns error if so. CheckDisableServiceLevel 校验账号的指定服务是否达到指定封禁等级，达到则返回 error。
+// CheckDisableServiceLevel checks if a service is disabled at or above the given level, returns error if so. CheckDisableServiceLevel 校验账号的指定服务是否达到指定封禁等级，达到则返。error。
 func (m *Manager) CheckDisableServiceLevel(ctx context.Context, loginID, service string, level int) error {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
@@ -323,7 +323,7 @@ func (m *Manager) CheckDisableServiceLevel(ctx context.Context, loginID, service
 	if level < 0 {
 		return derror.ErrInvalidParam
 	}
-	// Load service disable info to propagate storage errors 加载服务封禁信息以传播存储错误，避免存储异常时静默放行
+	// Load service disable info to propagate storage errors 加载服务封禁信息以传播存储错误，避免存储异常时静默放。
 	info, err := m.GetDisableServiceInfo(ctx, loginID, service)
 	if err != nil {
 		if errors.Is(err, derror.ErrServiceNotDisabled) {
@@ -450,17 +450,17 @@ func (m *Manager) DisableDevice(ctx context.Context, loginID, device string, dur
 	return nil
 }
 
-// DisableDeviceAndDeviceId disables a concrete device for an account. DisableDeviceAndDeviceId 封禁账号的具体设备。
-func (m *Manager) DisableDeviceAndDeviceId(ctx context.Context, loginID, device, deviceId string, duration time.Duration, reason ...string) error {
+// DisableDeviceAndDeviceID disables a concrete device for an account. DisableDeviceAndDeviceID 封禁账号的具体设备。
+func (m *Manager) DisableDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string, duration time.Duration, reason ...string) error {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
 	// Normalize device fields 规范化设备字段。
 	device = strings.TrimSpace(device)
-	deviceId = strings.TrimSpace(deviceId)
+	deviceID = strings.TrimSpace(deviceID)
 	// Validate device fields 校验设备字段。
-	if device == "" || deviceId == "" {
+	if device == "" || deviceID == "" {
 		return derror.ErrInvalidParam
 	}
 	// Validate disable duration 校验封禁时长。
@@ -471,7 +471,7 @@ func (m *Manager) DisableDeviceAndDeviceId(ctx context.Context, loginID, device,
 	// Build concrete device disable info 构建具体设备封禁信息。
 	info := DeviceDisableInfo{
 		Device:      device,
-		DeviceId:    deviceId,
+		DeviceID:    deviceID,
 		DisableTime: time.Now().Unix(),
 	}
 	// Fill disable reason 填充封禁原因。
@@ -480,12 +480,12 @@ func (m *Manager) DisableDeviceAndDeviceId(ctx context.Context, loginID, device,
 	}
 
 	// Save concrete device disable marker 保存具体设备封禁标记。
-	if err := m.saveToStorage(ctx, m.getDisableDeviceAndDeviceIdKey(loginID, device, deviceId), info, duration); err != nil {
+	if err := m.saveToStorage(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID), info, duration); err != nil {
 		return err
 	}
 
 	// Trigger device disable event 触发设备封禁事件。
-	m.triggerEvent(listener.EventDisableDevice, loginID, device, deviceId, "", map[string]any{
+	m.triggerEvent(listener.EventDisableDevice, loginID, device, deviceID, "", map[string]any{
 		"reason":   info.DisableReason,
 		"duration": duration.Seconds(),
 	})
@@ -517,27 +517,27 @@ func (m *Manager) UntieDevice(ctx context.Context, loginID, device string) error
 	return nil
 }
 
-// UntieDeviceAndDeviceId removes concrete device disable state. UntieDeviceAndDeviceId 解除具体设备封禁状态。
-func (m *Manager) UntieDeviceAndDeviceId(ctx context.Context, loginID, device, deviceId string) error {
+// UntieDeviceAndDeviceID removes concrete device disable state. UntieDeviceAndDeviceID 解除具体设备封禁状态。
+func (m *Manager) UntieDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) error {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
 	// Normalize device fields 规范化设备字段。
 	device = strings.TrimSpace(device)
-	deviceId = strings.TrimSpace(deviceId)
+	deviceID = strings.TrimSpace(deviceID)
 	// Validate device fields 校验设备字段。
-	if device == "" || deviceId == "" {
+	if device == "" || deviceID == "" {
 		return derror.ErrInvalidParam
 	}
 
 	// Delete concrete device disable marker 删除具体设备封禁标记。
-	if err := m.storage.Delete(ctx, m.getDisableDeviceAndDeviceIdKey(loginID, device, deviceId)); err != nil {
+	if err := m.storage.Delete(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID)); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
 	// Trigger device untie event 触发设备解封事件。
-	m.triggerEvent(listener.EventUntieDevice, loginID, device, deviceId, "", nil)
+	m.triggerEvent(listener.EventUntieDevice, loginID, device, deviceID, "", nil)
 
 	return nil
 }
@@ -554,17 +554,17 @@ func (m *Manager) IsDisableDevice(ctx context.Context, loginID, device string) b
 	return m.storage.Exists(ctx, m.getDisableDeviceKey(loginID, device))
 }
 
-// IsDisableDeviceAndDeviceId checks concrete device disable state. IsDisableDeviceAndDeviceId 检查具体设备封禁状态。
-func (m *Manager) IsDisableDeviceAndDeviceId(ctx context.Context, loginID, device, deviceId string) bool {
+// IsDisableDeviceAndDeviceID checks concrete device disable state. IsDisableDeviceAndDeviceID 检查具体设备封禁状态。
+func (m *Manager) IsDisableDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) bool {
 	// Normalize device fields 规范化设备字段。
 	device = strings.TrimSpace(device)
-	deviceId = strings.TrimSpace(deviceId)
+	deviceID = strings.TrimSpace(deviceID)
 	// Validate required parameters 校验必要参数。
-	if loginID == "" || device == "" || deviceId == "" {
+	if loginID == "" || device == "" || deviceID == "" {
 		return false
 	}
 	// Match both device type and concrete device disable rules 同时匹配设备类型与具体设备封禁规则。
-	return m.isDisableDeviceMatch(ctx, loginID, device, deviceId)
+	return m.isDisableDeviceMatch(ctx, loginID, device, deviceID)
 }
 
 // CheckDisableDevice validates device type disable state. CheckDisableDevice 校验设备类型封禁状态。
@@ -588,17 +588,17 @@ func (m *Manager) CheckDisableDevice(ctx context.Context, loginID, device string
 	return nil
 }
 
-// CheckDisableDeviceAndDeviceId validates concrete device disable state. CheckDisableDeviceAndDeviceId 校验具体设备封禁状态。
-func (m *Manager) CheckDisableDeviceAndDeviceId(ctx context.Context, loginID, device, deviceId string) error {
+// CheckDisableDeviceAndDeviceID validates concrete device disable state. CheckDisableDeviceAndDeviceID 校验具体设备封禁状态。
+func (m *Manager) CheckDisableDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) error {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
 	// Normalize device fields 规范化设备字段。
 	device = strings.TrimSpace(device)
-	deviceId = strings.TrimSpace(deviceId)
+	deviceID = strings.TrimSpace(deviceID)
 	// Validate device fields 校验设备字段。
-	if device == "" || deviceId == "" {
+	if device == "" || deviceID == "" {
 		return derror.ErrInvalidParam
 	}
 	// Check device type disable first 先检查设备类型封禁。
@@ -608,7 +608,7 @@ func (m *Manager) CheckDisableDeviceAndDeviceId(ctx context.Context, loginID, de
 		return err
 	}
 	// Check concrete device disable 再检查具体设备封禁。
-	if _, err := m.getDisableDeviceInfo(ctx, m.getDisableDeviceAndDeviceIdKey(loginID, device, deviceId)); err == nil {
+	if _, err := m.getDisableDeviceInfo(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID)); err == nil {
 		return derror.ErrDeviceDisabled
 	} else if !errors.Is(err, derror.ErrDeviceNotDisabled) {
 		return err
@@ -632,21 +632,21 @@ func (m *Manager) GetDisableDeviceInfo(ctx context.Context, loginID, device stri
 	return m.getDisableDeviceInfo(ctx, m.getDisableDeviceKey(loginID, device))
 }
 
-// GetDisableDeviceAndDeviceIdInfo returns concrete device disable information. GetDisableDeviceAndDeviceIdInfo 获取具体设备封禁信息。
-func (m *Manager) GetDisableDeviceAndDeviceIdInfo(ctx context.Context, loginID, device, deviceId string) (*DeviceDisableInfo, error) {
+// GetDisableDeviceAndDeviceIDInfo returns concrete device disable information. GetDisableDeviceAndDeviceIDInfo 获取具体设备封禁信息。
+func (m *Manager) GetDisableDeviceAndDeviceIDInfo(ctx context.Context, loginID, device, deviceID string) (*DeviceDisableInfo, error) {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return nil, derror.ErrIDIsEmpty
 	}
 	// Normalize device fields 规范化设备字段。
 	device = strings.TrimSpace(device)
-	deviceId = strings.TrimSpace(deviceId)
+	deviceID = strings.TrimSpace(deviceID)
 	// Validate device fields 校验设备字段。
-	if device == "" || deviceId == "" {
+	if device == "" || deviceID == "" {
 		return nil, derror.ErrInvalidParam
 	}
 	// Load concrete device disable info 加载具体设备封禁信息。
-	return m.getDisableDeviceInfo(ctx, m.getDisableDeviceAndDeviceIdKey(loginID, device, deviceId))
+	return m.getDisableDeviceInfo(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID))
 }
 
 // GetDisableDeviceTTL returns device type disable TTL in seconds. GetDisableDeviceTTL 获取设备类型封禁剩余秒数。
@@ -665,24 +665,24 @@ func (m *Manager) GetDisableDeviceTTL(ctx context.Context, loginID, device strin
 	return m.getDisableDeviceTTL(ctx, m.getDisableDeviceKey(loginID, device))
 }
 
-// GetDisableDeviceAndDeviceIdTTL returns concrete device disable TTL in seconds. GetDisableDeviceAndDeviceIdTTL 获取具体设备封禁剩余秒数。
-func (m *Manager) GetDisableDeviceAndDeviceIdTTL(ctx context.Context, loginID, device, deviceId string) (int64, error) {
+// GetDisableDeviceAndDeviceIDTTL returns concrete device disable TTL in seconds. GetDisableDeviceAndDeviceIDTTL 获取具体设备封禁剩余秒数。
+func (m *Manager) GetDisableDeviceAndDeviceIDTTL(ctx context.Context, loginID, device, deviceID string) (int64, error) {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return 0, derror.ErrIDIsEmpty
 	}
 	// Normalize device fields 规范化设备字段。
 	device = strings.TrimSpace(device)
-	deviceId = strings.TrimSpace(deviceId)
+	deviceID = strings.TrimSpace(deviceID)
 	// Validate device fields 校验设备字段。
-	if device == "" || deviceId == "" {
+	if device == "" || deviceID == "" {
 		return 0, derror.ErrInvalidParam
 	}
 	// Load concrete device disable TTL 加载具体设备封禁剩余时间。
-	return m.getDisableDeviceTTL(ctx, m.getDisableDeviceAndDeviceIdKey(loginID, device, deviceId))
+	return m.getDisableDeviceTTL(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID))
 }
 
-// getDisableDeviceInfo loads device disable info by key. getDisableDeviceInfo 按 key 加载设备封禁信息。
+// getDisableDeviceInfo loads device disable info by key. getDisableDeviceInfo 。key 加载设备封禁信息。
 func (m *Manager) getDisableDeviceInfo(ctx context.Context, key string) (*DeviceDisableInfo, error) {
 	// Load device disable data 加载设备封禁数据。
 	data, err := m.storage.Get(ctx, key)
@@ -710,7 +710,7 @@ func (m *Manager) getDisableDeviceInfo(ctx context.Context, key string) (*Device
 	return &info, nil
 }
 
-// getDisableDeviceTTL loads device disable ttl by key. getDisableDeviceTTL 按 key 获取设备封禁剩余时间。
+// getDisableDeviceTTL loads device disable ttl by key. getDisableDeviceTTL 。key 获取设备封禁剩余时间。
 func (m *Manager) getDisableDeviceTTL(ctx context.Context, key string) (int64, error) {
 	// Load disable TTL 加载封禁剩余时间。
 	ttl, err := m.storage.TTL(ctx, key)
@@ -757,10 +757,10 @@ func (m *Manager) isDisable(ctx context.Context, loginID string) bool {
 }
 
 // isDisableDeviceMatch checks device disable state. isDisableDeviceMatch 检查设备封禁状态。
-func (m *Manager) isDisableDeviceMatch(ctx context.Context, loginID, device, deviceId string) bool {
+func (m *Manager) isDisableDeviceMatch(ctx context.Context, loginID, device, deviceID string) bool {
 	// Normalize device fields 规范化设备字段。
 	device = strings.TrimSpace(device)
-	deviceId = strings.TrimSpace(deviceId)
+	deviceID = strings.TrimSpace(deviceID)
 	// Validate required parameters 校验必要参数。
 	if loginID == "" || device == "" {
 		return false
@@ -770,5 +770,5 @@ func (m *Manager) isDisableDeviceMatch(ctx context.Context, loginID, device, dev
 		return true
 	}
 	// Match concrete device disable 匹配具体设备封禁。
-	return deviceId != "" && m.storage.Exists(ctx, m.getDisableDeviceAndDeviceIdKey(loginID, device, deviceId))
+	return deviceID != "" && m.storage.Exists(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID))
 }

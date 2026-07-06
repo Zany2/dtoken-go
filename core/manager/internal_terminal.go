@@ -8,7 +8,6 @@ type terminalMatchFunc func(TerminalInfo) bool
 func (s *Session) removeTerminals(match terminalMatchFunc) []TerminalInfo {
 	var kept []TerminalInfo    // kept stores remaining terminals. kept 存储保留终端。
 	var removed []TerminalInfo // removed stores removed terminals. removed 存储被移除终端。
-
 	// Split terminals by matcher. 按匹配器拆分终端。
 	for _, ti := range s.TerminalInfos {
 		if match != nil && match(ti) {
@@ -156,10 +155,10 @@ func (s *Session) removeTerminalByDevice(device string) []TerminalInfo {
 	})
 }
 
-// removeTerminalByDeviceAndDeviceId removes terminals by device and id. removeTerminalByDeviceAndDeviceId 根据设备类型和设备 ID 移除终端。
-func (s *Session) removeTerminalByDeviceAndDeviceId(device, deviceId string) []TerminalInfo {
+// removeTerminalByDeviceAndDeviceID removes terminals by device and id. removeTerminalByDeviceAndDeviceID 根据设备类型和设备 ID 移除终端。
+func (s *Session) removeTerminalByDeviceAndDeviceID(device, deviceID string) []TerminalInfo {
 	return s.removeTerminals(func(ti TerminalInfo) bool {
-		return ti.Device == device && ti.DeviceId == deviceId
+		return ti.Device == device && ti.DeviceID == deviceID
 	})
 }
 
@@ -209,10 +208,10 @@ func (s *Session) getTerminalsByDevice(device string) []TerminalInfo {
 	})
 }
 
-// getTerminalsByDeviceAndDeviceId gets terminals by device and id. getTerminalsByDeviceAndDeviceId 返回精确匹配设备和设备 ID 的终端信息。
-func (s *Session) getTerminalsByDeviceAndDeviceId(device, deviceId string) []TerminalInfo {
+// getTerminalsByDeviceAndDeviceID gets terminals by device and id. getTerminalsByDeviceAndDeviceID 返回精确匹配设备和设备 ID 的终端信息。
+func (s *Session) getTerminalsByDeviceAndDeviceID(device, deviceID string) []TerminalInfo {
 	return s.filterTerminals(func(ti TerminalInfo) bool {
-		return ti.Device == device && ti.DeviceId == deviceId
+		return ti.Device == device && ti.DeviceID == deviceID
 	})
 }
 

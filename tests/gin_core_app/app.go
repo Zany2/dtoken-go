@@ -56,7 +56,7 @@ type Config struct {
 	TokenStyle adapter.TokenStyle
 	// JwtSecretKey sets the secret used by JWT token style. JwtSecretKey 设置 JWT Token 风格使用的密钥。
 	JwtSecretKey string
-	// RedisURL enables Redis storage when non-empty. RedisURL 非空时启用 Redis 存储。
+	// RedisURL enables Redis storage when non-empty. RedisURL 非空时启。Redis 存储。
 	RedisURL string
 	// UseAccessProvider enables demo access provider overrides. UseAccessProvider 启用示例权限角色提供器覆盖。
 	UseAccessProvider bool
@@ -279,7 +279,7 @@ func (a *App) Router() http.Handler {
 	return a.router
 }
 
-// Engine returns the concrete Gin engine. Engine 返回具体的 Gin 引擎。
+// Engine returns the concrete Gin engine. Engine 返回具体。Gin 引擎。
 func (a *App) Engine() *gin.Engine {
 	return a.router
 }
@@ -510,7 +510,7 @@ func (a *App) handleTokenInfo(c *gin.Context) {
 		writeDTokenError(c, err)
 		return
 	}
-	deviceID, err := a.auth.Manager().GetDeviceId(c.Request.Context(), token)
+	deviceID, err := a.auth.Manager().GetDeviceID(c.Request.Context(), token)
 	if err != nil {
 		writeDTokenError(c, err)
 		return
@@ -690,7 +690,7 @@ func (a *App) handleTerminal(c *gin.Context) {
 		writeDTokenError(c, err)
 		return
 	}
-	deviceIDCount, err := mgr.GetOnlineTerminalCountByDeviceAndDeviceId(c.Request.Context(), info.LoginID, info.Device, info.DeviceId)
+	deviceIDCount, err := mgr.GetOnlineTerminalCountByDeviceAndDeviceID(c.Request.Context(), info.LoginID, info.Device, info.DeviceID)
 	if err != nil {
 		writeDTokenError(c, err)
 		return
@@ -703,7 +703,7 @@ func (a *App) handleTerminal(c *gin.Context) {
 	writeOK(c, gin.H{
 		"loginId":         info.LoginID,
 		"device":          info.Device,
-		"deviceId":        info.DeviceId,
+		"deviceId":        info.DeviceID,
 		"index":           info.Index,
 		"onlineCount":     onlineCount,
 		"deviceCount":     deviceCount,
@@ -724,7 +724,7 @@ func (a *App) handleSessionTokens(c *gin.Context) {
 	)
 	switch {
 	case device != "" && deviceID != "":
-		tokens, err = mgr.GetTokenValueListByDeviceAndDeviceId(c.Request.Context(), loginID, device, deviceID, checkAlive)
+		tokens, err = mgr.GetTokenValueListByDeviceAndDeviceID(c.Request.Context(), loginID, device, deviceID, checkAlive)
 	case device != "":
 		tokens, err = mgr.GetTokenValueListByDevice(c.Request.Context(), loginID, device, checkAlive)
 	default:
@@ -1040,7 +1040,7 @@ func (a *App) handleUntieDevice(c *gin.Context) {
 	deviceID := c.Param("deviceId")
 	var err error
 	if deviceID != "" {
-		err = a.auth.UntieDeviceAndDeviceId(c.Request.Context(), loginIDFromContext(c), device, deviceID)
+		err = a.auth.UntieDeviceAndDeviceID(c.Request.Context(), loginIDFromContext(c), device, deviceID)
 	} else {
 		err = a.auth.UntieDevice(c.Request.Context(), loginIDFromContext(c), device)
 	}
@@ -1065,7 +1065,7 @@ func (a *App) handleOperatorUntieDevice(c *gin.Context) {
 	deviceID := c.Param("deviceId")
 	var err error
 	if deviceID != "" {
-		err = a.auth.UntieDeviceAndDeviceId(c.Request.Context(), loginID, device, deviceID)
+		err = a.auth.UntieDeviceAndDeviceID(c.Request.Context(), loginID, device, deviceID)
 	} else {
 		err = a.auth.UntieDevice(c.Request.Context(), loginID, device)
 	}
@@ -1128,9 +1128,9 @@ func (a *App) handleOperatorDeviceDisableInfo(c *gin.Context) {
 		err  error
 	)
 	if deviceID != "" {
-		info, err = mgr.GetDisableDeviceAndDeviceIdInfo(c.Request.Context(), loginID, device, deviceID)
+		info, err = mgr.GetDisableDeviceAndDeviceIDInfo(c.Request.Context(), loginID, device, deviceID)
 		if err == nil {
-			ttl, err = mgr.GetDisableDeviceAndDeviceIdTTL(c.Request.Context(), loginID, device, deviceID)
+			ttl, err = mgr.GetDisableDeviceAndDeviceIDTTL(c.Request.Context(), loginID, device, deviceID)
 		}
 	} else {
 		info, err = mgr.GetDisableDeviceInfo(c.Request.Context(), loginID, device)
@@ -1145,7 +1145,7 @@ func (a *App) handleOperatorDeviceDisableInfo(c *gin.Context) {
 	writeOK(c, gin.H{
 		"disabled": true,
 		"device":   info.Device,
-		"deviceId": info.DeviceId,
+		"deviceId": info.DeviceID,
 		"reason":   info.DisableReason,
 		"ttl":      ttl,
 	})

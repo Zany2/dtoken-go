@@ -39,7 +39,7 @@ func TestManagerCreateValidateConsume(t *testing.T) {
 	created, err := mgr.Create(ctx, CreateOptions{
 		LoginID:   "user-1",
 		Device:    "web",
-		DeviceId:  "browser-1",
+		DeviceID:  "browser-1",
 		Source:    "qr",
 		SourceApp: "portal",
 		TargetApp: "admin",

@@ -17,7 +17,7 @@ import (
 
 // Generator implements token generation. Generator 实现 Token 生成器。
 type Generator struct {
-	timeout      int64              // timeout stores token ttl in seconds for JWT exp claims. timeout 存储 JWT exp 使用的 Token 有效秒数。
+	timeout      int64              // timeout stores token ttl in seconds for JWT exp claims. timeout 存储 JWT exp 使用 Token 有效秒数。
 	jwtSecretKey string             // jwtSecretKey stores JWT signing secret. jwtSecretKey 存储 JWT 签名密钥。
 	tokenStyle   adapter.TokenStyle // tokenStyle stores token generation style. tokenStyle 存储 Token 生成风格。
 }
@@ -44,7 +44,7 @@ func NewDefaultGenerator() *Generator {
 }
 
 // Generate creates a token by configured style. Generate 根据配置的风格生成 Token。
-func (g *Generator) Generate(loginID, device, deviceId string) (string, error) {
+func (g *Generator) Generate(loginID, device, deviceID string) (string, error) {
 	if loginID == "" {
 		return "", derror.ErrEmptyLoginID
 	}
@@ -61,9 +61,9 @@ func (g *Generator) Generate(loginID, device, deviceId string) (string, error) {
 	case adapter.TokenStyleRandom128:
 		return g.generateSimple(128)
 	case adapter.TokenStyleJWT:
-		return g.generateJWT(loginID, device, deviceId)
+		return g.generateJWT(loginID, device, deviceID)
 	case adapter.TokenStyleHash:
-		return g.generateHash(loginID, device, deviceId)
+		return g.generateHash(loginID, device, deviceID)
 	case adapter.TokenStyleTimestamp:
 		return g.generateTimestamp(loginID)
 	case adapter.TokenStyleTik:
@@ -106,8 +106,8 @@ func (g *Generator) ValidateJWT(tokenStr string) error {
 	return err
 }
 
-// GetLoginInfoFromJWT extracts loginID, device, and deviceId from a JWT token. GetLoginInfoFromJWT 从 JWT Token 中提取登录 ID、设备和设备 ID。
-func (g *Generator) GetLoginInfoFromJWT(tokenStr string) (loginID, device, deviceId string, err error) {
+// GetLoginInfoFromJWT extracts loginID, device, and deviceID from a JWT token. GetLoginInfoFromJWT 从 JWT Token 中提取登录 ID、设备和设备 ID。
+func (g *Generator) GetLoginInfoFromJWT(tokenStr string) (loginID, device, deviceID string, err error) {
 	claims, err := g.ParseJWT(tokenStr)
 	if err != nil {
 		return "", "", "", err
@@ -119,9 +119,9 @@ func (g *Generator) GetLoginInfoFromJWT(tokenStr string) (loginID, device, devic
 	}
 
 	device, _ = claims["device"].(string)
-	deviceId, _ = claims["deviceId"].(string)
+	deviceID, _ = claims["deviceId"].(string)
 
-	return loginID, device, deviceId, nil
+	return loginID, device, deviceID, nil
 }
 
 // generateUUID creates a UUID token. generateUUID 生成 UUID Token。
@@ -142,13 +142,13 @@ func (g *Generator) generateSimple(length int) (string, error) {
 }
 
 // generateJWT creates a JWT token. generateJWT 生成 JWT Token。
-func (g *Generator) generateJWT(loginID, device, deviceId string) (string, error) {
+func (g *Generator) generateJWT(loginID, device, deviceID string) (string, error) {
 	now := time.Now()
 
 	claims := jwt.MapClaims{
 		"loginId":  loginID,
 		"device":   device,
-		"deviceId": deviceId,
+		"deviceId": deviceID,
 		"iat":      now.Unix(),
 	}
 
@@ -177,7 +177,7 @@ func (g *Generator) getJWTSecret() string {
 }
 
 // generateHash creates a SHA256 hash style token. generateHash 生成 SHA256 哈希风格 Token。
-func (g *Generator) generateHash(loginID, device, deviceId string) (string, error) {
+func (g *Generator) generateHash(loginID, device, deviceID string) (string, error) {
 	randomBytes := make([]byte, HashRandomBytesLen)
 	if _, err := rand.Read(randomBytes); err != nil {
 		return "", fmt.Errorf("failed to generate random bytes: %w", err)
@@ -188,7 +188,7 @@ func (g *Generator) generateHash(loginID, device, deviceId string) (string, erro
 		"%s:%s:%s:%d:%s",
 		loginID,
 		device,
-		deviceId,
+		deviceID,
 		time.Now().UnixNano(),
 		hex.EncodeToString(randomBytes),
 	)

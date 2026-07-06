@@ -33,7 +33,7 @@ func TestManagerShortKeyConfirmAndConsume(t *testing.T) {
 	confirmed, err := mgr.ConfirmShortKey(ctx, created.Key, shortkey.ConfirmOptions{
 		LoginID:  "user-1001",
 		Device:   "mobile",
-		DeviceId: "ios-1",
+		DeviceID: "ios-1",
 		Scopes:   []string{"profile"},
 		Extra:    map[string]any{"confirmedBy": "scan"},
 	})
@@ -51,7 +51,7 @@ func TestManagerShortKeyConfirmAndConsume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateShortKey() error = %v", err)
 	}
-	if validated.Scene != "qr-login" || validated.DeviceId != "ios-1" {
+	if validated.Scene != "qr-login" || validated.DeviceID != "ios-1" {
 		t.Fatalf("ValidateShortKey() = %+v, want preserved scene/device", validated)
 	}
 
@@ -163,8 +163,8 @@ func TestManagerRevokePendingShortKeyTriggersEvent(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("RevokeShortKey(pending) events = %d, want 1", len(events))
 	}
-	if events[0].Value != created.Key {
-		t.Fatalf("RevokeShortKey(pending) event value = %q, want %q", events[0].Value, created.Key)
+	if events[0].Token != created.Key {
+		t.Fatalf("RevokeShortKey(pending) event token = %q, want %q", events[0].Token, created.Key)
 	}
 }
 

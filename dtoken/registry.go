@@ -132,13 +132,13 @@ func loadManager(authType string) (*manager.Manager, error) {
 	return mgr, nil
 }
 
-// parseDeviceAndAuthType parses optional legacy parameters: device, deviceId, authType. parseDeviceAndAuthType 解析旧版可选参数：device、deviceId、authType。
-func parseDeviceAndAuthType(params ...string) (device, deviceId, authType string) {
+// parseDeviceAndAuthType parses optional legacy parameters: device, deviceID, authType. parseDeviceAndAuthType 解析旧版可选参数：device、deviceId、authType。
+func parseDeviceAndAuthType(params ...string) (device, deviceID, authType string) {
 	if len(params) > 0 {
 		device = params[0]
 	}
 	if len(params) > 1 {
-		deviceId = params[1]
+		deviceID = params[1]
 	}
 	if len(params) > 2 {
 		authType = params[2]

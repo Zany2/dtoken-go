@@ -93,7 +93,7 @@ func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, 
 	unlock = func() {}
 
 	// Trigger permission change event 触发权限变更事件。
-	m.triggerEvent(listener.EventPermissionChange, sess.LoginID, tokenInfo.Device, tokenInfo.DeviceId, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionChange, sess.LoginID, tokenInfo.Device, tokenInfo.DeviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermissions: permissions,
 		listener.ExtraKeyAction:      listener.ActionAdd,
 	})
@@ -184,7 +184,7 @@ func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue strin
 	unlock = func() {}
 
 	// Trigger permission change event 触发权限变更事件。
-	m.triggerEvent(listener.EventPermissionChange, sess.LoginID, tokenInfo.Device, tokenInfo.DeviceId, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionChange, sess.LoginID, tokenInfo.Device, tokenInfo.DeviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermissions: permissions,
 		listener.ExtraKeyAction:      listener.ActionRemove,
 	})
@@ -209,11 +209,11 @@ func (m *Manager) GetPermissionsByToken(ctx context.Context, tokenValue string) 
 		return nil, err
 	}
 
-	// Resolve permissions by token 按 Token 解析权限。
+	// Resolve permissions by token 。Token 解析权限。
 	return m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   tokenInfo.Device,
-		DeviceID: tokenInfo.DeviceId,
+		DeviceID: tokenInfo.DeviceID,
 		Token:    tokenValue,
 	})
 }
@@ -258,19 +258,19 @@ func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, p
 	}
 
 	// Build access subject 构建访问主体。
-	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
-	// Resolve permissions by token 按 Token 解析权限。
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+	// Resolve permissions by token 。Token 解析权限。
 	permissions := m.resolvePermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
-		DeviceID: deviceId,
+		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
 	// Calculate permission result 计算权限结果。
 	hasPermission := m.hasPermissionInList(permissions, permission)
 
 	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermission: permission,
 		listener.ExtraKeyResult:     hasPermission,
 	})
@@ -314,19 +314,19 @@ func (m *Manager) HasPermissionsAndByToken(ctx context.Context, tokenValue strin
 	}
 
 	// Build access subject 构建访问主体。
-	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
-	// Resolve permissions by token 按 Token 解析权限。
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+	// Resolve permissions by token 。Token 解析权限。
 	permList := m.resolvePermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
-		DeviceID: deviceId,
+		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
 	// Calculate AND result 计算 AND 结果。
 	hasAll := m.hasAllPermissions(permList, permissions)
 
 	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermissions: permissions,
 		listener.ExtraKeyLogic:       listener.LogicAnd,
 		listener.ExtraKeyResult:      hasAll,
@@ -371,19 +371,19 @@ func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string
 	}
 
 	// Build access subject 构建访问主体。
-	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
-	// Resolve permissions by token 按 Token 解析权限。
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+	// Resolve permissions by token 。Token 解析权限。
 	permList := m.resolvePermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
-		DeviceID: deviceId,
+		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
 	// Calculate OR result 计算 OR 结果。
 	hasAny := m.hasAnyPermission(permList, permissions)
 
 	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermissions: permissions,
 		listener.ExtraKeyLogic:       listener.LogicOr,
 		listener.ExtraKeyResult:      hasAny,
@@ -435,12 +435,12 @@ func (m *Manager) CheckPermissionByToken(ctx context.Context, tokenValue string,
 		return err
 	}
 	// Build access subject 构建访问主体。
-	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
-	// Load permissions by token 按 Token 加载权限。
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+	// Load permissions by token 。Token 加载权限。
 	permissions, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
-		DeviceID: deviceId,
+		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
 	if err != nil {
@@ -450,7 +450,7 @@ func (m *Manager) CheckPermissionByToken(ctx context.Context, tokenValue string,
 	hasPermission := m.hasPermissionInList(permissions, permission)
 
 	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermission: permission,
 		listener.ExtraKeyResult:     hasPermission,
 	})
@@ -497,12 +497,12 @@ func (m *Manager) CheckPermissionAndByToken(ctx context.Context, tokenValue stri
 		return err
 	}
 	// Build access subject 构建访问主体。
-	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
-	// Load permissions by token 按 Token 加载权限。
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+	// Load permissions by token 。Token 加载权限。
 	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
-		DeviceID: deviceId,
+		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
 	if err != nil {
@@ -512,7 +512,7 @@ func (m *Manager) CheckPermissionAndByToken(ctx context.Context, tokenValue stri
 	hasAll := m.hasAllPermissions(permList, permissions)
 
 	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermissions: permissions,
 		listener.ExtraKeyLogic:       listener.LogicAnd,
 		listener.ExtraKeyResult:      hasAll,
@@ -560,12 +560,12 @@ func (m *Manager) CheckPermissionOrByToken(ctx context.Context, tokenValue strin
 		return err
 	}
 	// Build access subject 构建访问主体。
-	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
-	// Load permissions by token 按 Token 加载权限。
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+	// Load permissions by token 。Token 加载权限。
 	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
-		DeviceID: deviceId,
+		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
 	if err != nil {
@@ -575,7 +575,7 @@ func (m *Manager) CheckPermissionOrByToken(ctx context.Context, tokenValue strin
 	hasAny := m.hasAnyPermission(permList, permissions)
 
 	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermissions: permissions,
 		listener.ExtraKeyLogic:       listener.LogicOr,
 		listener.ExtraKeyResult:      hasAny,

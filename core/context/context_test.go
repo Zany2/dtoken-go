@@ -21,7 +21,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/ticket"
 )
 
-// TestGetTokenValuePrecedence verifies header, bearer, cookie, query, and body lookup order. TestGetTokenValuePrecedence 验证 Header、Bearer、Cookie、Query 和 Body 的读取顺序。
+// TestGetTokenValuePrecedence verifies header, bearer, cookie, query, and body lookup order. TestGetTokenValuePrecedence 验证 Header、Bearer、Cookie、Query 。Body 的读取顺序。
 func TestGetTokenValuePrecedence(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.TokenName = "X-Token"
@@ -331,8 +331,8 @@ func TestContextNoTokenErrors(t *testing.T) {
 	if err := dctx.Disable().Service(ctx, "billing", time.Minute); !errors.Is(err, derror.ErrNotLogin) {
 		t.Fatalf("Disable.Service() error = %v, want ErrNotLogin", err)
 	}
-	if err := dctx.Disable().DeviceAndDeviceId(ctx, "web", "browser-1", time.Minute); !errors.Is(err, derror.ErrNotLogin) {
-		t.Fatalf("Disable.DeviceAndDeviceId() error = %v, want ErrNotLogin", err)
+	if err := dctx.Disable().DeviceAndDeviceID(ctx, "web", "browser-1", time.Minute); !errors.Is(err, derror.ErrNotLogin) {
+		t.Fatalf("Disable.DeviceAndDeviceID() error = %v, want ErrNotLogin", err)
 	}
 	if _, err := dctx.Ticket().CreateForCurrentLogin(ctx, ticket.CreateOptions{}); !errors.Is(err, derror.ErrNotLogin) {
 		t.Fatalf("Ticket.CreateForCurrentLogin() error = %v, want ErrNotLogin", err)
@@ -435,8 +435,8 @@ func TestContextCookieOptionsAndLoginVariants(t *testing.T) {
 	}
 	assertContextCookie(t, req.cookie, "CtxCookie", token, 3600, "/api", "example.com", true, false, string(config.SameSiteNone))
 	req.headers[cfg.TokenName] = token
-	if deviceID, err := dctx.Auth().GetDeviceId(ctx); err != nil || deviceID != "phone-1" {
-		t.Fatalf("Auth.GetDeviceId() = %q, %v, want phone-1, nil", deviceID, err)
+	if deviceID, err := dctx.Auth().GetDeviceID(ctx); err != nil || deviceID != "phone-1" {
+		t.Fatalf("Auth.GetDeviceID() = %q, %v, want phone-1, nil", deviceID, err)
 	}
 	if ttl, err := dctx.Auth().GetTokenTTL(ctx); err != nil || ttl <= 0 || ttl > 60 {
 		t.Fatalf("Auth.GetTokenTTL() = %d, %v, want 1..60 seconds", ttl, err)
@@ -458,7 +458,7 @@ func TestContextCookieOptionsAndLoginVariants(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Auth.GetTokenInfo() error = %v", err)
 	}
-	if info.LoginID != "cookie-options" || info.Device != "api" || info.DeviceId != "api-1" {
+	if info.LoginID != "cookie-options" || info.Device != "api" || info.DeviceID != "api-1" {
 		t.Fatalf("Auth.GetTokenInfo() = %+v, want cookie-options/api/api-1", info)
 	}
 	if err = dctx.Auth().LoginByToken(ctx); err != nil {
@@ -532,27 +532,27 @@ func TestContextDisableFacades(t *testing.T) {
 		t.Fatalf("Disable.UntieService() error = %v", err)
 	}
 
-	if err = dctx.Disable().DeviceAndDeviceId(ctx, "web", "browser-1", time.Minute, "lost"); err != nil {
-		t.Fatalf("Disable.DeviceAndDeviceId() error = %v", err)
+	if err = dctx.Disable().DeviceAndDeviceID(ctx, "web", "browser-1", time.Minute, "lost"); err != nil {
+		t.Fatalf("Disable.DeviceAndDeviceID() error = %v", err)
 	}
-	if !mgr.IsDisableDeviceAndDeviceId(ctx, "disable-user", "web", "browser-1") {
-		t.Fatal("manager.IsDisableDeviceAndDeviceId() = false, want true")
+	if !mgr.IsDisableDeviceAndDeviceID(ctx, "disable-user", "web", "browser-1") {
+		t.Fatal("manager.IsDisableDeviceAndDeviceID() = false, want true")
 	}
-	if err = mgr.CheckDisableDeviceAndDeviceId(ctx, "disable-user", "web", "browser-1"); !errors.Is(err, derror.ErrDeviceDisabled) {
-		t.Fatalf("manager.CheckDisableDeviceAndDeviceId() error = %v, want ErrDeviceDisabled", err)
+	if err = mgr.CheckDisableDeviceAndDeviceID(ctx, "disable-user", "web", "browser-1"); !errors.Is(err, derror.ErrDeviceDisabled) {
+		t.Fatalf("manager.CheckDisableDeviceAndDeviceID() error = %v, want ErrDeviceDisabled", err)
 	}
-	deviceInfo, err := mgr.GetDisableDeviceAndDeviceIdInfo(ctx, "disable-user", "web", "browser-1")
+	deviceInfo, err := mgr.GetDisableDeviceAndDeviceIDInfo(ctx, "disable-user", "web", "browser-1")
 	if err != nil {
-		t.Fatalf("manager.GetDisableDeviceAndDeviceIdInfo() error = %v", err)
+		t.Fatalf("manager.GetDisableDeviceAndDeviceIDInfo() error = %v", err)
 	}
-	if deviceInfo.Device != "web" || deviceInfo.DeviceId != "browser-1" || deviceInfo.DisableReason != "lost" {
-		t.Fatalf("manager.GetDisableDeviceAndDeviceIdInfo() = %+v, want web/browser-1 lost", deviceInfo)
+	if deviceInfo.Device != "web" || deviceInfo.DeviceID != "browser-1" || deviceInfo.DisableReason != "lost" {
+		t.Fatalf("manager.GetDisableDeviceAndDeviceIDInfo() = %+v, want web/browser-1 lost", deviceInfo)
 	}
-	if ttl, err := mgr.GetDisableDeviceAndDeviceIdTTL(ctx, "disable-user", "web", "browser-1"); err != nil || ttl <= 0 {
-		t.Fatalf("manager.GetDisableDeviceAndDeviceIdTTL() = %d, %v, want positive ttl", ttl, err)
+	if ttl, err := mgr.GetDisableDeviceAndDeviceIDTTL(ctx, "disable-user", "web", "browser-1"); err != nil || ttl <= 0 {
+		t.Fatalf("manager.GetDisableDeviceAndDeviceIDTTL() = %d, %v, want positive ttl", ttl, err)
 	}
-	if err = mgr.UntieDeviceAndDeviceId(ctx, "disable-user", "web", "browser-1"); err != nil {
-		t.Fatalf("manager.UntieDeviceAndDeviceId() error = %v", err)
+	if err = mgr.UntieDeviceAndDeviceID(ctx, "disable-user", "web", "browser-1"); err != nil {
+		t.Fatalf("manager.UntieDeviceAndDeviceID() error = %v", err)
 	}
 }
 
@@ -589,20 +589,20 @@ func TestContextTerminalFacades(t *testing.T) {
 	if !sameContextStrings(webTokens, []string{token1, token2}) {
 		t.Fatalf("Terminal.GetTokenValueListByDevice() = %v, want web tokens", webTokens)
 	}
-	oneToken, err := dctx.Terminal().GetTokenValueListByDeviceAndDeviceId(ctx, "web", "browser-1", true)
+	oneToken, err := dctx.Terminal().GetTokenValueListByDeviceAndDeviceID(ctx, "web", "browser-1", true)
 	if err != nil {
-		t.Fatalf("Terminal.GetTokenValueListByDeviceAndDeviceId() error = %v", err)
+		t.Fatalf("Terminal.GetTokenValueListByDeviceAndDeviceID() error = %v", err)
 	}
 	if !sameContextStrings(oneToken, []string{token1}) {
-		t.Fatalf("Terminal.GetTokenValueListByDeviceAndDeviceId() = %v, want token1", oneToken)
+		t.Fatalf("Terminal.GetTokenValueListByDeviceAndDeviceID() = %v, want token1", oneToken)
 	}
 
 	count, err := dctx.Terminal().GetOnlineTerminalCount(ctx)
 	if err != nil || count != 3 {
 		t.Fatalf("Terminal.GetOnlineTerminalCount() = %d, %v, want 3, nil", count, err)
 	}
-	if count, err = dctx.Terminal().GetOnlineTerminalCountByDeviceAndDeviceId(ctx, "web", "browser-2"); err != nil || count != 1 {
-		t.Fatalf("Terminal.GetOnlineTerminalCountByDeviceAndDeviceId() = %d, %v, want 1, nil", count, err)
+	if count, err = dctx.Terminal().GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "web", "browser-2"); err != nil || count != 1 {
+		t.Fatalf("Terminal.GetOnlineTerminalCountByDeviceAndDeviceID() = %d, %v, want 1, nil", count, err)
 	}
 
 	list, err := dctx.Terminal().GetTerminalList(ctx, "web")

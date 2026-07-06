@@ -8,7 +8,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/derror"
 )
 
-// Terminate applies one terminal operation by options Terminate 根据选项执行一次终端下线操作
+// Terminate applies one terminal operation by options Terminate 根据选项执行一次终端下线操。
 func (m *Manager) Terminate(ctx context.Context, opts TerminateOptions) error {
 	// Normalize option fields before dispatching 规范化选项字段后再分发。
 	opts.Token = strings.TrimSpace(opts.Token)
@@ -60,7 +60,7 @@ func (m *Manager) terminateLogout(ctx context.Context, opts TerminateOptions) er
 		return derror.ErrInvalidParam
 	}
 	if opts.Device != "" && opts.DeviceID != "" {
-		return m.LogoutByDeviceAndDeviceId(ctx, opts.LoginID, opts.Device, opts.DeviceID)
+		return m.LogoutByDeviceAndDeviceID(ctx, opts.LoginID, opts.Device, opts.DeviceID)
 	}
 	if opts.Device != "" {
 		return m.LogoutByDevice(ctx, opts.LoginID, opts.Device)
@@ -68,13 +68,13 @@ func (m *Manager) terminateLogout(ctx context.Context, opts TerminateOptions) er
 	return m.LogoutByLoginID(ctx, opts.LoginID)
 }
 
-// terminateKickout dispatches kickout by account or device scope terminateKickout 按账号或设备范围分发踢下线操作
+// terminateKickout dispatches kickout by account or device scope terminateKickout 按账号或设备范围分发踢下线操。
 func (m *Manager) terminateKickout(ctx context.Context, opts TerminateOptions) error {
 	if opts.DeviceID != "" && opts.Device == "" {
 		return derror.ErrInvalidParam
 	}
 	if opts.Device != "" && opts.DeviceID != "" {
-		return m.KickoutByDeviceAndDeviceId(ctx, opts.LoginID, opts.Device, opts.DeviceID)
+		return m.KickoutByDeviceAndDeviceID(ctx, opts.LoginID, opts.Device, opts.DeviceID)
 	}
 	if opts.Device != "" {
 		return m.KickoutByDevice(ctx, opts.LoginID, opts.Device)
@@ -88,7 +88,7 @@ func (m *Manager) terminateReplace(ctx context.Context, opts TerminateOptions) e
 		return derror.ErrInvalidParam
 	}
 	if opts.Device != "" && opts.DeviceID != "" {
-		return m.ReplaceByDeviceAndDeviceId(ctx, opts.LoginID, opts.Device, opts.DeviceID)
+		return m.ReplaceByDeviceAndDeviceID(ctx, opts.LoginID, opts.Device, opts.DeviceID)
 	}
 	if opts.Device != "" {
 		return m.ReplaceByDevice(ctx, opts.LoginID, opts.Device)

@@ -13,7 +13,7 @@ import (
 func (m *Manager) handleConcurrency(
 	ctx context.Context,
 	sess *Session,
-	loginID, device, deviceId string,
+	loginID, device, deviceID string,
 	policy loginPolicy,
 ) (concurrencyResult, error) {
 	// Clean expired tokens 清理已过期的 token
@@ -47,7 +47,7 @@ func (m *Manager) handleConcurrency(
 			return concurrencyResult{destroyedSession: destroyedByClean}, nil
 		}
 
-		// Replace old sessions when concurrency is disabled 不允许并发：顶掉旧会话
+		// Replace old sessions when concurrency is disabled 不允许并发：顶掉旧会。
 		// Replace terminals by configured scope 按配置作用域顶掉旧终端。
 		destroyedSession := destroyedByClean
 		if m.config.ConcurrencyScope == config.ConcurrencyScopeAccount {
@@ -69,7 +69,7 @@ func (m *Manager) handleConcurrency(
 	// Try token sharing when enabled 开启共享时尝试复用 Token。
 	if policy.isShare {
 		// Try token sharing reuse only within the same device dimension. 仅在相同设备维度内尝试复用 Token。
-		token, shareErr := m.getTokenAndShare(ctx, sess, device, deviceId)
+		token, shareErr := m.getTokenAndShare(ctx, sess, device, deviceID)
 		if shareErr != nil {
 			return concurrencyResult{}, shareErr
 		}
@@ -109,18 +109,18 @@ func (m *Manager) handleConcurrency(
 }
 
 // getTokenAndShare retrieves and shares a token within one device dimension. getTokenAndShare 在同一设备维度内获取并共享 token。
-func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, deviceId string) (string, error) {
+func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, deviceID string) (string, error) {
 	// Return when no terminals exist 没有终端时直接返回。
 	if len(sess.TerminalInfos) == 0 {
 		return "", nil
 	}
 
-	// Get candidate terminals 获取候选 terminals。
+	// Get candidate terminals 获取候。terminals。
 	var candidates []TerminalInfo
 	switch {
-	case device != "" && deviceId != "":
+	case device != "" && deviceID != "":
 		// Prefer concrete device matches when device ID exists. 存在设备 ID 时优先按具体设备匹配。
-		candidates = sess.getTerminalsByDeviceAndDeviceId(device, deviceId)
+		candidates = sess.getTerminalsByDeviceAndDeviceID(device, deviceID)
 	case device != "":
 		// Fall back to device type matching when no device ID exists. 没有设备 ID 时按设备类型匹配。
 		candidates = sess.getTerminalsByDevice(device)
@@ -133,7 +133,7 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 		return "", nil
 	}
 
-	// Reuse latest alive token 复用最后一个仍在线的 token
+	// Reuse latest alive token 复用最后一个仍在线。token
 	// Scan candidates from newest to oldest 从新到旧扫描候选终端。
 	var terminalInfo TerminalInfo
 	var tokenInfo *TokenInfo
@@ -175,7 +175,7 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 		AuthType:      m.config.AuthType,
 		LoginID:       terminalInfo.LoginID,
 		Device:        terminalInfo.Device,
-		DeviceId:      terminalInfo.DeviceId,
+		DeviceID:      terminalInfo.DeviceID,
 		CreateTime:    terminalInfo.CreateTime,
 		Timeout:       tokenTimeout,
 		ActiveTimeout: tokenInfo.ActiveTimeout,
@@ -186,7 +186,7 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 		return "", err
 	}
 
-	// Renew or reset metadata 续期或重新设置 metadata
+	// Renew or reset metadata 续期或重新设。metadata
 	if m.config.RenewInterval > 0 {
 		// Refresh renew marker 刷新续期标记。
 		if err := m.storage.Set(ctx, m.getRenewKey(terminalInfo.Token), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {

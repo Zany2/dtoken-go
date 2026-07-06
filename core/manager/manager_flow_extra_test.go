@@ -122,7 +122,7 @@ func TestManagerLoginWithTimeoutEntryPoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTokenInfo() error = %v", err)
 	}
-	if info.LoginID != "timeout-entry" || info.Device != "app" || info.DeviceId != "device-1" || info.Timeout != 120 {
+	if info.LoginID != "timeout-entry" || info.Device != "app" || info.DeviceID != "device-1" || info.Timeout != 120 {
 		t.Fatalf("TokenInfo = %+v, want login/device/deviceId/custom timeout", info)
 	}
 	ttl, err := mgr.GetTokenTTL(ctx, token)
@@ -819,8 +819,8 @@ func TestManagerAccountAndDeviceScopedExitOperations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Login(web/b) error = %v", err)
 		}
-		if err = mgr.ReplaceByDeviceAndDeviceId(ctx, "concrete-replace", "web", "a"); err != nil {
-			t.Fatalf("ReplaceByDeviceAndDeviceId() error = %v", err)
+		if err = mgr.ReplaceByDeviceAndDeviceID(ctx, "concrete-replace", "web", "a"); err != nil {
+			t.Fatalf("ReplaceByDeviceAndDeviceID() error = %v", err)
 		}
 		if err = mgr.CheckLogin(ctx, webA); !errors.Is(err, derror.ErrTokenReplaced) {
 			t.Fatalf("web/a CheckLogin() error = %v, want ErrTokenReplaced", err)
@@ -879,8 +879,8 @@ func TestManagerDeviceAndConcreteExitOperations(t *testing.T) {
 			t.Fatalf("Login(mobile/a) error = %v", err)
 		}
 
-		if err = mgr.KickoutByDeviceAndDeviceId(ctx, "concrete-kickout", "web", "a"); err != nil {
-			t.Fatalf("KickoutByDeviceAndDeviceId() error = %v", err)
+		if err = mgr.KickoutByDeviceAndDeviceID(ctx, "concrete-kickout", "web", "a"); err != nil {
+			t.Fatalf("KickoutByDeviceAndDeviceID() error = %v", err)
 		}
 		if err = mgr.CheckLogin(ctx, webA); !errors.Is(err, derror.ErrTokenKickout) {
 			t.Fatalf("web/a CheckLogin() error = %v, want ErrTokenKickout", err)
@@ -936,8 +936,8 @@ func TestManagerDeviceAndConcreteExitOperations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Login(web/b) error = %v", err)
 		}
-		if err = mgr.LogoutByDeviceAndDeviceId(ctx, "concrete-logout", "web", "a"); err != nil {
-			t.Fatalf("LogoutByDeviceAndDeviceId() error = %v", err)
+		if err = mgr.LogoutByDeviceAndDeviceID(ctx, "concrete-logout", "web", "a"); err != nil {
+			t.Fatalf("LogoutByDeviceAndDeviceID() error = %v", err)
 		}
 		if err = mgr.CheckLogin(ctx, webA); !errors.Is(err, derror.ErrInvalidToken) {
 			t.Fatalf("web/a CheckLogin() error = %v, want ErrInvalidToken", err)
@@ -1298,8 +1298,8 @@ func TestManagerRefreshTokenRejectsDisabledAccountAndDevice(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LoginWithRefreshToken() error = %v", err)
 		}
-		info := DeviceDisableInfo{Device: "web", DeviceId: "browser", DisableTime: time.Now().Unix()}
-		if err = mgr.saveToStorage(ctx, mgr.getDisableDeviceAndDeviceIdKey("refresh-disabled-device", "web", "browser"), info, time.Minute); err != nil {
+		info := DeviceDisableInfo{Device: "web", DeviceID: "browser", DisableTime: time.Now().Unix()}
+		if err = mgr.saveToStorage(ctx, mgr.getDisableDeviceAndDeviceIDKey("refresh-disabled-device", "web", "browser"), info, time.Minute); err != nil {
 			t.Fatalf("save device disable marker error = %v", err)
 		}
 		if _, err = mgr.RefreshToken(ctx, pair.RefreshToken); !errors.Is(err, derror.ErrDeviceDisabled) {
@@ -1494,7 +1494,7 @@ func boolPtr(v bool) *bool {
 func assertManagerEvent(t *testing.T, events []*listener.EventData, event listener.Event, loginID, device, deviceID, token string, extra map[string]any) {
 	t.Helper()
 	for _, data := range events {
-		if data.Event != event || data.LoginID != loginID || data.Device != device || data.DeviceId != deviceID || data.Token != token {
+		if data.Event != event || data.LoginID != loginID || data.Device != device || data.DeviceID != deviceID || data.Token != token {
 			continue
 		}
 		matched := true

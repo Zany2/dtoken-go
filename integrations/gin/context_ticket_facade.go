@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CreateTicketByContext creates ticket CreateTicketByContext 鍒涘缓 Ticket
+// CreateTicketByContext creates ticket CreateTicketByContext 创建 Ticket
 func CreateTicketByContext(c *gin.Context, opts ticket.CreateOptions) (*ticket.Ticket, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -17,7 +17,7 @@ func CreateTicketByContext(c *gin.Context, opts ticket.CreateOptions) (*ticket.T
 	return dCtx.Ticket().Create(requestContext(c), opts)
 }
 
-// CreateTicketForCurrentLoginByContext creates ticket for current user CreateTicketForCurrentLoginByContext 涓哄綋鍓嶇敤鎴峰垱寤?Ticket
+// CreateTicketForCurrentLoginByContext creates ticket for current user CreateTicketForCurrentLoginByContext 为当前用户创建 Ticket
 func CreateTicketForCurrentLoginByContext(c *gin.Context, opts ticket.CreateOptions) (*ticket.Ticket, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -26,7 +26,7 @@ func CreateTicketForCurrentLoginByContext(c *gin.Context, opts ticket.CreateOpti
 	return dCtx.Ticket().CreateForCurrentLogin(requestContext(c), opts)
 }
 
-// CreateTicketWithTimeoutByContext creates ticket with timeout CreateTicketWithTimeoutByContext 浣跨敤鎸囧畾鏈夋晥鏈熷垱寤?Ticket
+// CreateTicketWithTimeoutByContext creates ticket with timeout CreateTicketWithTimeoutByContext 使用指定有效期创建 Ticket
 func CreateTicketWithTimeoutByContext(c *gin.Context, opts ticket.CreateOptions, timeout time.Duration) (*ticket.Ticket, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -35,7 +35,7 @@ func CreateTicketWithTimeoutByContext(c *gin.Context, opts ticket.CreateOptions,
 	return dCtx.Ticket().CreateWithTimeout(requestContext(c), opts, timeout)
 }
 
-// ValidateTicketByContext validates ticket ValidateTicketByContext 鏍￠獙 Ticket
+// ValidateTicketByContext validates ticket ValidateTicketByContext 校验 Ticket
 func ValidateTicketByContext(c *gin.Context, ticketValue string, opts ...ticket.ValidateOptions) (*ticket.Ticket, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -62,7 +62,7 @@ func RevokeTicketByContext(c *gin.Context, ticketValue string) error {
 	return dCtx.Ticket().Revoke(requestContext(c), ticketValue)
 }
 
-// GetTicketStatusByContext gets ticket status GetTicketStatusByContext 鑾峰彇 Ticket 鐘舵€?
+// GetTicketStatusByContext gets ticket status GetTicketStatusByContext 获取 Ticket 状态
 func GetTicketStatusByContext(c *gin.Context, ticketValue string) (ticket.Status, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -71,7 +71,7 @@ func GetTicketStatusByContext(c *gin.Context, ticketValue string) (ticket.Status
 	return dCtx.Ticket().GetStatus(requestContext(c), ticketValue)
 }
 
-// GetTicketTTLByContext gets ticket TTL GetTicketTTLByContext 鑾峰彇 Ticket 鍓╀綑鏈夋晥鏈?
+// GetTicketTTLByContext gets ticket TTL GetTicketTTLByContext 获取 Ticket 剩余有效期
 func GetTicketTTLByContext(c *gin.Context, ticketValue string) (int64, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

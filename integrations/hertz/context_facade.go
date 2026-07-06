@@ -11,7 +11,7 @@ import (
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 )
 
-// GetTokenValueByContext gets token value from current Hertz context GetTokenValueByContext 从当前 Hertz 上下文获取 token 值。
+// GetTokenValueByContext gets token value from current Hertz context GetTokenValueByContext 从当。Hertz 上下文获。token 值。
 func GetTokenValueByContext(ctx *hertzapp.RequestContext) (string, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -115,13 +115,13 @@ func LogoutByDeviceByContext(ctx *hertzapp.RequestContext, device string) error 
 	return dCtx.Terminal().LogoutByDevice(requestContext(ctx), device)
 }
 
-// LogoutByDeviceAndDeviceIdByContext logs out current user by device and id LogoutByDeviceAndDeviceIdByContext 按设备和设备 ID 登出当前用户。
-func LogoutByDeviceAndDeviceIdByContext(ctx *hertzapp.RequestContext, deviceAndDeviceId ...string) error {
+// LogoutByDeviceAndDeviceIDByContext logs out current user by device and id LogoutByDeviceAndDeviceIDByContext 按设备和设备 ID 登出当前用户。
+func LogoutByDeviceAndDeviceIDByContext(ctx *hertzapp.RequestContext, deviceAndDeviceID ...string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
 		return err
 	}
-	return dCtx.Terminal().LogoutByDeviceAndDeviceId(requestContext(ctx), deviceAndDeviceId...)
+	return dCtx.Terminal().LogoutByDeviceAndDeviceID(requestContext(ctx), deviceAndDeviceID...)
 }
 
 // LogoutByLoginIDByContext logs out all terminals of current user LogoutByLoginIDByContext 登出当前用户所有终端。
@@ -142,7 +142,7 @@ func GetTokenInfoByContext(ctx *hertzapp.RequestContext) (*manager.TokenInfo, er
 	return dCtx.Auth().GetTokenInfo(requestContext(ctx))
 }
 
-// IntrospectTokenByContext inspects current token without renewal side effects IntrospectTokenByContext 无续期副作用地检查当前 token 状态。
+// IntrospectTokenByContext inspects current token without renewal side effects IntrospectTokenByContext 无续期副作用地检查当。token 状态。
 func IntrospectTokenByContext(ctx *hertzapp.RequestContext) (*manager.TokenIntrospection, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -166,7 +166,7 @@ func GetDeviceIDByContext(ctx *hertzapp.RequestContext) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return dCtx.Auth().GetDeviceId(requestContext(ctx))
+	return dCtx.Auth().GetDeviceID(requestContext(ctx))
 }
 
 // GetTokenTTLByContext gets current token TTL GetTokenTTLByContext 获取当前 token 剩余有效期。
@@ -332,7 +332,7 @@ func HasPermissionsAndByContext(ctx *hertzapp.RequestContext, permissions []stri
 	return dCtx.Access().HasPermissionsAnd(requestContext(ctx), permissions)
 }
 
-// AddRolesByContext adds roles to current token AddRolesByContext 为当前 token 添加角色。
+// AddRolesByContext adds roles to current token AddRolesByContext 为当。token 添加角色。
 func AddRolesByContext(ctx *hertzapp.RequestContext, roles []string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -341,7 +341,7 @@ func AddRolesByContext(ctx *hertzapp.RequestContext, roles []string) error {
 	return dCtx.Access().AddRoles(requestContext(ctx), roles)
 }
 
-// RemoveRolesByContext removes roles from current token RemoveRolesByContext 从当前 token 移除角色。
+// RemoveRolesByContext removes roles from current token RemoveRolesByContext 从当。token 移除角色。
 func RemoveRolesByContext(ctx *hertzapp.RequestContext, roles []string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -350,7 +350,7 @@ func RemoveRolesByContext(ctx *hertzapp.RequestContext, roles []string) error {
 	return dCtx.Access().RemoveRoles(requestContext(ctx), roles)
 }
 
-// AddPermissionsByContext adds permissions to current token AddPermissionsByContext 为当前 token 添加权限。
+// AddPermissionsByContext adds permissions to current token AddPermissionsByContext 为当。token 添加权限。
 func AddPermissionsByContext(ctx *hertzapp.RequestContext, permissions []string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -359,7 +359,7 @@ func AddPermissionsByContext(ctx *hertzapp.RequestContext, permissions []string)
 	return dCtx.Access().AddPermissions(requestContext(ctx), permissions)
 }
 
-// RemovePermissionsByContext removes permissions from current token RemovePermissionsByContext 从当前 token 移除权限。
+// RemovePermissionsByContext removes permissions from current token RemovePermissionsByContext 从当。token 移除权限。
 func RemovePermissionsByContext(ctx *hertzapp.RequestContext, permissions []string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -422,7 +422,7 @@ func GenerateNonceByContext(ctx *hertzapp.RequestContext) (string, error) {
 	return dCtx.Nonce().Generate(requestContext(ctx))
 }
 
-// VerifyNonceByContext verifies nonce with current manager VerifyNonceByContext 使用当前管理器验证 nonce。
+// VerifyNonceByContext verifies nonce with current manager VerifyNonceByContext 使用当前管理器校验 nonce
 func VerifyNonceByContext(ctx *hertzapp.RequestContext, nonce string) bool {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {

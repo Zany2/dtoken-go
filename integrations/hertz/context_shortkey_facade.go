@@ -8,7 +8,7 @@ import (
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 )
 
-// CreateShortKeyByContext creates short key CreateShortKeyByContext ?Key
+// CreateShortKeyByContext creates short key CreateShortKeyByContext 创建 ShortKey
 func CreateShortKeyByContext(ctx *hertzapp.RequestContext, opts shortkey.CreateOptions) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -17,7 +17,7 @@ func CreateShortKeyByContext(ctx *hertzapp.RequestContext, opts shortkey.CreateO
 	return dCtx.ShortKey().Create(requestContext(ctx), opts)
 }
 
-// CreateShortKeyWithTimeoutByContext creates short key with timeout CreateShortKeyWithTimeoutByContext ?Key
+// CreateShortKeyWithTimeoutByContext creates short key with timeout CreateShortKeyWithTimeoutByContext 使用指定有效期创建 ShortKey
 func CreateShortKeyWithTimeoutByContext(ctx *hertzapp.RequestContext, opts shortkey.CreateOptions, timeout time.Duration) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -35,7 +35,7 @@ func ConfirmShortKeyByContext(ctx *hertzapp.RequestContext, key string, opts sho
 	return dCtx.ShortKey().Confirm(requestContext(ctx), key, opts)
 }
 
-// ConfirmShortKeyForCurrentLoginByContext confirms short key for current user ConfirmShortKeyForCurrentLoginByContext ?Key
+// ConfirmShortKeyForCurrentLoginByContext confirms short key for current user ConfirmShortKeyForCurrentLoginByContext 使用当前用户确认 ShortKey
 func ConfirmShortKeyForCurrentLoginByContext(ctx *hertzapp.RequestContext, key string, opts shortkey.ConfirmOptions) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -44,7 +44,7 @@ func ConfirmShortKeyForCurrentLoginByContext(ctx *hertzapp.RequestContext, key s
 	return dCtx.ShortKey().ConfirmForCurrentLogin(requestContext(ctx), key, opts)
 }
 
-// ValidateShortKeyByContext validates short key ValidateShortKeyByContext ?Key
+// ValidateShortKeyByContext validates short key ValidateShortKeyByContext 校验 ShortKey
 func ValidateShortKeyByContext(ctx *hertzapp.RequestContext, key string, opts ...shortkey.ValidateOptions) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -71,7 +71,7 @@ func RevokeShortKeyByContext(ctx *hertzapp.RequestContext, key string) error {
 	return dCtx.ShortKey().Revoke(requestContext(ctx), key)
 }
 
-// GetShortKeyStatusByContext gets short key status GetShortKeyStatusByContext ?Key ?
+// GetShortKeyStatusByContext gets short key status GetShortKeyStatusByContext 获取 ShortKey 状态
 func GetShortKeyStatusByContext(ctx *hertzapp.RequestContext, key string) (shortkey.Status, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -80,7 +80,7 @@ func GetShortKeyStatusByContext(ctx *hertzapp.RequestContext, key string) (short
 	return dCtx.ShortKey().GetStatus(requestContext(ctx), key)
 }
 
-// GetShortKeyTTLByContext gets short key TTL GetShortKeyTTLByContext ?Key ?
+// GetShortKeyTTLByContext gets short key TTL GetShortKeyTTLByContext 获取 ShortKey 剩余有效期
 func GetShortKeyTTLByContext(ctx *hertzapp.RequestContext, key string) (int64, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {

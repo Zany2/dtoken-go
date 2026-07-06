@@ -50,7 +50,7 @@ func TestManagerLoginLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTokenInfo() error = %v", err)
 	}
-	if info.LoginID != "u1" || info.Device != "web" || info.DeviceId != "browser-1" || info.Timeout != 60 {
+	if info.LoginID != "u1" || info.Device != "web" || info.DeviceID != "browser-1" || info.Timeout != 60 {
 		t.Fatalf("TokenInfo = %+v, want login/device/deviceId/timeout preserved", info)
 	}
 
@@ -311,8 +311,8 @@ func TestManagerDisableAccountAndDevice(t *testing.T) {
 
 	t.Run("concrete device disable only blocks matching device id", func(t *testing.T) {
 		mgr := newTestManager(t, nil)
-		if err := mgr.DisableDeviceAndDeviceId(ctx, "u9", "web", "blocked", time.Minute); err != nil {
-			t.Fatalf("DisableDeviceAndDeviceId() error = %v", err)
+		if err := mgr.DisableDeviceAndDeviceID(ctx, "u9", "web", "blocked", time.Minute); err != nil {
+			t.Fatalf("DisableDeviceAndDeviceID() error = %v", err)
 		}
 		if _, err := mgr.Login(ctx, "u9", "web", "blocked"); !errors.Is(err, derror.ErrDeviceDisabled) {
 			t.Fatalf("Login(blocked device) error = %v, want ErrDeviceDisabled", err)
@@ -370,7 +370,7 @@ func TestManagerAccessProviderOverridesSessionAccess(t *testing.T) {
 	}
 }
 
-// TestManagerAccessProviderNilFallsBackToSession verifies nil provider data uses session access. TestManagerAccessProviderNilFallsBackToSession 验证提供器返回 nil 时回退到会话权限。
+// TestManagerAccessProviderNilFallsBackToSession verifies nil provider data uses session access. TestManagerAccessProviderNilFallsBackToSession 验证提供器返。nil 时回退到会话权限。
 func TestManagerAccessProviderNilFallsBackToSession(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithAccessProvider(t, nil, AccessProviderFunc{
@@ -472,6 +472,24 @@ func TestManagerActiveTimeoutMarksTokenState(t *testing.T) {
 	}
 }
 
+// TestManagerGetSessionByTokenUsesFullTokenValidation verifies session lookup by token applies normal login checks. TestManagerGetSessionByTokenUsesFullTokenValidation 验证无 Token 获取会话会执行完整登录校验。
+func TestManagerGetSessionByTokenUsesFullTokenValidation(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, nil)
+
+	token, err := mgr.Login(ctx, "session-by-token-disabled", "web", "browser")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if err = mgr.saveToStorage(ctx, mgr.getDisableKey("session-by-token-disabled"), DisableInfo{DisableTime: time.Now().Unix()}, time.Minute); err != nil {
+		t.Fatalf("save disable marker error = %v", err)
+	}
+
+	if _, err = mgr.GetSessionByToken(ctx, token); !errors.Is(err, derror.ErrAccountDisabled) {
+		t.Fatalf("GetSessionByToken(disabled account) error = %v, want ErrAccountDisabled", err)
+	}
+}
+
 // TestManagerScopedKickoutAndReplaceDoNotRewriteInactiveTokenState verifies scoped operations do not rewrite inactive token causes. TestManagerScopedKickoutAndReplaceDoNotRewriteInactiveTokenState 验证范围操作不会改写已失效 Token 的原因。
 func TestManagerScopedKickoutAndReplaceDoNotRewriteInactiveTokenState(t *testing.T) {
 	ctx := context.Background()
@@ -548,9 +566,9 @@ func TestManagerSessionTerminalQueries(t *testing.T) {
 	if !sameStrings(webTokens, []string{webA, webB}) {
 		t.Fatalf("web tokens = %v, want [%s %s]", webTokens, webA, webB)
 	}
-	concreteTokens, err := mgr.GetTokenValueListByDeviceAndDeviceId(ctx, "u12", "web", "b")
+	concreteTokens, err := mgr.GetTokenValueListByDeviceAndDeviceID(ctx, "u12", "web", "b")
 	if err != nil {
-		t.Fatalf("GetTokenValueListByDeviceAndDeviceId() error = %v", err)
+		t.Fatalf("GetTokenValueListByDeviceAndDeviceID() error = %v", err)
 	}
 	if !sameStrings(concreteTokens, []string{webB}) {
 		t.Fatalf("concrete tokens = %v, want [%s]", concreteTokens, webB)
@@ -581,9 +599,9 @@ func TestManagerSessionTerminalQueries(t *testing.T) {
 	if webCount != 1 {
 		t.Fatalf("web online count = %d, want 1", webCount)
 	}
-	concreteCount, err := mgr.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, "u12", "mobile", "a")
+	concreteCount, err := mgr.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "u12", "mobile", "a")
 	if err != nil {
-		t.Fatalf("GetOnlineTerminalCountByDeviceAndDeviceId() error = %v", err)
+		t.Fatalf("GetOnlineTerminalCountByDeviceAndDeviceID() error = %v", err)
 	}
 	if concreteCount != 1 {
 		t.Fatalf("mobile/a online count = %d, want 1", concreteCount)
@@ -600,7 +618,7 @@ func TestManagerSessionTerminalQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTerminalInfoByToken() error = %v", err)
 	}
-	if mobileInfo.LoginID != "u12" || mobileInfo.Device != "mobile" || mobileInfo.DeviceId != "a" {
+	if mobileInfo.LoginID != "u12" || mobileInfo.Device != "mobile" || mobileInfo.DeviceID != "a" {
 		t.Fatalf("terminal info = %+v, want mobile/a terminal", mobileInfo)
 	}
 
@@ -616,6 +634,9 @@ func TestManagerSessionTerminalQueries(t *testing.T) {
 	}
 	if err = mgr.ForEachTerminal(ctx, "u12", nil); !errors.Is(err, derror.ErrInvalidParam) {
 		t.Fatalf("ForEachTerminal(nil) error = %v, want ErrInvalidParam", err)
+	}
+	if _, err = mgr.GetTokenValueByLoginID(ctx, "u12", " "); !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("GetTokenValueByLoginID(empty device) error = %v, want ErrInvalidParam", err)
 	}
 
 	tokenSearch, err := mgr.SearchTokenValue(ctx, "u12-web", 0, -1)

@@ -101,7 +101,7 @@ if err == nil {
     fmt.Println("Auth Type:", info.AuthType)
     fmt.Println("Login ID:", info.LoginID)
     fmt.Println("Device:", info.Device)
-    fmt.Println("Device ID:", info.DeviceId)
+    fmt.Println("Device ID:", info.DeviceID)
     fmt.Println("Create Time:", info.CreateTime)
 }
 ```
@@ -111,7 +111,7 @@ Current `TokenInfo` includes:
 - `AuthType`
 - `LoginID`
 - `Device`
-- `DeviceId`
+- `DeviceID`
 - `CreateTime`
 
 ### Get Additional Token Fields
@@ -120,7 +120,7 @@ Current `TokenInfo` includes:
 ctx := context.Background()
 
 device, err := dtoken.GetDevice(ctx, token)
-deviceId, err := dtoken.GetDeviceId(ctx, token)
+deviceID, err := dtoken.GetDeviceID(ctx, token)
 createTime, err := dtoken.GetTokenCreateTime(ctx, token)
 ttl, err := dtoken.GetTokenTTL(ctx, token)
 ```
@@ -147,7 +147,7 @@ err := dtoken.LogoutByLoginID(ctx, "10001")
 err = dtoken.LogoutByDevice(ctx, "10001", "web")
 
 // Logout a single terminal by device type + device ID
-err = dtoken.LogoutByDeviceAndDeviceId(ctx, "10001", "app", "ios-iphone-15")
+err = dtoken.LogoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ## Kickout
@@ -167,7 +167,7 @@ ctx := context.Background()
 
 err := dtoken.KickoutByLoginID(ctx, "10001")
 err = dtoken.KickoutByDevice(ctx, "10001", "web")
-err = dtoken.KickoutByDeviceAndDeviceId(ctx, "10001", "app", "ios-iphone-15")
+err = dtoken.KickoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 Kicked tokens are not deleted immediately. They are marked with the `kickout` state and will fail later checks with the corresponding error.
@@ -189,7 +189,7 @@ ctx := context.Background()
 
 err := dtoken.ReplaceByLoginID(ctx, "10001")
 err = dtoken.ReplaceByDevice(ctx, "10001", "web")
-err = dtoken.ReplaceByDeviceAndDeviceId(ctx, "10001", "app", "ios-iphone-15")
+err = dtoken.ReplaceByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 Replaced tokens are marked with the `replaced` state, which is useful for "new login overrides old login" scenarios.
@@ -201,7 +201,7 @@ ctx := context.Background()
 
 count, err := dtoken.GetOnlineTerminalCount(ctx, "10001")
 webCount, err := dtoken.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
-singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, "10001", "app", "ios-iphone-15")
+singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ## Login Configuration

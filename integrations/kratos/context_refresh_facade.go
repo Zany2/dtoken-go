@@ -7,16 +7,16 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
-// LoginWithRefreshTokenByCtx logs in and issues refresh token LoginWithRefreshTokenByCtx ?Token
-func LoginWithRefreshTokenByCtx(ctx context.Context, loginID string, deviceAndDeviceId ...string) (*manager.RefreshTokenPair, error) {
+// LoginWithRefreshTokenByCtx logs in and issues refresh token LoginWithRefreshTokenByCtx 登录并签发刷新 Token
+func LoginWithRefreshTokenByCtx(ctx context.Context, loginID string, deviceAndDeviceID ...string) (*manager.RefreshTokenPair, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return dCtx.Refresh().Login(ctx, loginID, deviceAndDeviceId...)
+	return dCtx.Refresh().Login(ctx, loginID, deviceAndDeviceID...)
 }
 
-// LoginWithRefreshTokenOptionsByCtx logs in with refresh token options LoginWithRefreshTokenOptionsByCtx  Token
+// LoginWithRefreshTokenOptionsByCtx logs in with refresh token options LoginWithRefreshTokenOptionsByCtx 使用刷新 Token 选项登录
 func LoginWithRefreshTokenOptionsByCtx(ctx context.Context, opts manager.RefreshTokenOptions) (*manager.RefreshTokenPair, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -25,7 +25,7 @@ func LoginWithRefreshTokenOptionsByCtx(ctx context.Context, opts manager.Refresh
 	return dCtx.Refresh().LoginWithOptions(ctx, opts)
 }
 
-// RefreshTokenByCtx refreshes access token RefreshTokenByCtx  Token
+// RefreshTokenByCtx refreshes access token RefreshTokenByCtx 刷新访问 Token
 func RefreshTokenByCtx(ctx context.Context, refreshToken string) (*manager.RefreshTokenPair, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -34,7 +34,7 @@ func RefreshTokenByCtx(ctx context.Context, refreshToken string) (*manager.Refre
 	return dCtx.Refresh().Refresh(ctx, refreshToken)
 }
 
-// RevokeRefreshTokenByCtx revokes refresh token RevokeRefreshTokenByCtx  Token
+// RevokeRefreshTokenByCtx revokes refresh token RevokeRefreshTokenByCtx 撤销刷新 Token
 func RevokeRefreshTokenByCtx(ctx context.Context, refreshToken string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -43,7 +43,7 @@ func RevokeRefreshTokenByCtx(ctx context.Context, refreshToken string) error {
 	return dCtx.Refresh().Revoke(ctx, refreshToken)
 }
 
-// GetRefreshTokenTTLByCtx gets refresh token TTL GetRefreshTokenTTLByCtx  Token ?
+// GetRefreshTokenTTLByCtx gets refresh token TTL GetRefreshTokenTTLByCtx 获取刷新 Token 剩余有效期
 func GetRefreshTokenTTLByCtx(ctx context.Context, refreshToken string) (int64, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {

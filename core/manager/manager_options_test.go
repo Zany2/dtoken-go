@@ -202,7 +202,7 @@ func TestManagerLoginWithOptionsDoesNotShareForeignSessionToken(t *testing.T) {
 		Token:      foreignToken,
 		LoginID:    "stale-session-owner",
 		Device:     "web",
-		DeviceId:   "browser",
+		DeviceID:   "browser",
 		CreateTime: time.Now().Unix(),
 		Index:      1,
 	})
@@ -252,8 +252,8 @@ func TestManagerLoginWithOptionsNormalizesDeviceAndRejectsBlankToken(t *testing.
 	if err != nil {
 		t.Fatalf("GetTerminalInfoByToken() error = %v", err)
 	}
-	if terminal.Device != "web" || terminal.DeviceId != "browser" {
-		t.Fatalf("terminal device = %q/%q, want web/browser", terminal.Device, terminal.DeviceId)
+	if terminal.Device != "web" || terminal.DeviceID != "browser" {
+		t.Fatalf("terminal device = %q/%q, want web/browser", terminal.Device, terminal.DeviceID)
 	}
 	shared, err := mgr.LoginWithOptions(ctx, LoginOptions{
 		LoginID:  "normalize-options",
@@ -361,6 +361,46 @@ func TestManagerLoginWithOptionsOverridesConcurrencyPolicy(t *testing.T) {
 	}
 	if err = mgr.CheckLogin(ctx, second); err != nil {
 		t.Fatalf("second CheckLogin() error = %v", err)
+	}
+}
+
+func TestManagerLoginWithOptionsRejectsInvalidPolicyOverrides(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, nil)
+
+	zeroMaxLoginCount := int64(0)
+	invalidMaxLoginCount := int64(-2)
+	invalidReplacedMode := config.ReplacedLoginExitMode("bad")
+	invalidOverflowMode := config.LogoutMode("bad")
+
+	tests := []struct {
+		name string
+		opts LoginOptions
+	}{
+		{
+			name: "zero max login count",
+			opts: LoginOptions{LoginID: "invalid-policy-zero", MaxLoginCount: &zeroMaxLoginCount},
+		},
+		{
+			name: "invalid max login count",
+			opts: LoginOptions{LoginID: "invalid-policy-negative", MaxLoginCount: &invalidMaxLoginCount},
+		},
+		{
+			name: "invalid replaced mode",
+			opts: LoginOptions{LoginID: "invalid-policy-replaced", ReplacedLoginExitMode: &invalidReplacedMode},
+		},
+		{
+			name: "invalid overflow mode",
+			opts: LoginOptions{LoginID: "invalid-policy-overflow", OverflowLogoutMode: &invalidOverflowMode},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := mgr.LoginWithOptions(ctx, tt.opts); !errors.Is(err, derror.ErrInvalidParam) {
+				t.Fatalf("LoginWithOptions() error = %v, want ErrInvalidParam", err)
+			}
+		})
 	}
 }
 
@@ -599,11 +639,11 @@ func TestManagerLifecycleHelpers(t *testing.T) {
 	mgr.CloseManager()
 	mgr.CloseManager()
 
-	if !pool.stopped() {
-		t.Fatal("pool stopped = false, want CloseManager to stop pool")
+	if pool.stopCount() != 1 {
+		t.Fatalf("pool stop count = %d, want 1", pool.stopCount())
 	}
-	if !logger.flushed() || !logger.closed() {
-		t.Fatalf("logger flushed/closed = %v/%v, want true/true", logger.flushed(), logger.closed())
+	if logger.flushCount() != 1 || logger.closeCount() != 1 {
+		t.Fatalf("logger flush/close count = %d/%d, want 1/1", logger.flushCount(), logger.closeCount())
 	}
 	if _, ok := managerBackgrounds.Load(mgr); ok {
 		t.Fatal("manager background state still exists after CloseManager")
@@ -670,7 +710,7 @@ type managerLifecycleTestPool struct {
 	running  int
 	capacity int
 	usage    float64
-	stop     bool
+	stop     int
 }
 
 func (p *managerLifecycleTestPool) Submit(task func()) error {
@@ -681,7 +721,7 @@ func (p *managerLifecycleTestPool) Submit(task func()) error {
 func (p *managerLifecycleTestPool) Stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.stop = true
+	p.stop++
 }
 
 func (p *managerLifecycleTestPool) Stats() (int, int, float64) {
@@ -690,7 +730,7 @@ func (p *managerLifecycleTestPool) Stats() (int, int, float64) {
 	return p.running, p.capacity, p.usage
 }
 
-func (p *managerLifecycleTestPool) stopped() bool {
+func (p *managerLifecycleTestPool) stopCount() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.stop
@@ -699,8 +739,8 @@ func (p *managerLifecycleTestPool) stopped() bool {
 type managerLifecycleTestLogger struct {
 	mu         sync.Mutex
 	infof      int
-	flush      bool
-	close      bool
+	flush      int
+	close      int
 	lastFormat string
 }
 
@@ -724,13 +764,13 @@ func (l *managerLifecycleTestLogger) Infof(format string, v ...any) {
 func (l *managerLifecycleTestLogger) Close() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.close = true
+	l.close++
 }
 
 func (l *managerLifecycleTestLogger) Flush() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.flush = true
+	l.flush++
 }
 
 func (l *managerLifecycleTestLogger) SetLevel(adapter.LogLevel) {}
@@ -745,13 +785,13 @@ func (l *managerLifecycleTestLogger) infofCount() int {
 	return l.infof
 }
 
-func (l *managerLifecycleTestLogger) flushed() bool {
+func (l *managerLifecycleTestLogger) flushCount() int {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.flush
 }
 
-func (l *managerLifecycleTestLogger) closed() bool {
+func (l *managerLifecycleTestLogger) closeCount() int {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.close

@@ -25,13 +25,13 @@ func (a *Auth) GetOnlineTerminalCountByDevice(ctx context.Context, loginID, devi
 	return mgr.GetOnlineTerminalCountByDevice(ctx, loginID, device)
 }
 
-// GetOnlineTerminalCountByDeviceAndDeviceId returns online terminal count for a device ID. GetOnlineTerminalCountByDeviceAndDeviceId 获取指定设备 ID 在线终端数量。
-func (a *Auth) GetOnlineTerminalCountByDeviceAndDeviceId(ctx context.Context, loginID, device, deviceID string) (int, error) {
+// GetOnlineTerminalCountByDeviceAndDeviceID returns online terminal count for a device ID. GetOnlineTerminalCountByDeviceAndDeviceID 获取指定设备 ID 在线终端数量。
+func (a *Auth) GetOnlineTerminalCountByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) (int, error) {
 	mgr, err := a.requireManager()
 	if err != nil {
 		return 0, err
 	}
-	return mgr.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, loginID, device, deviceID)
+	return mgr.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, loginID, device, deviceID)
 }
 
 // ForEachTerminal visits each terminal for a login ID. ForEachTerminal 遍历指定账号的终端。
@@ -70,7 +70,7 @@ func (a *Auth) GetSessionByToken(ctx context.Context, token string) (*manager.Se
 	return mgr.GetSessionByToken(ctx, token)
 }
 
-// GetTokenValueListByLoginID returns token values for a login ID. GetTokenValueListByLoginID 获取账号的 Token 列表。
+// GetTokenValueListByLoginID returns token values for a login ID. GetTokenValueListByLoginID 获取账号 Token 列表。
 func (a *Auth) GetTokenValueListByLoginID(ctx context.Context, loginID string, checkAlive bool) ([]string, error) {
 	mgr, err := a.requireManager()
 	if err != nil {
@@ -79,16 +79,16 @@ func (a *Auth) GetTokenValueListByLoginID(ctx context.Context, loginID string, c
 	return mgr.GetTokenValueListByLoginID(ctx, loginID, checkAlive)
 }
 
-// GetTokenValueListByDeviceAndDeviceId returns token values for a device ID. GetTokenValueListByDeviceAndDeviceId 获取指定设备 ID 的 Token 列表。
-func (a *Auth) GetTokenValueListByDeviceAndDeviceId(ctx context.Context, loginID, device, deviceID string, checkAlive bool) ([]string, error) {
+// GetTokenValueListByDeviceAndDeviceID returns token values for a device ID. GetTokenValueListByDeviceAndDeviceID 获取指定设备 ID 。Token 列表。
+func (a *Auth) GetTokenValueListByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string, checkAlive bool) ([]string, error) {
 	mgr, err := a.requireManager()
 	if err != nil {
 		return nil, err
 	}
-	return mgr.GetTokenValueListByDeviceAndDeviceId(ctx, loginID, device, deviceID, checkAlive)
+	return mgr.GetTokenValueListByDeviceAndDeviceID(ctx, loginID, device, deviceID, checkAlive)
 }
 
-// GetTokenValueListByDevice returns token values for a device. GetTokenValueListByDevice 获取指定设备的 Token 列表。
+// GetTokenValueListByDevice returns token values for a device. GetTokenValueListByDevice 获取指定设备 Token 列表。
 func (a *Auth) GetTokenValueListByDevice(ctx context.Context, loginID, device string, checkAlive bool) ([]string, error) {
 	mgr, err := a.requireManager()
 	if err != nil {

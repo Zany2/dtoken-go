@@ -25,7 +25,7 @@ var (
 	DeleteAllManager = dtoken.DeleteAllManager
 )
 
-// DToken login and token operations DToken 登录和 token 操作
+// DToken login and token operations DToken 登录。token 操作
 var (
 	Login                                     = dtoken.Login
 	LoginWithTimeout                          = dtoken.LoginWithTimeout
@@ -36,15 +36,15 @@ var (
 	IntrospectToken                           = dtoken.IntrospectToken
 	LoginByToken                              = dtoken.LoginByToken
 	Logout                                    = dtoken.Logout
-	LogoutByDeviceAndDeviceId                 = dtoken.LogoutByDeviceAndDeviceId
+	LogoutByDeviceAndDeviceID                 = dtoken.LogoutByDeviceAndDeviceID
 	LogoutByDevice                            = dtoken.LogoutByDevice
 	LogoutByLoginID                           = dtoken.LogoutByLoginID
 	Kickout                                   = dtoken.Kickout
 	Replace                                   = dtoken.Replace
-	KickoutByDeviceAndDeviceId                = dtoken.KickoutByDeviceAndDeviceId
+	KickoutByDeviceAndDeviceID                = dtoken.KickoutByDeviceAndDeviceID
 	KickoutByDevice                           = dtoken.KickoutByDevice
 	KickoutByLoginID                          = dtoken.KickoutByLoginID
-	ReplaceByDeviceAndDeviceId                = dtoken.ReplaceByDeviceAndDeviceId
+	ReplaceByDeviceAndDeviceID                = dtoken.ReplaceByDeviceAndDeviceID
 	ReplaceByDevice                           = dtoken.ReplaceByDevice
 	ReplaceByLoginID                          = dtoken.ReplaceByLoginID
 	IsLogin                                   = dtoken.IsLogin
@@ -52,7 +52,7 @@ var (
 	GetLoginID                                = dtoken.GetLoginID
 	GetTokenInfo                              = dtoken.GetTokenInfo
 	GetDevice                                 = dtoken.GetDevice
-	GetDeviceId                               = dtoken.GetDeviceId
+	GetDeviceID                               = dtoken.GetDeviceID
 	GetTokenCreateTime                        = dtoken.GetTokenCreateTime
 	GetTokenTTL                               = dtoken.GetTokenTTL
 	RenewTimeout                              = dtoken.RenewTimeout
@@ -61,7 +61,7 @@ var (
 	GetSession                                = dtoken.GetSession
 	GetSessionByToken                         = dtoken.GetSessionByToken
 	GetTokenValueListByLoginID                = dtoken.GetTokenValueListByLoginID
-	GetTokenValueListByDeviceAndDeviceId      = dtoken.GetTokenValueListByDeviceAndDeviceId
+	GetTokenValueListByDeviceAndDeviceID      = dtoken.GetTokenValueListByDeviceAndDeviceID
 	GetTokenValueListByDevice                 = dtoken.GetTokenValueListByDevice
 	GetTerminalListByLoginID                  = dtoken.GetTerminalListByLoginID
 	GetTerminalListByLoginIDAndDevice         = dtoken.GetTerminalListByLoginIDAndDevice
@@ -72,7 +72,7 @@ var (
 	SearchSessionId                           = dtoken.SearchSessionId
 	GetOnlineTerminalCount                    = dtoken.GetOnlineTerminalCount
 	GetOnlineTerminalCountByDevice            = dtoken.GetOnlineTerminalCountByDevice
-	GetOnlineTerminalCountByDeviceAndDeviceId = dtoken.GetOnlineTerminalCountByDeviceAndDeviceId
+	GetOnlineTerminalCountByDeviceAndDeviceID = dtoken.GetOnlineTerminalCountByDeviceAndDeviceID
 )
 
 // DToken disable operations DToken 封禁操作
@@ -96,18 +96,18 @@ var (
 	GetDisableServiceTTL               = dtoken.GetDisableServiceTTL
 	DisableDevice                      = dtoken.DisableDevice
 	DisableDeviceWithReason            = dtoken.DisableDeviceWithReason
-	DisableDeviceAndDeviceId           = dtoken.DisableDeviceAndDeviceId
-	DisableDeviceAndDeviceIdWithReason = dtoken.DisableDeviceAndDeviceIdWithReason
+	DisableDeviceAndDeviceID           = dtoken.DisableDeviceAndDeviceID
+	DisableDeviceAndDeviceIDWithReason = dtoken.DisableDeviceAndDeviceIDWithReason
 	UntieDevice                        = dtoken.UntieDevice
-	UntieDeviceAndDeviceId             = dtoken.UntieDeviceAndDeviceId
+	UntieDeviceAndDeviceID             = dtoken.UntieDeviceAndDeviceID
 	IsDisableDevice                    = dtoken.IsDisableDevice
-	IsDisableDeviceAndDeviceId         = dtoken.IsDisableDeviceAndDeviceId
+	IsDisableDeviceAndDeviceID         = dtoken.IsDisableDeviceAndDeviceID
 	CheckDisableDevice                 = dtoken.CheckDisableDevice
-	CheckDisableDeviceAndDeviceId      = dtoken.CheckDisableDeviceAndDeviceId
+	CheckDisableDeviceAndDeviceID      = dtoken.CheckDisableDeviceAndDeviceID
 	GetDisableDeviceInfo               = dtoken.GetDisableDeviceInfo
-	GetDisableDeviceAndDeviceIdInfo    = dtoken.GetDisableDeviceAndDeviceIdInfo
+	GetDisableDeviceAndDeviceIDInfo    = dtoken.GetDisableDeviceAndDeviceIDInfo
 	GetDisableDeviceTTL                = dtoken.GetDisableDeviceTTL
-	GetDisableDeviceAndDeviceIdTTL     = dtoken.GetDisableDeviceAndDeviceIdTTL
+	GetDisableDeviceAndDeviceIDTTL     = dtoken.GetDisableDeviceAndDeviceIDTTL
 )
 
 // DToken permission operations DToken 权限操作

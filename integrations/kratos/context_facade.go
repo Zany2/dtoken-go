@@ -9,7 +9,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
-// GetTokenValueByCtx gets token value from current Kratos context GetTokenValueByCtx 从当前 Kratos 上下文获取 token 值。
+// GetTokenValueByCtx gets token value from current Kratos context GetTokenValueByCtx 从当。Kratos 上下文获。token 值。
 func GetTokenValueByCtx(ctx context.Context) (string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -104,13 +104,13 @@ func LogoutByDeviceByCtx(ctx context.Context, device string) error {
 	return dCtx.Terminal().LogoutByDevice(ctx, device)
 }
 
-// LogoutByDeviceAndDeviceIdByCtx logs out current user by device and id LogoutByDeviceAndDeviceIdByCtx 按设备和设备 ID 登出当前用户。
-func LogoutByDeviceAndDeviceIdByCtx(ctx context.Context, deviceAndDeviceId ...string) error {
+// LogoutByDeviceAndDeviceIDByCtx logs out current user by device and id LogoutByDeviceAndDeviceIDByCtx 按设备和设备 ID 登出当前用户。
+func LogoutByDeviceAndDeviceIDByCtx(ctx context.Context, deviceAndDeviceID ...string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
 		return err
 	}
-	return dCtx.Terminal().LogoutByDeviceAndDeviceId(ctx, deviceAndDeviceId...)
+	return dCtx.Terminal().LogoutByDeviceAndDeviceID(ctx, deviceAndDeviceID...)
 }
 
 // LogoutByLoginIDByCtx logs out all terminals of current user LogoutByLoginIDByCtx 登出当前用户所有终端。
@@ -137,7 +137,7 @@ func GetDeviceIDByCtx(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return dCtx.Auth().GetDeviceId(ctx)
+	return dCtx.Auth().GetDeviceID(ctx)
 }
 
 // GetTokenTTLByCtx gets current token TTL GetTokenTTLByCtx 获取当前 token 剩余有效期。
@@ -303,7 +303,7 @@ func HasPermissionsAndByCtx(ctx context.Context, permissions []string) bool {
 	return dCtx.Access().HasPermissionsAnd(ctx, permissions)
 }
 
-// AddRolesByCtx adds roles to current token AddRolesByCtx 为当前 token 添加角色。
+// AddRolesByCtx adds roles to current token AddRolesByCtx 为当。token 添加角色。
 func AddRolesByCtx(ctx context.Context, roles []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -312,7 +312,7 @@ func AddRolesByCtx(ctx context.Context, roles []string) error {
 	return dCtx.Access().AddRoles(ctx, roles)
 }
 
-// RemoveRolesByCtx removes roles from current token RemoveRolesByCtx 从当前 token 移除角色。
+// RemoveRolesByCtx removes roles from current token RemoveRolesByCtx 从当。token 移除角色。
 func RemoveRolesByCtx(ctx context.Context, roles []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -321,7 +321,7 @@ func RemoveRolesByCtx(ctx context.Context, roles []string) error {
 	return dCtx.Access().RemoveRoles(ctx, roles)
 }
 
-// AddPermissionsByCtx adds permissions to current token AddPermissionsByCtx 为当前 token 添加权限。
+// AddPermissionsByCtx adds permissions to current token AddPermissionsByCtx 为当。token 添加权限。
 func AddPermissionsByCtx(ctx context.Context, permissions []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -330,7 +330,7 @@ func AddPermissionsByCtx(ctx context.Context, permissions []string) error {
 	return dCtx.Access().AddPermissions(ctx, permissions)
 }
 
-// RemovePermissionsByCtx removes permissions from current token RemovePermissionsByCtx 从当前 token 移除权限。
+// RemovePermissionsByCtx removes permissions from current token RemovePermissionsByCtx 从当。token 移除权限。
 func RemovePermissionsByCtx(ctx context.Context, permissions []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -393,7 +393,7 @@ func GenerateNonceByCtx(ctx context.Context) (string, error) {
 	return dCtx.Nonce().Generate(ctx)
 }
 
-// VerifyNonceByCtx verifies nonce with current manager VerifyNonceByCtx 使用当前管理器验证 nonce。
+// VerifyNonceByCtx verifies nonce with current manager VerifyNonceByCtx 使用当前管理器校验 nonce。
 func VerifyNonceByCtx(ctx context.Context, nonce string) bool {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -402,7 +402,7 @@ func VerifyNonceByCtx(ctx context.Context, nonce string) bool {
 	return dCtx.Nonce().Verify(ctx, nonce)
 }
 
-// VerifyAndConsumeNonceByCtx verifies and consumes nonce with current manager VerifyAndConsumeNonceByCtx 使用当前管理器验证并消费 nonce。
+// VerifyAndConsumeNonceByCtx verifies nonce with current manager VerifyAndConsumeNonceByCtx 使用当前管理器校验并消费 nonce
 func VerifyAndConsumeNonceByCtx(ctx context.Context, nonce string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {

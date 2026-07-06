@@ -23,7 +23,7 @@ func (m *Manager) CreateShortKey(ctx context.Context, opts shortkey.CreateOption
 	return value, nil
 }
 
-// CreateShortKeyWithTimeout creates a pending short key with timeout. CreateShortKeyWithTimeout 使用指定有效期创建待确认短 Key。
+// CreateShortKeyWithTimeout creates a pending short key with timeout. CreateShortKeyWithTimeout 使用指定有效期创建待确认。Key。
 func (m *Manager) CreateShortKeyWithTimeout(ctx context.Context, opts shortkey.CreateOptions, timeout time.Duration) (*shortkey.ShortKey, error) {
 	if m.shortKeyManager == nil {
 		return nil, derror.ErrModuleNotEnabled
@@ -49,7 +49,7 @@ func (m *Manager) ConfirmShortKey(ctx context.Context, key string, opts shortkey
 	return value, nil
 }
 
-// ValidateShortKey validates a short key without consuming it. ValidateShortKey 校验短 Key 但不消费。
+// ValidateShortKey validates a short key without consuming it. ValidateShortKey 校验。Key 但不消费。
 func (m *Manager) ValidateShortKey(ctx context.Context, key string, opts ...shortkey.ValidateOptions) (*shortkey.ShortKey, error) {
 	if m.shortKeyManager == nil {
 		return nil, derror.ErrModuleNotEnabled
@@ -73,7 +73,7 @@ func (m *Manager) ConsumeShortKey(ctx context.Context, key string, opts ...short
 	return result, err
 }
 
-// RevokeShortKey revokes a short key. RevokeShortKey 撤销短 Key。
+// RevokeShortKey revokes a short key. RevokeShortKey 撤销。Key。
 func (m *Manager) RevokeShortKey(ctx context.Context, key string) error {
 	if m.shortKeyManager == nil {
 		return derror.ErrModuleNotEnabled
@@ -93,7 +93,7 @@ func (m *Manager) RevokeShortKey(ctx context.Context, key string) error {
 	return err
 }
 
-// GetShortKeyStatus returns short key lifecycle status. GetShortKeyStatus 返回短 Key 生命周期状态。
+// GetShortKeyStatus returns short key lifecycle status. GetShortKeyStatus 返回。Key 生命周期状态。
 func (m *Manager) GetShortKeyStatus(ctx context.Context, key string) (shortkey.Status, error) {
 	if m.shortKeyManager == nil {
 		return shortkey.StatusInvalid, derror.ErrModuleNotEnabled
@@ -101,7 +101,7 @@ func (m *Manager) GetShortKeyStatus(ctx context.Context, key string) (shortkey.S
 	return m.shortKeyManager.Status(ctx, key)
 }
 
-// GetShortKeyTTL returns short key ttl in seconds. GetShortKeyTTL 获取短 Key 剩余有效秒数。
+// GetShortKeyTTL returns short key ttl in seconds. GetShortKeyTTL 获取。Key 剩余有效秒数。
 func (m *Manager) GetShortKeyTTL(ctx context.Context, key string) (int64, error) {
 	if m.shortKeyManager == nil {
 		return 0, derror.ErrModuleNotEnabled
@@ -113,7 +113,7 @@ func (m *Manager) triggerShortKeyEvent(event listener.Event, value *shortkey.Sho
 	if value == nil {
 		return
 	}
-	m.triggerEvent(event, value.LoginID, value.Device, value.DeviceId, value.Key, map[string]any{
+	m.triggerEvent(event, value.LoginID, value.Device, value.DeviceID, value.Key, map[string]any{
 		listener.ExtraKeyAction:    action,
 		listener.ExtraKeyScene:     value.Scene,
 		listener.ExtraKeySourceApp: value.SourceApp,
@@ -124,7 +124,7 @@ func (m *Manager) triggerShortKeyEvent(event listener.Event, value *shortkey.Sho
 	})
 }
 
-// remainingShortKeyTTLSeconds calculates remaining short key seconds for event data. remainingShortKeyTTLSeconds 计算事件数据中的短 Key 剩余秒数。
+// remainingShortKeyTTLSeconds calculates remaining short key seconds for event data. remainingShortKeyTTLSeconds 计算事件数据中的。Key 剩余秒数。
 func remainingShortKeyTTLSeconds(value *shortkey.ShortKey) int64 {
 	if value == nil || value.ExpiresIn <= 0 {
 		return 0

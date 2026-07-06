@@ -14,7 +14,7 @@ func SetSessionValueByContext(c *gofiber.Ctx, key string, value any) error {
 	return dCtx.Session().SetValue(requestContext(c), key, value)
 }
 
-// GetSessionValueByContext gets current session value GetSessionValueByContext 鑾峰彇褰撳墠浼氳瘽鍊?
+// GetSessionValueByContext gets current session value GetSessionValueByContext 获取当前会话值
 func GetSessionValueByContext(c *gofiber.Ctx, key string) (any, bool, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -23,7 +23,7 @@ func GetSessionValueByContext(c *gofiber.Ctx, key string) (any, bool, error) {
 	return dCtx.Session().GetValue(requestContext(c), key)
 }
 
-// DeleteSessionValueByContext deletes current session value DeleteSessionValueByContext 鍒犻櫎褰撳墠浼氳瘽鍊?
+// DeleteSessionValueByContext deletes current session value DeleteSessionValueByContext 删除当前会话值
 func DeleteSessionValueByContext(c *gofiber.Ctx, key string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

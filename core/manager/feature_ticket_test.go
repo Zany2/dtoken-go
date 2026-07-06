@@ -18,7 +18,7 @@ func TestManagerTicketCreateValidateConsume(t *testing.T) {
 	created, err := mgr.CreateTicket(ctx, ticket.CreateOptions{
 		LoginID:   "user-1001",
 		Device:    "web",
-		DeviceId:  "browser-1",
+		DeviceID:  "browser-1",
 		Source:    "scan",
 		SourceApp: "portal",
 		TargetApp: "admin",

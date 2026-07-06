@@ -11,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetTokenValueByContext gets token value from current Gin context GetTokenValueByContext 从当前 Gin 上下文获取 token 值
+// GetTokenValueByContext gets token value from current Gin context GetTokenValueByContext 从当。Gin 上下文获。token 。
 func GetTokenValueByContext(c *gin.Context) (string, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -25,7 +25,7 @@ func GetTokenValueByContext(c *gin.Context) (string, error) {
 	return tokenValue, nil
 }
 
-// GetRequestContextByContext gets raw request context GetRequestContextByContext 获取原始请求上下文
+// GetRequestContextByContext gets raw request context GetRequestContextByContext 获取原始请求上下文。
 func GetRequestContextByContext(c *gin.Context) (adapter.RequestContext, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -34,7 +34,7 @@ func GetRequestContextByContext(c *gin.Context) (adapter.RequestContext, error) 
 	return dCtx.GetRequestContext(), nil
 }
 
-// GetManagerByContext gets current DToken manager GetManagerByContext 获取当前 DToken 管理器
+// GetManagerByContext gets current DToken manager GetManagerByContext 获取当前 DToken 管理。
 func GetManagerByContext(c *gin.Context) (*manager.Manager, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -43,7 +43,7 @@ func GetManagerByContext(c *gin.Context) (*manager.Manager, error) {
 	return dCtx.GetManager(), nil
 }
 
-// IsLoginByContext checks current request login state IsLoginByContext 检查当前请求登录状态
+// IsLoginByContext checks current request login state IsLoginByContext 检查当前请求登录状。
 func IsLoginByContext(c *gin.Context) bool {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -52,7 +52,7 @@ func IsLoginByContext(c *gin.Context) bool {
 	return dCtx.Auth().IsLogin(requestContext(c))
 }
 
-// CheckLoginByContext checks current request login state CheckLoginByContext 校验当前请求登录状态
+// CheckLoginByContext checks current request login state CheckLoginByContext 校验当前请求登录状。
 func CheckLoginByContext(c *gin.Context) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -70,7 +70,7 @@ func GetLoginIDByContext(c *gin.Context) (string, error) {
 	return dCtx.Auth().GetLoginID(requestContext(c))
 }
 
-// LoginByTokenByContext renews current token login state LoginByTokenByContext 使用当前 token 续期登录态
+// LoginByTokenByContext renews current token login state LoginByTokenByContext 使用当前 token 续期登录。
 func LoginByTokenByContext(c *gin.Context) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -106,7 +106,7 @@ func ReplaceByContext(c *gin.Context) error {
 	return dCtx.Auth().Replace(requestContext(c))
 }
 
-// LogoutByDeviceByContext logs out current user by device LogoutByDeviceByContext 按设备登出当前用户
+// LogoutByDeviceByContext logs out current user by device LogoutByDeviceByContext 按设备登出当前用。
 func LogoutByDeviceByContext(c *gin.Context, device string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -115,16 +115,16 @@ func LogoutByDeviceByContext(c *gin.Context, device string) error {
 	return dCtx.Terminal().LogoutByDevice(requestContext(c), device)
 }
 
-// LogoutByDeviceAndDeviceIdByContext logs out current user by device and id LogoutByDeviceAndDeviceIdByContext 按设备和设备 ID 登出当前用户
-func LogoutByDeviceAndDeviceIdByContext(c *gin.Context, deviceAndDeviceId ...string) error {
+// LogoutByDeviceAndDeviceIDByContext logs out current user by device and id LogoutByDeviceAndDeviceIDByContext 按设备和设备 ID 登出当前用户
+func LogoutByDeviceAndDeviceIDByContext(c *gin.Context, deviceAndDeviceID ...string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return err
 	}
-	return dCtx.Terminal().LogoutByDeviceAndDeviceId(requestContext(c), deviceAndDeviceId...)
+	return dCtx.Terminal().LogoutByDeviceAndDeviceID(requestContext(c), deviceAndDeviceID...)
 }
 
-// LogoutByLoginIDByContext logs out all terminals of current user LogoutByLoginIDByContext 登出当前用户所有终端
+// LogoutByLoginIDByContext logs out all terminals of current user LogoutByLoginIDByContext 登出当前用户所有终。
 func LogoutByLoginIDByContext(c *gin.Context) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -142,7 +142,7 @@ func GetTokenInfoByContext(c *gin.Context) (*manager.TokenInfo, error) {
 	return dCtx.Auth().GetTokenInfo(requestContext(c))
 }
 
-// IntrospectTokenByContext inspects current token without renewal side effects IntrospectTokenByContext 无续期副作用地检查当前 token 状态
+// IntrospectTokenByContext inspects current token without renewal side effects IntrospectTokenByContext 无续期副作用地检查当。token 状。
 func IntrospectTokenByContext(c *gin.Context) (*manager.TokenIntrospection, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -166,10 +166,10 @@ func GetDeviceIDByContext(c *gin.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return dCtx.Auth().GetDeviceId(requestContext(c))
+	return dCtx.Auth().GetDeviceID(requestContext(c))
 }
 
-// GetTokenTTLByContext gets current token TTL GetTokenTTLByContext 获取当前 token 剩余有效期
+// GetTokenTTLByContext gets current token TTL GetTokenTTLByContext 获取当前 token 剩余有效。
 func GetTokenTTLByContext(c *gin.Context) (int64, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -250,7 +250,7 @@ func GetRolesByTokenByContext(c *gin.Context) ([]string, error) {
 	return dCtx.Access().GetRolesByToken(requestContext(c))
 }
 
-// HasRoleByContext checks current user role HasRoleByContext 检查当前用户角色
+// HasRoleByContext checks current user role HasRoleByContext 检查当前用户角。
 func HasRoleByContext(c *gin.Context, role string) bool {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -273,7 +273,7 @@ func HasRolesOrByContext(c *gin.Context, roles []string) bool {
 	return HasRolesByContext(c, roles)
 }
 
-// HasRolesAndByContext checks whether current user has all roles HasRolesAndByContext 检查当前用户是否拥有全部角色
+// HasRolesAndByContext checks whether current user has all roles HasRolesAndByContext 检查当前用户是否拥有全部角。
 func HasRolesAndByContext(c *gin.Context, roles []string) bool {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -300,7 +300,7 @@ func GetPermissionsByTokenByContext(c *gin.Context) ([]string, error) {
 	return dCtx.Access().GetPermissionsByToken(requestContext(c))
 }
 
-// HasPermissionByContext checks current user permission HasPermissionByContext 检查当前用户权限
+// HasPermissionByContext checks current user permission HasPermissionByContext 检查当前用户权。
 func HasPermissionByContext(c *gin.Context, permission string) bool {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -323,7 +323,7 @@ func HasPermissionsOrByContext(c *gin.Context, permissions []string) bool {
 	return HasPermissionsByContext(c, permissions)
 }
 
-// HasPermissionsAndByContext checks whether current user has all permissions HasPermissionsAndByContext 检查当前用户是否拥有全部权限
+// HasPermissionsAndByContext checks whether current user has all permissions HasPermissionsAndByContext 检查当前用户是否拥有全部权。
 func HasPermissionsAndByContext(c *gin.Context, permissions []string) bool {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -332,7 +332,7 @@ func HasPermissionsAndByContext(c *gin.Context, permissions []string) bool {
 	return dCtx.Access().HasPermissionsAnd(requestContext(c), permissions)
 }
 
-// AddRolesByContext adds roles to current token AddRolesByContext 为当前 token 添加角色
+// AddRolesByContext adds roles to current token AddRolesByContext 为当。token 添加角色
 func AddRolesByContext(c *gin.Context, roles []string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -341,7 +341,7 @@ func AddRolesByContext(c *gin.Context, roles []string) error {
 	return dCtx.Access().AddRoles(requestContext(c), roles)
 }
 
-// RemoveRolesByContext removes roles from current token RemoveRolesByContext 从当前 token 移除角色
+// RemoveRolesByContext removes roles from current token RemoveRolesByContext 从当。token 移除角色
 func RemoveRolesByContext(c *gin.Context, roles []string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -350,7 +350,7 @@ func RemoveRolesByContext(c *gin.Context, roles []string) error {
 	return dCtx.Access().RemoveRoles(requestContext(c), roles)
 }
 
-// AddPermissionsByContext adds permissions to current token AddPermissionsByContext 为当前 token 添加权限
+// AddPermissionsByContext adds permissions to current token AddPermissionsByContext 为当。token 添加权限
 func AddPermissionsByContext(c *gin.Context, permissions []string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -359,7 +359,7 @@ func AddPermissionsByContext(c *gin.Context, permissions []string) error {
 	return dCtx.Access().AddPermissions(requestContext(c), permissions)
 }
 
-// RemovePermissionsByContext removes permissions from current token RemovePermissionsByContext 从当前 token 移除权限
+// RemovePermissionsByContext removes permissions from current token RemovePermissionsByContext 从当。token 移除权限
 func RemovePermissionsByContext(c *gin.Context, permissions []string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -422,7 +422,7 @@ func GenerateNonceByContext(c *gin.Context) (string, error) {
 	return dCtx.Nonce().Generate(requestContext(c))
 }
 
-// VerifyNonceByContext verifies nonce with current manager VerifyNonceByContext 使用当前管理器验证 nonce
+// VerifyNonceByContext verifies nonce with current manager VerifyNonceByContext 使用当前管理器校验 nonce
 func VerifyNonceByContext(c *gin.Context, nonce string) bool {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -440,7 +440,7 @@ func VerifyAndConsumeNonceByContext(c *gin.Context, nonce string) error {
 	return dCtx.Nonce().VerifyAndConsume(requestContext(c), nonce)
 }
 
-// requestContext gets standard context from Gin request requestContext 从 Gin 请求获取标准上下文
+// requestContext gets standard context from Gin request requestContext 从 Gin 请求获取标准上下文。
 func requestContext(c *gin.Context) context.Context {
 	if c != nil && c.Request != nil {
 		return c.Request.Context()
@@ -448,7 +448,7 @@ func requestContext(c *gin.Context) context.Context {
 	return context.Background()
 }
 
-// requireDTokenContextByContext gets required DToken context requireDTokenContextByContext 获取必需的 DToken 上下文
+// requireDTokenContextByContext gets required DToken context requireDTokenContextByContext 获取必需的 DToken 上下文。
 func requireDTokenContextByContext(c *gin.Context) (*DTokenContext, error) {
 	dCtx, ok := GetDTokenContext(c)
 	if !ok {

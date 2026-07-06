@@ -6,16 +6,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// LoginWithRefreshTokenByContext logs in and issues refresh token LoginWithRefreshTokenByContext 鐧诲綍骞剁鍙戝埛鏂?Token
-func LoginWithRefreshTokenByContext(c *gin.Context, loginID string, deviceAndDeviceId ...string) (*manager.RefreshTokenPair, error) {
+// LoginWithRefreshTokenByContext logs in and issues refresh token LoginWithRefreshTokenByContext 登录并签发刷新 Token
+func LoginWithRefreshTokenByContext(c *gin.Context, loginID string, deviceAndDeviceID ...string) (*manager.RefreshTokenPair, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return nil, err
 	}
-	return dCtx.Refresh().Login(requestContext(c), loginID, deviceAndDeviceId...)
+	return dCtx.Refresh().Login(requestContext(c), loginID, deviceAndDeviceID...)
 }
 
-// LoginWithRefreshTokenOptionsByContext logs in with refresh token options LoginWithRefreshTokenOptionsByContext 浣跨敤鍒锋柊 Token 閫夐」鐧诲綍
+// LoginWithRefreshTokenOptionsByContext logs in with refresh token options LoginWithRefreshTokenOptionsByContext 使用刷新 Token 选项登录
 func LoginWithRefreshTokenOptionsByContext(c *gin.Context, opts manager.RefreshTokenOptions) (*manager.RefreshTokenPair, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -24,7 +24,7 @@ func LoginWithRefreshTokenOptionsByContext(c *gin.Context, opts manager.RefreshT
 	return dCtx.Refresh().LoginWithOptions(requestContext(c), opts)
 }
 
-// RefreshTokenByContext refreshes access token RefreshTokenByContext 鍒锋柊璁块棶 Token
+// RefreshTokenByContext refreshes access token RefreshTokenByContext 刷新访问 Token
 func RefreshTokenByContext(c *gin.Context, refreshToken string) (*manager.RefreshTokenPair, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -33,7 +33,7 @@ func RefreshTokenByContext(c *gin.Context, refreshToken string) (*manager.Refres
 	return dCtx.Refresh().Refresh(requestContext(c), refreshToken)
 }
 
-// RevokeRefreshTokenByContext revokes refresh token RevokeRefreshTokenByContext 鎾ら攢鍒锋柊 Token
+// RevokeRefreshTokenByContext revokes refresh token RevokeRefreshTokenByContext 撤销刷新 Token
 func RevokeRefreshTokenByContext(c *gin.Context, refreshToken string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -42,7 +42,7 @@ func RevokeRefreshTokenByContext(c *gin.Context, refreshToken string) error {
 	return dCtx.Refresh().Revoke(requestContext(c), refreshToken)
 }
 
-// GetRefreshTokenTTLByContext gets refresh token TTL GetRefreshTokenTTLByContext 鑾峰彇鍒锋柊 Token 鍓╀綑鏈夋晥鏈?
+// GetRefreshTokenTTLByContext gets refresh token TTL GetRefreshTokenTTLByContext 获取刷新 Token 剩余有效期
 func GetRefreshTokenTTLByContext(c *gin.Context, refreshToken string) (int64, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

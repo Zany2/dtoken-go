@@ -35,7 +35,7 @@ func (c *DisableContext) IsAccount(ctx context.Context) bool {
 	return c.d.manager.IsDisable(ctx, loginID)
 }
 
-// CheckAccount checks current account disable state with error CheckAccount 校验当前账号封禁状态
+// CheckAccount checks current account disable state with error CheckAccount 校验当前账号封禁状态。
 func (c *DisableContext) CheckAccount(ctx context.Context) error {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
@@ -62,7 +62,7 @@ func (c *DisableContext) AccountTTL(ctx context.Context) (int64, error) {
 	return c.d.manager.GetDisableTTL(ctx, loginID)
 }
 
-// Service disables a service for current account Service 封禁当前账号的指定服务
+// Service disables a service for current account Service 封禁当前账号的指定服。
 func (c *DisableContext) Service(ctx context.Context, service string, duration time.Duration, reason ...string) error {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
@@ -80,7 +80,7 @@ func (c *DisableContext) ServiceLevel(ctx context.Context, service string, level
 	return c.d.manager.DisableServiceLevel(ctx, loginID, service, level, duration, reason...)
 }
 
-// UntieService removes service disable state UntieService 解封当前账号的指定服务
+// UntieService removes service disable state UntieService 解封当前账号的指定服。
 func (c *DisableContext) UntieService(ctx context.Context, service string) error {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
@@ -98,7 +98,7 @@ func (c *DisableContext) IsService(ctx context.Context, service string) bool {
 	return c.d.manager.IsDisableService(ctx, loginID, service)
 }
 
-// IsServiceLevel checks service disable level IsServiceLevel 检查当前账号指定服务是否达到封禁等级
+// IsServiceLevel checks service disable level IsServiceLevel 检查当前账号指定服务是否达到封禁等。
 func (c *DisableContext) IsServiceLevel(ctx context.Context, service string, level int) bool {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
@@ -107,7 +107,7 @@ func (c *DisableContext) IsServiceLevel(ctx context.Context, service string, lev
 	return c.d.manager.IsDisableServiceLevel(ctx, loginID, service, level)
 }
 
-// CheckService checks service disable state with error CheckService 校验当前账号指定服务封禁状态
+// CheckService checks service disable state with error CheckService 校验当前账号指定服务封禁状态。
 func (c *DisableContext) CheckService(ctx context.Context, services ...string) error {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
@@ -143,7 +143,7 @@ func (c *DisableContext) GetServiceTTL(ctx context.Context, service string) (int
 	return c.d.manager.GetDisableServiceTTL(ctx, loginID, service)
 }
 
-// Device disables current account device type Device 封禁当前账号的设备类型
+// Device disables current account device type Device 封禁当前账号的设备类。
 func (c *DisableContext) Device(ctx context.Context, device string, duration time.Duration, reason ...string) error {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
@@ -152,16 +152,16 @@ func (c *DisableContext) Device(ctx context.Context, device string, duration tim
 	return c.d.manager.DisableDevice(ctx, loginID, device, duration, reason...)
 }
 
-// DeviceAndDeviceId disables current account concrete device DeviceAndDeviceId 封禁当前账号的具体设备
-func (c *DisableContext) DeviceAndDeviceId(ctx context.Context, device, deviceId string, duration time.Duration, reason ...string) error {
+// DeviceAndDeviceID disables current account concrete device DeviceAndDeviceID 封禁当前账号的具体设。
+func (c *DisableContext) DeviceAndDeviceID(ctx context.Context, device, deviceID string, duration time.Duration, reason ...string) error {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
 		return err
 	}
-	return c.d.manager.DisableDeviceAndDeviceId(ctx, loginID, device, deviceId, duration, reason...)
+	return c.d.manager.DisableDeviceAndDeviceID(ctx, loginID, device, deviceID, duration, reason...)
 }
 
-// UntieDevice removes current account device type disable state UntieDevice 解封当前账号的设备类型
+// UntieDevice removes current account device type disable state UntieDevice 解封当前账号的设备类。
 func (c *DisableContext) UntieDevice(ctx context.Context, device string) error {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
@@ -170,16 +170,16 @@ func (c *DisableContext) UntieDevice(ctx context.Context, device string) error {
 	return c.d.manager.UntieDevice(ctx, loginID, device)
 }
 
-// UntieDeviceAndDeviceId removes current account concrete device disable state UntieDeviceAndDeviceId 解封当前账号的具体设备
-func (c *DisableContext) UntieDeviceAndDeviceId(ctx context.Context, device, deviceId string) error {
+// UntieDeviceAndDeviceID removes current account concrete device disable state UntieDeviceAndDeviceID 解封当前账号的具体设。
+func (c *DisableContext) UntieDeviceAndDeviceID(ctx context.Context, device, deviceID string) error {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
 		return err
 	}
-	return c.d.manager.UntieDeviceAndDeviceId(ctx, loginID, device, deviceId)
+	return c.d.manager.UntieDeviceAndDeviceID(ctx, loginID, device, deviceID)
 }
 
-// IsDevice checks current account device type disable state IsDevice 检查当前账号设备类型封禁状态
+// IsDevice checks current account device type disable state IsDevice 检查当前账号设备类型封禁状态。
 func (c *DisableContext) IsDevice(ctx context.Context, device string) bool {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
@@ -188,16 +188,16 @@ func (c *DisableContext) IsDevice(ctx context.Context, device string) bool {
 	return c.d.manager.IsDisableDevice(ctx, loginID, device)
 }
 
-// IsDeviceAndDeviceId checks current account concrete device disable state IsDeviceAndDeviceId 检查当前账号具体设备封禁状态
-func (c *DisableContext) IsDeviceAndDeviceId(ctx context.Context, device, deviceId string) bool {
+// IsDeviceAndDeviceID checks current account concrete device disable state IsDeviceAndDeviceID 检查当前账号具体设备封禁状态。
+func (c *DisableContext) IsDeviceAndDeviceID(ctx context.Context, device, deviceID string) bool {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
 		return false
 	}
-	return c.d.manager.IsDisableDeviceAndDeviceId(ctx, loginID, device, deviceId)
+	return c.d.manager.IsDisableDeviceAndDeviceID(ctx, loginID, device, deviceID)
 }
 
-// CheckDevice checks current account device type disable state CheckDevice 校验当前账号设备类型封禁状态
+// CheckDevice checks current account device type disable state CheckDevice 校验当前账号设备类型封禁状态。
 func (c *DisableContext) CheckDevice(ctx context.Context, device string) error {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
@@ -206,13 +206,13 @@ func (c *DisableContext) CheckDevice(ctx context.Context, device string) error {
 	return c.d.manager.CheckDisableDevice(ctx, loginID, device)
 }
 
-// CheckDeviceAndDeviceId checks current account concrete device disable state CheckDeviceAndDeviceId 校验当前账号具体设备封禁状态
-func (c *DisableContext) CheckDeviceAndDeviceId(ctx context.Context, device, deviceId string) error {
+// CheckDeviceAndDeviceID checks current account concrete device disable state CheckDeviceAndDeviceID 校验当前账号具体设备封禁状态。
+func (c *DisableContext) CheckDeviceAndDeviceID(ctx context.Context, device, deviceID string) error {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
 		return err
 	}
-	return c.d.manager.CheckDisableDeviceAndDeviceId(ctx, loginID, device, deviceId)
+	return c.d.manager.CheckDisableDeviceAndDeviceID(ctx, loginID, device, deviceID)
 }
 
 // GetDeviceInfo gets current account device type disable info GetDeviceInfo 获取当前账号设备类型封禁信息
@@ -224,13 +224,13 @@ func (c *DisableContext) GetDeviceInfo(ctx context.Context, device string) (*man
 	return c.d.manager.GetDisableDeviceInfo(ctx, loginID, device)
 }
 
-// GetDeviceAndDeviceIdInfo gets current account concrete device disable info GetDeviceAndDeviceIdInfo 获取当前账号具体设备封禁信息
-func (c *DisableContext) GetDeviceAndDeviceIdInfo(ctx context.Context, device, deviceId string) (*manager.DeviceDisableInfo, error) {
+// GetDeviceAndDeviceIDInfo gets current account concrete device disable info GetDeviceAndDeviceIDInfo 获取当前账号具体设备封禁信息
+func (c *DisableContext) GetDeviceAndDeviceIDInfo(ctx context.Context, device, deviceID string) (*manager.DeviceDisableInfo, error) {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return c.d.manager.GetDisableDeviceAndDeviceIdInfo(ctx, loginID, device, deviceId)
+	return c.d.manager.GetDisableDeviceAndDeviceIDInfo(ctx, loginID, device, deviceID)
 }
 
 // GetDeviceTTL gets current account device type disable TTL GetDeviceTTL 获取当前账号设备类型封禁剩余时间
@@ -242,11 +242,11 @@ func (c *DisableContext) GetDeviceTTL(ctx context.Context, device string) (int64
 	return c.d.manager.GetDisableDeviceTTL(ctx, loginID, device)
 }
 
-// GetDeviceAndDeviceIdTTL gets current account concrete device disable TTL GetDeviceAndDeviceIdTTL 获取当前账号具体设备封禁剩余时间
-func (c *DisableContext) GetDeviceAndDeviceIdTTL(ctx context.Context, device, deviceId string) (int64, error) {
+// GetDeviceAndDeviceIDTTL gets current account concrete device disable TTL GetDeviceAndDeviceIDTTL 获取当前账号具体设备封禁剩余时间
+func (c *DisableContext) GetDeviceAndDeviceIDTTL(ctx context.Context, device, deviceID string) (int64, error) {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
 		return 0, err
 	}
-	return c.d.manager.GetDisableDeviceAndDeviceIdTTL(ctx, loginID, device, deviceId)
+	return c.d.manager.GetDisableDeviceAndDeviceIDTTL(ctx, loginID, device, deviceID)
 }

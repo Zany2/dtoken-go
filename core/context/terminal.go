@@ -31,16 +31,16 @@ func (c *TerminalContext) LogoutByDevice(ctx context.Context, device string) err
 	return c.d.manager.LogoutByDevice(ctx, loginID, device)
 }
 
-// LogoutByDeviceAndDeviceId logs out current account terminals by device ID LogoutByDeviceAndDeviceId 按设备和设备 ID 注销当前账号终端
-func (c *TerminalContext) LogoutByDeviceAndDeviceId(ctx context.Context, deviceAndDeviceId ...string) error {
+// LogoutByDeviceAndDeviceID logs out current account terminals by device ID LogoutByDeviceAndDeviceID 按设备和设备 ID 注销当前账号终端
+func (c *TerminalContext) LogoutByDeviceAndDeviceID(ctx context.Context, deviceAndDeviceID ...string) error {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
 		return err
 	}
-	return c.d.manager.LogoutByDeviceAndDeviceId(ctx, loginID, deviceAndDeviceId...)
+	return c.d.manager.LogoutByDeviceAndDeviceID(ctx, loginID, deviceAndDeviceID...)
 }
 
-// KickoutByDevice kicks out current account terminals by device KickoutByDevice 按设备踢出当前账号终端
+// KickoutByDevice kicks out current account terminals by device KickoutByDevice 按设备踢出当前账号终。
 func (c *TerminalContext) KickoutByDevice(ctx context.Context, device string) error {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
@@ -49,16 +49,16 @@ func (c *TerminalContext) KickoutByDevice(ctx context.Context, device string) er
 	return c.d.manager.KickoutByDevice(ctx, loginID, device)
 }
 
-// KickoutByDeviceAndDeviceId kicks out current account terminals by device ID KickoutByDeviceAndDeviceId 按设备和设备 ID 踢出当前账号终端
-func (c *TerminalContext) KickoutByDeviceAndDeviceId(ctx context.Context, deviceAndDeviceId ...string) error {
+// KickoutByDeviceAndDeviceID kicks out current account terminals by device ID KickoutByDeviceAndDeviceID 按设备和设备 ID 踢出当前账号终端
+func (c *TerminalContext) KickoutByDeviceAndDeviceID(ctx context.Context, deviceAndDeviceID ...string) error {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
 		return err
 	}
-	return c.d.manager.KickoutByDeviceAndDeviceId(ctx, loginID, deviceAndDeviceId...)
+	return c.d.manager.KickoutByDeviceAndDeviceID(ctx, loginID, deviceAndDeviceID...)
 }
 
-// ReplaceByDevice replaces current account terminals by device ReplaceByDevice 按设备顶替当前账号终端
+// ReplaceByDevice replaces current account terminals by device ReplaceByDevice 按设备顶替当前账号终。
 func (c *TerminalContext) ReplaceByDevice(ctx context.Context, device string) error {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
@@ -67,13 +67,13 @@ func (c *TerminalContext) ReplaceByDevice(ctx context.Context, device string) er
 	return c.d.manager.ReplaceByDevice(ctx, loginID, device)
 }
 
-// ReplaceByDeviceAndDeviceId replaces current account terminals by device ID ReplaceByDeviceAndDeviceId 按设备和设备 ID 顶替当前账号终端
-func (c *TerminalContext) ReplaceByDeviceAndDeviceId(ctx context.Context, deviceAndDeviceId ...string) error {
+// ReplaceByDeviceAndDeviceID replaces current account terminals by device ID ReplaceByDeviceAndDeviceID 按设备和设备 ID 顶替当前账号终端
+func (c *TerminalContext) ReplaceByDeviceAndDeviceID(ctx context.Context, deviceAndDeviceID ...string) error {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
 		return err
 	}
-	return c.d.manager.ReplaceByDeviceAndDeviceId(ctx, loginID, deviceAndDeviceId...)
+	return c.d.manager.ReplaceByDeviceAndDeviceID(ctx, loginID, deviceAndDeviceID...)
 }
 
 // LogoutAll logs out all current account terminals LogoutAll 注销当前账号全部终端
@@ -103,7 +103,7 @@ func (c *TerminalContext) ReplaceAll(ctx context.Context) error {
 	return c.d.manager.ReplaceByLoginID(ctx, loginID)
 }
 
-// Terminate applies one terminal operation Terminate 按选项执行一次终端下线操作
+// Terminate applies one terminal operation Terminate 按选项执行一次终端下线操。
 func (c *TerminalContext) Terminate(ctx context.Context, opts manager.TerminateOptions) error {
 	if opts.Token == "" && opts.LoginID == "" {
 		loginID, err := c.d.currentLoginID(ctx)
@@ -133,16 +133,16 @@ func (c *TerminalContext) GetTokenValueListByDevice(ctx context.Context, device 
 	return c.d.manager.GetTokenValueListByDevice(ctx, loginID, device, checkAlive...)
 }
 
-// GetTokenValueListByDeviceAndDeviceId gets current account token list by device ID GetTokenValueListByDeviceAndDeviceId 按设备和设备 ID 获取当前账号 Token 列表
-func (c *TerminalContext) GetTokenValueListByDeviceAndDeviceId(ctx context.Context, device, deviceId string, checkAlive ...bool) ([]string, error) {
+// GetTokenValueListByDeviceAndDeviceID gets current account token list by device ID GetTokenValueListByDeviceAndDeviceID 按设备和设备 ID 获取当前账号 Token 列表
+func (c *TerminalContext) GetTokenValueListByDeviceAndDeviceID(ctx context.Context, device, deviceID string, checkAlive ...bool) ([]string, error) {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return c.d.manager.GetTokenValueListByDeviceAndDeviceId(ctx, loginID, device, deviceId, checkAlive...)
+	return c.d.manager.GetTokenValueListByDeviceAndDeviceID(ctx, loginID, device, deviceID, checkAlive...)
 }
 
-// GetOnlineTerminalCount gets current account online count GetOnlineTerminalCount 获取当前账号在线终端数
+// GetOnlineTerminalCount gets current account online count GetOnlineTerminalCount 获取当前账号在线终端。
 func (c *TerminalContext) GetOnlineTerminalCount(ctx context.Context) (int, error) {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
@@ -160,13 +160,13 @@ func (c *TerminalContext) GetOnlineTerminalCountByDevice(ctx context.Context, de
 	return c.d.manager.GetOnlineTerminalCountByDevice(ctx, loginID, device)
 }
 
-// GetOnlineTerminalCountByDeviceAndDeviceId gets current account online count by device ID GetOnlineTerminalCountByDeviceAndDeviceId 按设备和设备 ID 获取当前账号在线终端数
-func (c *TerminalContext) GetOnlineTerminalCountByDeviceAndDeviceId(ctx context.Context, device, deviceId string) (int, error) {
+// GetOnlineTerminalCountByDeviceAndDeviceID gets current account online count by device ID GetOnlineTerminalCountByDeviceAndDeviceID 按设备和设备 ID 获取当前账号在线终端。
+func (c *TerminalContext) GetOnlineTerminalCountByDeviceAndDeviceID(ctx context.Context, device, deviceID string) (int, error) {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {
 		return 0, err
 	}
-	return c.d.manager.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, loginID, device, deviceId)
+	return c.d.manager.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, loginID, device, deviceID)
 }
 
 // GetTerminalInfo gets current terminal info GetTerminalInfo 获取当前终端信息
@@ -196,7 +196,7 @@ func (c *TerminalContext) GetLatestTokenValue(ctx context.Context, device ...str
 	return c.d.manager.GetTokenValueByLoginID(ctx, loginID, device...)
 }
 
-// SearchTokenValue searches token values SearchTokenValue 搜索 Token 值
+// SearchTokenValue searches token values SearchTokenValue 搜索 Token 。
 func (c *TerminalContext) SearchTokenValue(ctx context.Context, keyword string, start, size int) ([]string, error) {
 	return c.d.manager.SearchTokenValue(ctx, keyword, start, size)
 }
@@ -215,7 +215,7 @@ func (c *TerminalContext) ForEachTerminal(ctx context.Context, visitor manager.T
 	return c.d.manager.ForEachTerminal(ctx, loginID, visitor)
 }
 
-// ForEachTerminalByDevice visits current account terminals by device ForEachTerminalByDevice 按设备遍历当前账号终端
+// ForEachTerminalByDevice visits current account terminals by device ForEachTerminalByDevice 按设备遍历当前账号终。
 func (c *TerminalContext) ForEachTerminalByDevice(ctx context.Context, device string, visitor manager.TerminalVisitor) error {
 	loginID, err := c.d.currentLoginID(ctx)
 	if err != nil {

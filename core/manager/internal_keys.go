@@ -50,7 +50,7 @@ func (m *Manager) getDisableDeviceKey(loginID, device string) string {
 	return m.config.KeyPrefix + m.config.AuthType + DisableDeviceKeyPrefix + loginID + ":" + device
 }
 
-// getDisableDeviceAndDeviceIdKey generates the storage key for concrete device disable status. getDisableDeviceAndDeviceIdKey 获取具体设备封禁状态存储键。
-func (m *Manager) getDisableDeviceAndDeviceIdKey(loginID, device, deviceId string) string {
-	return m.config.KeyPrefix + m.config.AuthType + DisableDeviceIDKeyPrefix + loginID + ":" + device + ":" + deviceId
+// getDisableDeviceAndDeviceIDKey generates the storage key for concrete device disable status. getDisableDeviceAndDeviceIDKey 获取具体设备封禁状态存储键。
+func (m *Manager) getDisableDeviceAndDeviceIDKey(loginID, device, deviceID string) string {
+	return m.config.KeyPrefix + m.config.AuthType + DisableDeviceIDKeyPrefix + loginID + ":" + device + ":" + deviceID
 }

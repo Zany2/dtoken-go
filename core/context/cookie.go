@@ -21,8 +21,8 @@ func (c *CookieContext) ClearToken() {
 }
 
 // Login logs in and writes token cookie Login 登录并写入 Token Cookie
-func (c *CookieContext) Login(ctx context.Context, loginID string, deviceAndDeviceId ...string) (string, error) {
-	token, err := c.d.manager.Login(ctx, loginID, deviceAndDeviceId...)
+func (c *CookieContext) Login(ctx context.Context, loginID string, deviceAndDeviceID ...string) (string, error) {
+	token, err := c.d.manager.Login(ctx, loginID, deviceAndDeviceID...)
 	if err != nil {
 		return "", err
 	}
@@ -31,8 +31,8 @@ func (c *CookieContext) Login(ctx context.Context, loginID string, deviceAndDevi
 }
 
 // LoginWithTimeout logs in with timeout and writes token cookie LoginWithTimeout 使用指定有效期登录并写入 Token Cookie
-func (c *CookieContext) LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, deviceAndDeviceId ...string) (string, error) {
-	token, err := c.d.manager.LoginWithTimeout(ctx, loginID, timeout, deviceAndDeviceId...)
+func (c *CookieContext) LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, deviceAndDeviceID ...string) (string, error) {
+	token, err := c.d.manager.LoginWithTimeout(ctx, loginID, timeout, deviceAndDeviceID...)
 	if err != nil {
 		return "", err
 	}
@@ -50,7 +50,7 @@ func (c *CookieContext) LoginWithOptions(ctx context.Context, opts manager.Login
 	return token, nil
 }
 
-// Logout logs out current token and clears token cookie Logout 注销当前 Token 并清除 Cookie
+// Logout logs out current token and clears token cookie Logout 注销当前 Token 并清。Cookie
 func (c *CookieContext) Logout(ctx context.Context) error {
 	err := c.d.Auth().Logout(ctx)
 	if err == nil || errors.Is(err, derror.ErrInvalidToken) || errors.Is(err, derror.ErrNotLogin) {

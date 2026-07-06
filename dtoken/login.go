@@ -8,34 +8,34 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
-// Login performs login and returns a token. Login 执行登录并返回 token。
+// Login performs login and returns a token. Login 执行登录并返。token。
 func Login(ctx context.Context, loginID string, params ...string) (string, error) {
-	device, deviceId, authType := parseDeviceAndAuthType(params...)
+	device, deviceID, authType := parseDeviceAndAuthType(params...)
 	mgr, err := getManagerAuto(authType)
 	if err != nil {
 		return "", err
 	}
-	return mgr.Login(ctx, loginID, device, deviceId)
+	return mgr.Login(ctx, loginID, device, deviceID)
 }
 
 // LoginWithTimeout performs login with a custom token timeout. LoginWithTimeout 使用自定义过期时间登录。
 func LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, params ...string) (string, error) {
-	device, deviceId, authType := parseDeviceAndAuthType(params...)
+	device, deviceID, authType := parseDeviceAndAuthType(params...)
 	mgr, err := getManagerAuto(authType)
 	if err != nil {
 		return "", err
 	}
-	return mgr.LoginWithTimeout(ctx, loginID, timeout, device, deviceId)
+	return mgr.LoginWithTimeout(ctx, loginID, timeout, device, deviceID)
 }
 
 // LoginWithRefreshToken logs in and returns access and refresh tokens. LoginWithRefreshToken 登录并返回访问令牌和刷新令牌。
 func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*manager.RefreshTokenPair, error) {
-	device, deviceId, authType := parseDeviceAndAuthType(params...)
+	device, deviceID, authType := parseDeviceAndAuthType(params...)
 	mgr, err := getManagerAuto(authType)
 	if err != nil {
 		return nil, err
 	}
-	return mgr.LoginWithRefreshToken(ctx, loginID, device, deviceId)
+	return mgr.LoginWithRefreshToken(ctx, loginID, device, deviceID)
 }
 
 // RefreshToken rotates a refresh token and returns a new token pair. RefreshToken 轮换刷新令牌并返回新的令牌对。
@@ -92,14 +92,14 @@ func Logout(ctx context.Context, tokenValue string, authType ...string) error {
 	return mgr.Logout(ctx, tokenValue)
 }
 
-// LogoutByDeviceAndDeviceId logs out a terminal by device and device ID. LogoutByDeviceAndDeviceId 按设备与设备 ID 注销终端。
-func LogoutByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error {
-	device, deviceId, authType := parseDeviceAndAuthType(params...)
+// LogoutByDeviceAndDeviceID logs out a terminal by device and device ID. LogoutByDeviceAndDeviceID 按设备与设备 ID 注销终端。
+func LogoutByDeviceAndDeviceID(ctx context.Context, loginID string, params ...string) error {
+	device, deviceID, authType := parseDeviceAndAuthType(params...)
 	mgr, err := getManagerAuto(authType)
 	if err != nil {
 		return err
 	}
-	return mgr.LogoutByDeviceAndDeviceId(ctx, loginID, device, deviceId)
+	return mgr.LogoutByDeviceAndDeviceID(ctx, loginID, device, deviceID)
 }
 
 // LogoutByDevice logs out all terminals for a device. LogoutByDevice 注销指定设备下的所有终端。
@@ -120,7 +120,7 @@ func LogoutByLoginID(ctx context.Context, loginID string, authType ...string) er
 	return mgr.LogoutByLoginID(ctx, loginID)
 }
 
-// Kickout marks a token as kicked out. Kickout 将指定 token 标记为踢下线。
+// Kickout marks a token as kicked out. Kickout 将指。token 标记为踢下线。
 func Kickout(ctx context.Context, tokenValue string, authType ...string) error {
 	mgr, err := GetManager(authType...)
 	if err != nil {
@@ -129,7 +129,7 @@ func Kickout(ctx context.Context, tokenValue string, authType ...string) error {
 	return mgr.Kickout(ctx, tokenValue)
 }
 
-// Replace marks a token as replaced. Replace 将指定 token 标记为顶下线。
+// Replace marks a token as replaced. Replace 将指。token 标记为顶下线。
 func Replace(ctx context.Context, tokenValue string, authType ...string) error {
 	mgr, err := GetManager(authType...)
 	if err != nil {
@@ -138,14 +138,14 @@ func Replace(ctx context.Context, tokenValue string, authType ...string) error {
 	return mgr.Replace(ctx, tokenValue)
 }
 
-// KickoutByDeviceAndDeviceId kicks out a terminal by device and device ID. KickoutByDeviceAndDeviceId 按设备与设备 ID 踢下线。
-func KickoutByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error {
-	device, deviceId, authType := parseDeviceAndAuthType(params...)
+// KickoutByDeviceAndDeviceID kicks out a terminal by device and device ID. KickoutByDeviceAndDeviceID 按设备与设备 ID 踢下线。
+func KickoutByDeviceAndDeviceID(ctx context.Context, loginID string, params ...string) error {
+	device, deviceID, authType := parseDeviceAndAuthType(params...)
 	mgr, err := getManagerAuto(authType)
 	if err != nil {
 		return err
 	}
-	return mgr.KickoutByDeviceAndDeviceId(ctx, loginID, device, deviceId)
+	return mgr.KickoutByDeviceAndDeviceID(ctx, loginID, device, deviceID)
 }
 
 // KickoutByDevice kicks out all terminals for a device. KickoutByDevice 踢下指定设备下的所有终端。
@@ -166,14 +166,14 @@ func KickoutByLoginID(ctx context.Context, loginID string, authType ...string) e
 	return mgr.KickoutByLoginID(ctx, loginID)
 }
 
-// ReplaceByDeviceAndDeviceId replaces a terminal by device and device ID. ReplaceByDeviceAndDeviceId 按设备与设备 ID 顶下线。
-func ReplaceByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error {
-	device, deviceId, authType := parseDeviceAndAuthType(params...)
+// ReplaceByDeviceAndDeviceID replaces a terminal by device and device ID. ReplaceByDeviceAndDeviceID 按设备与设备 ID 顶下线。
+func ReplaceByDeviceAndDeviceID(ctx context.Context, loginID string, params ...string) error {
+	device, deviceID, authType := parseDeviceAndAuthType(params...)
 	mgr, err := getManagerAuto(authType)
 	if err != nil {
 		return err
 	}
-	return mgr.ReplaceByDeviceAndDeviceId(ctx, loginID, device, deviceId)
+	return mgr.ReplaceByDeviceAndDeviceID(ctx, loginID, device, deviceID)
 }
 
 // ReplaceByDevice replaces all terminals for a device. ReplaceByDevice 顶下指定设备下的所有终端。
@@ -239,22 +239,22 @@ func GetDevice(ctx context.Context, tokenValue string, authType ...string) (stri
 	return mgr.GetDevice(ctx, tokenValue)
 }
 
-// GetDeviceAndDeviceId returns the device and device ID bound to a token. GetDeviceAndDeviceId 获取 token 绑定的设备和设备 ID。
-func GetDeviceAndDeviceId(ctx context.Context, tokenValue string, authType ...string) (string, string, error) {
+// GetDeviceAndDeviceID returns the device and device ID bound to a token. GetDeviceAndDeviceID 获取 token 绑定的设备和设备 ID。
+func GetDeviceAndDeviceID(ctx context.Context, tokenValue string, authType ...string) (string, string, error) {
 	mgr, err := GetManager(authType...)
 	if err != nil {
 		return "", "", err
 	}
-	return mgr.GetDeviceAndDeviceId(ctx, tokenValue)
+	return mgr.GetDeviceAndDeviceID(ctx, tokenValue)
 }
 
-// GetDeviceId returns the device ID bound to a token. GetDeviceId 获取 token 绑定的设备 ID。
-func GetDeviceId(ctx context.Context, tokenValue string, authType ...string) (string, error) {
+// GetDeviceID returns the device ID bound to a token. GetDeviceID 获取 token 绑定的设备 ID。
+func GetDeviceID(ctx context.Context, tokenValue string, authType ...string) (string, error) {
 	mgr, err := GetManager(authType...)
 	if err != nil {
 		return "", err
 	}
-	return mgr.GetDeviceId(ctx, tokenValue)
+	return mgr.GetDeviceID(ctx, tokenValue)
 }
 
 // GetTokenCreateTime returns token creation time. GetTokenCreateTime 获取 token 创建时间。

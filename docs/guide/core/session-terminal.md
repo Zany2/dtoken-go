@@ -8,7 +8,7 @@ DToken-Go uses Session to record the online terminal list for a login ID. Each t
 
 - `LoginID`
 - `Device`
-- `DeviceId`
+- `DeviceID`
 - `Token`
 - `Index`
 
@@ -36,7 +36,7 @@ Count online terminals by account, device type, or concrete device:
 ```go
 count, err := dtoken.GetOnlineTerminalCount(ctx, "10001")
 webCount, err := dtoken.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
-deviceCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, "10001", "web", "browser-1")
+deviceCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "web", "browser-1")
 ```
 
 ## Query Token Lists
@@ -44,7 +44,7 @@ deviceCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, "10001
 ```go
 tokens, err := dtoken.GetTokenValueListByLoginID(ctx, "10001", true)
 tokens, err = dtoken.GetTokenValueListByDevice(ctx, "10001", "web", true)
-tokens, err = dtoken.GetTokenValueListByDeviceAndDeviceId(ctx, "10001", "web", "browser-1", true)
+tokens, err = dtoken.GetTokenValueListByDeviceAndDeviceID(ctx, "10001", "web", "browser-1", true)
 ```
 
 The last boolean parameter controls whether only alive tokens should be returned.
@@ -67,7 +67,7 @@ token, err = dtoken.GetTokenValueByLoginIDAndDevice(ctx, "10001", "web")
 
 ```go
 err := dtoken.ForEachTerminal(ctx, "10001", func(info manager.TerminalInfo) bool {
-    fmt.Println(info.Device, info.DeviceId, info.Token)
+    fmt.Println(info.Device, info.DeviceID, info.Token)
     return true
 })
 

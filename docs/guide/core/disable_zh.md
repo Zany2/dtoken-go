@@ -91,10 +91,10 @@ err = dtoken.CheckDisableDevice(ctx, "10001", "app")
 err = dtoken.UntieDevice(ctx, "10001", "app")
 
 // 禁止账号在某个具体设备访问。
-err = dtoken.DisableDeviceAndDeviceId(ctx, "10001", "app", "iphone-001", time.Hour)
-disabled = dtoken.IsDisableDeviceAndDeviceId(ctx, "10001", "app", "iphone-001")
-err = dtoken.CheckDisableDeviceAndDeviceId(ctx, "10001", "app", "iphone-001")
-err = dtoken.UntieDeviceAndDeviceId(ctx, "10001", "app", "iphone-001")
+err = dtoken.DisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001", time.Hour)
+disabled = dtoken.IsDisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
+err = dtoken.CheckDisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
+err = dtoken.UntieDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
 ```
 
 查询封禁详情：
@@ -103,8 +103,8 @@ err = dtoken.UntieDeviceAndDeviceId(ctx, "10001", "app", "iphone-001")
 deviceInfo, err := dtoken.GetDisableDeviceInfo(ctx, "10001", "app")
 deviceTTL, err := dtoken.GetDisableDeviceTTL(ctx, "10001", "app")
 
-concreteInfo, err := dtoken.GetDisableDeviceAndDeviceIdInfo(ctx, "10001", "app", "iphone-001")
-concreteTTL, err := dtoken.GetDisableDeviceAndDeviceIdTTL(ctx, "10001", "app", "iphone-001")
+concreteInfo, err := dtoken.GetDisableDeviceAndDeviceIDInfo(ctx, "10001", "app", "iphone-001")
+concreteTTL, err := dtoken.GetDisableDeviceAndDeviceIDTTL(ctx, "10001", "app", "iphone-001")
 ```
 
 ## 和登录态校验的关系
@@ -113,7 +113,7 @@ concreteTTL, err := dtoken.GetDisableDeviceAndDeviceIdTTL(ctx, "10001", "app", "
 
 - 账号被封禁后，该账号已有 Token 会在校验时失败。
 - 设备类型被封禁后，匹配该 `device` 的 Token 会失败。
-- 具体设备被封禁后，匹配该 `device + deviceId` 的 Token 会失败。
+- 具体设备被封禁后，匹配该 `device + deviceID` 的 Token 会失败。
 - 服务封禁不会自动阻止所有登录态，只应在对应业务入口显式调用 `CheckDisableService` 或 `CheckDisableServiceLevel`。
 
 ## 多认证体系

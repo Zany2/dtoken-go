@@ -8,22 +8,22 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
-// LoginByCtx logs in current GF request LoginByCtx 在当前 GF 请求中登录
-func LoginByCtx(ctx context.Context, loginID string, deviceAndDeviceId ...string) (string, error) {
+// LoginByCtx logs in current GF request LoginByCtx 在当。GF 请求中登录。
+func LoginByCtx(ctx context.Context, loginID string, deviceAndDeviceID ...string) (string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
 		return "", err
 	}
-	return dCtx.Auth().Login(ctx, loginID, deviceAndDeviceId...)
+	return dCtx.Auth().Login(ctx, loginID, deviceAndDeviceID...)
 }
 
-// LoginWithTimeoutByCtx logs in current GF request with timeout LoginWithTimeoutByCtx 使用指定有效期登录当前 GF 请求
-func LoginWithTimeoutByCtx(ctx context.Context, loginID string, timeout time.Duration, deviceAndDeviceId ...string) (string, error) {
+// LoginWithTimeoutByCtx logs in current GF request with timeout LoginWithTimeoutByCtx 使用指定有效期登录当。GF 请求
+func LoginWithTimeoutByCtx(ctx context.Context, loginID string, timeout time.Duration, deviceAndDeviceID ...string) (string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
 		return "", err
 	}
-	return dCtx.Auth().LoginWithTimeout(ctx, loginID, timeout, deviceAndDeviceId...)
+	return dCtx.Auth().LoginWithTimeout(ctx, loginID, timeout, deviceAndDeviceID...)
 }
 
 // LoginWithOptionsByCtx logs in current GF request with options LoginWithOptionsByCtx 使用登录选项登录当前 GF 请求
@@ -53,7 +53,7 @@ func GetTokenInfoByCtx(ctx context.Context, authType ...string) (*manager.TokenI
 	return dCtx.Auth().GetTokenInfo(ctx)
 }
 
-// IntrospectTokenByCtx inspects current token without renewal side effects IntrospectTokenByCtx 无续期副作用地检查当前 token 状态
+// IntrospectTokenByCtx inspects current token without renewal side effects IntrospectTokenByCtx 无续期副作用地检查当。token 状。
 func IntrospectTokenByCtx(ctx context.Context, authType ...string) (*manager.TokenIntrospection, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx, authType...)
 	if err != nil {
