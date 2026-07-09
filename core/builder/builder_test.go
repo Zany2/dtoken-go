@@ -250,13 +250,19 @@ func (g *testGenerator) Generate(loginID, device, deviceID string) (string, erro
 type testCodec struct{}
 
 // Name returns the codec name Name 返回编解码器名称
-func (c *testCodec) Name() string { return "test" }
+func (c *testCodec) Name() string {
+	return "test"
+}
 
 // Encode returns an empty payload Encode 返回空载荷
-func (c *testCodec) Encode(v any) ([]byte, error) { return []byte{}, nil }
+func (c *testCodec) Encode(v any) ([]byte, error) {
+	return []byte{}, nil
+}
 
 // Decode accepts any payload Decode 接受任意载荷
-func (c *testCodec) Decode(data []byte, v any) error { return nil }
+func (c *testCodec) Decode(data []byte, v any) error {
+	return nil
+}
 
 // testStorage provides a minimal atomic storage for builder tests testStorage 为 Builder 测试提供最小原子存储
 type testStorage struct{}
@@ -267,13 +273,19 @@ func (s *testStorage) Set(ctx context.Context, key string, value any, expiration
 }
 
 // Get gets one value Get 读取单个值
-func (s *testStorage) Get(ctx context.Context, key string) (any, error) { return nil, nil }
+func (s *testStorage) Get(ctx context.Context, key string) (any, error) {
+	return nil, nil
+}
 
 // Delete removes keys Delete 删除键
-func (s *testStorage) Delete(ctx context.Context, keys ...string) error { return nil }
+func (s *testStorage) Delete(ctx context.Context, keys ...string) error {
+	return nil
+}
 
 // Exists checks key presence Exists 检查键是否存在
-func (s *testStorage) Exists(ctx context.Context, key string) bool { return false }
+func (s *testStorage) Exists(ctx context.Context, key string) bool {
+	return false
+}
 
 // Expire updates key expiration Expire 更新键过期时间
 func (s *testStorage) Expire(ctx context.Context, key string, expiration time.Duration) error {
@@ -286,10 +298,14 @@ func (s *testStorage) TTL(ctx context.Context, key string) (time.Duration, error
 }
 
 // Ping checks storage health Ping 检查存储健康状态
-func (s *testStorage) Ping(ctx context.Context) error { return nil }
+func (s *testStorage) Ping(ctx context.Context) error {
+	return nil
+}
 
 // GetAndDelete gets and deletes a key atomically GetAndDelete 原子读取并删除键
-func (s *testStorage) GetAndDelete(ctx context.Context, key string) (any, error) { return nil, nil }
+func (s *testStorage) GetAndDelete(ctx context.Context, key string) (any, error) {
+	return nil, nil
+}
 
 // SetIfAbsent stores a key only when absent SetIfAbsent 仅当键不存在时写入
 func (s *testStorage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
@@ -305,13 +321,19 @@ func (s *testBasicStorage) Set(ctx context.Context, key string, value any, expir
 }
 
 // Get gets one value Get 读取单个值
-func (s *testBasicStorage) Get(ctx context.Context, key string) (any, error) { return nil, nil }
+func (s *testBasicStorage) Get(ctx context.Context, key string) (any, error) {
+	return nil, nil
+}
 
 // Delete removes keys Delete 删除键
-func (s *testBasicStorage) Delete(ctx context.Context, keys ...string) error { return nil }
+func (s *testBasicStorage) Delete(ctx context.Context, keys ...string) error {
+	return nil
+}
 
 // Exists checks key presence Exists 检查键是否存在
-func (s *testBasicStorage) Exists(ctx context.Context, key string) bool { return false }
+func (s *testBasicStorage) Exists(ctx context.Context, key string) bool {
+	return false
+}
 
 // Expire updates key expiration Expire 更新键过期时间
 func (s *testBasicStorage) Expire(ctx context.Context, key string, expiration time.Duration) error {
@@ -324,40 +346,52 @@ func (s *testBasicStorage) TTL(ctx context.Context, key string) (time.Duration, 
 }
 
 // Ping checks storage health Ping 检查存储健康状态
-func (s *testBasicStorage) Ping(ctx context.Context) error { return nil }
+func (s *testBasicStorage) Ping(ctx context.Context) error {
+	return nil
+}
 
 // testLogger provides a minimal logger for builder tests testLogger 为 Builder 测试提供最小日志器
 type testLogger struct{}
 
 // Print writes a plain message Print 输出普通消息
-func (l *testLogger) Print(v ...any) {}
+func (l *testLogger) Print(v ...any) {
+}
 
 // Printf writes a formatted plain message Printf 输出格式化普通消息
-func (l *testLogger) Printf(format string, v ...any) {}
+func (l *testLogger) Printf(format string, v ...any) {
+}
 
 // Debug writes a debug message Debug 输出调试消息
-func (l *testLogger) Debug(v ...any) {}
+func (l *testLogger) Debug(v ...any) {
+}
 
 // Debugf writes a formatted debug message Debugf 输出格式化调试消息
-func (l *testLogger) Debugf(format string, v ...any) {}
+func (l *testLogger) Debugf(format string, v ...any) {
+}
 
 // Info writes an info message Info 输出信息消息
-func (l *testLogger) Info(v ...any) {}
+func (l *testLogger) Info(v ...any) {
+}
 
 // Infof writes a formatted info message Infof 输出格式化信息消息
-func (l *testLogger) Infof(format string, v ...any) {}
+func (l *testLogger) Infof(format string, v ...any) {
+}
 
 // Warn writes a warning message Warn 输出警告消息
-func (l *testLogger) Warn(v ...any) {}
+func (l *testLogger) Warn(v ...any) {
+}
 
 // Warnf writes a formatted warning message Warnf 输出格式化警告消息
-func (l *testLogger) Warnf(format string, v ...any) {}
+func (l *testLogger) Warnf(format string, v ...any) {
+}
 
 // Error writes an error message Error 输出错误消息
-func (l *testLogger) Error(v ...any) {}
+func (l *testLogger) Error(v ...any) {
+}
 
 // Errorf writes a formatted error message Errorf 输出格式化错误消息
-func (l *testLogger) Errorf(format string, v ...any) {}
+func (l *testLogger) Errorf(format string, v ...any) {
+}
 
 // testAccessProvider provides a comparable provider for builder tests testAccessProvider 为 Builder 测试提供可比较的访问提供器
 type testAccessProvider struct{}
@@ -374,6 +408,7 @@ func (p *testAccessProvider) Roles(ctx context.Context, subject manager.AccessSu
 
 // testPool provides a minimal pool for builder tests testPool 为 Builder 测试提供最小任务池
 type testPool struct {
+	// stopped records whether Stop was called stopped 记录 Stop 是否被调用
 	stopped bool
 }
 

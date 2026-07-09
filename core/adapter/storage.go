@@ -6,9 +6,11 @@ import (
 	"time"
 )
 
+// Storage TTL sentinel values 存储 TTL 哨兵值
 const (
 	// TTLNoExpire means the key exists without expiration. TTLNoExpire 表示键存在且永不过期。
 	TTLNoExpire = time.Duration(-1)
+
 	// TTLNotFound means the key does not exist. TTLNotFound 表示键不存在。
 	TTLNotFound = time.Duration(-2)
 )
@@ -17,24 +19,31 @@ const (
 type Storage interface {
 	// Set stores a key-value pair with optional expiration. Set 写入键值对，并可设置过期时间。
 	Set(ctx context.Context, key string, value any, expiration time.Duration) error
+
 	// Get gets value by key and returns nil, nil when missing. Get 根据键读取值，键不存在时返回 nil, nil。
 	Get(ctx context.Context, key string) (any, error)
+
 	// Delete deletes one or more keys. Delete 删除一个或多个键。
 	Delete(ctx context.Context, keys ...string) error
+
 	// Exists checks whether key exists. Exists 检查键是否存在。
 	Exists(ctx context.Context, key string) bool
+
 	// Expire sets key expiration and returns an error when the key is missing. Expire 设置键过期时间，键不存在时返回错误。
 	Expire(ctx context.Context, key string, expiration time.Duration) error
+
 	// TTL gets remaining lifetime of key using TTL sentinel values. TTL 获取键剩余生存时间，并使用 TTL 哨兵值表达特殊状态。
 	TTL(ctx context.Context, key string) (time.Duration, error)
+
 	// Ping checks whether storage is reachable. Ping 检查存储是否可达。
 	Ping(ctx context.Context) error
 }
 
 // AtomicStorage defines optional storage operations with atomic primary-key semantics. AtomicStorage 定义具备主键原子语义的可选存储操作。
 type AtomicStorage interface {
-	// GetAndDelete gets and deletes key atomically. GetAndDelete 原子地读取并删除键。
+	// GetAndDelete gets and deletes key atomically. GetAndDelete 原子读取并删除键。
 	GetAndDelete(ctx context.Context, key string) (any, error)
+
 	// SetIfAbsent stores a key only when it does not exist. SetIfAbsent 仅在键不存在时写入键值。
 	SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error)
 }

@@ -227,6 +227,7 @@ func TestRenewPoolManagerAutoScale(t *testing.T) {
 	t.Logf("auto scale observation finished after max run time: %s", maxRunTime)
 }
 
+// simulatedRenewTaskDuration returns deterministic task durations simulatedRenewTaskDuration 返回确定性的任务耗时
 func simulatedRenewTaskDuration(sequence int64) time.Duration {
 	durations := []time.Duration{
 		200 * time.Millisecond,
@@ -239,6 +240,7 @@ func simulatedRenewTaskDuration(sequence int64) time.Duration {
 	return durations[(sequence-1)%int64(len(durations))]
 }
 
+// logPoolStats periodically logs pool stats during tests logPoolStats 在测试中定期输出池状态
 func logPoolStats(t *testing.T, mgr *RenewPoolManager, interval time.Duration, stop <-chan struct{}, done chan<- struct{}) {
 	defer close(done)
 
@@ -258,6 +260,7 @@ func logPoolStats(t *testing.T, mgr *RenewPoolManager, interval time.Duration, s
 	}
 }
 
+// sleepUntilDeadline sleeps without crossing the deadline sleepUntilDeadline 在不超过截止时间的前提下休眠
 func sleepUntilDeadline(duration time.Duration, deadline time.Time) bool {
 	remaining := time.Until(deadline)
 	if remaining <= 0 {

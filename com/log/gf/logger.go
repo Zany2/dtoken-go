@@ -10,8 +10,8 @@ import (
 
 // GFLogger implements the GoFrame logger adapter GoFrame 日志适配器实现
 type GFLogger struct {
-	ctx context.Context
-	l   *glog.Logger
+	ctx context.Context // ctx stores the default log context ctx 存储默认日志上下文。
+	l   *glog.Logger    // l stores the GoFrame logger instance l 存储 GoFrame 日志实例。
 }
 
 // Interface assertion keeps log contract checked at compile time 接口断言在编译期检查日志契约

@@ -662,6 +662,7 @@ func (l *Logger) DropCount() uint64 {
 	return atomic.LoadUint64(&l.dropCount)
 }
 
+// bufPool reuses buffers for log line building bufPool 复用日志行构建缓冲区
 var bufPool = sync.Pool{
 	New: func() any { return new(bytes.Buffer) },
 }

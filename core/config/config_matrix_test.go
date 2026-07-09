@@ -343,18 +343,26 @@ func TestValidateNameAndNamespaceBoundaryMatrix(t *testing.T) {
 		afterFunc func(t *testing.T, cfg *Config)
 		wantErr   bool
 	}{
-		{name: "auth type trims and appends separator", mutate: func(cfg *Config) { cfg.AuthType = " user " }, afterFunc: func(t *testing.T, cfg *Config) {
-			t.Helper()
-			if cfg.AuthType != "user:" {
-				t.Fatalf("AuthType = %q, want user:", cfg.AuthType)
-			}
-		}},
-		{name: "key prefix trims and appends separator", mutate: func(cfg *Config) { cfg.KeyPrefix = " app " }, afterFunc: func(t *testing.T, cfg *Config) {
-			t.Helper()
-			if cfg.KeyPrefix != "app:" {
-				t.Fatalf("KeyPrefix = %q, want app:", cfg.KeyPrefix)
-			}
-		}},
+		{
+			name:   "auth type trims and appends separator",
+			mutate: func(cfg *Config) { cfg.AuthType = " user " },
+			afterFunc: func(t *testing.T, cfg *Config) {
+				t.Helper()
+				if cfg.AuthType != "user:" {
+					t.Fatalf("AuthType = %q, want user:", cfg.AuthType)
+				}
+			},
+		},
+		{
+			name:   "key prefix trims and appends separator",
+			mutate: func(cfg *Config) { cfg.KeyPrefix = " app " },
+			afterFunc: func(t *testing.T, cfg *Config) {
+				t.Helper()
+				if cfg.KeyPrefix != "app:" {
+					t.Fatalf("KeyPrefix = %q, want app:", cfg.KeyPrefix)
+				}
+			},
+		},
 		{name: "token name max length", mutate: func(cfg *Config) { cfg.TokenName = strings.Repeat("a", 64) }},
 		{name: "auth type max length with separator", mutate: func(cfg *Config) { cfg.AuthType = strings.Repeat("a", 63) }},
 		{name: "key prefix max length with separator", mutate: func(cfg *Config) { cfg.KeyPrefix = strings.Repeat("a", 63) }},
@@ -455,6 +463,7 @@ func TestConfigSetterChainMatrix(t *testing.T) {
 	}
 }
 
+// boolName formats bool value for test names boolName 格式化测试名称中的布尔值
 func boolName(v bool) string {
 	if v {
 		return "true"
@@ -462,6 +471,7 @@ func boolName(v bool) string {
 	return "false"
 }
 
+// int64Name formats int64 value for test names int64Name 格式化测试名称中的 int64 值
 func int64Name(v int64) string {
 	if v == NoLimit {
 		return "nolimit"

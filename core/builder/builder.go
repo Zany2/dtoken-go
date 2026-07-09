@@ -34,12 +34,16 @@ type PoolFactory func(cfg *config.Config) (adapter.Pool, error)
 type Components struct {
 	// Generator stores token generator Generator 存储 Token 生成器
 	Generator adapter.Generator
+
 	// Storage stores storage adapter Storage 存储存储适配器
 	Storage adapter.Storage
+
 	// Codec stores codec adapter Codec 存储编解码适配器
 	Codec adapter.Codec
+
 	// Log stores logger adapter Log 存储日志适配器
 	Log adapter.Log
+
 	// Pool stores async task pool Pool 存储异步任务池
 	Pool adapter.Pool
 }
@@ -48,12 +52,16 @@ type Components struct {
 type ComponentFactories struct {
 	// Generator stores generator factory Generator 存储生成器工厂
 	Generator GeneratorFactory
+
 	// Storage stores storage factory Storage 存储存储工厂
 	Storage StorageFactory
+
 	// Codec stores codec factory Codec 存储编解码工厂
 	Codec CodecFactory
+
 	// Log stores logger factory Log 存储日志工厂
 	Log LogFactory
+
 	// Pool stores pool factory Pool 存储任务池工厂
 	Pool PoolFactory
 }
@@ -62,12 +70,16 @@ type ComponentFactories struct {
 type Builder struct {
 	// cfg stores mutable builder config cfg 存储 Builder 当前配置
 	cfg *config.Config
+
 	// components stores explicit runtime components components 存储显式设置的运行时组件
 	components Components
+
 	// factories stores default component factories factories 存储默认组件工厂
 	factories ComponentFactories
+
 	// managerOptions stores optional manager assembly options managerOptions 存储 Manager 可选模块装配项
 	managerOptions []manager.Option
+
 	// accessProvider stores permission and role provider accessProvider 存储权限与角色提供器
 	accessProvider manager.AccessProvider
 }
@@ -79,10 +91,13 @@ func NewBuilder() *Builder {
 
 // Config replaces the builder config with a clone of cfg Config 使用 cfg 的副本替换 Builder 配置
 func (b *Builder) Config(cfg *config.Config) *Builder {
+	// Reset to default config when input is nil 输入为 nil 时重置为默认配置
 	if cfg == nil {
 		b.cfg = config.DefaultConfig()
 		return b
 	}
+
+	// Store a cloned config to avoid external mutation 保存副本以避免外部修改影响 Builder
 	b.cfg = cfg.Clone()
 	return b
 }
@@ -320,10 +335,14 @@ func (b *Builder) CookieMaxAge(maxAge int64) *Builder {
 // CookieConfig sets full cookie config CookieConfig 设置完整 Cookie 配置
 func (b *Builder) CookieConfig(cfg *config.CookieConfig) *Builder {
 	b.ensureConfig()
+
+	// Preserve explicit nil for validation 保留显式 nil 以交给配置校验处理
 	if cfg == nil {
 		b.cfg.CookieConfig = nil
 		return b
 	}
+
+	// Store a copied cookie config 保存 Cookie 配置副本
 	copyCfg := *cfg
 	b.cfg.CookieConfig = &copyCfg
 	return b
@@ -381,9 +400,11 @@ func (b *Builder) SetShortKeyManager(shortKeyManager *shortkey.Manager) *Builder
 
 // UseManagerOption appends optional manager assembly option UseManagerOption 添加 Manager 可选模块装配项
 func (b *Builder) UseManagerOption(option manager.Option) *Builder {
+	// Skip nil options 跳过 nil 装配项
 	if option != nil {
 		b.managerOptions = append(b.managerOptions, option)
 	}
+
 	return b
 }
 
@@ -433,21 +454,31 @@ func (b *Builder) JwtSecret(secret string) *Builder {
 
 // Clone clones builder with deep copy Clone 深拷贝 Builder
 func (b *Builder) Clone() *Builder {
+	// Copy builder value first 先复制 Builder 顶层值
 	clone := *b
+
+	// Deep copy config when present 存在配置时深拷贝配置
 	if b.cfg != nil {
 		clone.cfg = b.cfg.Clone()
 	}
+
+	// Copy manager options slice 复制 Manager 装配项切片
 	if len(b.managerOptions) > 0 {
 		clone.managerOptions = append([]manager.Option(nil), b.managerOptions...)
 	}
+
 	return &clone
 }
 
 // Build builds manager and returns configuration errors Build 构建 Manager 并返回配置错误
 func (b *Builder) Build() (*manager.Manager, error) {
+	// Ensure builder config exists 确保 Builder 配置存在
 	b.ensureConfig()
+
+	// Clone config for this build 为本次构建复制配置
 	cfg := b.cfg.Clone()
 
+	// Validate config before resolving components 装配组件前先校验配置
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("build manager failed: invalid config: %w", err)
 	}
@@ -455,6 +486,7 @@ func (b *Builder) Build() (*manager.Manager, error) {
 	// Resolve components per build so later config changes do not reuse stale factory products 每次构建独立装配组件，避免后续配置变化继续复用旧工厂产物
 	components := b.components
 
+	// Resolve token generator 解析 Token 生成器
 	if components.Generator == nil {
 		if b.factories.Generator != nil {
 			generator, err := b.factories.Generator(cfg)
@@ -468,6 +500,7 @@ func (b *Builder) Build() (*manager.Manager, error) {
 		}
 	}
 
+	// Resolve storage adapter 解析存储适配器
 	if components.Storage == nil {
 		if b.factories.Storage != nil {
 			storage, err := b.factories.Storage(cfg)
@@ -480,6 +513,8 @@ func (b *Builder) Build() (*manager.Manager, error) {
 			return nil, fmt.Errorf("build manager failed: storage adapter is missing, call SetStorage or SetStorageFactory")
 		}
 	}
+
+	// Resolve codec adapter 解析编解码适配器
 	if components.Codec == nil {
 		if b.factories.Codec != nil {
 			codec, err := b.factories.Codec(cfg)
@@ -493,6 +528,7 @@ func (b *Builder) Build() (*manager.Manager, error) {
 		}
 	}
 
+	// Resolve logger adapter 解析日志适配器
 	if cfg.IsLog {
 		if components.Log == nil {
 			if b.factories.Log != nil {
@@ -507,9 +543,11 @@ func (b *Builder) Build() (*manager.Manager, error) {
 			}
 		}
 	} else {
+		// Use no-op logger when logging is disabled 日志关闭时使用空日志器
 		components.Log = adapter.NewNopLogger()
 	}
 
+	// Resolve optional renew pool 解析可选续期任务池
 	if cfg.AutoRenew && components.Pool == nil && b.factories.Pool != nil {
 		pool, err := b.factories.Pool(cfg)
 		if err != nil {
@@ -518,10 +556,12 @@ func (b *Builder) Build() (*manager.Manager, error) {
 		components.Pool = pool
 	}
 
+	// Print banner when enabled 开启时打印 Banner
 	if cfg.IsPrintBanner {
 		banner.PrintBanner(cfg)
 	}
 
+	// Assemble manager with resolved components 使用解析后的组件装配 Manager
 	mgr := manager.NewManager(
 		cfg,
 		components.Generator,
@@ -538,15 +578,18 @@ func (b *Builder) Build() (*manager.Manager, error) {
 
 // MustBuild builds manager and panics on error MustBuild 构建 Manager 并在失败时触发 panic
 func (b *Builder) MustBuild() *manager.Manager {
+	// Build manager first 先构建 Manager
 	mgr, err := b.Build()
 	if err != nil {
 		panic(err)
 	}
+
 	return mgr
 }
 
 // ensureConfig initializes config when needed ensureConfig 在需要时初始化配置
 func (b *Builder) ensureConfig() {
+	// Restore default config when missing 缺失配置时恢复默认配置
 	if b.cfg == nil {
 		b.cfg = config.DefaultConfig()
 	}
@@ -554,22 +597,31 @@ func (b *Builder) ensureConfig() {
 
 // ensureCookieConfig initializes cookie config when needed ensureCookieConfig 在需要时初始化 Cookie 配置
 func (b *Builder) ensureCookieConfig() *config.CookieConfig {
+	// Ensure parent config first 先确保父级配置存在
 	b.ensureConfig()
+
+	// Restore default cookie config when missing 缺失 Cookie 配置时恢复默认配置
 	if b.cfg.CookieConfig == nil {
 		b.cfg.CookieConfig = config.DefaultCookieConfig()
 	}
+
 	return b.cfg.CookieConfig
 }
 
 // durationToSeconds rounds positive durations up to whole seconds durationToSeconds 将正时长向上取整到整秒
 func durationToSeconds(d time.Duration) int64 {
+	// Keep non-positive durations for validation 保留非正时长交给校验处理
 	if d <= 0 {
 		return int64(d.Seconds())
 	}
 
+	// Convert whole seconds first 先转换整秒部分
 	seconds := int64(d / time.Second)
+
+	// Round up when sub-second remainder exists 存在亚秒余数时向上取整
 	if d%time.Second != 0 {
 		seconds++
 	}
+
 	return seconds
 }

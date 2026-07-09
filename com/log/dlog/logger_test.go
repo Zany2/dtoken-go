@@ -272,6 +272,7 @@ func TestNilLoggerMethodsAreSafe(t *testing.T) {
 	}
 }
 
+// listLogFiles returns sorted log file names in a directory listLogFiles 返回目录下排序后的日志文件名
 func listLogFiles(t *testing.T, dir string) []string {
 	t.Helper()
 
@@ -288,6 +289,7 @@ func listLogFiles(t *testing.T, dir string) []string {
 	return files
 }
 
+// waitForLogFileCount waits until log file count reaches the expected value waitForLogFileCount 等待日志文件数量达到期望值
 func waitForLogFileCount(dir string, count int, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {

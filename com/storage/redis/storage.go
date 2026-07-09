@@ -49,9 +49,11 @@ type Storage struct {
 }
 
 // Interface assertion keeps storage contract checked at compile time 接口断言在编译期检查存储契约
-var _ adapter.Storage = (*Storage)(nil)
-var _ adapter.AtomicStorage = (*Storage)(nil)
-var _ adapter.FullStorage = (*Storage)(nil)
+var (
+	_ adapter.Storage       = (*Storage)(nil)
+	_ adapter.AtomicStorage = (*Storage)(nil)
+	_ adapter.FullStorage   = (*Storage)(nil)
+)
 
 // NewStorage creates storage from a Redis URL 通过 Redis URL 创建存储
 func NewStorage(url string) (*Storage, error) {

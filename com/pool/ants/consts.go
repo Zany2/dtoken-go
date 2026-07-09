@@ -3,12 +3,26 @@ package ants
 
 import "time"
 
+// Renew pool default configuration values 续期池默认配置值
 const (
-	DefaultMinSize       = 20               // Minimum pool size 最小协程数
-	DefaultMaxSize       = 200              // Maximum pool size 最大协程数
-	DefaultScaleUpRate   = 0.8              // Scale-up threshold 扩容阈值
-	DefaultScaleDownRate = 0.3              // Scale-down threshold 缩容阈值
-	DefaultCheckInterval = 30 * time.Second // Interval for auto-scaling checks 检查间隔
-	DefaultExpiry        = time.Minute      // Idle worker expiry duration 空闲协程过期时间
-	DefaultStopTimeout   = 3 * time.Second  // Stop timeout for waiting running tasks 停止时等待运行任务的超时时间
+	// DefaultMinSize defines minimum pool size DefaultMinSize 定义最小协程数
+	DefaultMinSize = 20
+
+	// DefaultMaxSize defines maximum pool size DefaultMaxSize 定义最大协程数
+	DefaultMaxSize = 200
+
+	// DefaultScaleUpRate defines scale-up threshold DefaultScaleUpRate 定义扩容阈值
+	DefaultScaleUpRate = 0.8
+
+	// DefaultScaleDownRate defines scale-down threshold DefaultScaleDownRate 定义缩容阈值
+	DefaultScaleDownRate = 0.3
+
+	// DefaultCheckInterval defines auto-scaling check interval DefaultCheckInterval 定义自动扩缩容检查间隔
+	DefaultCheckInterval = 30 * time.Second
+
+	// DefaultExpiry defines idle worker expiry duration DefaultExpiry 定义空闲协程过期时间
+	DefaultExpiry = time.Minute
+
+	// DefaultStopTimeout defines stop wait timeout DefaultStopTimeout 定义停止时等待运行任务的超时时间
+	DefaultStopTimeout = 3 * time.Second
 )

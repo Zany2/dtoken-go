@@ -307,11 +307,20 @@ func (c *Config) validateCookieConfig() error {
 
 // Clone clones config Clone 克隆配置
 func (c *Config) Clone() *Config {
+	// Keep nil config nil 保持 nil 配置仍为 nil
+	if c == nil {
+		return nil
+	}
+
+	// Copy top-level config 复制顶层配置
 	newConfig := *c
+
+	// Deep copy nested cookie config 深拷贝嵌套 Cookie 配置
 	if c.CookieConfig != nil {
 		cookieConfig := *c.CookieConfig
 		newConfig.CookieConfig = &cookieConfig
 	}
+
 	return &newConfig
 }
 

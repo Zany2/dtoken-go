@@ -20,14 +20,16 @@ const (
 
 // Storage implements in-memory storage with go-cache 基于 go-cache 的内存存储实现。
 type Storage struct {
-	c  *cache.Cache
-	mu sync.Mutex
+	c  *cache.Cache // c stores the underlying cache instance c 存储底层缓存实例。
+	mu sync.Mutex   // mu protects compound storage operations mu 保护复合存储操作。
 }
 
 // Interface assertion keeps storage contract checked at compile time 接口断言在编译期检查存储契约
-var _ adapter.Storage = (*Storage)(nil)
-var _ adapter.AtomicStorage = (*Storage)(nil)
-var _ adapter.FullStorage = (*Storage)(nil)
+var (
+	_ adapter.Storage       = (*Storage)(nil)
+	_ adapter.AtomicStorage = (*Storage)(nil)
+	_ adapter.FullStorage   = (*Storage)(nil)
+)
 
 // NewStorage creates a new memory storage instance 创建一个新的内存存储实例
 func NewStorage() *Storage {

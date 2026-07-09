@@ -12,6 +12,7 @@ import (
 // TestPrintBannerFull prints full banner config. TestPrintBannerFull 打印完整配置的 Banner。
 func TestPrintBannerFull(t *testing.T) {
 	fmt.Println("===== Full Banner =====")
+
 	cfg := &config.Config{
 		IsPrintBanner:         true,
 		AuthType:              "login",
@@ -38,12 +39,14 @@ func TestPrintBannerFull(t *testing.T) {
 		AsyncEvent:            true,
 		CookieConfig:          config.DefaultCookieConfig(),
 	}
+
 	PrintBanner(cfg)
 }
 
 // TestPrintBannerSimple prints compact disabled state config. TestPrintBannerSimple 打印精简禁用状态配置。
 func TestPrintBannerSimple(t *testing.T) {
 	fmt.Println("===== Simple Banner =====")
+
 	cfg := &config.Config{
 		IsPrintBanner:         true,
 		AuthType:              "admin:",
@@ -63,12 +66,14 @@ func TestPrintBannerSimple(t *testing.T) {
 		IsLog:                 false,
 		AsyncEvent:            false,
 	}
+
 	PrintBanner(cfg)
 }
 
 // TestPrintBannerJWT prints JWT banner config. TestPrintBannerJWT 打印 JWT 风格的 Banner。
 func TestPrintBannerJWT(t *testing.T) {
 	fmt.Println("===== JWT Banner =====")
+
 	cfg := &config.Config{
 		IsPrintBanner:         true,
 		AuthType:              "api:",
@@ -93,17 +98,20 @@ func TestPrintBannerJWT(t *testing.T) {
 		IsLog:                 true,
 		AsyncEvent:            true,
 	}
+
 	PrintBanner(cfg)
 }
 
 // TestPrintBannerDisabled prints disabled banner config. TestPrintBannerDisabled 打印禁用 Banner 场景。
 func TestPrintBannerDisabled(t *testing.T) {
 	fmt.Println("===== Disabled Banner =====")
+
 	cfg := &config.Config{
 		IsPrintBanner: false,
 		AuthType:      "login:",
 		TokenName:     "token",
 	}
+
 	PrintBanner(cfg)
 	fmt.Println("disabled banner should print nothing above this line except the title")
 }
@@ -111,6 +119,7 @@ func TestPrintBannerDisabled(t *testing.T) {
 // TestPrintBannerNil prints nil config scenario. TestPrintBannerNil 打印 nil 配置场景。
 func TestPrintBannerNil(t *testing.T) {
 	fmt.Println("===== Nil Banner =====")
+
 	PrintBanner(nil)
 	fmt.Println("nil banner should print nothing above this line except the title")
 }

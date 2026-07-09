@@ -11,6 +11,7 @@ import (
 	redisv9 "github.com/redis/go-redis/v9"
 )
 
+// Redis test connection settings Redis 测试连接配置
 const (
 	testRedisAddr     = "192.168.19.104:6379"
 	testRedisHost     = "192.168.19.104"
