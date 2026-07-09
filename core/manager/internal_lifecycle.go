@@ -21,8 +21,10 @@ var managerBackgrounds sync.Map
 func backgroundForManager(m *Manager) *managerBackground {
 	// Build default background state 构建默认后台状态。
 	background := &managerBackground{closeCh: make(chan struct{})}
+
 	// Reuse existing state when present 存在时复用已有状态。
 	value, _ := managerBackgrounds.LoadOrStore(m, background)
+
 	// Return lifecycle state 返回生命周期状态。
 	return value.(*managerBackground)
 }
@@ -36,6 +38,7 @@ func (m *Manager) StartRenewPoolStatusLogger(interval time.Duration) {
 
 	// Get background lifecycle 获取后台生命周期。
 	background := backgroundForManager(m)
+
 	// Start only one logger per manager lifecycle 每个管理器生命周期只启动一个日志协程。
 	background.statusLoggerOnce.Do(func() {
 		// Track logger goroutine 跟踪日志协程。
@@ -56,6 +59,7 @@ func (m *Manager) StartRenewPoolStatusLogger(interval time.Duration) {
 					if m.pool == nil || m.logger == nil {
 						continue
 					}
+
 					// Read pool status 读取协程池状态。
 					running, capacity, usage := m.pool.Stats()
 					m.logger.Infof(

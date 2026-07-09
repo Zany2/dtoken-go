@@ -15,6 +15,7 @@ func (m *Manager) GetSession(ctx context.Context, loginID string) (*Session, err
 	if loginID == "" {
 		return nil, derror.ErrIDIsEmpty
 	}
+
 	// Load session 加载会话。
 	return m.getSession(ctx, loginID)
 }
@@ -51,9 +52,11 @@ func (m *Manager) GetTokenValueListByLoginID(ctx context.Context, loginID string
 		if !errors.Is(err, derror.ErrSessionNotFound) {
 			return nil, err
 		}
+
 		// Return empty list 返回空列表。
 		return []string{}, nil
 	}
+
 	// Return empty list when session missing 会话为空时返回空列表。
 	if sess == nil {
 		return []string{}, nil
@@ -69,8 +72,10 @@ func (m *Manager) GetTokenValueListByDevice(ctx context.Context, loginID, device
 	if loginID == "" {
 		return []string{}, derror.ErrIDIsEmpty
 	}
+
 	// Normalize device type 规范化设备类型。
 	device = strings.TrimSpace(device)
+
 	// Validate device type 校验设备类型。
 	if device == "" {
 		return []string{}, derror.ErrInvalidParam
@@ -83,9 +88,11 @@ func (m *Manager) GetTokenValueListByDevice(ctx context.Context, loginID, device
 		if !errors.Is(err, derror.ErrSessionNotFound) {
 			return nil, err
 		}
+
 		// Return empty list 返回空列表。
 		return []string{}, nil
 	}
+
 	// Return empty list when session missing 会话为空时返回空列表。
 	if sess == nil {
 		return []string{}, nil
@@ -102,9 +109,11 @@ func (m *Manager) GetTokenValueListByDeviceAndDeviceID(ctx context.Context, logi
 	if loginID == "" {
 		return []string{}, derror.ErrIDIsEmpty
 	}
+
 	// Normalize device fields 规范化设备字段。
 	device = strings.TrimSpace(device)
 	deviceID = strings.TrimSpace(deviceID)
+
 	// Validate device fields 校验设备字段。
 	if device == "" || deviceID == "" {
 		return []string{}, derror.ErrInvalidParam
@@ -117,9 +126,11 @@ func (m *Manager) GetTokenValueListByDeviceAndDeviceID(ctx context.Context, logi
 		if !errors.Is(err, derror.ErrSessionNotFound) {
 			return nil, err
 		}
+
 		// Return empty list 返回空列表。
 		return []string{}, nil
 	}
+
 	// Return empty list when session missing 会话为空时返回空列表。
 	if sess == nil {
 		return []string{}, nil
@@ -146,6 +157,7 @@ func (m *Manager) GetOnlineTerminalCount(ctx context.Context, loginID string) (i
 		}
 		return 0, err
 	}
+
 	// Return zero when session missing 会话为空时返。0。
 	if sess == nil {
 		return 0, nil
@@ -161,8 +173,10 @@ func (m *Manager) GetOnlineTerminalCountByDevice(ctx context.Context, loginID, d
 	if loginID == "" {
 		return 0, derror.ErrIDIsEmpty
 	}
+
 	// Normalize device type 规范化设备类型。
 	device = strings.TrimSpace(device)
+
 	// Validate device type 校验设备类型。
 	if device == "" {
 		return 0, derror.ErrInvalidParam
@@ -177,6 +191,7 @@ func (m *Manager) GetOnlineTerminalCountByDevice(ctx context.Context, loginID, d
 		}
 		return 0, err
 	}
+
 	// Return zero when session missing 会话为空时返。0。
 	if sess == nil {
 		return 0, nil
@@ -192,9 +207,11 @@ func (m *Manager) GetOnlineTerminalCountByDeviceAndDeviceID(ctx context.Context,
 	if loginID == "" {
 		return 0, derror.ErrIDIsEmpty
 	}
+
 	// Normalize device fields 规范化设备字段。
 	device = strings.TrimSpace(device)
 	deviceID = strings.TrimSpace(deviceID)
+
 	// Validate device fields 校验设备字段。
 	if device == "" || deviceID == "" {
 		return 0, derror.ErrInvalidParam
@@ -209,6 +226,7 @@ func (m *Manager) GetOnlineTerminalCountByDeviceAndDeviceID(ctx context.Context,
 		}
 		return 0, err
 	}
+
 	// Return zero when session missing 会话为空时返。0。
 	if sess == nil {
 		return 0, nil
@@ -234,6 +252,7 @@ func (m *Manager) GetTerminalListByLoginID(ctx context.Context, loginID string, 
 		}
 		return nil, err
 	}
+
 	// Return empty list when session missing 会话为空时返回空列表。
 	if sess == nil {
 		return []TerminalInfo{}, nil
@@ -352,6 +371,7 @@ func (m *Manager) ForEachTerminal(ctx context.Context, loginID string, visitor T
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+
 	// Validate visitor 校验回调函数。
 	if visitor == nil {
 		return derror.ErrInvalidParam
@@ -382,12 +402,15 @@ func (m *Manager) ForEachTerminalByDevice(ctx context.Context, loginID, device s
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+
 	// Normalize device type 规范化设备类型。
 	device = strings.TrimSpace(device)
+
 	// Validate device type 校验设备类型。
 	if device == "" {
 		return derror.ErrInvalidParam
 	}
+
 	// Validate visitor 校验回调函数。
 	if visitor == nil {
 		return derror.ErrInvalidParam
@@ -442,6 +465,7 @@ func (m *Manager) filterTokens(ctx context.Context, terminals []TerminalInfo, ch
 		if alive {
 			tokens = append(tokens, ti.Token)
 		}
+
 		// Skip invalid tokens 。token 无效（过。被踢等），跳。
 	}
 	return tokens, nil

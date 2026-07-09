@@ -8,6 +8,7 @@ type terminalMatchFunc func(TerminalInfo) bool
 func (s *Session) removeTerminals(match terminalMatchFunc) []TerminalInfo {
 	var kept []TerminalInfo    // kept stores remaining terminals. kept 存储保留终端。
 	var removed []TerminalInfo // removed stores removed terminals. removed 存储被移除终端。
+
 	// Split terminals by matcher. 按匹配器拆分终端。
 	for _, ti := range s.TerminalInfos {
 		if match != nil && match(ti) {
@@ -25,6 +26,7 @@ func (s *Session) removeTerminals(match terminalMatchFunc) []TerminalInfo {
 // filterTerminals returns matched terminals. filterTerminals 返回匹配的终端信息。
 func (s *Session) filterTerminals(match terminalMatchFunc) []TerminalInfo {
 	var matched []TerminalInfo
+
 	// Collect matched terminals. 收集匹配终端。
 	for _, ti := range s.TerminalInfos {
 		if match != nil && match(ti) {
@@ -116,6 +118,7 @@ func (s *Session) removeTerminalByToken(tokenValue string) (TerminalInfo, bool) 
 	for i, ti := range s.TerminalInfos {
 		if ti.Token == tokenValue {
 			removed := ti
+
 			// Remove matched terminal while preserving order. 保持顺序移除匹配终端。
 			s.TerminalInfos = append(s.TerminalInfos[:i], s.TerminalInfos[i+1:]...)
 			return removed, true
@@ -138,6 +141,7 @@ func (s *Session) removeLatestTerminalByToken(tokenValue string) (TerminalInfo, 
 		ti := s.TerminalInfos[i]
 		if ti.Token == tokenValue {
 			removed := ti
+
 			// Remove matched terminal while preserving order. 保持顺序移除匹配终端。
 			s.TerminalInfos = append(s.TerminalInfos[:i], s.TerminalInfos[i+1:]...)
 			return removed, true
@@ -181,6 +185,7 @@ func (s *Session) removeOldestTerminal(device ...string) (TerminalInfo, bool) {
 	for i, ti := range s.TerminalInfos {
 		if ti.Device == targetDevice {
 			removed := ti
+
 			// Remove matched terminal while preserving order. 保持顺序移除匹配终端。
 			s.TerminalInfos = append(s.TerminalInfos[:i], s.TerminalInfos[i+1:]...)
 			return removed, true
@@ -196,6 +201,7 @@ func (s *Session) removeAllTerminals() []TerminalInfo {
 	// Copy removed terminals. 拷贝被移除终端。
 	removed := make([]TerminalInfo, len(s.TerminalInfos))
 	copy(removed, s.TerminalInfos)
+
 	// Clear terminal list. 清空终端列表。
 	s.TerminalInfos = []TerminalInfo{}
 	return removed
@@ -223,6 +229,7 @@ func (s *Session) getLatestTerminalByDevice(device string) (TerminalInfo, bool) 
 			return s.TerminalInfos[i], true
 		}
 	}
+
 	// Return not found. 返回未找到。
 	return TerminalInfo{}, false
 }

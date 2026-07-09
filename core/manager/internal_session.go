@@ -17,6 +17,7 @@ func (m *Manager) getSession(ctx context.Context, loginID string) (*Session, err
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
+
 	// Handle missing session 处理会话不存在。
 	if sessData == nil {
 		// Return session not found 返回会话不存在。
@@ -52,6 +53,7 @@ func (m *Manager) getTokenInfo(ctx context.Context, tokenValue string) (*TokenIn
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
+
 	// Return invalid token when missing Token 不存在时返回无效 Token。
 	if tokenInfoData == nil {
 		return nil, derror.ErrInvalidToken
@@ -62,6 +64,7 @@ func (m *Manager) getTokenInfo(ctx context.Context, tokenValue string) (*TokenIn
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
 	}
+
 	// Detect logical token state 识别 Token 逻辑状态。
 	if stateErr := tokenStateError(TokenState(tokenInfoBytes)); stateErr != nil {
 		return nil, stateErr
@@ -111,6 +114,7 @@ func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenV
 	if m.isDisable(ctx, tokenInfo.LoginID) {
 		return nil, nil, derror.ErrAccountDisabled
 	}
+
 	// Check device disable state 检查设备封禁状态。
 	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID) {
 		return nil, nil, derror.ErrDeviceDisabled
@@ -125,6 +129,7 @@ func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenV
 		}
 		return nil, nil, err
 	}
+
 	// Validate token attachment 校验 Token 是否属于会话。
 	if sess == nil || !sess.hasTerminalToken(tokenValue) {
 		return nil, nil, derror.ErrInvalidToken
@@ -138,16 +143,19 @@ func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenV
 		if err != nil {
 			return nil, nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
+
 		// Reject missing active marker 拒绝缺失的活跃标记。
 		if timeStampAny == nil {
 			return nil, nil, derror.ErrInvalidToken
 		}
+
 		// Convert active timestamp 转换活跃时间戳。
 		timeStamp, err := utils.ToInt64(timeStampAny)
 		if err != nil {
 			_ = m.storage.Delete(ctx, m.getActiveKey(tokenValue))
 			return nil, nil, derror.ErrInvalidToken
 		}
+
 		// Handle inactive timeout 处理不活跃超时。
 		if time.Now().Unix()-timeStamp > activeTimeout {
 			if opts.lockHeld {
@@ -175,6 +183,7 @@ func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenV
 		// Read token TTL 读取 Token TTL。
 		if ttl, err := m.storage.TTL(ctx, m.getTokenKey(tokenValue)); err == nil && ttl > 0 {
 			ttlSeconds := int64(ttl.Seconds())
+
 			// Check renew threshold 检查续期阈值。
 			if ttlSeconds > 0 &&
 				(m.config.RenewMaxRefresh <= 0 || ttlSeconds <= m.config.RenewMaxRefresh) &&
@@ -214,6 +223,7 @@ func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenV
 				m.logger.Errorf("manager.checkLoginInternal: failed to set active key, token=%s, error=%v", tokenValue, err)
 			}
 		}
+
 		// Submit async active refresh task 提交异步活跃刷新任务。
 		m.submitAsync("checkLoginInternal active", activeFunc)
 	}
@@ -283,6 +293,7 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (boo
 	if hasExpired {
 		// Replace terminal list 替换终端列表。
 		sess.TerminalInfos = validTerminals
+
 		// Delete session when all terminals expired 所有终端均已过期时删除整个 session
 		if len(validTerminals) == 0 {
 			if err := m.storage.Delete(ctx, m.getSessionKey(sess.LoginID)); err != nil {

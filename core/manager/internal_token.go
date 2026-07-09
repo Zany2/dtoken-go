@@ -57,6 +57,7 @@ func (m *Manager) setTokenState(ctx context.Context, tokenValue string, state To
 	if err := m.storage.Set(ctx, m.getTokenKey(tokenValue), string(state), expiration); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
+
 	// Return state save success 返回状态保存成功。
 	return nil
 }
@@ -78,6 +79,7 @@ func (m *Manager) tokenStateExpiration(ctx context.Context, tokenValue string) t
 	if err != nil {
 		return m.getExpiration()
 	}
+
 	// Resolve token expiration 解析 Token 过期时间。
 	return m.resolveTokenExpiration(tokenInfo)
 }
@@ -100,6 +102,7 @@ func (m *Manager) applyLogoutModeToToken(ctx context.Context, tokenValue string,
 	default:
 		return derror.ErrInvalidParam
 	}
+
 	// Return mode application success 返回模式处理成功。
 	return nil
 }
@@ -117,10 +120,12 @@ func (m *Manager) ensureTerminalTokenAlive(ctx context.Context, tokenValue strin
 	if err != nil {
 		return err
 	}
+
 	// Reject dead token 拒绝无效 Token。
 	if !alive {
 		return derror.ErrInvalidToken
 	}
+
 	// Return alive success 返回存活校验成功。
 	return nil
 }
@@ -137,6 +142,7 @@ func (m *Manager) hasActiveTerminal(ctx context.Context, terminals []TerminalInf
 			return true, nil
 		}
 	}
+
 	// Return no active terminal 返回无活跃终端。
 	return false, nil
 }
@@ -145,6 +151,7 @@ func (m *Manager) hasActiveTerminal(ctx context.Context, terminals []TerminalInf
 func (m *Manager) isTerminalTokenAlive(ctx context.Context, tokenValue string) bool {
 	// Check token alive state 检查 Token 存活状态。
 	alive, err := m.checkTerminalTokenAlive(ctx, tokenValue)
+
 	// Return boolean result 返回布尔结果。
 	return err == nil && alive
 }
@@ -158,6 +165,7 @@ func (m *Manager) checkTerminalTokenAlive(ctx context.Context, tokenValue string
 // checkTerminalTokenAliveWithContext checks token validity with optional loaded data. checkTerminalTokenAliveWithContext 使用可选已加载数据检查 Token 是否有效。
 func (m *Manager) checkTerminalTokenAliveWithContext(ctx context.Context, tokenValue string, tokenInfo *TokenInfo, sess *Session) (bool, error) {
 	var err error
+
 	// Load token info when caller has not provided it 调用方未提供时加载 Token 信息。
 	if tokenInfo == nil {
 		tokenInfo, err = m.getTokenInfo(ctx, tokenValue)
@@ -173,10 +181,12 @@ func (m *Manager) checkTerminalTokenAliveWithContext(ctx context.Context, tokenV
 		}
 		return false, err
 	}
+
 	// Reject empty or disabled account 拒绝空账号或封禁账号。
 	if tokenInfo.LoginID == "" || m.isDisable(ctx, tokenInfo.LoginID) {
 		return false, nil
 	}
+
 	// Reject disabled device 拒绝已封禁设备。
 	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID) {
 		return false, nil
@@ -186,6 +196,7 @@ func (m *Manager) checkTerminalTokenAliveWithContext(ctx context.Context, tokenV
 	if sess != nil && sess.LoginID != tokenInfo.LoginID {
 		return false, nil
 	}
+
 	// Load session 加载会话。
 	if sess == nil {
 		sess, err = m.getSession(ctx, tokenInfo.LoginID)
@@ -213,11 +224,13 @@ func (m *Manager) checkTerminalTokenAliveWithContext(ctx context.Context, tokenV
 		}
 		return false, nil
 	}
+
 	// Convert active timestamp 转换活跃时间戳。
 	timeStamp, err := utils.ToInt64(timeStampAny)
 	if err != nil {
 		return false, nil
 	}
+
 	// Compare active timeout 比较活跃超时。
 	return time.Now().Unix()-timeStamp <= activeTimeout, nil
 }

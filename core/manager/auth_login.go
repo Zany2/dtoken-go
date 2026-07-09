@@ -45,6 +45,7 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 	if opts.LoginID == "" {
 		return "", derror.ErrIDIsEmpty
 	}
+
 	// Validate per-login policy overrides before side effects. 在产生副作用前校验单次登录策略覆盖项。
 	if err := validateLoginPolicyOverrides(opts); err != nil {
 		return "", err
@@ -52,6 +53,7 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(opts.LoginID)
+
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
@@ -95,6 +97,7 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 		if err != nil {
 			return "", err
 		}
+
 		// Record session destroy result 记录会话销毁结果。
 		destroyedSession = result.destroyedSession
 		if result.handled {
@@ -148,6 +151,7 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 
 	// Calculate expiration duration 计算过期时长
 	expiration := m.getExpiration()
+
 	// Override expiration when specified 指定时覆盖过期时间。
 	if opts.Timeout > 0 {
 		expiration = opts.Timeout
@@ -243,6 +247,7 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(tokenInfo.LoginID)
+
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
@@ -256,6 +261,7 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 	if m.isDisable(ctx, tokenInfo.LoginID) {
 		return derror.ErrAccountDisabled
 	}
+
 	// Check device disable status 检查设备封禁状态。
 	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID) {
 		return derror.ErrDeviceDisabled
@@ -270,8 +276,10 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 	renewFunc := func() {
 		// Use background context for async renewal 异步续期使用后台上下文。
 		bg := context.Background()
+
 		// Lock account writes in async task 异步任务中锁定账号写操作。
 		unlock := m.lockLoginWrite(tokenInfo.LoginID)
+
 		// Release async lock on exit 异步任务退出时释放锁。
 		defer func() { unlock() }()
 
@@ -295,6 +303,7 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 
 		// Resolve token expiration 解析 Token 过期时长。
 		expiration := m.resolveTokenExpiration(latestTokenInfo)
+
 		// Build session key 构建会话键。
 		sessionKey := m.getSessionKey(latestTokenInfo.LoginID)
 
@@ -302,6 +311,7 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 		if err := m.saveSessionWithMinTTL(bg, sessionKey, *latestSession, expiration); err != nil {
 			m.logger.Errorf("manager.LoginByToken: failed to save session, loginID=%s, error=%v", latestTokenInfo.LoginID, err)
 		}
+
 		// Renew token 续期 Token
 		if err := m.expireTokenIfLimited(bg, tokenValue, expiration); err != nil {
 			m.logger.Errorf("manager.LoginByToken: failed to expire token, token=%s, error=%v", tokenValue, err)
@@ -372,6 +382,7 @@ func (m *Manager) GetDevice(ctx context.Context, tokenValue string) (string, err
 	if err != nil {
 		return "", err
 	}
+
 	// Return device type 返回设备类型。
 	return tokenInfo.Device, nil
 }
@@ -383,6 +394,7 @@ func (m *Manager) GetDeviceID(ctx context.Context, tokenValue string) (string, e
 	if err != nil {
 		return "", err
 	}
+
 	// Return device ID 返回设备 ID。
 	return tokenInfo.DeviceID, nil
 }
@@ -394,6 +406,7 @@ func (m *Manager) GetDeviceAndDeviceID(ctx context.Context, tokenValue string) (
 	if err != nil {
 		return "", "", err
 	}
+
 	// Return device fields 返回设备字段。
 	return tokenInfo.Device, tokenInfo.DeviceID, nil
 }
@@ -405,6 +418,7 @@ func (m *Manager) GetTokenCreateTime(ctx context.Context, tokenValue string) (in
 	if err != nil {
 		return 0, err
 	}
+
 	// Return token create time 返回 Token 创建时间。
 	return tokenInfo.CreateTime, nil
 }
@@ -464,6 +478,7 @@ func (m *Manager) RenewTimeout(ctx context.Context, tokenValue string, timeout t
 
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(tokenInfo.LoginID)
+
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
@@ -484,6 +499,7 @@ func (m *Manager) RenewTimeout(ctx context.Context, tokenValue string, timeout t
 	if expiration <= 0 {
 		expiration = m.getExpiration()
 	}
+
 	// Record timeout seconds 记录过期秒数。
 	tokenInfo.Timeout = m.timeoutToSeconds(expiration)
 
@@ -503,10 +519,12 @@ func (m *Manager) RenewTimeout(ctx context.Context, tokenValue string, timeout t
 		if activeErr != nil {
 			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, activeErr)
 		}
+
 		// Initialize active marker if missing 缺失时初始化活跃标记。
 		if activeValue == nil {
 			activeValue = time.Now().Unix()
 		}
+
 		// Persist active marker TTL 持久化活跃标记 TTL。
 		if err = m.storage.Set(ctx, m.getActiveKey(tokenValue), activeValue, expiration); err != nil {
 			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
@@ -534,6 +552,7 @@ func (m *Manager) renewFunc(ctx context.Context, tokenValue, loginID string) {
 
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(loginID)
+
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
@@ -548,6 +567,7 @@ func (m *Manager) renewFunc(ctx context.Context, tokenValue, loginID string) {
 		m.logger.Errorf("manager.renewFunc: failed to get session, loginID=%s, error=%v", loginID, err)
 		return
 	}
+
 	// Validate token attachment 校验 Token 是否属于会话。
 	if !sess.hasTerminalToken(tokenValue) {
 		m.logger.Errorf("manager.renewFunc: token not found in session, token=%s", tokenValue)

@@ -63,6 +63,7 @@ func (m *Manager) submitAsync(name string, task func()) {
 	// Submit task to pool 提交任务到协程池。
 	if err := m.pool.Submit(task); err != nil {
 		m.logger.Errorf("manager.submitAsync: failed to submit async task, task=%s, error=%v", name, err)
+
 		// Fallback when submit fails 提交失败时回退。
 		go task()
 	}
@@ -74,6 +75,7 @@ func (m *Manager) expireIfLimited(ctx context.Context, key string, expiration ti
 	if expiration <= 0 {
 		return nil
 	}
+
 	// Renew key expiration 续期键过期时间。
 	if err := m.storage.Expire(ctx, key, expiration); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
@@ -87,12 +89,15 @@ func (m *Manager) expireTokenIfLimited(ctx context.Context, tokenValue string, e
 	if expiration <= 0 {
 		return nil
 	}
+
 	// Build token key 构建 Token 键。
 	key := m.getTokenKey(tokenValue)
+
 	// Skip missing token key 跳过不存在的 Token 键。
 	if !m.storage.Exists(ctx, key) {
 		return nil
 	}
+
 	// Renew token key expiration 续期 Token 键过期时间。
 	return m.expireIfLimited(ctx, key, expiration)
 }

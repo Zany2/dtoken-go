@@ -34,15 +34,18 @@ func (m *Manager) handleConcurrency(
 			} else if m.config.ConcurrencyScope == config.ConcurrencyScopeDevice {
 				terminals = sess.getTerminalsByDevice(device)
 			}
+
 			// Check active terminal 检查是否存在活跃终端。
 			hasActiveTerminal, activeErr := m.hasActiveTerminal(ctx, terminals, sess)
 			if activeErr != nil {
 				return concurrencyResult{}, activeErr
 			}
+
 			// Reject login when active terminal exists 存在活跃终端时拒绝登录。
 			if hasActiveTerminal {
 				return concurrencyResult{}, derror.ErrLoginLimitExceeded
 			}
+
 			// Allow login when no active terminal 无活跃终端时允许继续登录。
 			return concurrencyResult{destroyedSession: destroyedByClean}, nil
 		}
@@ -161,6 +164,7 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 
 	// Resolve reused token expiration 解析复用 Token 过期时间。
 	expiration := m.resolveTokenExpiration(tokenInfo)
+
 	// Preserve original timeout 保留原始过期秒数。
 	tokenTimeout := tokenInfo.Timeout
 
@@ -181,6 +185,7 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 		ActiveTimeout: tokenInfo.ActiveTimeout,
 		Extra:         tokenInfo.Extra,
 	}
+
 	// Persist reused token info 持久化复用 Token 信息。
 	if err := m.saveToStorage(ctx, m.getTokenKey(terminalInfo.Token), updatedTokenInfo, expiration); err != nil {
 		return "", err
@@ -193,6 +198,7 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 			return "", fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
 	}
+
 	// Set active timeout 设置最大不活跃时长
 	if m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout) > 0 {
 		// Refresh active marker 刷新活跃标记。

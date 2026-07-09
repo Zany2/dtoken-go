@@ -17,6 +17,7 @@ func (m *Manager) getExpiration() time.Duration {
 	if m.config.Timeout > 0 {
 		return time.Duration(m.config.Timeout) * time.Second
 	}
+
 	// Return no expiration 返回不过期。
 	return 0
 }
@@ -30,10 +31,12 @@ func (m *Manager) timeoutToSeconds(timeout time.Duration) int64 {
 
 	// Convert duration to whole seconds 转换为整秒。
 	seconds := int64(timeout / time.Second)
+
 	// Round up partial second 不足一秒向上取整。
 	if timeout%time.Second != 0 {
 		seconds++
 	}
+
 	// Ensure positive second 保证至少一秒。
 	if seconds <= 0 {
 		return 1
@@ -52,6 +55,7 @@ func (m *Manager) resolveTokenExpiration(tokenInfo *TokenInfo) time.Duration {
 			return time.Duration(tokenInfo.Timeout) * time.Second
 		}
 	}
+
 	// Fallback to global expiration 回退到全局过期时间。
 	return m.getExpiration()
 }
@@ -65,6 +69,7 @@ func (m *Manager) saveSessionWithMinTTL(
 ) error {
 	// Start with requested expiration 先使用请求的过期时间。
 	finalExpiration := expiration
+
 	// Preserve longer existing TTL 保留更长的已有 TTL。
 	if expiration > 0 {
 		currentTTL, err := m.storage.TTL(ctx, key)
@@ -109,7 +114,6 @@ func (m *Manager) saveToStorage(
 	value any,
 	expiration ...time.Duration,
 ) error {
-
 	// Serialize to bytes 序列化为字节
 	bytesData, err := m.serializer.Encode(value)
 	if err != nil {
@@ -118,6 +122,7 @@ func (m *Manager) saveToStorage(
 
 	// Build expiration duration 构建过期时长
 	duration := m.getExpiration()
+
 	// Use explicit expiration when provided 存在显式过期时间时优先使用。
 	if len(expiration) > 0 {
 		duration = expiration[0]
@@ -192,6 +197,7 @@ func (m *Manager) searchKeys(ctx context.Context, pattern string, start, size in
 	if start < 0 {
 		start = 0
 	}
+
 	// Return empty when start exceeds total 起点超过总数时返回空列表。
 	if start >= total {
 		return []string{}, nil
@@ -218,11 +224,13 @@ func (m *Manager) searchValues(ctx context.Context, pattern, prefix string, star
 	if err != nil {
 		return nil, err
 	}
+
 	// Strip prefix from keys 从键中裁剪前缀。
 	values := make([]string, len(keys))
 	for i, key := range keys {
 		values[i] = strings.TrimPrefix(key, prefix)
 	}
+
 	// Return business values 返回业务值。
 	return values, nil
 }

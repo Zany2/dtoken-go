@@ -15,8 +15,10 @@ func (m *Manager) AddPermissions(ctx context.Context, loginID string, permission
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+
 	// Normalize permission values 规范化权限值。
 	permissions = normalizeAccessValues(permissions)
+
 	// Return early when nothing to change 无变更时直接返回。
 	if len(permissions) == 0 {
 		return nil
@@ -24,6 +26,7 @@ func (m *Manager) AddPermissions(ctx context.Context, loginID string, permission
 
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(loginID)
+
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
@@ -35,6 +38,7 @@ func (m *Manager) AddPermissions(ctx context.Context, loginID string, permission
 
 	// Add permissions to session 向会话追加权限。
 	sess.addPermissions(permissions...)
+
 	// Persist updated session 持久化更新后的会话。
 	if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
 		return err
@@ -56,10 +60,12 @@ func (m *Manager) AddPermissions(ctx context.Context, loginID string, permission
 func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, permissions []string) error {
 	// Normalize permission values 规范化权限值。
 	permissions = normalizeAccessValues(permissions)
+
 	// Return early when nothing to change 无变更时直接返回。
 	if len(permissions) == 0 {
 		return nil
 	}
+
 	// Load token info to choose account lock 读取 Token 信息以选择账号锁。
 	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
 	if err != nil {
@@ -69,6 +75,7 @@ func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, 
 
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(lockedLoginID)
+
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
@@ -83,6 +90,7 @@ func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, 
 
 	// Add permissions to session 向会话追加权限。
 	sess.addPermissions(permissions...)
+
 	// Persist updated session 持久化更新后的会话。
 	if err = m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
 		return err
@@ -106,8 +114,10 @@ func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permiss
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+
 	// Normalize permission values 规范化权限值。
 	permissions = normalizeAccessValues(permissions)
+
 	// Return early when nothing to change 无变更时直接返回。
 	if len(permissions) == 0 {
 		return nil
@@ -115,6 +125,7 @@ func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permiss
 
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(loginID)
+
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
@@ -126,6 +137,7 @@ func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permiss
 
 	// Remove permissions from session 从会话移除权限。
 	sess.removePermissions(permissions...)
+
 	// Persist updated session 持久化更新后的会话。
 	if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
 		return err
@@ -147,10 +159,12 @@ func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permiss
 func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue string, permissions []string) error {
 	// Normalize permission values 规范化权限值。
 	permissions = normalizeAccessValues(permissions)
+
 	// Return early when nothing to change 无变更时直接返回。
 	if len(permissions) == 0 {
 		return nil
 	}
+
 	// Load token info to choose account lock 读取 Token 信息以选择账号锁。
 	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
 	if err != nil {
@@ -160,6 +174,7 @@ func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue strin
 
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(lockedLoginID)
+
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
@@ -174,6 +189,7 @@ func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue strin
 
 	// Remove permissions from session 从会话移除权限。
 	sess.removePermissions(permissions...)
+
 	// Persist updated session 持久化更新后的会话。
 	if err = m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
 		return err
@@ -197,6 +213,7 @@ func (m *Manager) GetPermissions(ctx context.Context, loginID string) ([]string,
 	if loginID == "" {
 		return nil, derror.ErrIDIsEmpty
 	}
+
 	// Load permissions by login ID 按登录 ID 加载权限。
 	return m.loadPermissionsByLoginID(ctx, loginID)
 }
@@ -231,6 +248,7 @@ func (m *Manager) HasPermission(ctx context.Context, loginID string, permission 
 		m.logger.Errorf("manager.HasPermission: failed to load permissions, loginID=%s, error=%v", loginID, err)
 		return false
 	}
+
 	// Calculate permission result 计算权限结果。
 	hasPermission := m.hasPermissionInList(permissions, permission)
 
@@ -259,6 +277,7 @@ func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, p
 
 	// Build access subject 构建访问主体。
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
 	// Resolve permissions by token 。Token 解析权限。
 	permissions := m.resolvePermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
@@ -266,6 +285,7 @@ func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, p
 		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
+
 	// Calculate permission result 计算权限结果。
 	hasPermission := m.hasPermissionInList(permissions, permission)
 
@@ -291,6 +311,7 @@ func (m *Manager) HasPermissionsAnd(ctx context.Context, loginID string, permiss
 		m.logger.Errorf("manager.HasPermissionsAnd: failed to load permissions, loginID=%s, error=%v", loginID, err)
 		return false
 	}
+
 	// Calculate AND result 计算 AND 结果。
 	hasAll := m.hasAllPermissions(permList, permissions)
 
@@ -315,6 +336,7 @@ func (m *Manager) HasPermissionsAndByToken(ctx context.Context, tokenValue strin
 
 	// Build access subject 构建访问主体。
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
 	// Resolve permissions by token 。Token 解析权限。
 	permList := m.resolvePermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
@@ -322,6 +344,7 @@ func (m *Manager) HasPermissionsAndByToken(ctx context.Context, tokenValue strin
 		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
+
 	// Calculate AND result 计算 AND 结果。
 	hasAll := m.hasAllPermissions(permList, permissions)
 
@@ -348,6 +371,7 @@ func (m *Manager) HasPermissionsOr(ctx context.Context, loginID string, permissi
 		m.logger.Errorf("manager.HasPermissionsOr: failed to load permissions, loginID=%s, error=%v", loginID, err)
 		return false
 	}
+
 	// Calculate OR result 计算 OR 结果。
 	hasAny := m.hasAnyPermission(permList, permissions)
 
@@ -372,6 +396,7 @@ func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string
 
 	// Build access subject 构建访问主体。
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
 	// Resolve permissions by token 。Token 解析权限。
 	permList := m.resolvePermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
@@ -379,6 +404,7 @@ func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string
 		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
+
 	// Calculate OR result 计算 OR 结果。
 	hasAny := m.hasAnyPermission(permList, permissions)
 
@@ -398,6 +424,7 @@ func (m *Manager) CheckPermission(ctx context.Context, loginID string, permissio
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+
 	// Validate permission is not empty 校验权限不为空。
 	if permission == "" {
 		return derror.ErrInvalidParam
@@ -408,6 +435,7 @@ func (m *Manager) CheckPermission(ctx context.Context, loginID string, permissio
 	if err != nil {
 		return err
 	}
+
 	// Calculate permission result 计算权限结果。
 	hasPermission := m.hasPermissionInList(permissions, permission)
 
@@ -429,13 +457,16 @@ func (m *Manager) CheckPermissionByToken(ctx context.Context, tokenValue string,
 	if permission == "" {
 		return derror.ErrInvalidParam
 	}
+
 	// Validate token and load context 校验 Token 并加载上下文。
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
 		return err
 	}
+
 	// Build access subject 构建访问主体。
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
 	// Load permissions by token 。Token 加载权限。
 	permissions, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
@@ -446,6 +477,7 @@ func (m *Manager) CheckPermissionByToken(ctx context.Context, tokenValue string,
 	if err != nil {
 		return err
 	}
+
 	// Calculate permission result 计算权限结果。
 	hasPermission := m.hasPermissionInList(permissions, permission)
 
@@ -473,6 +505,7 @@ func (m *Manager) CheckPermissionAnd(ctx context.Context, loginID string, permis
 	if err != nil {
 		return err
 	}
+
 	// Calculate AND result 计算 AND 结果。
 	hasAll := m.hasAllPermissions(permList, permissions)
 
@@ -496,8 +529,10 @@ func (m *Manager) CheckPermissionAndByToken(ctx context.Context, tokenValue stri
 	if err != nil {
 		return err
 	}
+
 	// Build access subject 构建访问主体。
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
 	// Load permissions by token 。Token 加载权限。
 	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
@@ -508,6 +543,7 @@ func (m *Manager) CheckPermissionAndByToken(ctx context.Context, tokenValue stri
 	if err != nil {
 		return err
 	}
+
 	// Calculate AND result 计算 AND 结果。
 	hasAll := m.hasAllPermissions(permList, permissions)
 
@@ -536,6 +572,7 @@ func (m *Manager) CheckPermissionOr(ctx context.Context, loginID string, permiss
 	if err != nil {
 		return err
 	}
+
 	// Calculate OR result 计算 OR 结果。
 	hasAny := m.hasAnyPermission(permList, permissions)
 
@@ -559,8 +596,10 @@ func (m *Manager) CheckPermissionOrByToken(ctx context.Context, tokenValue strin
 	if err != nil {
 		return err
 	}
+
 	// Build access subject 构建访问主体。
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
 	// Load permissions by token 。Token 加载权限。
 	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
@@ -571,6 +610,7 @@ func (m *Manager) CheckPermissionOrByToken(ctx context.Context, tokenValue strin
 	if err != nil {
 		return err
 	}
+
 	// Calculate OR result 计算 OR 结果。
 	hasAny := m.hasAnyPermission(permList, permissions)
 
@@ -609,6 +649,7 @@ func (m *Manager) hasAllPermissions(perms []string, required []string) bool {
 	if len(required) == 0 {
 		return false
 	}
+
 	// Check each required permission 逐个检查必需权限。
 	for _, need := range required {
 		if need == "" {

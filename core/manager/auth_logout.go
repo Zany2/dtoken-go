@@ -43,8 +43,10 @@ func (m *Manager) LogoutByDevice(ctx context.Context, loginID string, device str
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+
 	// Normalize device type 规范化设备类型。
 	device = strings.TrimSpace(device)
+
 	// Validate device type 校验设备类型。
 	if device == "" {
 		return derror.ErrInvalidParam
@@ -65,10 +67,12 @@ func (m *Manager) LogoutByDeviceAndDeviceID(ctx context.Context, loginID string,
 
 	// Parse device fields 解析设备字段。
 	device, deviceID := m.getDeviceAndDeviceID(deviceAndDeviceID...)
+
 	// Validate device fields 校验设备字段。
 	if device == "" || deviceID == "" {
 		return derror.ErrInvalidParam
 	}
+
 	// Remove terminals by concrete device 按具体设备移除终端。
 	return m.logoutTerminals(ctx, loginID, func(sess *Session) []TerminalInfo {
 		return sess.removeTerminalByDeviceAndDeviceID(device, deviceID)
@@ -94,6 +98,7 @@ func (m *Manager) Kickout(ctx context.Context, tokenValue string) error {
 	if tokenValue == "" {
 		return derror.ErrInvalidToken
 	}
+
 	// Load session by token 根据 Token 加载会话。
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
@@ -119,8 +124,10 @@ func (m *Manager) KickoutByDevice(ctx context.Context, loginID string, device st
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+
 	// Normalize device type 规范化设备类型。
 	device = strings.TrimSpace(device)
+
 	// Validate device type 校验设备类型。
 	if device == "" {
 		return derror.ErrInvalidParam
@@ -141,6 +148,7 @@ func (m *Manager) KickoutByDeviceAndDeviceID(ctx context.Context, loginID string
 
 	// Parse device fields 解析设备字段。
 	device, deviceID := m.getDeviceAndDeviceID(deviceAndDeviceID...)
+
 	// Validate device fields 校验设备字段。
 	if device == "" || deviceID == "" {
 		return derror.ErrInvalidParam
@@ -171,6 +179,7 @@ func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
 	if tokenValue == "" {
 		return derror.ErrInvalidToken
 	}
+
 	// Load session by token 根据 Token 加载会话。
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
@@ -196,8 +205,10 @@ func (m *Manager) ReplaceByDevice(ctx context.Context, loginID string, device st
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+
 	// Normalize device type 规范化设备类型。
 	device = strings.TrimSpace(device)
+
 	// Validate device type 校验设备类型。
 	if device == "" {
 		return derror.ErrInvalidParam
@@ -218,10 +229,12 @@ func (m *Manager) ReplaceByDeviceAndDeviceID(ctx context.Context, loginID string
 
 	// Parse device fields 解析设备字段。
 	device, deviceID := m.getDeviceAndDeviceID(deviceAndDeviceID...)
+
 	// Validate device fields 校验设备字段。
 	if device == "" || deviceID == "" {
 		return derror.ErrInvalidParam
 	}
+
 	// Mark concrete device terminal as replaced 将具体设备终端标记为顶下线。
 	return m.processTerminals(ctx, loginID, func(sess *Session) []TerminalInfo {
 		return sess.removeTerminalByDeviceAndDeviceID(device, deviceID)
@@ -250,10 +263,12 @@ func (m *Manager) removeOldestTerminalInfoAndToken(ctx context.Context, sess *Se
 		if err := m.applyLogoutModeToToken(ctx, terminalInfo.Token, mode); err != nil {
 			return err
 		}
+
 		// Clean metadata 清理 metadata
 		if err := m.cleanTokenMetadata(ctx, []string{terminalInfo.Token}); err != nil {
 			return err
 		}
+
 		// Save session data 保存会话数据
 		if err := m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
 			return err
@@ -283,6 +298,7 @@ func (m *Manager) removeTerminalInfosAndTokens(ctx context.Context, sess *Sessio
 			return false, err
 		}
 	}
+
 	// Clean token metadata 清理附属 metadata
 	// Collect removed tokens 收集被移除 Token。
 	tokens := make([]string, len(terminalInfos))
@@ -318,6 +334,7 @@ func (m *Manager) logoutTerminals(
 ) error {
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(loginID)
+
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
@@ -330,6 +347,7 @@ func (m *Manager) logoutTerminals(
 		}
 		return err
 	}
+
 	// Treat nil session as no-op 空会话视为无操作。
 	if sess == nil {
 		return nil // session 不存在，登出无害
@@ -337,6 +355,7 @@ func (m *Manager) logoutTerminals(
 
 	// Apply terminal removal strategy 执行终端移除策略。
 	removed := removalFunc(sess)
+
 	// Return when nothing removed 没有移除项时直接返回。
 	if len(removed) == 0 {
 		return nil
@@ -452,6 +471,7 @@ func (m *Manager) processTerminals(
 ) error {
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(loginID)
+
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
