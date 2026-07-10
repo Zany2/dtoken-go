@@ -3,10 +3,10 @@ package gin
 
 import "github.com/Zany2/dtoken-go/dtoken"
 
-// Auth exposes the instance-oriented dtoken facade.
+// Auth exposes the instance-oriented dtoken facade. Auth 暴露面向实例的 dtoken 门面。
 type Auth = dtoken.Auth
 
-// Typed option aliases keep framework imports self-contained.
+// Typed option aliases keep framework imports self-contained. Typed option aliases 让框架包导入保持自包含。
 type (
 	LoginOptions          = dtoken.LoginOptions
 	RefreshTokenOptions   = dtoken.RefreshTokenOptions
@@ -18,7 +18,7 @@ type (
 	RoleOptions           = dtoken.RoleOptions
 )
 
-// Instance and typed global operations.
+// Instance and typed global operations. Instance and typed global operations 提供实例和强类型全局操作。
 var (
 	New                            = dtoken.New
 	Default                        = dtoken.Default

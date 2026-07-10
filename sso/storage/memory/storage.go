@@ -17,9 +17,13 @@ type Storage struct {
 	values map[string]item
 }
 
+// Verify Storage implements adapter.Storage at compile time. 编译期确认 Storage 实现 adapter.Storage。
 var _ adapter.Storage = (*Storage)(nil)
+
+// Verify Storage implements adapter.AtomicStorage at compile time. 编译期确认 Storage 实现 adapter.AtomicStorage。
 var _ adapter.AtomicStorage = (*Storage)(nil)
 
+// item stores one in-memory value and its expiration time. item 保存一个内存值及其过期时间。
 type item struct {
 	value    any
 	expireAt time.Time
@@ -201,6 +205,7 @@ func (s *Storage) Ping(ctx context.Context) error {
 	return checkContext(ctx)
 }
 
+// ensureReady ensures the in-memory storage map is initialized. ensureReady 确保内存存储映射已初始化。
 func (s *Storage) ensureReady() error {
 	if s == nil || s.values == nil {
 		return errors.New("sso memory storage is nil")
@@ -208,6 +213,7 @@ func (s *Storage) ensureReady() error {
 	return nil
 }
 
+// checkContext returns any context cancellation error. checkContext 返回上下文取消错误。
 func checkContext(ctx context.Context) error {
 	if ctx == nil {
 		return nil

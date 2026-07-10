@@ -9,7 +9,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/adapter"
 )
 
-// EventData defines triggered event data EventData 定义触发事件的数。
+// EventData defines triggered event data EventData 定义触发事件的数据。
 type EventData struct {
 	Event     Event          // Event stores event type Event 存储事件类型。
 	AuthType  string         // AuthType stores auth system type AuthType 存储认证体系类型。
@@ -21,7 +21,7 @@ type EventData struct {
 	Timestamp int64          // Timestamp stores event unix time Timestamp 存储事件触发时间戳。
 }
 
-// String returns event data string String 返回事件数据字符串表。
+// String returns event data string String 返回事件数据字符串表示。
 func (e *EventData) String() string {
 	if e == nil {
 		return "Event<nil>"
@@ -30,13 +30,13 @@ func (e *EventData) String() string {
 		e.Event, e.AuthType, e.LoginID, e.Device, e.DeviceID, e.Timestamp)
 }
 
-// Listener defines event listener interface Listener 定义事件监听器接。
+// Listener defines event listener interface Listener 定义事件监听器接口。
 type Listener interface {
 	// OnEvent handles triggered event OnEvent 处理被触发的事件。
 	OnEvent(data *EventData)
 }
 
-// ListenerFunc defines listener function adapter ListenerFunc 定义监听器函数适配。
+// ListenerFunc defines listener function adapter ListenerFunc 定义监听器函数适配器。
 type ListenerFunc func(data *EventData)
 
 // Interface assertion keeps listener contract checked at compile time 接口断言在编译期检查监听器契约
@@ -50,19 +50,20 @@ func (f ListenerFunc) OnEvent(data *EventData) {
 	f(data)
 }
 
-// ListenerConfig defines listener config ListenerConfig 定义监听器配。
+// ListenerConfig defines listener config ListenerConfig 定义监听器配置。
 type ListenerConfig struct {
 	Async    bool   // Async controls async execution Async 控制是否异步执行。
 	Priority int    // Priority stores listener priority Priority 存储监听器优先级。
 	ID       string // ID stores listener unique id ID 存储监听器唯一标识。
 }
 
+// listenerEntry stores listener and config together listenerEntry 同时存储监听器和配置。
 type listenerEntry struct {
 	listener Listener
 	config   ListenerConfig
 }
 
-// EventFilter defines event filter function EventFilter 定义事件过滤器函。
+// EventFilter defines event filter function EventFilter 定义事件过滤器函数。
 type EventFilter func(data *EventData) bool
 
 // EventStats defines event statistics EventStats 定义事件统计信息
@@ -72,7 +73,7 @@ type EventStats struct {
 	LastTriggered  map[Event]time.Time // LastTriggered stores last trigger time LastTriggered 存储最后触发时间。
 }
 
-// Manager defines event listener manager Manager 定义事件监听管理。
+// Manager defines event listener manager Manager 定义事件监听管理器。
 type Manager struct {
 	mu              sync.RWMutex
 	listeners       map[Event][]listenerEntry
@@ -86,7 +87,7 @@ type Manager struct {
 	logger          adapter.Log    // logger stores log adapter logger 存储日志适配器。
 }
 
-// NewManager creates event manager NewManager 创建新的事件管理。
+// NewManager creates event manager NewManager 创建新的事件管理器。
 func NewManager(loggers ...adapter.Log) *Manager {
 	var logger adapter.Log
 
@@ -98,17 +99,17 @@ func NewManager(loggers ...adapter.Log) *Manager {
 
 	m := &Manager{
 		listeners:     make(map[Event][]listenerEntry),
-		enabledEvents: nil, // enabledEvents nil means all enabled enabledEvents 。nil 表示启用所有事件。
+		enabledEvents: nil, // enabledEvents nil means all enabled enabledEvents 为 nil 表示启用所有事件。
 		filters:       make([]EventFilter, 0),
 		stats: &EventStats{
 			EventCounts:   make(map[Event]int64),
 			LastTriggered: make(map[Event]time.Time),
 		},
-		enableStats: false, // enableStats false means stats disabled enableStats 。false 表示默认不统计。
+		enableStats: false, // enableStats false means stats disabled enableStats 为 false 表示默认不统计。
 		logger:      logger,
 	}
 
-	// panicHandler binds initialized logger panicHandler 绑定已初始化。logger。
+	// panicHandler binds initialized logger panicHandler 绑定已初始化 logger。
 	m.panicHandler = func(event Event, data *EventData, recovered any) {
 		logger.Errorf(
 			"listener.Manager: listener panic recovered, event=%s, panic=%v",
@@ -119,7 +120,7 @@ func NewManager(loggers ...adapter.Log) *Manager {
 	return m
 }
 
-// SetPanicHandler sets panic handler SetPanicHandler 设置自定。panic 处理。
+// SetPanicHandler sets panic handler SetPanicHandler 设置自定义 panic 处理。
 func (m *Manager) SetPanicHandler(handler func(event Event, data *EventData, recovered any)) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -143,7 +144,7 @@ func (m *Manager) ClearFilters() {
 	m.filters = make([]EventFilter, 0)
 }
 
-// EnableStats sets stats switch EnableStats 设置事件统计开。
+// EnableStats sets stats switch EnableStats 设置事件统计开关。
 func (m *Manager) EnableStats(enable bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -218,7 +219,7 @@ func (m *Manager) DisableEvent(events ...Event) {
 	}
 }
 
-// IsEventEnabled checks event enable state IsEventEnabled 检查事件是否启。
+// IsEventEnabled checks event enable state IsEventEnabled 检查事件是否启用。
 func (m *Manager) IsEventEnabled(event Event) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -368,6 +369,7 @@ func (m *Manager) Trigger(data *EventData) {
 	}
 }
 
+// snapshot copies listeners and runtime settings for triggering snapshot 复制触发事件所需的监听器和运行时设置。
 func (m *Manager) snapshot(event Event) ([]listenerEntry, []EventFilter, bool, adapter.Log, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -388,6 +390,7 @@ func (m *Manager) snapshot(event Event) ([]listenerEntry, []EventFilter, bool, a
 	return listenersToCall, filters, m.enableStats, m.logger, true
 }
 
+// recordStats records one event trigger recordStats 记录一次事件触发统计。
 func (m *Manager) recordStats(event Event) {
 	now := time.Now()
 
@@ -399,6 +402,7 @@ func (m *Manager) recordStats(event Event) {
 	m.stats.LastTriggered[event] = now
 }
 
+// isEventEnabledLocked checks event state under lock isEventEnabledLocked 在锁内检查事件启用状态。
 func (m *Manager) isEventEnabledLocked(event Event) bool {
 	if m.enabledEvents == nil {
 		return true
@@ -406,7 +410,7 @@ func (m *Manager) isEventEnabledLocked(event Event) bool {
 	return m.enabledEvents[event] || m.enabledEvents[EventAll]
 }
 
-// TriggerAsync triggers event asynchronously TriggerAsync 异步触发事件并立即返。
+// TriggerAsync triggers event asynchronously TriggerAsync 异步触发事件并立即返回。
 func (m *Manager) TriggerAsync(data *EventData) {
 	if data == nil {
 		return
@@ -414,7 +418,7 @@ func (m *Manager) TriggerAsync(data *EventData) {
 	go m.Trigger(data)
 }
 
-// TriggerSync triggers event synchronously TriggerSync 同步触发事件并等待完。
+// TriggerSync triggers event synchronously TriggerSync 同步触发事件并等待完成。
 func (m *Manager) TriggerSync(data *EventData) {
 	m.Trigger(data)
 	m.Wait()

@@ -272,6 +272,7 @@ func (c *ClientApp) LogoutCallbackHandler(fn LogoutCallbackFunc) http.HandlerFun
 	}
 }
 
+// buildServerURL builds and optionally signs an SSO server URL. buildServerURL 构建并按需签名 SSO 服务端 URL。
 func (c *ClientApp) buildServerURL(path string, values url.Values) (string, error) {
 	base, err := url.Parse(joinURL(c.config.ServerURL, path))
 	if err != nil {
@@ -284,6 +285,7 @@ func (c *ClientApp) buildServerURL(path string, values url.Values) (string, erro
 	return base.String(), nil
 }
 
+// verifyLogoutCallbackTime validates logout callback freshness. verifyLogoutCallbackTime 校验登出回调时效性。
 func (c *ClientApp) verifyLogoutCallbackTime(value string) error {
 	if value == "" || c.config.LogoutCallbackMaxAge <= 0 {
 		return nil
@@ -299,6 +301,7 @@ func (c *ClientApp) verifyLogoutCallbackTime(value string) error {
 	return nil
 }
 
+// credentialValues converts a credential request to form values. credentialValues 将凭证请求转换为表单参数。
 func (c *ClientApp) credentialValues(req CredentialRequest) url.Values {
 	values := url.Values{}
 	mode := req.Mode
@@ -330,6 +333,7 @@ func (c *ClientApp) credentialValues(req CredentialRequest) url.Values {
 	return values
 }
 
+// postForm posts a form and decodes the protocol response. postForm 提交表单并解码协议响应。
 func (c *ClientApp) postForm(ctx context.Context, path string, values url.Values, out any) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -381,6 +385,7 @@ func (c *ClientApp) postForm(ctx context.Context, path string, values url.Values
 	return decoder.Decode(out)
 }
 
+// joinURL joins a server base URL with a path. joinURL 连接服务端基础 URL 与路径。
 func joinURL(baseURL, path string) string {
 	baseURL = strings.TrimRight(baseURL, "/")
 	path = "/" + strings.TrimLeft(path, "/")

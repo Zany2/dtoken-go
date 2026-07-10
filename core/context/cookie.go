@@ -50,7 +50,7 @@ func (c *CookieContext) LoginWithOptions(ctx context.Context, opts manager.Login
 	return token, nil
 }
 
-// Logout logs out current token and clears token cookie Logout 注销当前 Token 并清。Cookie
+// Logout logs out the current token and clears its cookie Logout 注销当前 Token 并清理对应 Cookie
 func (c *CookieContext) Logout(ctx context.Context) error {
 	err := c.d.Auth().Logout(ctx)
 	if err == nil || errors.Is(err, derror.ErrInvalidToken) || errors.Is(err, derror.ErrNotLogin) {

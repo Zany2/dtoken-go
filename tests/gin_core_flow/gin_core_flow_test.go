@@ -23,20 +23,27 @@ import (
 	gincoreapp "github.com/Zany2/dtoken-go/tests/gin_core_app"
 )
 
+// flowRedisURL stores the Redis endpoint used by end-to-end flow tests. flowRedisURL 保存端到端流程测试使用的 Redis 地址。
 const flowRedisURL = "redis://:root@192.168.19.104:6379/0"
 
+// Shared flow-test state coordinates unique prefixes and Redis availability checks. Shared flow-test state 协调唯一前缀和 Redis 可用性检查。
 var (
 	flowAppSeq        uint64
 	flowRedisCheckErr error
 	flowRedisCheck    sync.Once
 )
 
+// apiResponse decodes the unified test application response. apiResponse 解码测试应用的统一响应。
 type apiResponse struct {
-	Code    int             `json:"code"`
-	Message string          `json:"message"`
-	Data    json.RawMessage `json:"data"`
+	// Code stores the business response code. Code 保存业务响应码。
+	Code int `json:"code"`
+	// Message stores the response message. Message 保存响应消息。
+	Message string `json:"message"`
+	// Data stores the raw response payload. Data 保存原始响应数据。
+	Data json.RawMessage `json:"data"`
 }
 
+// flowClient owns the test application, HTTP server, and current token. flowClient 持有测试应用、HTTP 服务端和当前 Token。
 type flowClient struct {
 	t      *testing.T
 	app    *gincoreapp.App
@@ -44,6 +51,7 @@ type flowClient struct {
 	token  string
 }
 
+// newFlowClient creates an isolated HTTP client for a flow test. newFlowClient 为流程测试创建隔离的 HTTP 客户端。
 func newFlowClient(t *testing.T, cfg gincoreapp.Config) *flowClient {
 	t.Helper()
 
@@ -65,6 +73,7 @@ func newFlowClient(t *testing.T, cfg gincoreapp.Config) *flowClient {
 	return &flowClient{t: t, app: app, server: server}
 }
 
+// skipFlowRedisUnavailable skips a flow test when Redis is unavailable. skipFlowRedisUnavailable 在 Redis 不可用时跳过流程测试。
 func skipFlowRedisUnavailable(t *testing.T) {
 	t.Helper()
 
@@ -81,12 +90,14 @@ func skipFlowRedisUnavailable(t *testing.T) {
 	}
 }
 
+// flowKeyPrefix creates a unique storage prefix for a flow test. flowKeyPrefix 为流程测试创建唯一存储前缀。
 func flowKeyPrefix(t *testing.T) string {
 	t.Helper()
 	seq := atomic.AddUint64(&flowAppSeq, 1)
 	return fmt.Sprintf("dt:gcf:%d:", seq)
 }
 
+// clearFlowStorage removes storage keys created by a flow test. clearFlowStorage 删除流程测试创建的存储键。
 func clearFlowStorage(t *testing.T, storage adapter.Storage, keyPrefix string) {
 	t.Helper()
 	scanner, ok := storage.(adapter.ScannerStorage)
@@ -189,10 +200,10 @@ func TestPermissionFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 	token := c.login("bob")
 
-	// Step 1: access article API without article:read permission, expect 403. 步骤 1：没。article:read 权限时访问文章接口，预期 403。
+	// Step 1: access article API without article:read permission, expect 403. 步骤 1：没有 article:read 权限时访问文章接口，预期 403。
 	c.expect("GET", "/api/articles", nil, token, http.StatusForbidden, derror.CodePermissionDenied, nil)
 
-	// Step 2: grant article:read permission through a protected management API. 步骤 2：通过受保护的管理接口给当前用户授。article:read 权限。
+	// Step 2: grant article:read permission through a protected management API. 步骤 2：通过受保护的管理接口给当前用户授予 article:read 权限。
 	c.expect("POST", "/api/permissions", map[string]any{"value": "article:read"}, token, http.StatusOK, derror.CodeSuccess, nil)
 
 	// Step 3: access article API again, expect success and demo article data. 步骤 3：再次访问文章接口，预期成功并返回示例文章数据。
@@ -217,17 +228,17 @@ func TestPermissionMutationAndLogicFlow(t *testing.T) {
 	c.expect("POST", "/api/permissions", map[string]any{"value": "article:write"}, token, http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/api/article/manage", nil, token, http.StatusOK, derror.CodeSuccess, nil)
 
-	// Step 3: remove article:read; both single and AND checks fail again. 步骤 3：移。article:read；单权限。AND 组合校验重新失败。
+	// Step 3: remove article:read; both single and AND checks fail again. 步骤 3：移除 article:read；单权限和 AND 组合校验重新失败。
 	c.expect("DELETE", "/api/permissions", map[string]any{"value": "article:read"}, token, http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/api/articles", nil, token, http.StatusForbidden, derror.CodePermissionDenied, nil)
 	c.expect("GET", "/api/article/manage", nil, token, http.StatusForbidden, derror.CodePermissionDenied, nil)
 
-	// Step 4: wildcard permission satisfies OR route requirement. 步骤 4：通配符权限满。OR 组合路由要求。
+	// Step 4: wildcard permission satisfies OR route requirement. 步骤 4：通配符权限满足 OR 组合路由要求。
 	c.expect("POST", "/api/permissions", map[string]any{"value": "content:*"}, token, http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/api/content", nil, token, http.StatusOK, derror.CodeSuccess, nil)
 }
 
-// TestAccessStatusFlow verifies HasPermission and HasRole variants by login ID and token. TestAccessStatusFlow 验证。loginID 。Token 判断权限和角色的布尔接口。
+// TestAccessStatusFlow verifies HasPermission and HasRole variants by login ID and token. TestAccessStatusFlow 验证按 loginID 和 Token 判断权限与角色的布尔接口。
 func TestAccessStatusFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 	token := c.login("access-status-user")
@@ -252,7 +263,7 @@ func TestAccessStatusFlow(t *testing.T) {
 	}
 }
 
-// TestAccessListFlow verifies permission and role list APIs by login ID and token. TestAccessListFlow 验证。loginID 。Token 获取权限和角色列表。
+// TestAccessListFlow verifies permission and role list APIs by login ID and token. TestAccessListFlow 验证按 loginID 和 Token 获取权限与角色列表。
 func TestAccessListFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 	token := c.login("access-list-user")
@@ -313,10 +324,10 @@ func TestRoleFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 	token := c.login("carol")
 
-	// Step 1: access admin API without admin role, expect 403. 步骤 1：没。admin 角色时访问管理接口，预期 403。
+	// Step 1: access admin API without admin role, expect 403. 步骤 1：没有 admin 角色时访问管理接口，预期 403。
 	c.expect("GET", "/api/admin", nil, token, http.StatusForbidden, derror.CodePermissionDenied, nil)
 
-	// Step 2: grant admin role and verify the same API becomes accessible. 步骤 2：授。admin 角色后，再次访问同一接口应成功。
+	// Step 2: grant admin role and verify the same API becomes accessible. 步骤 2：授予 admin 角色后，再次访问同一接口应成功。
 	c.expect("POST", "/api/roles", map[string]any{"value": "admin"}, token, http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/api/admin", nil, token, http.StatusOK, derror.CodeSuccess, nil)
 }
@@ -331,11 +342,11 @@ func TestRoleMutationAndLogicFlow(t *testing.T) {
 	c.expect("GET", "/api/admin", nil, token, http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/api/ops", nil, token, http.StatusForbidden, derror.CodePermissionDenied, nil)
 
-	// Step 2: grant ops; AND route succeeds. 步骤 2：授。ops 后，AND 组合角色接口成功。
+	// Step 2: grant ops; AND route succeeds. 步骤 2：授予 ops 后，AND 组合角色接口成功。
 	c.expect("POST", "/api/roles", map[string]any{"value": "ops"}, token, http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/api/ops", nil, token, http.StatusOK, derror.CodeSuccess, nil)
 
-	// Step 3: remove admin; single admin and AND route fail. 步骤 3：移。admin 后，单角色和 AND 组合接口失败。
+	// Step 3: remove admin; single admin and AND route fail. 步骤 3：移除 admin 后，单角色和 AND 组合接口失败。
 	c.expect("DELETE", "/api/roles", map[string]any{"value": "admin"}, token, http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/api/admin", nil, token, http.StatusForbidden, derror.CodePermissionDenied, nil)
 	c.expect("GET", "/api/ops", nil, token, http.StatusForbidden, derror.CodePermissionDenied, nil)
@@ -550,7 +561,7 @@ func TestKickoutAndReplaceFlow(t *testing.T) {
 	})
 }
 
-// TestSessionFlow verifies session data can be queried with a valid token. TestSessionFlow 验证会话流程：登录后可查询当。Session 和在线终端数量。
+// TestSessionFlow verifies session data can be queried with a valid token. TestSessionFlow 验证会话流程：登录后可查询当前 Session 和在线终端数量。
 func TestSessionFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 	token := c.login("session-user")
@@ -571,7 +582,7 @@ func TestSessionFlow(t *testing.T) {
 	}
 }
 
-// TestMultiTerminalSessionFlow verifies multiple logins for the same account are visible in session. TestMultiTerminalSessionFlow 验证多终端会话流程：同账号多设备登录。Session 终端数正确。
+// TestMultiTerminalSessionFlow verifies multiple logins for the same account are visible in session. TestMultiTerminalSessionFlow 验证多终端会话流程：同账号多设备登录后 Session 终端数正确。
 func TestMultiTerminalSessionFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 
@@ -707,7 +718,7 @@ func TestSessionQueryFlow(t *testing.T) {
 	}
 }
 
-// TestSessionAliveFilterFlow verifies token list alive filtering after a terminal is marked offline. TestSessionAliveFilterFlow 验证终端下线标记后的 Token 列表。alive 过滤行为。
+// TestSessionAliveFilterFlow verifies token list alive filtering after a terminal is marked offline. TestSessionAliveFilterFlow 验证终端下线标记后的 Token 列表 alive 过滤行为。
 func TestSessionAliveFilterFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 	web := c.loginWithDevice("session-alive-user", "web", "browser-1")
@@ -1444,7 +1455,7 @@ func TestDisableFlow(t *testing.T) {
 		// Step 1: payment service is available before service disable. 步骤 1：服务封禁前，支付接口可正常访问。
 		c.expect("GET", "/api/payment", nil, token, http.StatusOK, derror.CodeSuccess, nil)
 
-		// Step 2: disable only the payment service for current account. 步骤 2：只封禁当前账号。payment 服务。
+		// Step 2: disable only the payment service for current account. 步骤 2：只封禁当前账号的 payment 服务。
 		c.expect("POST", "/api/disable/service/payment", map[string]any{"reason": "risk"}, token, http.StatusOK, derror.CodeSuccess, nil)
 
 		var info struct {
@@ -1588,7 +1599,7 @@ func TestConcreteDeviceDisableFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 	token := c.loginWithDevice("concrete-device-user", "web", "browser-1")
 
-	// Step 1: disable only web/browser-1 for current account. 步骤 1：只封禁当前账号。web/browser-1 具体设备。
+	// Step 1: disable only web/browser-1 for current account. 步骤 1：只封禁当前账号的 web/browser-1 具体设备。
 	c.expect("POST", "/api/disable/device/web/browser-1", map[string]any{"reason": "risk"}, token, http.StatusOK, derror.CodeSuccess, nil)
 
 	var info struct {
@@ -1654,7 +1665,7 @@ func TestNonceFlow(t *testing.T) {
 	}
 }
 
-// TestNonceTimeoutFlow verifies custom nonce TTL and expiration. TestNonceTimeoutFlow 验证自定。Nonce TTL 和过期行为。
+// TestNonceTimeoutFlow verifies custom nonce TTL and expiration. TestNonceTimeoutFlow 验证自定义 Nonce TTL 和过期行为。
 func TestNonceTimeoutFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 
@@ -1683,7 +1694,7 @@ func TestNonceTimeoutFlow(t *testing.T) {
 	c.expect("POST", "/nonce/verify", map[string]any{"nonce": generated.Nonce}, "", http.StatusBadRequest, derror.CodeBadRequest, nil)
 }
 
-// TestOAuth2AuthorizationCodeFlow verifies code exchange, introspection, refresh, and revoke. TestOAuth2AuthorizationCodeFlow 验证 OAuth2 授权码流程：生成 code、换 token、查。token、刷新、撤销。
+// TestOAuth2AuthorizationCodeFlow verifies code exchange, introspection, refresh, and revoke. TestOAuth2AuthorizationCodeFlow 验证 OAuth2 授权码流程：生成 Code、换取 Token、检查 Token、刷新和撤销。
 func TestOAuth2AuthorizationCodeFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 
@@ -1843,7 +1854,7 @@ func TestOAuth2ClientManagementFlow(t *testing.T) {
 func TestOAuth2ErrorBoundaryFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 
-	// Step 1: authorization rejects unregistered redirect URI and scope. Step 1：授权端点拒绝未注册回调地址和越。scope。
+	// Step 1: authorization rejects unregistered redirect URI and scope. Step 1：授权端点拒绝未注册回调地址和越权 Scope。
 	c.expect("POST", "/oauth2/authorize", map[string]any{
 		"clientId":    "demo-client",
 		"userId":      "oauth-user",
@@ -2049,11 +2060,11 @@ func TestTokenStyleFlow(t *testing.T) {
 	}
 }
 
-// TestMultiAuthIsolationFlow verifies independent auth systems do not share tokens or access data. TestMultiAuthIsolationFlow 验证多认证体系隔离：不同 AuthType 。Token、权限、角色和 Session 互不串用。
+// TestMultiAuthIsolationFlow verifies independent auth systems do not share tokens or access data. TestMultiAuthIsolationFlow 验证多认证体系隔离：不同 AuthType 的 Token、权限、角色和 Session 互不串用。
 func TestMultiAuthIsolationFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 
-	// Step 1: login same loginID into user-auth and admin-auth systems. 步骤 1：同一。loginID 分别登录 user-auth 。admin-auth 两个认证体系。
+	// Step 1: login same loginID into user-auth and admin-auth systems. 步骤 1：同一 loginID 分别登录 user-auth 和 admin-auth 两个认证体系。
 	userToken := c.multiAuthLogin("/multi-auth/user/login", "same-id", "web", "user-browser")
 	adminToken := c.multiAuthLogin("/multi-auth/admin/login", "same-id", "web", "admin-browser")
 	if userToken == adminToken {
@@ -2066,22 +2077,24 @@ func TestMultiAuthIsolationFlow(t *testing.T) {
 	c.expect("GET", "/multi-auth/admin/me", nil, userToken, http.StatusUnauthorized, derror.CodeNotLogin, nil)
 	c.expect("GET", "/multi-auth/user/me", nil, adminToken, http.StatusUnauthorized, derror.CodeNotLogin, nil)
 
-	// Step 3: user-auth permission does not grant admin-auth role. 步骤 3：user-auth 的权限不会影。admin-auth 的角色校验。
+	// Step 3: user-auth permission does not grant admin-auth role. 步骤 3：user-auth 的权限不会影响 admin-auth 的角色校验。
 	c.expect("POST", "/multi-auth/user/permissions", map[string]any{"value": "profile:read"}, userToken, http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/multi-auth/user/profile", nil, userToken, http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/multi-auth/admin/dashboard", nil, adminToken, http.StatusForbidden, derror.CodePermissionDenied, nil)
 
-	// Step 4: admin-auth role does not grant user-auth token access. 步骤 4：admin-auth 的角色只。admin-auth 内生效，不会。adminToken 访问 user-auth。
+	// Step 4: admin-auth role does not grant user-auth token access. 步骤 4：admin-auth 的角色只在 admin-auth 内生效，不会允许 adminToken 访问 user-auth。
 	c.expect("POST", "/multi-auth/admin/roles", map[string]any{"value": "admin"}, adminToken, http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/multi-auth/admin/dashboard", nil, adminToken, http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/multi-auth/user/profile", nil, adminToken, http.StatusUnauthorized, derror.CodeNotLogin, nil)
 }
 
+// login logs in and stores the returned token. login 登录并保存返回的 Token。
 func (c *flowClient) login(username string) string {
 	c.t.Helper()
 	return c.loginWithDevice(username, "web", username+"-browser")
 }
 
+// loginWithDevice logs in on a concrete device and stores the token. loginWithDevice 在具体设备上登录并保存 Token。
 func (c *flowClient) loginWithDevice(username, device, deviceID string) string {
 	c.t.Helper()
 
@@ -2101,6 +2114,7 @@ func (c *flowClient) loginWithDevice(username, device, deviceID string) string {
 	return data.Token
 }
 
+// multiAuthLogin logs in through a selected auth-system endpoint. multiAuthLogin 通过指定认证体系端点登录。
 func (c *flowClient) multiAuthLogin(path, username, device, deviceID string) string {
 	c.t.Helper()
 
@@ -2120,6 +2134,7 @@ func (c *flowClient) multiAuthLogin(path, username, device, deviceID string) str
 	return data.Token
 }
 
+// ttl returns the current token lifetime. ttl 返回当前 Token 有效期。
 func (c *flowClient) ttl(token string) int64 {
 	c.t.Helper()
 
@@ -2130,16 +2145,25 @@ func (c *flowClient) ttl(token string) int64 {
 	return data.TTL
 }
 
+// oauth2TokenData decodes OAuth2 token endpoint responses. oauth2TokenData 解码 OAuth2 Token 端点响应。
 type oauth2TokenData struct {
-	AccessToken  string   `json:"accessToken"`
-	TokenType    string   `json:"tokenType"`
-	ExpiresIn    int64    `json:"expiresIn"`
-	RefreshToken string   `json:"refreshToken"`
-	Scopes       []string `json:"scopes"`
-	UserID       string   `json:"userId"`
-	ClientID     string   `json:"clientId"`
+	// AccessToken stores the issued access token. AccessToken 保存签发的访问 Token。
+	AccessToken string `json:"accessToken"`
+	// TokenType stores the token type. TokenType 保存 Token 类型。
+	TokenType string `json:"tokenType"`
+	// ExpiresIn stores the access token lifetime in seconds. ExpiresIn 保存访问 Token 有效秒数。
+	ExpiresIn int64 `json:"expiresIn"`
+	// RefreshToken stores the issued refresh token. RefreshToken 保存签发的刷新 Token。
+	RefreshToken string `json:"refreshToken"`
+	// Scopes stores granted scopes. Scopes 保存已授予的权限范围。
+	Scopes []string `json:"scopes"`
+	// UserID stores the authenticated user ID. UserID 保存已认证用户 ID。
+	UserID string `json:"userId"`
+	// ClientID stores the OAuth2 client ID. ClientID 保存 OAuth2 客户端 ID。
+	ClientID string `json:"clientId"`
 }
 
+// oauth2Token requests and decodes an OAuth2 token response. oauth2Token 请求并解码 OAuth2 Token 响应。
 func (c *flowClient) oauth2Token(body map[string]any) oauth2TokenData {
 	c.t.Helper()
 
@@ -2148,6 +2172,7 @@ func (c *flowClient) oauth2Token(body map[string]any) oauth2TokenData {
 	return data
 }
 
+// sameStringSet compares two string slices as sets. sameStringSet 按集合比较两个字符串切片。
 func sameStringSet(got, want []string) bool {
 	got = append([]string(nil), got...)
 	want = append([]string(nil), want...)
@@ -2156,6 +2181,7 @@ func sameStringSet(got, want []string) bool {
 	return slices.Equal(got, want)
 }
 
+// containsEvent reports whether an event list contains a target event. containsEvent 判断事件列表是否包含目标事件。
 func containsEvent(events []listener.Event, want listener.Event) bool {
 	for _, event := range events {
 		if event == want {
@@ -2165,6 +2191,7 @@ func containsEvent(events []listener.Event, want listener.Event) bool {
 	return false
 }
 
+// expect executes a request and optionally decodes response data. expect 执行请求并按需解码响应数据。
 func (c *flowClient) expect(method, path string, body any, token string, wantStatus, wantCode int, data any) {
 	c.t.Helper()
 
@@ -2176,6 +2203,7 @@ func (c *flowClient) expect(method, path string, body any, token string, wantSta
 	}
 }
 
+// expectResponse executes a request and validates its unified response. expectResponse 执行请求并校验统一响应。
 func (c *flowClient) expectResponse(method, path string, body any, token string, wantStatus, wantCode int) apiResponse {
 	c.t.Helper()
 
@@ -2199,6 +2227,7 @@ func (c *flowClient) expectResponse(method, path string, body any, token string,
 	return decoded
 }
 
+// do builds and sends one HTTP test request. do 构建并发送一次 HTTP 测试请求。
 func (c *flowClient) do(method, path string, body any, token string) *http.Response {
 	c.t.Helper()
 

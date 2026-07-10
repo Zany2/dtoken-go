@@ -8,7 +8,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
-// Value gets current request token value Value 获取当前请求 Token 。
+// Value gets current request token value Value 获取当前请求 Token。
 func (c *AuthContext) Value() string {
 	return c.d.GetTokenValue()
 }
@@ -37,7 +37,7 @@ func (c *AuthContext) IsLogin(ctx context.Context) bool {
 	return c.d.manager.IsLogin(ctx, token)
 }
 
-// CheckLogin checks current token login state CheckLogin 校验当前 Token 登录状。
+// CheckLogin checks current token login state CheckLogin 校验当前 Token 登录状态。
 func (c *AuthContext) CheckLogin(ctx context.Context) error {
 	token, err := c.d.requireToken()
 	if err != nil {
@@ -114,7 +114,7 @@ func (c *AuthContext) GetTokenCreateTime(ctx context.Context) (int64, error) {
 	return c.d.manager.GetTokenCreateTime(ctx, token)
 }
 
-// GetTokenTTL gets current token TTL GetTokenTTL 获取当前 Token 剩余有效。
+// GetTokenTTL gets current token TTL GetTokenTTL 获取当前 Token 剩余有效期。
 func (c *AuthContext) GetTokenTTL(ctx context.Context) (int64, error) {
 	token, err := c.d.requireToken()
 	if err != nil {

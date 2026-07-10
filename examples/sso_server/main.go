@@ -11,6 +11,7 @@ import (
 	"github.com/Zany2/dtoken-go/sso"
 )
 
+// Example server settings define the listen address and demo client credentials. Example server settings 定义监听地址和示例客户端凭证。
 const (
 	addr         = ":9000"
 	callbackURL  = "http://localhost:9001/sso/callback"
@@ -19,6 +20,7 @@ const (
 )
 
 var (
+	// cookie configures the demo SSO login cookie. cookie 配置示例 SSO 登录 Cookie。
 	cookie = sso.CookieOptions{
 		Name:     "dtoken_sso_demo",
 		Path:     "/",
@@ -26,10 +28,12 @@ var (
 		HTTPOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	}
+	// loginPage stores the parsed login page template. loginPage 保存已解析的登录页模板。
 	loginPage = template.Must(template.New("login").Parse(loginHTML))
 )
 
 func main() {
+	// Register the demo client accepted by the SSO server. 注册 SSO 服务端接受的示例客户端。
 	server := sso.NewServer()
 	if err := server.RegisterClient(&sso.Client{
 		ClientID:     clientID,
@@ -42,6 +46,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Configure protocol endpoints and cookie-based login resolution. 配置协议端点和基于 Cookie 的登录解析。
 	httpSSO := sso.NewHTTPServer(server, sso.HTTPOptions{
 		ServerOptions: sso.ServerOptions{
 			EnableSLO: true,
@@ -54,6 +59,7 @@ func main() {
 		Cookie:          cookie,
 	})
 
+	// Register SSO endpoints and local demo pages. 注册 SSO 端点和本地示例页面。
 	mux := http.NewServeMux()
 	httpSSO.Register(mux)
 	mux.HandleFunc("/", home)
@@ -63,6 +69,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(addr, mux))
 }
 
+// home renders the SSO server status page. home 渲染 SSO 服务端状态页。
 func home(w http.ResponseWriter, r *http.Request) {
 	loginID, ok := sso.LoginIDFromCookie(cookie)(r)
 	if !ok {
@@ -71,15 +78,18 @@ func home(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, "SSO Server\n\nloginId: %s\n\nlogin: http://localhost:9000/login\n", loginID)
 }
 
+// login renders the login page and handles demo login submission. login 渲染登录页并处理示例登录提交。
 func login(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
+		// Render the page with the requested return location. 使用请求的返回地址渲染页面。
 		back := r.URL.Query().Get("back")
 		if back == "" {
 			back = "/"
 		}
 		_ = loginPage.Execute(w, map[string]string{"Back": back})
 	case http.MethodPost:
+		// Persist the demo login ID and return to the original page. 保存示例登录 ID 并返回原页面。
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -99,6 +109,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// loginHTML defines the demo login page template. loginHTML 定义示例登录页模板。
 const loginHTML = `<!doctype html>
 <html lang="en">
 <head>

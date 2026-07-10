@@ -8,6 +8,7 @@ import (
 	gincoreapp "github.com/Zany2/dtoken-go/tests/gin_core_app"
 )
 
+// defaultRedisURL stores the fallback Redis endpoint for the demo server. defaultRedisURL 保存示例服务端的备用 Redis 地址。
 const defaultRedisURL = "redis://:root@192.168.19.104:6379/0"
 
 func main() {
@@ -24,6 +25,7 @@ func main() {
 	}
 }
 
+// redisURL returns the configured Redis URL or its fallback. redisURL 返回配置的 Redis 地址或备用地址。
 func redisURL() string {
 	if value := os.Getenv("DTOKEN_REDIS_URL"); value != "" {
 		return value

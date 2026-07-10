@@ -12,10 +12,11 @@ import (
 	"time"
 )
 
-// Login performs user login and returns a token. Login 执行用户登录并返。token。
+// Login performs user login and returns a token. Login 执行用户登录并返回 token。
 func (m *Manager) Login(ctx context.Context, loginID string, deviceAndDeviceID ...string) (string, error) {
 	// Delegate to default timeout login 委托默认过期时间登录。
 	device, deviceID := m.getDeviceAndDeviceID(deviceAndDeviceID...)
+
 	return m.LoginWithOptions(ctx, LoginOptions{
 		LoginID:  loginID,
 		Device:   device,
@@ -23,9 +24,10 @@ func (m *Manager) Login(ctx context.Context, loginID string, deviceAndDeviceID .
 	})
 }
 
-// LoginWithTimeout performs user login with a custom token timeout and returns a token. LoginWithTimeout 执行用户登录并返。token，使用指定的过期时间。 或负数则使用全局配置）。
+// LoginWithTimeout performs user login with a custom token timeout and returns a token. LoginWithTimeout 执行用户登录并返回 token，使用指定的过期时间，0 或负数则使用全局配置。
 func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, deviceAndDeviceID ...string) (string, error) {
 	device, deviceID := m.getDeviceAndDeviceID(deviceAndDeviceID...)
+
 	return m.LoginWithOptions(ctx, LoginOptions{
 		LoginID:  loginID,
 		Device:   device,
@@ -117,7 +119,7 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 		}
 	}
 
-	// Generate new token 生成。token
+	// Generate new token 生成 token
 	if token == "" {
 		token, err = m.generator.Generate(opts.LoginID, device, deviceID)
 		if err != nil {
@@ -184,7 +186,7 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 	unlock = func() {}
 
 	if destroyedSession {
-		// Trigger session destroy event after lock release 释放账号写锁后触发销。Session 事件
+		// Trigger session destroy event after lock release 释放账号写锁后触发销毁 Session 事件
 		m.triggerEvent(listener.EventDestroySession, opts.LoginID, "", "", "", nil)
 	}
 	if createdSession {
@@ -214,7 +216,7 @@ func (m *Manager) persistLoginToken(
 		return fmt.Errorf("%w: token already exists", derror.ErrInvalidParam)
 	}
 
-	// Initialize token metadata 初始。token 元数。
+	// Initialize token metadata 初始化 token 元数据。
 	if m.config.RenewInterval > 0 {
 		// Initialize renew marker 初始化续期标记。
 		if err = m.storage.Set(ctx, m.getRenewKey(token), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {
@@ -251,7 +253,7 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
-	// Reload token after acquiring lock 加锁后重新读。token，避免并发下复活已失。token
+	// Reload token after acquiring lock 加锁后重新读取 token，避免并发下复活已失效 token
 	tokenInfo, err = m.getTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return err
@@ -272,7 +274,7 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 		return err
 	}
 
-	// Renew token and session asynchronously 异步续期 Token 。Session
+	// Renew token and session asynchronously 异步续期 Token 和 Session
 	renewFunc := func() {
 		// Use background context for async renewal 异步续期使用后台上下文。
 		bg := context.Background()
@@ -290,7 +292,7 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 			return
 		}
 
-		// Validate token is still attached to session 确认 Token 仍属于当前会。
+		// Validate token is still attached to session 确认 Token 仍属于当前会话。
 		latestSession, err := m.getSession(bg, latestTokenInfo.LoginID)
 		if err != nil {
 			m.logger.Errorf("manager.LoginByToken: failed to reload session, loginID=%s, error=%v", latestTokenInfo.LoginID, err)
@@ -482,7 +484,7 @@ func (m *Manager) RenewTimeout(ctx context.Context, tokenValue string, timeout t
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
-	// Reload token after acquiring lock 加锁后重新读。token，避免并发续期失。token
+	// Reload token after acquiring lock 加锁后重新读取 token，避免并发续期失效 token
 	tokenInfo, err = m.getTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return err

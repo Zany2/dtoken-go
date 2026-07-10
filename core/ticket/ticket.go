@@ -134,12 +134,12 @@ func NewManagerWithConfig(authType, prefix string, storage adapter.Storage, seri
 	}
 }
 
-// Create creates a ticket with default ttl. Create 使用默认有效期创。Ticket。
+// Create creates a ticket with the default TTL. Create 使用默认有效期创建 Ticket。
 func (m *Manager) Create(ctx context.Context, opts CreateOptions) (*Ticket, error) {
 	return m.CreateWithTimeout(ctx, opts, opts.Timeout)
 }
 
-// CreateWithTimeout creates a ticket with timeout. CreateWithTimeout 使用指定有效期创。Ticket。
+// CreateWithTimeout creates a ticket with the specified timeout. CreateWithTimeout 使用指定有效期创建 Ticket。
 func (m *Manager) CreateWithTimeout(ctx context.Context, opts CreateOptions, timeout time.Duration) (*Ticket, error) {
 	if timeout <= 0 {
 		timeout = m.ttl
@@ -187,7 +187,7 @@ func (m *Manager) Validate(ctx context.Context, ticketValue string, opts ...Vali
 	return ticket, nil
 }
 
-// Consume validates and consumes a one-time ticket. Consume 校验并消费一次。Ticket。
+// Consume validates and consumes a one-time ticket. Consume 校验并消费一次性 Ticket。
 func (m *Manager) Consume(ctx context.Context, ticketValue string, opts ...ValidateOptions) (*ConsumeResult, error) {
 	if _, err := m.Validate(ctx, ticketValue, opts...); err != nil {
 		return nil, err
@@ -307,6 +307,7 @@ func (m *Manager) GetTTL(ctx context.Context, ticketValue string) (int64, error)
 	}
 }
 
+// save serializes and persists ticket state. save 序列化并持久化 Ticket 状态。
 func (m *Manager) save(ctx context.Context, ticket *Ticket, timeout time.Duration) error {
 	encoded, err := m.serializer.Encode(ticket)
 	if err != nil {
@@ -318,6 +319,7 @@ func (m *Manager) save(ctx context.Context, ticket *Ticket, timeout time.Duratio
 	return nil
 }
 
+// get loads a ticket by its credential value. get 根据凭证值加载 Ticket。
 func (m *Manager) get(ctx context.Context, ticketValue string) (*Ticket, error) {
 	if ticketValue == "" {
 		return nil, ErrInvalidTicket
@@ -332,6 +334,7 @@ func (m *Manager) get(ctx context.Context, ticketValue string) (*Ticket, error) 
 	return m.decode(data)
 }
 
+// decode converts a stored value into ticket metadata. decode 将存储值转换为 Ticket 元数据。
 func (m *Manager) decode(value any) (*Ticket, error) {
 	rawData, err := toBytes(value)
 	if err != nil {
@@ -344,6 +347,7 @@ func (m *Manager) decode(value any) (*Ticket, error) {
 	return &ticket, nil
 }
 
+// checkAlive validates ticket state and expiration. checkAlive 校验 Ticket 状态与有效期。
 func (m *Manager) checkAlive(ticket *Ticket) error {
 	if ticket == nil || ticket.Ticket == "" {
 		return ErrInvalidTicket
@@ -365,10 +369,12 @@ func (m *Manager) checkAlive(ticket *Ticket) error {
 	return nil
 }
 
+// getTicketKey builds the storage key for a ticket. getTicketKey 构建 Ticket 存储键。
 func (m *Manager) getTicketKey(ticketValue string) string {
 	return m.keyPrefix + m.authType + TicketKeySuffix + ticketValue
 }
 
+// checkConstraints validates ticket binding constraints. checkConstraints 校验 Ticket 绑定约束。
 func checkConstraints(ticket *Ticket, opts ValidateOptions) error {
 	if opts.LoginID != "" && ticket.LoginID != opts.LoginID {
 		return ErrTicketMismatch
@@ -391,6 +397,7 @@ func checkConstraints(ticket *Ticket, opts ValidateOptions) error {
 	return nil
 }
 
+// remainingDuration calculates the remaining ticket lifetime. remainingDuration 计算 Ticket 剩余有效期。
 func remainingDuration(ticket *Ticket) time.Duration {
 	if ticket == nil || ticket.ExpiresIn <= 0 {
 		return 0
@@ -403,6 +410,7 @@ func remainingDuration(ticket *Ticket) time.Duration {
 	return ttl
 }
 
+// generateRandomValue creates a cryptographically secure hexadecimal value. generateRandomValue 生成密码学安全的十六进制随机值。
 func generateRandomValue(length int) (string, error) {
 	bytes := make([]byte, length)
 	if _, err := rand.Read(bytes); err != nil {
@@ -411,6 +419,7 @@ func generateRandomValue(length int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
+// toBytes converts supported storage values to bytes. toBytes 将受支持的存储值转换为字节切片。
 func toBytes(value any) ([]byte, error) {
 	switch v := value.(type) {
 	case string:
@@ -426,6 +435,7 @@ func toBytes(value any) ([]byte, error) {
 	}
 }
 
+// cloneMap copies extension data to avoid shared mutation. cloneMap 复制扩展数据以避免共享修改。
 func cloneMap(values map[string]any) map[string]any {
 	if len(values) == 0 {
 		return nil

@@ -12,6 +12,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/adapter"
 )
 
+// TestConfigValidateAndClone verifies short key config validation and independent cloning. TestConfigValidateAndClone 验证短 Key 配置校验与独立克隆。
 func TestConfigValidateAndClone(t *testing.T) {
 	cfg := DefaultConfig()
 	if cfg == nil || cfg.TTL != DefaultTTL || cfg.Length != DefaultLength || cfg.MaxGenerateRetries <= 0 {
@@ -38,6 +39,7 @@ func TestConfigValidateAndClone(t *testing.T) {
 	}
 }
 
+// TestManagerCreateConfirmValidateConsume verifies the short key lifecycle from creation through consumption. TestManagerCreateConfirmValidateConsume 验证短 Key 从创建到消费的完整生命周期。
 func TestManagerCreateConfirmValidateConsume(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestShortKeyManager(time.Minute)
@@ -106,6 +108,7 @@ func TestManagerCreateConfirmValidateConsume(t *testing.T) {
 	}
 }
 
+// TestManagerBoundaries verifies short key invalid-input and lifecycle boundaries. TestManagerBoundaries 验证短 Key 非法输入与生命周期边界。
 func TestManagerBoundaries(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestShortKeyManager(time.Minute)
@@ -163,6 +166,7 @@ func TestManagerBoundaries(t *testing.T) {
 	}
 }
 
+// TestConsumeConstraintMismatchDoesNotConsumeShortKey verifies mismatched constraints preserve the short key. TestConsumeConstraintMismatchDoesNotConsumeShortKey 验证约束不匹配时不会消费短 Key。
 func TestConsumeConstraintMismatchDoesNotConsumeShortKey(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestShortKeyManager(time.Minute)
@@ -193,6 +197,7 @@ func TestConsumeConstraintMismatchDoesNotConsumeShortKey(t *testing.T) {
 	}
 }
 
+// TestConfirmDoesNotOverwriteConfirmedShortKey verifies repeated confirmation preserves confirmed data. TestConfirmDoesNotOverwriteConfirmedShortKey 验证重复确认不会覆盖已确认数据。
 func TestConfirmDoesNotOverwriteConfirmedShortKey(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestShortKeyManager(time.Minute)
@@ -216,6 +221,7 @@ func TestConfirmDoesNotOverwriteConfirmedShortKey(t *testing.T) {
 	}
 }
 
+// TestRevokeDoesNotOverwriteConsumedShortKey verifies revoke keeps an existing consumed state. TestRevokeDoesNotOverwriteConsumedShortKey 验证撤销操作不会覆盖已消费状态。
 func TestRevokeDoesNotOverwriteConsumedShortKey(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestShortKeyManager(time.Minute)

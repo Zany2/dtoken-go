@@ -141,7 +141,7 @@ func SearchTokenValueByContext(ctx *hertzapp.RequestContext, keyword string, sta
 	return dCtx.Terminal().SearchTokenValue(requestContext(ctx), keyword, start, size)
 }
 
-// SearchSessionIDByContext searches session ids SearchSessionIDByContext ?Session ID
+// SearchSessionIDByContext searches session ids SearchSessionIDByContext 搜索 Session ID
 func SearchSessionIDByContext(ctx *hertzapp.RequestContext, keyword string, start, size int) ([]string, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {

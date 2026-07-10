@@ -225,7 +225,7 @@ func TestOAuth2ScopesAreDefensivelyCopied(t *testing.T) {
 	}
 }
 
-// TestOAuth2PKCES256Flow verifies S256 PKCE challenge verification. TestOAuth2PKCES256Flow verifies S256 PKCE challenge verification.
+// TestOAuth2PKCES256Flow verifies S256 PKCE challenge verification. TestOAuth2PKCES256Flow 验证 S256 PKCE 挑战校验流程。
 func TestOAuth2PKCES256Flow(t *testing.T) {
 	ctx := context.Background()
 	server := newOAuth2TestServer()
@@ -254,7 +254,7 @@ func TestOAuth2PKCES256Flow(t *testing.T) {
 	}
 }
 
-// TestOAuth2PKCEPlainDefault verifies empty method defaults to plain. TestOAuth2PKCEPlainDefault verifies empty method defaults to plain.
+// TestOAuth2PKCEPlainDefault verifies an empty PKCE method defaults to plain. TestOAuth2PKCEPlainDefault 验证空 PKCE 方法默认使用 plain。
 func TestOAuth2PKCEPlainDefault(t *testing.T) {
 	ctx := context.Background()
 	server := newOAuth2TestServer()
@@ -280,7 +280,7 @@ func TestOAuth2PKCEPlainDefault(t *testing.T) {
 	}
 }
 
-// TestOAuth2TokenEndpointPKCE verifies token endpoint passes code verifier. TestOAuth2TokenEndpointPKCE verifies token endpoint passes code verifier.
+// TestOAuth2TokenEndpointPKCE verifies the token endpoint forwards the code verifier. TestOAuth2TokenEndpointPKCE 验证令牌端点会传递 PKCE 校验器。
 func TestOAuth2TokenEndpointPKCE(t *testing.T) {
 	ctx := context.Background()
 	server := newOAuth2TestServer()

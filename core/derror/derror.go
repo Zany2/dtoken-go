@@ -6,42 +6,56 @@ import (
 	"fmt"
 )
 
+// Common error codes 通用错误码。
 const (
 	// CodeSuccess indicates success CodeSuccess 表示操作成功。
 	CodeSuccess = 0
+
 	// CodeBadRequest indicates bad request CodeBadRequest 表示请求参数错误。
 	CodeBadRequest = 400
+
 	// CodeNotLogin indicates not login CodeNotLogin 表示用户未登录。
 	CodeNotLogin = 401
+
 	// CodePermissionDenied indicates permission denied CodePermissionDenied 表示权限不足。
 	CodePermissionDenied = 403
+
 	// CodeNotFound indicates resource not found CodeNotFound 表示资源未找到。
 	CodeNotFound = 404
+
 	// CodeServerError indicates server error CodeServerError 表示服务器内部错误。
 	CodeServerError = 500
+
 	// CodeTokenInvalid indicates invalid token CodeTokenInvalid 表示 Token 无效。
 	CodeTokenInvalid = 10001
+
 	// CodeTokenExpired indicates expired token CodeTokenExpired 表示 Token 已过期。
 	CodeTokenExpired = 10002
+
 	// CodeAccountDisabled indicates disabled account CodeAccountDisabled 表示账号已被禁用。
 	CodeAccountDisabled = 10003
+
 	// CodeKickedOut indicates kicked out user CodeKickedOut 表示用户已被踢下线。
 	CodeKickedOut = 10004
+
 	// CodeActiveTimeout indicates active timeout CodeActiveTimeout 表示活跃超时。
 	CodeActiveTimeout = 10005
+
 	// CodeMaxLoginCount indicates max login count exceeded CodeMaxLoginCount 表示超出最大登录数量。
 	CodeMaxLoginCount = 10006
+
 	// CodeStorageError indicates storage error CodeStorageError 表示存储错误。
 	CodeStorageError = 10007
+
 	// CodeInvalidParameter indicates invalid parameter CodeInvalidParameter 表示参数无效。
 	CodeInvalidParameter = 10008
 )
 
 // DTokenError represents dtoken error DTokenError 表示带有错误码和消息的 DToken 错误。
 type DTokenError struct {
-	Code    int
-	Message string
-	Err     error
+	Code    int    // Code stores the business error code Code 存储业务错误码
+	Message string // Message stores the human-readable error message Message 存储可读错误信息
+	Err     error  // Err stores the wrapped cause Err 存储被包装的原始错误
 }
 
 // Error returns error string Error 返回错误字符串。
@@ -66,6 +80,7 @@ func NewDTokenError(code int, message string, err error) *DTokenError {
 	}
 }
 
+// Infrastructure and framework errors 基础设施和框架错误。
 var (
 	// ErrStorageUnavailable indicates storage unavailable ErrStorageUnavailable 表示存储后端不可用。
 	ErrStorageUnavailable = errors.New("storage unavailable: unable to connect to storage backend")
@@ -85,6 +100,7 @@ var (
 	ErrModuleNotEnabled = errors.New("module not enabled")
 )
 
+// Parameter validation errors 参数校验错误。
 var (
 	// ErrInvalidParam indicates invalid param ErrInvalidParam 表示参数无效。
 	ErrInvalidParam = errors.New("invalid parameter")
@@ -96,6 +112,7 @@ var (
 	ErrUserIDEmpty = errors.New("user ID cannot be empty")
 )
 
+// Account state errors 账号状态错误。
 var (
 	// ErrAccountDisabled indicates disabled account ErrAccountDisabled 表示账号已被禁用。
 	ErrAccountDisabled = errors.New("account disabled: this account has been temporarily or permanently disabled")
@@ -105,6 +122,7 @@ var (
 	ErrLoginLimitExceeded = errors.New("account error: login count exceeds the maximum limit")
 )
 
+// Authentication and token errors 认证和 Token 错误。
 var (
 	// ErrNotLogin indicates not login ErrNotLogin 表示用户未登录。
 	ErrNotLogin = errors.New("authentication required: user is not logged in")
@@ -126,6 +144,7 @@ var (
 	ErrDeviceNotDisabled = errors.New("device not disabled")
 )
 
+// Access control errors 访问控制错误。
 var (
 	// ErrPermissionDenied indicates permission denied ErrPermissionDenied 表示权限不足。
 	ErrPermissionDenied = errors.New("permission denied: insufficient permissions to perform this action")
@@ -133,6 +152,7 @@ var (
 	ErrRoleDenied = errors.New("role denied: user does not have the required role")
 )
 
+// Service disable errors 服务封禁错误。
 var (
 	// ErrServiceDisabled indicates disabled service ErrServiceDisabled 表示账号的指定服务已被封禁。
 	ErrServiceDisabled = errors.New("service disabled: the specified service is disabled for this account")
@@ -142,16 +162,19 @@ var (
 	ErrDisableLevelNotReached = errors.New("disable level not reached")
 )
 
+// Session errors 会话错误。
 var (
 	// ErrSessionNotFound indicates session not found ErrSessionNotFound 表示会话不存在。
 	ErrSessionNotFound = errors.New("session not found")
 )
 
+// Nonce errors Nonce 错误。
 var (
 	// ErrInvalidNonce indicates invalid nonce ErrInvalidNonce 表示 nonce 无效或已过期。
 	ErrInvalidNonce = errors.New("invalid or expired nonce")
 )
 
+// Ticket errors Ticket 错误。
 var (
 	// ErrInvalidTicket indicates an invalid or missing ticket ErrInvalidTicket 表示 Ticket 无效或不存在。
 	ErrInvalidTicket = errors.New("invalid ticket")
@@ -165,6 +188,7 @@ var (
 	ErrTicketMismatch = errors.New("ticket mismatch")
 )
 
+// Short key errors 短 Key 错误。
 var (
 	// ErrInvalidShortKey indicates an invalid or missing short key ErrInvalidShortKey 表示短 Key 无效或不存在。
 	ErrInvalidShortKey = errors.New("invalid short key")
@@ -180,6 +204,7 @@ var (
 	ErrShortKeyMismatch = errors.New("short key mismatch")
 )
 
+// OAuth2 errors OAuth2 错误。
 var (
 	// ErrClientOrClientIDEmpty indicates empty OAuth2 client ErrClientOrClientIDEmpty 表示 OAuth2 客户端或客户端 ID 为空。
 	ErrClientOrClientIDEmpty = errors.New("client or client ID cannot be empty")
@@ -213,6 +238,7 @@ var (
 	ErrInvalidUserCredentials = errors.New("invalid user credentials")
 )
 
+// OAuth2 semantic aliases OAuth2 语义别名。
 var (
 	// ErrOAuth2InvalidRefreshToken aliases ErrInvalidRefreshToken for clearer OAuth2 usage ErrOAuth2InvalidRefreshToken 是 ErrInvalidRefreshToken 的 OAuth2 语义别名。
 	ErrOAuth2InvalidRefreshToken = ErrInvalidRefreshToken

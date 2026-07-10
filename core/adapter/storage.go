@@ -62,8 +62,15 @@ type AdminStorage interface {
 
 // FullStorage groups all built-in storage capabilities. FullStorage 组合全部内置存储能力。
 type FullStorage interface {
+	// Storage provides the base key-value operations Storage 提供基础键值操作
 	Storage
+
+	// AtomicStorage provides atomic key operations AtomicStorage 提供原子键操作
 	AtomicStorage
+
+	// ScannerStorage provides key scanning operations ScannerStorage 提供键扫描操作
 	ScannerStorage
+
+	// AdminStorage provides administrative operations AdminStorage 提供管理操作
 	AdminStorage
 }

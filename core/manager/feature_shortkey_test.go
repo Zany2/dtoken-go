@@ -11,6 +11,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/shortkey"
 )
 
+// TestManagerShortKeyConfirmAndConsume verifies Manager short key confirmation and consumption. TestManagerShortKeyConfirmAndConsume 验证 Manager 的短 Key 确认与消费流程。
 func TestManagerShortKeyConfirmAndConsume(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithShortKey(t, nil)
@@ -74,6 +75,7 @@ func TestManagerShortKeyConfirmAndConsume(t *testing.T) {
 	}
 }
 
+// TestManagerShortKeyBoundaries verifies Manager short key validation and state boundaries. TestManagerShortKeyBoundaries 验证 Manager 的短 Key 校验与状态边界。
 func TestManagerShortKeyBoundaries(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithShortKey(t, nil)
@@ -125,6 +127,7 @@ func TestManagerShortKeyBoundaries(t *testing.T) {
 	}
 }
 
+// TestManagerRevokeMissingShortKeyDoesNotTriggerEvent verifies missing-key revocation remains an event-free no-op. TestManagerRevokeMissingShortKeyDoesNotTriggerEvent 验证撤销不存在的短 Key 是不触发事件的空操作。
 func TestManagerRevokeMissingShortKeyDoesNotTriggerEvent(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithShortKey(t, nil)
@@ -143,6 +146,7 @@ func TestManagerRevokeMissingShortKeyDoesNotTriggerEvent(t *testing.T) {
 	}
 }
 
+// TestManagerRevokePendingShortKeyTriggersEvent verifies pending-key revocation emits its lifecycle event. TestManagerRevokePendingShortKeyTriggersEvent 验证撤销待确认短 Key 会触发生命周期事件。
 func TestManagerRevokePendingShortKeyTriggersEvent(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithShortKey(t, nil)

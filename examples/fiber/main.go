@@ -12,14 +12,19 @@ import (
 
 // Response defines the example response body Response 定义示例响应结构
 type Response struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
+	// Code stores the application response code. Code 保存应用响应码。
+	Code int `json:"code"`
+	// Message stores the response message. Message 保存响应消息。
+	Message string `json:"message"`
+	// Data stores the optional response payload. Data 保存可选响应数据。
+	Data interface{} `json:"data,omitempty"`
 }
 
 // LoginRequest defines the login payload LoginRequest 定义登录请求参数
 type LoginRequest struct {
+	// Username stores the demo login name. Username 保存示例登录名。
 	Username string `json:"username" form:"username"`
+	// Password stores the demo login password. Password 保存示例登录密码。
 	Password string `json:"password" form:"password"`
 }
 

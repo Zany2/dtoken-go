@@ -70,6 +70,7 @@ func (l LogLevel) String() string {
 
 // LogControl defines runtime log control interface LogControl 定义日志运行时控制接口
 type LogControl interface {
+	// Log embeds the base logging contract Log 嵌入基础日志契约
 	Log
 
 	// Close closes logger and releases resources Close 关闭日志并释放资源

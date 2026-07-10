@@ -18,6 +18,7 @@ type LoginIDResolver func(r *http.Request) (string, bool)
 
 // HTTPOptions defines standalone HTTP protocol behavior for SSO. HTTPOptions 定义独立 HTTP 协议层行为。
 type HTTPOptions struct {
+	// ServerOptions carries protocol-level server behavior. ServerOptions 包含协议层服务端行为配置。
 	ServerOptions
 	LoginIDResolver LoginIDResolver // LoginIDResolver resolves current center login id. LoginIDResolver 解析当前中心登录 ID。
 	LoginPageURL    string          // LoginPageURL stores the fallback login page URL. LoginPageURL 存储未登录时跳转的登录页地址。
@@ -266,6 +267,7 @@ func (h *HTTPServer) HandleRevoke(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, OKResponse(map[string]string{"result": ResultOK}))
 }
 
+// exchangeCredential dispatches credential exchange by mode. exchangeCredential 按模式分发凭证交换。
 func (h *HTTPServer) exchangeCredential(r *http.Request, values url.Values) (any, error) {
 	params := h.options.ServerOptions.Params
 	if codeValue := values.Get(params.Code); codeValue != "" {
@@ -294,6 +296,7 @@ func (h *HTTPServer) exchangeCredential(r *http.Request, values url.Values) (any
 	return TicketResult(ticket), nil
 }
 
+// introspectCredential inspects a credential by mode. introspectCredential 按模式检查凭证。
 func (h *HTTPServer) introspectCredential(r *http.Request, values url.Values) (*CredentialInfo, error) {
 	params := h.options.ServerOptions.Params
 	clientID := values.Get(params.Client)
@@ -327,6 +330,7 @@ func (h *HTTPServer) introspectCredential(r *http.Request, values url.Values) (*
 	}
 }
 
+// revokeCredential revokes a credential by mode. revokeCredential 按模式撤销凭证。
 func (h *HTTPServer) revokeCredential(r *http.Request, values url.Values) error {
 	params := h.options.ServerOptions.Params
 	switch mode := Mode(values.Get(params.Mode)); mode {
@@ -343,21 +347,25 @@ func (h *HTTPServer) revokeCredential(r *http.Request, values url.Values) error 
 	}
 }
 
+// ticketTTL returns the current Ticket lifetime. ticketTTL 返回当前 Ticket 有效期。
 func (h *HTTPServer) ticketTTL(r *http.Request, value string) int64 {
 	ttl, _ := h.server.GetTicketTTL(r.Context(), value)
 	return ttl
 }
 
+// sharedTokenTTL returns the current shared Token lifetime. sharedTokenTTL 返回当前共享 Token 有效期。
 func (h *HTTPServer) sharedTokenTTL(r *http.Request, value string) int64 {
 	ttl, _ := h.server.GetSharedTokenTTL(r.Context(), value)
 	return ttl
 }
 
+// remoteSessionTTL returns the current remote-session lifetime. remoteSessionTTL 返回当前远程会话有效期。
 func (h *HTTPServer) remoteSessionTTL(r *http.Request, value string) int64 {
 	ttl, _ := h.server.GetRemoteSessionTTL(r.Context(), value)
 	return ttl
 }
 
+// oauth2CodeTTL returns the current OAuth2 Code lifetime. oauth2CodeTTL 返回当前 OAuth2 授权码有效期。
 func (h *HTTPServer) oauth2CodeTTL(r *http.Request, value string) int64 {
 	ttl, _ := h.server.GetOAuth2CodeTTL(r.Context(), value)
 	return ttl
@@ -391,6 +399,7 @@ func (h *HTTPServer) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, OKResponse(map[string]string{"result": ResultOK}))
 }
 
+// pushLogoutCallbacks notifies registered client sessions about logout. pushLogoutCallbacks 向已注册客户端会话推送登出通知。
 func (h *HTTPServer) pushLogoutCallbacks(r *http.Request, loginID string) error {
 	sessions, err := h.server.GetClientSessions(r.Context(), loginID)
 	if err != nil {
@@ -424,6 +433,7 @@ func (h *HTTPServer) pushLogoutCallbacks(r *http.Request, loginID string) error 
 	return h.server.ClearClientSessions(r.Context(), loginID)
 }
 
+// postLogoutCallback posts one client logout callback. postLogoutCallback 发送一次客户端登出回调。
 func (h *HTTPServer) postLogoutCallback(r *http.Request, session ClientSession) error {
 	ctx := r.Context()
 	if h.options.ServerOptions.LogoutCallbackTimeout > 0 {
@@ -458,6 +468,7 @@ func (h *HTTPServer) postLogoutCallback(r *http.Request, session ClientSession) 
 	return nil
 }
 
+// verifySign validates request signatures when enabled. verifySign 在启用时校验请求签名。
 func (h *HTTPServer) verifySign(values url.Values) error {
 	if !h.options.ServerOptions.CheckSign {
 		return nil
@@ -471,6 +482,7 @@ func (h *HTTPServer) verifySign(values url.Values) error {
 	return nil
 }
 
+// redirectToLogin redirects authorization requests to the login page. redirectToLogin 将授权请求重定向到登录页。
 func (h *HTTPServer) redirectToLogin(w http.ResponseWriter, r *http.Request) {
 	if h.options.LoginPageURL == "" {
 		writeJSON(w, http.StatusUnauthorized, ErrorResponse(http.StatusUnauthorized, "not logged in"))
@@ -492,6 +504,7 @@ func (h *HTTPServer) redirectToLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, target.String(), http.StatusFound)
 }
 
+// writeJSON writes a protocol JSON response. writeJSON 写入协议 JSON 响应。
 func writeJSON(w http.ResponseWriter, status int, response Response) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -499,6 +512,7 @@ func writeJSON(w http.ResponseWriter, status int, response Response) {
 	_ = json.NewEncoder(w).Encode(response)
 }
 
+// parseScopes parses a space-delimited scope string. parseScopes 解析空格分隔的 Scope 字符串。
 func parseScopes(scope string) []string {
 	if strings.TrimSpace(scope) == "" {
 		return nil
@@ -516,6 +530,7 @@ func parseScopes(scope string) []string {
 	return scopes
 }
 
+// statusFromError maps protocol errors to HTTP status codes. statusFromError 将协议错误映射为 HTTP 状态码。
 func statusFromError(err error) int {
 	switch {
 	case errors.Is(err, ErrClientOrClientIDEmpty),
@@ -615,6 +630,7 @@ func ClearLoginIDCookie(w http.ResponseWriter, options CookieOptions) {
 	})
 }
 
+// defaultCookiePath normalizes an empty cookie path. defaultCookiePath 规范化空 Cookie 路径。
 func defaultCookiePath(path string) string {
 	if path == "" {
 		return "/"
@@ -622,6 +638,7 @@ func defaultCookiePath(path string) string {
 	return path
 }
 
+// normalizeCookieOptions fills missing cookie option defaults. normalizeCookieOptions 补齐缺失的 Cookie 默认选项。
 func normalizeCookieOptions(options CookieOptions) CookieOptions {
 	defaults := DefaultCookieOptions()
 	if options.Name == "" {

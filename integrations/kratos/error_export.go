@@ -3,10 +3,10 @@ package kratos
 
 import "github.com/Zany2/dtoken-go/core/derror"
 
-// DTokenError exposes the core DToken error type.
+// DTokenError exposes the core DToken error type. DTokenError 暴露核心 DToken 错误类型。
 type DTokenError = derror.DTokenError
 
-// DToken error codes.
+// DToken error codes. DToken 错误码。
 const (
 	CodeSuccess          = derror.CodeSuccess
 	CodeBadRequest       = derror.CodeBadRequest
@@ -24,7 +24,7 @@ const (
 	CodeInvalidParameter = derror.CodeInvalidParameter
 )
 
-// DToken error helpers and values.
+// DToken error helpers and values. DToken 错误辅助方法和值。
 var (
 	NewDTokenError                  = derror.NewDTokenError
 	ErrStorageUnavailable           = derror.ErrStorageUnavailable

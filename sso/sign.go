@@ -54,6 +54,7 @@ func (s Signer) Verify(values url.Values) bool {
 	return hmac.Equal([]byte(got), []byte(want))
 }
 
+// canonical builds canonical request parameters for signing. canonical 构建用于签名的规范请求参数。
 func (s Signer) canonical(values url.Values) string {
 	keys := make([]string, 0, len(values))
 	for key := range values {
@@ -76,6 +77,7 @@ func (s Signer) canonical(values url.Values) string {
 	return strings.Join(parts, "&")
 }
 
+// cloneValues clones URL values before mutation. cloneValues 在修改前克隆 URL 参数。
 func cloneValues(values url.Values) url.Values {
 	copied := make(url.Values, len(values))
 	for key, items := range values {

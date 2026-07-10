@@ -5,7 +5,7 @@ import (
 	gofiber "github.com/gofiber/fiber/v2"
 )
 
-// SetSessionValueByContext sets current session value SetSessionValueByContext 璁剧疆褰撳墠浼氳瘽鍊?
+// SetSessionValueByContext sets current session value SetSessionValueByContext 设置当前会话值
 func SetSessionValueByContext(c *gofiber.Ctx, key string, value any) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

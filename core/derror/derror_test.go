@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// TestDTokenErrorErrorAndUnwrap verifies formatted messages and wrapped error access. TestDTokenErrorErrorAndUnwrap 验证错误信息格式化与原始错误解包。
 func TestDTokenErrorErrorAndUnwrap(t *testing.T) {
 	base := ErrInvalidToken
 	err := NewDTokenError(CodeTokenInvalid, "bad token", base)
@@ -21,6 +22,7 @@ func TestDTokenErrorErrorAndUnwrap(t *testing.T) {
 	}
 }
 
+// TestDTokenErrorWithoutWrappedError verifies formatting without a wrapped cause. TestDTokenErrorWithoutWrappedError 验证未包装原始错误时的格式化结果。
 func TestDTokenErrorWithoutWrappedError(t *testing.T) {
 	err := NewDTokenError(CodeBadRequest, "bad request", nil)
 
@@ -32,6 +34,7 @@ func TestDTokenErrorWithoutWrappedError(t *testing.T) {
 	}
 }
 
+// TestSentinelErrorsAreDistinct verifies sentinel errors preserve distinct identities. TestSentinelErrorsAreDistinct 验证哨兵错误保持独立身份。
 func TestSentinelErrorsAreDistinct(t *testing.T) {
 	cases := []error{
 		ErrInvalidTicket,

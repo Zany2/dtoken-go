@@ -35,7 +35,7 @@ func DisableServiceLevelByContext(c *gofiber.Ctx, service string, level int, dur
 	return dCtx.Disable().ServiceLevel(requestContext(c), service, level, duration, reason...)
 }
 
-// UntieServiceByContext removes current account service disable state UntieServiceByContext 瑙ｅ皝褰撳墠璐﹀彿鏈嶅姟
+// UntieServiceByContext removes current account service disable state UntieServiceByContext 解除当前账号服务封禁状态
 func UntieServiceByContext(c *gofiber.Ctx, service string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -116,7 +116,7 @@ func DisableDeviceAndDeviceIDByContext(c *gofiber.Ctx, device, deviceID string, 
 	return dCtx.Disable().DeviceAndDeviceID(requestContext(c), device, deviceID, duration, reason...)
 }
 
-// UntieDeviceByContext removes current account device disable state UntieDeviceByContext 瑙ｅ皝褰撳墠璐﹀彿璁惧
+// UntieDeviceByContext removes current account device disable state UntieDeviceByContext 解除当前账号设备封禁状态
 func UntieDeviceByContext(c *gofiber.Ctx, device string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -125,7 +125,7 @@ func UntieDeviceByContext(c *gofiber.Ctx, device string) error {
 	return dCtx.Disable().UntieDevice(requestContext(c), device)
 }
 
-// UntieDeviceAndDeviceIDByContext removes current account device ID disable state UntieDeviceAndDeviceIDByContext 瑙ｅ皝褰撳墠璐﹀彿璁惧 ID
+// UntieDeviceAndDeviceIDByContext removes current account device ID disable state UntieDeviceAndDeviceIDByContext 解除当前账号指定设备 ID 的封禁状态
 func UntieDeviceAndDeviceIDByContext(c *gofiber.Ctx, device, deviceID string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

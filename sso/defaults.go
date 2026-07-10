@@ -17,6 +17,7 @@ const (
 // Option configures a Server during construction. Option 配置 Server 构建过程。
 type Option func(*serverBuildOptions)
 
+// serverBuildOptions stores normalized constructor dependencies. serverBuildOptions 保存规范化后的构造依赖。
 type serverBuildOptions struct {
 	authType   string
 	keyPrefix  string

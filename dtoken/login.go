@@ -8,7 +8,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
-// Login performs login and returns a token. Login 执行登录并返。token。
+// Login performs login and returns a token. Login 执行登录并返回 Token。
 func Login(ctx context.Context, loginID string, params ...string) (string, error) {
 	device, deviceID, authType := parseDeviceAndAuthType(params...)
 	mgr, err := getManagerAuto(authType)
@@ -120,7 +120,7 @@ func LogoutByLoginID(ctx context.Context, loginID string, authType ...string) er
 	return mgr.LogoutByLoginID(ctx, loginID)
 }
 
-// Kickout marks a token as kicked out. Kickout 将指。token 标记为踢下线。
+// Kickout marks a token as kicked out. Kickout 将指定 Token 标记为踢下线。
 func Kickout(ctx context.Context, tokenValue string, authType ...string) error {
 	mgr, err := GetManager(authType...)
 	if err != nil {
@@ -129,7 +129,7 @@ func Kickout(ctx context.Context, tokenValue string, authType ...string) error {
 	return mgr.Kickout(ctx, tokenValue)
 }
 
-// Replace marks a token as replaced. Replace 将指。token 标记为顶下线。
+// Replace marks a token as replaced. Replace 将指定 Token 标记为顶下线。
 func Replace(ctx context.Context, tokenValue string, authType ...string) error {
 	mgr, err := GetManager(authType...)
 	if err != nil {

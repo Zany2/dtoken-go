@@ -11,6 +11,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/adapter"
 )
 
+// TestChiContextAdapterRequestAndResponse verifies request and response adaptation. TestChiContextAdapterRequestAndResponse 验证请求与响应适配。
 func TestChiContextAdapterRequestAndResponse(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/demo?foo=bar", strings.NewReader("hello"))
 	req.Header.Set("X-Token", "token")
@@ -109,6 +110,7 @@ func TestChiContextAdapterRequestAndResponse(t *testing.T) {
 	}
 }
 
+// TestChiContextMustGetPanicsWhenMissing verifies missing values trigger a panic. TestChiContextMustGetPanicsWhenMissing 验证缺失值会触发 panic。
 func TestChiContextMustGetPanicsWhenMissing(t *testing.T) {
 	ctx := NewChiContext(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
 	defer func() {
@@ -119,6 +121,7 @@ func TestChiContextMustGetPanicsWhenMissing(t *testing.T) {
 	ctx.MustGet("missing")
 }
 
+// TestChiContextFallsBackToRemoteAddr verifies client IP fallback to RemoteAddr. TestChiContextFallsBackToRemoteAddr 验证客户端 IP 回退到 RemoteAddr。
 func TestChiContextFallsBackToRemoteAddr(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req = req.WithContext(context.Background())

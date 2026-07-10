@@ -12,6 +12,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/oauth2"
 )
 
+// TestManagerOAuth2FacadeFlowAndEvents verifies OAuth2 facade operations and emitted events. TestManagerOAuth2FacadeFlowAndEvents 验证 OAuth2 门面操作与事件触发。
 func TestManagerOAuth2FacadeFlowAndEvents(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithOAuth2(t)
@@ -156,6 +157,7 @@ func TestManagerOAuth2FacadeFlowAndEvents(t *testing.T) {
 	})
 }
 
+// TestManagerOAuth2TokenEndpointRefreshEvent verifies refresh grants emit the OAuth2 refresh event. TestManagerOAuth2TokenEndpointRefreshEvent 验证刷新授权会触发 OAuth2 刷新事件。
 func TestManagerOAuth2TokenEndpointRefreshEvent(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithOAuth2(t)
@@ -190,6 +192,7 @@ func TestManagerOAuth2TokenEndpointRefreshEvent(t *testing.T) {
 	})
 }
 
+// TestManagerNonceEvents verifies nonce generation and verification events. TestManagerNonceEvents 验证 Nonce 生成与校验事件。
 func TestManagerNonceEvents(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithNonce(t)
@@ -233,6 +236,7 @@ func TestManagerNonceEvents(t *testing.T) {
 	})
 }
 
+// TestManagerAccessProviderSubjectAndEmptyOverride verifies provider subjects and explicit empty access overrides. TestManagerAccessProviderSubjectAndEmptyOverride 验证访问提供器主体与显式空权限覆盖。
 func TestManagerAccessProviderSubjectAndEmptyOverride(t *testing.T) {
 	ctx := context.Background()
 	var permissionSubjects []AccessSubject
@@ -298,6 +302,7 @@ func TestManagerAccessProviderSubjectAndEmptyOverride(t *testing.T) {
 	}
 }
 
+// TestManagerSessionDataBoundaries verifies session data validation and missing-value boundaries. TestManagerSessionDataBoundaries 验证 Session 数据校验与缺失值边界。
 func TestManagerSessionDataBoundaries(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, nil)

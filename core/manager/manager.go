@@ -24,7 +24,7 @@ type Manager struct {
 	nonceManager    *nonce.NonceManager        // nonceManager handles one-time nonce values. nonceManager 管理一次性 nonce。
 	oauth2Manager   *oauth2.OAuth2Server       // oauth2Manager handles OAuth2 flows. oauth2Manager 处理 OAuth2 流程。
 	ticketManager   *ticket.Manager            // ticketManager handles temporary tickets. ticketManager 管理临时 Ticket。
-	shortKeyManager *shortkey.Manager          // shortKeyManager handles short key credentials. shortKeyManager 管理。Key 凭证。
+	shortKeyManager *shortkey.Manager          // shortKeyManager handles short key credentials. shortKeyManager 管理短 Key 凭证。
 	eventManager    *listener.Manager          // eventManager dispatches auth events. eventManager 分发鉴权事件。
 	loginLocksMu    sync.Mutex                 // loginLocksMu protects the login lock registry. loginLocksMu 保护登录锁注册表。
 	loginLocks      map[string]*loginLockEntry // loginLocks serializes writes per login ID. loginLocks 按登录 ID 串行化写操作。

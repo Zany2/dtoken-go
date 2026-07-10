@@ -21,7 +21,7 @@ func (m *Manager) Logout(ctx context.Context, tokenValue string) error {
 	// Load session by token 根据 Token 加载会话。
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
-		// Treat inactive token errors as idempotent success 已下。token 视为幂等成功
+		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
 		if isTokenInactiveError(err) {
 			return nil
 		}
@@ -102,7 +102,7 @@ func (m *Manager) Kickout(ctx context.Context, tokenValue string) error {
 	// Load session by token 根据 Token 加载会话。
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
-		// Treat inactive token errors as idempotent success 已下。token 视为幂等成功
+		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
 		if isTokenInactiveError(err) {
 			return nil
 		}
@@ -183,7 +183,7 @@ func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
 	// Load session by token 根据 Token 加载会话。
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
 	if err != nil {
-		// Treat inactive token errors as idempotent success 已下。token 视为幂等成功
+		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
 		if isTokenInactiveError(err) {
 			return nil
 		}
@@ -399,7 +399,7 @@ func (m *Manager) logoutTerminals(
 	unlock = func() {}
 
 	if destroySession {
-		// Trigger session destroy event 触发销。Session 事件
+		// Trigger session destroy event 触发销毁 Session 事件
 		m.triggerEvent(listener.EventDestroySession, loginID, "", "", "", nil)
 	}
 
@@ -411,7 +411,7 @@ func (m *Manager) logoutTerminals(
 	return nil
 }
 
-// cleanTokenMetadata cleans token metadata in batch. cleanTokenMetadata 批量清理 token 的附属元数据（续。key、活跃时。key）。
+// cleanTokenMetadata cleans token metadata in batch. cleanTokenMetadata 批量清理 Token 的附属元数据，包括续期键和活跃时间键。
 func (m *Manager) cleanTokenMetadata(ctx context.Context, tokens []string) error {
 	// Return when token list is empty Token 列表为空时直接返回。
 	if len(tokens) == 0 {
@@ -447,7 +447,7 @@ func (m *Manager) cleanTokenMetadata(ctx context.Context, tokens []string) error
 	return nil
 }
 
-// TerminalRemovalFunc defines how to remove terminals from a session. TerminalRemovalFunc 定义如何。Session 中移除终端。
+// TerminalRemovalFunc defines how to remove terminals from a session. TerminalRemovalFunc 定义如何从 Session 中移除终端。
 type TerminalRemovalFunc func(sess *Session) []TerminalInfo
 
 // cloneSessionForAliveCheck copies session slices used by alive checks. cloneSessionForAliveCheck 拷贝存活校验依赖的会话切片。
@@ -491,7 +491,7 @@ func (m *Manager) processTerminals(
 	// Apply removal strategy 执行移除策略
 	removedTerminals := removalFunc(sess)
 
-	// Clean each removed token 对每个被移除。token 执行清理
+	// Clean each removed token 对每个被移除的 token 执行清理
 	for _, info := range removedTerminals {
 		// Read removed token 读取被移除 Token。
 		token := info.Token
@@ -531,7 +531,7 @@ func (m *Manager) processTerminals(
 	// Track whether session is destroyed 跟踪会话是否被销毁。
 	destroySession := false
 
-	// Update session when terminals are removed 如果有移除项，更。session
+	// Update session when terminals are removed 存在移除项时更新 Session
 	if len(removedTerminals) > 0 {
 		// Delete session when no terminals remain 如果 session 中没有剩余终端，删除整个 session
 		if len(sess.TerminalInfos) == 0 {
@@ -552,7 +552,7 @@ func (m *Manager) processTerminals(
 	unlock = func() {}
 
 	if destroySession {
-		// Trigger session destroy event 触发销。Session 事件
+		// Trigger session destroy event 触发销毁 Session 事件
 		m.triggerEvent(listener.EventDestroySession, loginID, "", "", "", nil)
 	}
 

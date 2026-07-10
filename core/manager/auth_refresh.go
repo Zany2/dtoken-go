@@ -21,7 +21,9 @@ const refreshTokenByteLength = 32
 
 // RefreshTokenOptions describes refresh-token login options. RefreshTokenOptions 描述刷新令牌登录选项。
 type RefreshTokenOptions struct {
+	// LoginOptions embeds access-token login options LoginOptions 嵌入访问令牌登录选项
 	LoginOptions
+
 	RefreshTimeout time.Duration `json:"refreshTimeout"` // RefreshTimeout overrides refresh token timeout. RefreshTimeout 覆盖刷新令牌超时时间。
 }
 

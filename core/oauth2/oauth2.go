@@ -211,12 +211,12 @@ func (s *OAuth2Server) Token(ctx context.Context, req *TokenRequest, validateUse
 	}
 }
 
-// GenerateAuthorizationCode generates authorization code.
+// GenerateAuthorizationCode generates an authorization code. GenerateAuthorizationCode 生成授权码。
 func (s *OAuth2Server) GenerateAuthorizationCode(ctx context.Context, clientID, userID, redirectURI string, scopes []string) (*AuthorizationCode, error) {
 	return s.GenerateAuthorizationCodeWithPKCE(ctx, clientID, userID, redirectURI, scopes, "", "")
 }
 
-// GenerateAuthorizationCodeWithPKCE generates authorization code with optional PKCE challenge.
+// GenerateAuthorizationCodeWithPKCE generates an authorization code with an optional PKCE challenge. GenerateAuthorizationCodeWithPKCE 生成可携带 PKCE 挑战的授权码。
 func (s *OAuth2Server) GenerateAuthorizationCodeWithPKCE(ctx context.Context, clientID, userID, redirectURI string, scopes []string, codeChallenge, codeChallengeMethod string) (*AuthorizationCode, error) {
 	if clientID == "" {
 		return nil, derror.ErrClientOrClientIDEmpty
@@ -278,12 +278,12 @@ func (s *OAuth2Server) GenerateAuthorizationCodeWithPKCE(ctx context.Context, cl
 	return authCode, nil
 }
 
-// ExchangeCodeForToken exchanges authorization code for access token.
+// ExchangeCodeForToken exchanges an authorization code for an access token. ExchangeCodeForToken 使用授权码换取访问令牌。
 func (s *OAuth2Server) ExchangeCodeForToken(ctx context.Context, code, clientID, clientSecret, redirectURI string) (*AccessToken, error) {
 	return s.ExchangeCodeForTokenWithPKCE(ctx, code, clientID, clientSecret, redirectURI, "")
 }
 
-// ExchangeCodeForTokenWithPKCE exchanges authorization code with optional PKCE verifier.
+// ExchangeCodeForTokenWithPKCE exchanges an authorization code with an optional PKCE verifier. ExchangeCodeForTokenWithPKCE 使用可选 PKCE 校验器交换授权码。
 func (s *OAuth2Server) ExchangeCodeForTokenWithPKCE(ctx context.Context, code, clientID, clientSecret, redirectURI, codeVerifier string) (*AccessToken, error) {
 	client, err := s.getClient(ctx, clientID)
 	if err != nil {
@@ -327,6 +327,7 @@ func (s *OAuth2Server) ExchangeCodeForTokenWithPKCE(ctx context.Context, code, c
 	return s.generateAccessToken(ctx, authCode.UserID, authCode.ClientID, authCode.Scopes)
 }
 
+// getAuthorizationCode loads and validates stored authorization-code metadata. getAuthorizationCode 加载并校验已存储的授权码元数据。
 func (s *OAuth2Server) getAuthorizationCode(ctx context.Context, code string) (*AuthorizationCode, error) {
 	if code == "" {
 		return nil, derror.ErrInvalidAuthCode
@@ -349,6 +350,7 @@ func (s *OAuth2Server) getAuthorizationCode(ctx context.Context, code string) (*
 	return &authCode, nil
 }
 
+// markAuthorizationCodeUsed persists the used state while preserving the remaining TTL. markAuthorizationCodeUsed 保留剩余有效期并持久化已使用状态。
 func (s *OAuth2Server) markAuthorizationCodeUsed(ctx context.Context, authCode *AuthorizationCode) error {
 	if authCode == nil || authCode.Code == "" {
 		return derror.ErrInvalidAuthCode
@@ -368,6 +370,7 @@ func (s *OAuth2Server) markAuthorizationCodeUsed(ctx context.Context, authCode *
 	return nil
 }
 
+// remainingAuthCodeDuration calculates the remaining authorization-code lifetime. remainingAuthCodeDuration 计算授权码剩余有效期。
 func remainingAuthCodeDuration(authCode *AuthorizationCode) time.Duration {
 	if authCode == nil || authCode.ExpiresIn <= 0 {
 		return 0
@@ -493,6 +496,7 @@ func (s *OAuth2Server) RefreshAccessToken(ctx context.Context, clientID, refresh
 	return token, nil
 }
 
+// consumeRefreshToken removes a refresh token with atomic semantics when available. consumeRefreshToken 优先使用原子语义消费刷新令牌。
 func (s *OAuth2Server) consumeRefreshToken(ctx context.Context, key string) error {
 	if atomicStorage, ok := s.storage.(adapter.AtomicStorage); ok {
 		value, err := atomicStorage.GetAndDelete(ctx, key)
@@ -510,6 +514,7 @@ func (s *OAuth2Server) consumeRefreshToken(ctx context.Context, key string) erro
 	return nil
 }
 
+// deleteTokenPair deletes the access-token and refresh-token mappings. deleteTokenPair 删除访问令牌与刷新令牌映射。
 func (s *OAuth2Server) deleteTokenPair(ctx context.Context, token *AccessToken) error {
 	if token == nil {
 		return nil
@@ -712,7 +717,7 @@ func (s *OAuth2Server) isValidGrantType(client *Client, grantType GrantType) boo
 	return false
 }
 
-// normalizeCodeChallengeMethod normalizes PKCE challenge method.
+// normalizeCodeChallengeMethod normalizes the PKCE challenge method. normalizeCodeChallengeMethod 规范化 PKCE 挑战方法。
 func normalizeCodeChallengeMethod(codeChallenge, method string) (string, error) {
 	if codeChallenge == "" {
 		return "", nil
@@ -729,7 +734,7 @@ func normalizeCodeChallengeMethod(codeChallenge, method string) (string, error) 
 	}
 }
 
-// verifyCodeChallenge verifies PKCE verifier against stored challenge.
+// verifyCodeChallenge verifies a PKCE verifier against the stored challenge. verifyCodeChallenge 根据已存储挑战校验 PKCE 校验器。
 func verifyCodeChallenge(codeChallenge, method, codeVerifier string) error {
 	if codeChallenge == "" {
 		return nil

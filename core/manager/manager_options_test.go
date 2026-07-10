@@ -13,6 +13,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/derror"
 )
 
+// TestManagerLoginWithOptionsStoresOverrides verifies per-login metadata and timeout overrides are persisted. TestManagerLoginWithOptionsStoresOverrides 验证单次登录元数据与超时覆盖会被持久化。
 func TestManagerLoginWithOptionsStoresOverrides(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -58,6 +59,7 @@ func TestManagerLoginWithOptionsStoresOverrides(t *testing.T) {
 	}
 }
 
+// TestManagerLoginWithOptionsRejectsDuplicateToken verifies custom token collisions are rejected. TestManagerLoginWithOptionsRejectsDuplicateToken 验证自定义 Token 冲突会被拒绝。
 func TestManagerLoginWithOptionsRejectsDuplicateToken(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -97,6 +99,7 @@ func TestManagerLoginWithOptionsRejectsDuplicateToken(t *testing.T) {
 	}
 }
 
+// TestManagerLoginWithOptionsRejectsDuplicateTokenBeforeConcurrency verifies duplicate tokens fail before concurrency side effects. TestManagerLoginWithOptionsRejectsDuplicateTokenBeforeConcurrency 验证重复 Token 会在并发策略产生副作用前失败。
 func TestManagerLoginWithOptionsRejectsDuplicateTokenBeforeConcurrency(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -140,6 +143,7 @@ func TestManagerLoginWithOptionsRejectsDuplicateTokenBeforeConcurrency(t *testin
 	}
 }
 
+// TestManagerLoginWithOptionsCreatesFreshSessionAfterExpiredTerminals verifies expired terminals lead to a new session. TestManagerLoginWithOptionsCreatesFreshSessionAfterExpiredTerminals 验证终端全部过期后会创建新 Session。
 func TestManagerLoginWithOptionsCreatesFreshSessionAfterExpiredTerminals(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -181,6 +185,7 @@ func TestManagerLoginWithOptionsCreatesFreshSessionAfterExpiredTerminals(t *test
 	}
 }
 
+// TestManagerLoginWithOptionsDoesNotShareForeignSessionToken verifies token sharing never crosses account sessions. TestManagerLoginWithOptionsDoesNotShareForeignSessionToken 验证 Token 共享不会跨账号 Session。
 func TestManagerLoginWithOptionsDoesNotShareForeignSessionToken(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -233,6 +238,7 @@ func TestManagerLoginWithOptionsDoesNotShareForeignSessionToken(t *testing.T) {
 	}
 }
 
+// TestManagerLoginWithOptionsNormalizesDeviceAndRejectsBlankToken verifies device normalization and blank-token rejection. TestManagerLoginWithOptionsNormalizesDeviceAndRejectsBlankToken 验证设备信息规范化与空白 Token 拒绝逻辑。
 func TestManagerLoginWithOptionsNormalizesDeviceAndRejectsBlankToken(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -274,6 +280,7 @@ func TestManagerLoginWithOptionsNormalizesDeviceAndRejectsBlankToken(t *testing.
 	}
 }
 
+// TestManagerLoginWithOptionsReturnsStorageErrorWithoutRollback verifies storage failures surface without compensation. TestManagerLoginWithOptionsReturnsStorageErrorWithoutRollback 验证存储失败会直接返回且不执行补偿回滚。
 func TestManagerLoginWithOptionsReturnsStorageErrorWithoutRollback(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -319,6 +326,7 @@ func TestManagerLoginWithOptionsReturnsStorageErrorWithoutRollback(t *testing.T)
 	}
 }
 
+// TestManagerLoginWithOptionsOverridesConcurrencyPolicy verifies per-login concurrency policy overrides. TestManagerLoginWithOptionsOverridesConcurrencyPolicy 验证单次登录可以覆盖并发策略。
 func TestManagerLoginWithOptionsOverridesConcurrencyPolicy(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -364,6 +372,7 @@ func TestManagerLoginWithOptionsOverridesConcurrencyPolicy(t *testing.T) {
 	}
 }
 
+// TestManagerLoginWithOptionsRejectsInvalidPolicyOverrides verifies invalid concurrency overrides are rejected before login. TestManagerLoginWithOptionsRejectsInvalidPolicyOverrides 验证非法并发策略覆盖会在登录前被拒绝。
 func TestManagerLoginWithOptionsRejectsInvalidPolicyOverrides(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, nil)
@@ -404,6 +413,7 @@ func TestManagerLoginWithOptionsRejectsInvalidPolicyOverrides(t *testing.T) {
 	}
 }
 
+// TestManagerSessionData verifies session data set, get, and delete operations. TestManagerSessionData 验证 Session 数据的设置、读取与删除操作。
 func TestManagerSessionData(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, nil)
@@ -440,6 +450,7 @@ func TestManagerSessionData(t *testing.T) {
 	}
 }
 
+// TestManagerTerminate verifies option-driven terminal termination behavior. TestManagerTerminate 验证基于选项的终端下线行为。
 func TestManagerTerminate(t *testing.T) {
 	ctx := context.Background()
 
@@ -494,6 +505,7 @@ func TestManagerTerminate(t *testing.T) {
 	})
 }
 
+// TestManagerStrategy verifies replaceable session and access matching strategies. TestManagerStrategy 验证可替换的 Session 创建与访问匹配策略。
 func TestManagerStrategy(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, nil)
@@ -521,6 +533,7 @@ func TestManagerStrategy(t *testing.T) {
 	}
 }
 
+// TestManagerPermissionShortcutMatrix verifies permission shortcut methods across logic combinations. TestManagerPermissionShortcutMatrix 验证权限快捷方法的逻辑组合矩阵。
 func TestManagerPermissionShortcutMatrix(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, nil)
@@ -571,6 +584,7 @@ func TestManagerPermissionShortcutMatrix(t *testing.T) {
 	}
 }
 
+// TestManagerRoleShortcutMatrix verifies role shortcut methods across logic combinations. TestManagerRoleShortcutMatrix 验证角色快捷方法的逻辑组合矩阵。
 func TestManagerRoleShortcutMatrix(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, nil)
@@ -627,6 +641,7 @@ func TestManagerRoleShortcutMatrix(t *testing.T) {
 	}
 }
 
+// TestManagerLifecycleHelpers verifies manager background helpers and idempotent resource cleanup. TestManagerLifecycleHelpers 验证 Manager 后台辅助能力与资源幂等释放。
 func TestManagerLifecycleHelpers(t *testing.T) {
 	logger := &managerLifecycleTestLogger{}
 	pool := &managerLifecycleTestPool{running: 1, capacity: 2, usage: 0.5}

@@ -50,7 +50,7 @@ func (m *Manager) handleConcurrency(
 			return concurrencyResult{destroyedSession: destroyedByClean}, nil
 		}
 
-		// Replace old sessions when concurrency is disabled 不允许并发：顶掉旧会。
+		// Replace old sessions when concurrency is disabled 不允许并发：顶掉旧会话。
 		// Replace terminals by configured scope 按配置作用域顶掉旧终端。
 		destroyedSession := destroyedByClean
 		if m.config.ConcurrencyScope == config.ConcurrencyScopeAccount {
@@ -118,7 +118,7 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 		return "", nil
 	}
 
-	// Get candidate terminals 获取候。terminals。
+	// Get candidate terminals 获取候选终端
 	var candidates []TerminalInfo
 	switch {
 	case device != "" && deviceID != "":
@@ -136,7 +136,7 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 		return "", nil
 	}
 
-	// Reuse latest alive token 复用最后一个仍在线。token
+	// Reuse latest alive token 复用最后一个仍在线的 token
 	// Scan candidates from newest to oldest 从新到旧扫描候选终端。
 	var terminalInfo TerminalInfo
 	var tokenInfo *TokenInfo
@@ -191,7 +191,7 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 		return "", err
 	}
 
-	// Renew or reset metadata 续期或重新设。metadata
+	// Renew or reset metadata 续期或重置元数据
 	if m.config.RenewInterval > 0 {
 		// Refresh renew marker 刷新续期标记。
 		if err := m.storage.Set(ctx, m.getRenewKey(terminalInfo.Token), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {

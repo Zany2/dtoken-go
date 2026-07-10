@@ -15,23 +15,23 @@ import (
 )
 
 var (
-	// ErrInvalidShortKey indicates an invalid or missing short key. ErrInvalidShortKey 表示。Key 无效或不存在。
+	// ErrInvalidShortKey indicates an invalid or missing short key. ErrInvalidShortKey 表示短 Key 无效或不存在。
 	ErrInvalidShortKey = derror.ErrInvalidShortKey
-	// ErrShortKeyPending indicates the short key is not confirmed yet. ErrShortKeyPending 表示。Key 尚未确认。
+	// ErrShortKeyPending indicates the short key is not confirmed yet. ErrShortKeyPending 表示短 Key 尚未确认。
 	ErrShortKeyPending = derror.ErrShortKeyPending
-	// ErrShortKeyConsumed indicates a consumed short key. ErrShortKeyConsumed 表示。Key 已消费。
+	// ErrShortKeyConsumed indicates a consumed short key. ErrShortKeyConsumed 表示短 Key 已消费。
 	ErrShortKeyConsumed = derror.ErrShortKeyConsumed
-	// ErrShortKeyRevoked indicates a revoked short key. ErrShortKeyRevoked 表示。Key 已撤销。
+	// ErrShortKeyRevoked indicates a revoked short key. ErrShortKeyRevoked 表示短 Key 已撤销。
 	ErrShortKeyRevoked = derror.ErrShortKeyRevoked
-	// ErrShortKeyExpired indicates an expired short key. ErrShortKeyExpired 表示。Key 已过期。
+	// ErrShortKeyExpired indicates an expired short key. ErrShortKeyExpired 表示短 Key 已过期。
 	ErrShortKeyExpired = derror.ErrShortKeyExpired
-	// ErrShortKeyMismatch indicates short key constraints do not match. ErrShortKeyMismatch 表示。Key 约束不匹配。
+	// ErrShortKeyMismatch indicates short key constraints do not match. ErrShortKeyMismatch 表示短 Key 约束不匹配。
 	ErrShortKeyMismatch = derror.ErrShortKeyMismatch
 )
 
-// Config defines short key manager config. Config 定义。Key 管理器配置。
+// Config defines short key manager config. Config 定义短 Key 管理器配置。
 type Config struct {
-	// TTL stores default short key ttl. TTL 存储。Key 默认有效期。
+	// TTL stores default short key ttl. TTL 存储短 Key 默认有效期。
 	TTL time.Duration
 	// Length stores generated key length. Length 存储生成的短 Key 长度。
 	Length int
@@ -39,7 +39,7 @@ type Config struct {
 	MaxGenerateRetries int
 }
 
-// DefaultConfig returns default short key config. DefaultConfig 返回默认。Key 配置。
+// DefaultConfig returns default short key config. DefaultConfig 返回默认短 Key 配置。
 func DefaultConfig() *Config {
 	return &Config{
 		TTL:                DefaultTTL,
@@ -48,7 +48,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-// Validate validates short key config. Validate 校验。Key 配置。
+// Validate validates short key config. Validate 校验短 Key 配置。
 func (c *Config) Validate() error {
 	if c == nil {
 		return nil
@@ -65,7 +65,7 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// Clone returns a deep copy of short key config. Clone 返回。Key 配置副本。
+// Clone returns a deep copy of short key config. Clone 返回短 Key 配置副本。
 func (c *Config) Clone() *Config {
 	if c == nil {
 		return nil
@@ -92,9 +92,9 @@ type ShortKey struct {
 	Status     Status         `json:"status"`              // Status stores lifecycle state. Status 存储生命周期状态。
 }
 
-// CreateOptions defines short key creation options. CreateOptions 定义。Key 创建选项。
+// CreateOptions defines short key creation options. CreateOptions 定义短 Key 创建选项。
 type CreateOptions struct {
-	LoginID   string         // LoginID stores subject id and confirms the key when set. LoginID 存储主体 ID，非空时直接确认。Key。
+	LoginID   string         // LoginID stores subject id and confirms the key when set. LoginID 存储主体 ID，非空时直接确认短 Key。
 	Device    string         // Device stores device type. Device 存储设备类型。
 	DeviceID  string         // DeviceID stores concrete device id. DeviceID 存储具体设备 ID。
 	Scene     string         // Scene stores business scene. Scene 存储业务场景。
@@ -102,10 +102,10 @@ type CreateOptions struct {
 	TargetApp string         // TargetApp stores consuming application. TargetApp 存储目标应用。
 	Scopes    []string       // Scopes stores granted scopes. Scopes 存储授权范围。
 	Extra     map[string]any // Extra stores extension data. Extra 存储扩展数据。
-	Timeout   time.Duration  // Timeout overrides default short key ttl. Timeout 覆盖默认。Key 有效期。
+	Timeout   time.Duration  // Timeout overrides default short key ttl. Timeout 覆盖默认短 Key 有效期。
 }
 
-// ConfirmOptions defines short key confirmation data. ConfirmOptions 定义。Key 确认数据。
+// ConfirmOptions defines short key confirmation data. ConfirmOptions 定义短 Key 确认数据。
 type ConfirmOptions struct {
 	LoginID  string         // LoginID stores confirmed subject id. LoginID 存储确认后的主体 ID。
 	Device   string         // Device stores confirmed device type. Device 存储确认后的设备类型。
@@ -114,7 +114,7 @@ type ConfirmOptions struct {
 	Extra    map[string]any // Extra replaces extension data when set. Extra 非空时替换扩展数据。
 }
 
-// ValidateOptions defines short key validation constraints. ValidateOptions 定义。Key 校验约束。
+// ValidateOptions defines short key validation constraints. ValidateOptions 定义短 Key 校验约束。
 type ValidateOptions struct {
 	LoginID   string // LoginID requires matching subject id when set. LoginID 非空时要求主体 ID 匹配。
 	Device    string // Device requires matching device type when set. Device 非空时要求设备类型匹配。
@@ -124,12 +124,12 @@ type ValidateOptions struct {
 	TargetApp string // TargetApp requires matching consuming application when set. TargetApp 非空时要求目标应用匹配。
 }
 
-// ConsumeResult stores consumed short key data. ConsumeResult 存储。Key 消费结果。
+// ConsumeResult stores consumed short key data. ConsumeResult 存储短 Key 消费结果。
 type ConsumeResult struct {
-	ShortKey *ShortKey // ShortKey stores consumed short key payload. ShortKey 存储已消费的。Key 载荷。
+	ShortKey *ShortKey // ShortKey stores consumed short key payload. ShortKey 存储已消费的短 Key 载荷。
 }
 
-// Manager handles short key operations. Manager 处理。Key 操作。
+// Manager handles short key operations. Manager 处理短 Key 操作。
 type Manager struct {
 	authType           string
 	keyPrefix          string
@@ -141,12 +141,12 @@ type Manager struct {
 	mu                 sync.Mutex // Protects concurrent create operations 保护并发创建操作
 }
 
-// NewDefaultManager creates short key manager with default config. NewDefaultManager 使用默认配置创建。Key 管理器。
+// NewDefaultManager creates short key manager with default config. NewDefaultManager 使用默认配置创建短 Key 管理器。
 func NewDefaultManager(authType, prefix string, storage adapter.Storage, serializer adapter.Codec) *Manager {
 	return NewManagerWithConfig(authType, prefix, storage, serializer, DefaultConfig())
 }
 
-// NewManagerWithConfig creates short key manager with config. NewManagerWithConfig 使用配置创建。Key 管理器。
+// NewManagerWithConfig creates short key manager with config. NewManagerWithConfig 使用配置创建短 Key 管理器。
 func NewManagerWithConfig(authType, prefix string, storage adapter.Storage, serializer adapter.Codec, cfg *Config) *Manager {
 	if cfg == nil {
 		cfg = DefaultConfig()
@@ -179,7 +179,7 @@ func (m *Manager) Create(ctx context.Context, opts CreateOptions) (*ShortKey, er
 	return m.CreateWithTimeout(ctx, opts, opts.Timeout)
 }
 
-// CreateWithTimeout creates a pending short key with timeout. CreateWithTimeout 使用指定有效期创建待确认。Key。
+// CreateWithTimeout creates a pending short key with timeout. CreateWithTimeout 使用指定有效期创建待确认短 Key。
 func (m *Manager) CreateWithTimeout(ctx context.Context, opts CreateOptions, timeout time.Duration) (*ShortKey, error) {
 	if timeout <= 0 {
 		timeout = m.ttl
@@ -264,7 +264,7 @@ func (m *Manager) Confirm(ctx context.Context, key string, opts ConfirmOptions) 
 	return shortKey, nil
 }
 
-// Validate validates a short key without consuming it. Validate 校验。Key 但不消费。
+// Validate validates a short key without consuming it. Validate 校验短 Key 但不消费。
 func (m *Manager) Validate(ctx context.Context, key string, opts ...ValidateOptions) (*ShortKey, error) {
 	shortKey, err := m.get(ctx, key)
 	if err != nil {
@@ -284,7 +284,7 @@ func (m *Manager) Validate(ctx context.Context, key string, opts ...ValidateOpti
 	return shortKey, nil
 }
 
-// Consume validates and consumes a confirmed short key. Consume 校验并消费已确认。Key。
+// Consume validates and consumes a confirmed short key. Consume 校验并消费已确认短 Key。
 func (m *Manager) Consume(ctx context.Context, key string, opts ...ValidateOptions) (*ConsumeResult, error) {
 	if _, err := m.Validate(ctx, key, opts...); err != nil {
 		return nil, err
@@ -332,7 +332,7 @@ func (m *Manager) Consume(ctx context.Context, key string, opts ...ValidateOptio
 	return &ConsumeResult{ShortKey: shortKey}, nil
 }
 
-// Revoke revokes a short key. Revoke 撤销。Key。
+// Revoke revokes a short key. Revoke 撤销短 Key。
 func (m *Manager) Revoke(ctx context.Context, key string) error {
 	if key == "" {
 		return nil
@@ -364,7 +364,7 @@ func (m *Manager) Revoke(ctx context.Context, key string) error {
 	return m.save(ctx, shortKey, ttl)
 }
 
-// Status returns short key lifecycle status. Status 返回。Key 生命周期状态。
+// Status returns short key lifecycle status. Status 返回短 Key 生命周期状态。
 func (m *Manager) Status(ctx context.Context, key string) (Status, error) {
 	shortKey, err := m.get(ctx, key)
 	if err != nil {
@@ -388,7 +388,7 @@ func (m *Manager) Status(ctx context.Context, key string) (Status, error) {
 	return shortKey.Status, nil
 }
 
-// GetTTL returns short key ttl in seconds. GetTTL 返回。Key 剩余有效秒数。
+// GetTTL returns short key ttl in seconds. GetTTL 返回短 Key 剩余有效秒数。
 func (m *Manager) GetTTL(ctx context.Context, key string) (int64, error) {
 	if key == "" {
 		return -2, nil
@@ -409,6 +409,7 @@ func (m *Manager) GetTTL(ctx context.Context, key string) (int64, error) {
 	}
 }
 
+// save serializes and persists short key state. save 序列化并持久化短 Key 状态。
 func (m *Manager) save(ctx context.Context, shortKey *ShortKey, timeout time.Duration) error {
 	encoded, err := m.serializer.Encode(shortKey)
 	if err != nil {
@@ -420,6 +421,7 @@ func (m *Manager) save(ctx context.Context, shortKey *ShortKey, timeout time.Dur
 	return nil
 }
 
+// saveIfAbsent persists a short key only when its storage key is absent. saveIfAbsent 仅在存储键不存在时持久化短 Key。
 func (m *Manager) saveIfAbsent(ctx context.Context, shortKey *ShortKey, timeout time.Duration) (bool, error) {
 	encoded, err := m.serializer.Encode(shortKey)
 	if err != nil {
@@ -442,6 +444,7 @@ func (m *Manager) saveIfAbsent(ctx context.Context, shortKey *ShortKey, timeout 
 	return true, nil
 }
 
+// get loads a short key by its credential value. get 根据凭证值加载短 Key。
 func (m *Manager) get(ctx context.Context, key string) (*ShortKey, error) {
 	if key == "" {
 		return nil, ErrInvalidShortKey
@@ -456,6 +459,7 @@ func (m *Manager) get(ctx context.Context, key string) (*ShortKey, error) {
 	return m.decode(data)
 }
 
+// decode converts a stored value into short key metadata. decode 将存储值转换为短 Key 元数据。
 func (m *Manager) decode(value any) (*ShortKey, error) {
 	rawData, err := toBytes(value)
 	if err != nil {
@@ -468,6 +472,7 @@ func (m *Manager) decode(value any) (*ShortKey, error) {
 	return &shortKey, nil
 }
 
+// checkUsable validates short key state and expiration. checkUsable 校验短 Key 状态与有效期。
 func (m *Manager) checkUsable(shortKey *ShortKey) error {
 	if shortKey == nil || shortKey.Key == "" {
 		return ErrInvalidShortKey
@@ -489,10 +494,12 @@ func (m *Manager) checkUsable(shortKey *ShortKey) error {
 	return nil
 }
 
+// getKey builds the storage key for a short key. getKey 构建短 Key 存储键。
 func (m *Manager) getKey(key string) string {
 	return m.keyPrefix + m.authType + KeySuffix + key
 }
 
+// checkConstraints validates short key binding constraints. checkConstraints 校验短 Key 绑定约束。
 func checkConstraints(shortKey *ShortKey, opts ValidateOptions) error {
 	if opts.LoginID != "" && shortKey.LoginID != opts.LoginID {
 		return ErrShortKeyMismatch
@@ -515,6 +522,7 @@ func checkConstraints(shortKey *ShortKey, opts ValidateOptions) error {
 	return nil
 }
 
+// remainingDuration calculates the remaining short key lifetime. remainingDuration 计算短 Key 剩余有效期。
 func remainingDuration(shortKey *ShortKey) time.Duration {
 	if shortKey == nil || shortKey.ExpiresIn <= 0 {
 		return 0
@@ -527,6 +535,7 @@ func remainingDuration(shortKey *ShortKey) time.Duration {
 	return ttl
 }
 
+// generateKey creates a cryptographically secure short key. generateKey 生成密码学安全的短 Key。
 func generateKey(length int) (string, error) {
 	result := make([]byte, length)
 	max := big.NewInt(int64(len(alphabet)))
@@ -540,6 +549,7 @@ func generateKey(length int) (string, error) {
 	return string(result), nil
 }
 
+// toBytes converts supported storage values to bytes. toBytes 将受支持的存储值转换为字节切片。
 func toBytes(value any) ([]byte, error) {
 	switch v := value.(type) {
 	case string:
@@ -555,6 +565,7 @@ func toBytes(value any) ([]byte, error) {
 	}
 }
 
+// cloneMap copies extension data to avoid shared mutation. cloneMap 复制扩展数据以避免共享修改。
 func cloneMap(values map[string]any) map[string]any {
 	if len(values) == 0 {
 		return nil

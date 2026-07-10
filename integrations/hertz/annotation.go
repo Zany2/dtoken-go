@@ -12,13 +12,13 @@ import (
 
 // Annotation defines annotation config Annotation 定义注解配置
 type Annotation struct {
-	AuthType        string
-	CheckLogin      bool
-	CheckRole       []string
-	CheckPermission []string
-	CheckDisable    bool
-	Ignore          bool
-	LogicType       LogicType
+	AuthType        string    // Optional: specify auth type 可选：指定认证类型
+	CheckLogin      bool      // Check login 检查登录
+	CheckRole       []string  // Check roles 检查角色
+	CheckPermission []string  // Check permissions 检查权限
+	CheckDisable    bool      // Check disable status 检查封禁状态
+	Ignore          bool      // Ignore authentication 忽略认证
+	LogicType       LogicType // OR or AND logic (default: OR) OR 或 AND 逻辑（默认：OR）
 }
 
 // GetHandler gets annotation handler GetHandler 获取注解处理器

@@ -9,7 +9,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
-// GetTokenValueByCtx gets token value from current Kratos context GetTokenValueByCtx 从当。Kratos 上下文获。token 值。
+// GetTokenValueByCtx gets token value from current Kratos context GetTokenValueByCtx 从当前 Kratos 上下文获取 Token 值。
 func GetTokenValueByCtx(ctx context.Context) (string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -303,7 +303,7 @@ func HasPermissionsAndByCtx(ctx context.Context, permissions []string) bool {
 	return dCtx.Access().HasPermissionsAnd(ctx, permissions)
 }
 
-// AddRolesByCtx adds roles to current token AddRolesByCtx 为当。token 添加角色。
+// AddRolesByCtx adds roles to current token AddRolesByCtx 为当前 Token 添加角色。
 func AddRolesByCtx(ctx context.Context, roles []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -312,7 +312,7 @@ func AddRolesByCtx(ctx context.Context, roles []string) error {
 	return dCtx.Access().AddRoles(ctx, roles)
 }
 
-// RemoveRolesByCtx removes roles from current token RemoveRolesByCtx 从当。token 移除角色。
+// RemoveRolesByCtx removes roles from current token RemoveRolesByCtx 从当前 Token 移除角色。
 func RemoveRolesByCtx(ctx context.Context, roles []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -321,7 +321,7 @@ func RemoveRolesByCtx(ctx context.Context, roles []string) error {
 	return dCtx.Access().RemoveRoles(ctx, roles)
 }
 
-// AddPermissionsByCtx adds permissions to current token AddPermissionsByCtx 为当。token 添加权限。
+// AddPermissionsByCtx adds permissions to current token AddPermissionsByCtx 为当前 Token 添加权限。
 func AddPermissionsByCtx(ctx context.Context, permissions []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -330,7 +330,7 @@ func AddPermissionsByCtx(ctx context.Context, permissions []string) error {
 	return dCtx.Access().AddPermissions(ctx, permissions)
 }
 
-// RemovePermissionsByCtx removes permissions from current token RemovePermissionsByCtx 从当。token 移除权限。
+// RemovePermissionsByCtx removes permissions from current token RemovePermissionsByCtx 从当前 Token 移除权限。
 func RemovePermissionsByCtx(ctx context.Context, permissions []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {

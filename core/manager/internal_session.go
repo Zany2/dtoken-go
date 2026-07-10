@@ -262,7 +262,7 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 	return err
 }
 
-// cleanExpiredTerminals removes expired tokens from session. cleanExpiredTerminals 清理会话中已过期。token。
+// cleanExpiredTerminals removes expired tokens from session. cleanExpiredTerminals 清理会话中已过期的 token。
 func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (bool, error) {
 	// Skip empty session 跳过空会话。
 	if sess == nil || len(sess.TerminalInfos) == 0 {
@@ -275,7 +275,7 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (boo
 
 	// Check each terminal 逐个检查终端。
 	for _, ti := range sess.TerminalInfos {
-		// Check token by full alive rules 按完整存活规则检。token
+		// Check token by full alive rules 按完整存活规则检查 token
 		alive, err := m.checkTerminalTokenAliveWithContext(ctx, ti.Token, nil, sess)
 		if err != nil {
 			return false, err
@@ -289,7 +289,7 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (boo
 		hasExpired = true
 	}
 
-	// Update session when expired tokens exist 如果有过期的 token，更。session
+	// Update session when expired tokens exist 存在过期 Token 时更新 Session
 	if hasExpired {
 		// Replace terminal list 替换终端列表。
 		sess.TerminalInfos = validTerminals

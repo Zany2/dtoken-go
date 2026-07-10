@@ -179,6 +179,7 @@ type authcheckTestGenerator struct {
 	seq int
 }
 
+// Generate creates deterministic tokens for integration checks. Generate 为集成检查生成确定性 Token。
 func (g *authcheckTestGenerator) Generate(loginID, device, deviceID string) (string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -188,10 +189,13 @@ func (g *authcheckTestGenerator) Generate(loginID, device, deviceID string) (str
 
 type authcheckTestCodec struct{}
 
+// Name returns the test codec name. Name 返回测试编解码器名称。
 func (authcheckTestCodec) Name() string { return "json-test" }
 
+// Encode serializes test values as JSON. Encode 将测试值序列化为 JSON。
 func (authcheckTestCodec) Encode(v any) ([]byte, error) { return json.Marshal(v) }
 
+// Decode deserializes test values from JSON. Decode 从 JSON 反序列化测试值。
 func (authcheckTestCodec) Decode(data []byte, v any) error { return json.Unmarshal(data, v) }
 
 type authcheckTestStorage struct {
@@ -208,6 +212,7 @@ func newAuthcheckTestStorage() *authcheckTestStorage {
 	return &authcheckTestStorage{items: map[string]authcheckTestStorageItem{}}
 }
 
+// Set stores a test value with optional expiration. Set 存储带可选过期时间的测试值。
 func (s *authcheckTestStorage) Set(_ context.Context, key string, value any, expiration time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -220,6 +225,7 @@ func (s *authcheckTestStorage) Set(_ context.Context, key string, value any, exp
 	return nil
 }
 
+// Get returns a live test value and removes expired entries. Get 返回有效测试值并清理过期项。
 func (s *authcheckTestStorage) Get(_ context.Context, key string) (any, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -235,6 +241,7 @@ func (s *authcheckTestStorage) Get(_ context.Context, key string) (any, error) {
 	return item.value, nil
 }
 
+// Delete removes test values by key. Delete 按键删除测试值。
 func (s *authcheckTestStorage) Delete(_ context.Context, keys ...string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -245,6 +252,7 @@ func (s *authcheckTestStorage) Delete(_ context.Context, keys ...string) error {
 	return nil
 }
 
+// Exists reports whether a live test value exists. Exists 判断有效测试值是否存在。
 func (s *authcheckTestStorage) Exists(_ context.Context, key string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -260,6 +268,7 @@ func (s *authcheckTestStorage) Exists(_ context.Context, key string) bool {
 	return true
 }
 
+// Expire updates a test value expiration. Expire 更新测试值的过期时间。
 func (s *authcheckTestStorage) Expire(_ context.Context, key string, expiration time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -278,6 +287,7 @@ func (s *authcheckTestStorage) Expire(_ context.Context, key string, expiration 
 	return nil
 }
 
+// TTL returns the remaining lifetime of a test value. TTL 返回测试值的剩余有效期。
 func (s *authcheckTestStorage) TTL(_ context.Context, key string) (time.Duration, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -301,8 +311,10 @@ func (s *authcheckTestStorage) TTL(_ context.Context, key string) (time.Duration
 	return ttl, nil
 }
 
+// Ping reports that the test storage is available. Ping 表示测试存储可用。
 func (s *authcheckTestStorage) Ping(context.Context) error { return nil }
 
+// GetAndDelete returns and removes a test value. GetAndDelete 返回并删除测试值。
 func (s *authcheckTestStorage) GetAndDelete(ctx context.Context, key string) (any, error) {
 	value, err := s.Get(ctx, key)
 	if err != nil {
@@ -312,6 +324,7 @@ func (s *authcheckTestStorage) GetAndDelete(ctx context.Context, key string) (an
 	return value, nil
 }
 
+// SetIfAbsent stores a test value only when the key is absent. SetIfAbsent 仅在键不存在时存储测试值。
 func (s *authcheckTestStorage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
 	if s.Exists(ctx, key) {
 		return false, nil
@@ -322,6 +335,7 @@ func (s *authcheckTestStorage) SetIfAbsent(ctx context.Context, key string, valu
 	return true, nil
 }
 
+// Keys returns sorted live keys matching a pattern. Keys 返回按模式匹配并排序的有效键。
 func (s *authcheckTestStorage) Keys(_ context.Context, pattern string) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -340,6 +354,7 @@ func (s *authcheckTestStorage) Keys(_ context.Context, pattern string) ([]string
 	return keys, nil
 }
 
+// Clear removes all test values. Clear 删除全部测试值。
 func (s *authcheckTestStorage) Clear(context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

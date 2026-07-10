@@ -14,7 +14,7 @@ import (
 // Option configures optional manager modules. Option 配置 Manager 的可选模块。
 type Option func(m *Manager)
 
-// WithNonceManager sets the optional nonce manager. WithNonceManager 设置可。Nonce 管理器。
+// WithNonceManager sets the optional nonce manager. WithNonceManager 设置可选 Nonce 管理器。
 func WithNonceManager(nonceManager *nonce.NonceManager) Option {
 	return func(m *Manager) {
 		if nonceManager != nil {
@@ -23,7 +23,7 @@ func WithNonceManager(nonceManager *nonce.NonceManager) Option {
 	}
 }
 
-// WithOAuth2Manager sets the optional OAuth2 server. WithOAuth2Manager 设置可。OAuth2 服务端。
+// WithOAuth2Manager sets the optional OAuth2 server. WithOAuth2Manager 设置可选 OAuth2 服务端。
 func WithOAuth2Manager(oauth2Manager *oauth2.OAuth2Server) Option {
 	return func(m *Manager) {
 		if oauth2Manager != nil {
@@ -32,7 +32,7 @@ func WithOAuth2Manager(oauth2Manager *oauth2.OAuth2Server) Option {
 	}
 }
 
-// WithTicketManager sets the optional ticket manager. WithTicketManager 设置可。Ticket 管理器。
+// WithTicketManager sets the optional ticket manager. WithTicketManager 设置可选 Ticket 管理器。
 func WithTicketManager(ticketManager *ticket.Manager) Option {
 	return func(m *Manager) {
 		if ticketManager != nil {

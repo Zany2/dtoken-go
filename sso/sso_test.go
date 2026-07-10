@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// TestSSONewServerDefaults verifies the SSO New Server Defaults scenario. TestSSONewServerDefaults 验证对应的 SSO 服务端场景。
 func TestSSONewServerDefaults(t *testing.T) {
 	ctx := context.Background()
 	server := NewServer()
@@ -33,6 +34,7 @@ func TestSSONewServerDefaults(t *testing.T) {
 	}
 }
 
+// TestSSONewServerWithConfigFallsBackToBuiltIns verifies the SSO New Server With Config Falls Back To Built Ins scenario. TestSSONewServerWithConfigFallsBackToBuiltIns 验证对应的 SSO 服务端场景。
 func TestSSONewServerWithConfigFallsBackToBuiltIns(t *testing.T) {
 	ctx := context.Background()
 	server := NewServerWithConfig(DefaultAuthType, DefaultKeyPrefix, nil, nil, nil)
@@ -49,6 +51,7 @@ func TestSSONewServerWithConfigFallsBackToBuiltIns(t *testing.T) {
 	}
 }
 
+// TestSSOClientLifecycle verifies the SSO Client Lifecycle scenario. TestSSOClientLifecycle 验证对应的 SSO 服务端场景。
 func TestSSOClientLifecycle(t *testing.T) {
 	server := newTestServer()
 
@@ -73,6 +76,7 @@ func TestSSOClientLifecycle(t *testing.T) {
 	}
 }
 
+// TestSSOTicketGenerateValidateAndConsume verifies the SSO Ticket Generate Validate And Consume scenario. TestSSOTicketGenerateValidateAndConsume 验证对应的 SSO 服务端场景。
 func TestSSOTicketGenerateValidateAndConsume(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -107,6 +111,7 @@ func TestSSOTicketGenerateValidateAndConsume(t *testing.T) {
 	}
 }
 
+// TestSSOTicketErrorBoundaries verifies the SSO Ticket Error Boundaries scenario. TestSSOTicketErrorBoundaries 验证对应的 SSO 服务端场景。
 func TestSSOTicketErrorBoundaries(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -134,6 +139,7 @@ func TestSSOTicketErrorBoundaries(t *testing.T) {
 	}
 }
 
+// TestSSOTicketTTLRevokeAndExpire verifies the SSO Ticket TTL Revoke And Expire scenario. TestSSOTicketTTLRevokeAndExpire 验证对应的 SSO 服务端场景。
 func TestSSOTicketTTLRevokeAndExpire(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -173,6 +179,7 @@ func TestSSOTicketTTLRevokeAndExpire(t *testing.T) {
 	}
 }
 
+// TestSSOModeCompatibility verifies the SSO Mode Compatibility scenario. TestSSOModeCompatibility 验证对应的 SSO 服务端场景。
 func TestSSOModeCompatibility(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -201,6 +208,7 @@ func TestSSOModeCompatibility(t *testing.T) {
 	}
 }
 
+// TestSSOClientSessionFlow verifies the SSO Client Session Flow scenario. TestSSOClientSessionFlow 验证对应的 SSO 服务端场景。
 func TestSSOClientSessionFlow(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -260,6 +268,7 @@ func TestSSOClientSessionFlow(t *testing.T) {
 	}
 }
 
+// TestSSOClientSessionAllowOrigin verifies the SSO Client Session Allow Origin scenario. TestSSOClientSessionAllowOrigin 验证对应的 SSO 服务端场景。
 func TestSSOClientSessionAllowOrigin(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -278,6 +287,7 @@ func TestSSOClientSessionAllowOrigin(t *testing.T) {
 	}
 }
 
+// TestSSOSharedTokenFlow verifies the SSO Shared Token Flow scenario. TestSSOSharedTokenFlow 验证对应的 SSO 服务端场景。
 func TestSSOSharedTokenFlow(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -314,6 +324,7 @@ func TestSSOSharedTokenFlow(t *testing.T) {
 	}
 }
 
+// TestSSOSharedTokenTTLAndBoundaries verifies the SSO Shared Token TTL And Boundaries scenario. TestSSOSharedTokenTTLAndBoundaries 验证对应的 SSO 服务端场景。
 func TestSSOSharedTokenTTLAndBoundaries(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -348,6 +359,7 @@ func TestSSOSharedTokenTTLAndBoundaries(t *testing.T) {
 	}
 }
 
+// TestSSORemoteSessionFlow verifies the SSO Remote Session Flow scenario. TestSSORemoteSessionFlow 验证对应的 SSO 服务端场景。
 func TestSSORemoteSessionFlow(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -392,6 +404,7 @@ func TestSSORemoteSessionFlow(t *testing.T) {
 	}
 }
 
+// TestSSORemoteSessionBoundaries verifies the SSO Remote Session Boundaries scenario. TestSSORemoteSessionBoundaries 验证对应的 SSO 服务端场景。
 func TestSSORemoteSessionBoundaries(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -425,6 +438,7 @@ func TestSSORemoteSessionBoundaries(t *testing.T) {
 	}
 }
 
+// TestSSOOAuth2CodeFlow verifies the SSO OAuth2 authorization-code flow. TestSSOOAuth2CodeFlow 验证 SSO OAuth2 授权码流程。
 func TestSSOOAuth2CodeFlow(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -454,6 +468,7 @@ func TestSSOOAuth2CodeFlow(t *testing.T) {
 	}
 }
 
+// TestSSOOAuth2CodeBoundaries verifies SSO OAuth2 Code error boundaries. TestSSOOAuth2CodeBoundaries 验证 SSO OAuth2 授权码错误边界。
 func TestSSOOAuth2CodeBoundaries(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -494,6 +509,7 @@ func TestSSOOAuth2CodeBoundaries(t *testing.T) {
 	}
 }
 
+// newTestServer creates an isolated SSO server for tests. newTestServer 为测试创建隔离的 SSO 服务端。
 func newTestServer() *Server {
 	return NewServer(
 		WithAuthType("login:"),
@@ -507,6 +523,7 @@ func newTestServer() *Server {
 	)
 }
 
+// newTestClient creates the default SSO test client. newTestClient 创建默认 SSO 测试客户端。
 func newTestClient() *Client {
 	return &Client{
 		ClientID:     "app-a",
@@ -518,6 +535,7 @@ func newTestClient() *Client {
 	}
 }
 
+// registerTestClient registers the default client for a test. registerTestClient 为测试注册默认客户端。
 func registerTestClient(t *testing.T, server *Server) {
 	t.Helper()
 	if err := server.RegisterClient(newTestClient()); err != nil {

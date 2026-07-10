@@ -11,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetTokenValueByContext gets token value from current Gin context GetTokenValueByContext 从当。Gin 上下文获。token 。
+// GetTokenValueByContext gets token value from current Gin context GetTokenValueByContext 从当前 Gin 上下文获取 Token。
 func GetTokenValueByContext(c *gin.Context) (string, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -43,7 +43,7 @@ func GetManagerByContext(c *gin.Context) (*manager.Manager, error) {
 	return dCtx.GetManager(), nil
 }
 
-// IsLoginByContext checks current request login state IsLoginByContext 检查当前请求登录状。
+// IsLoginByContext checks current request login state IsLoginByContext 检查当前请求登录状态。
 func IsLoginByContext(c *gin.Context) bool {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -52,7 +52,7 @@ func IsLoginByContext(c *gin.Context) bool {
 	return dCtx.Auth().IsLogin(requestContext(c))
 }
 
-// CheckLoginByContext checks current request login state CheckLoginByContext 校验当前请求登录状。
+// CheckLoginByContext checks current request login state CheckLoginByContext 校验当前请求登录状态。
 func CheckLoginByContext(c *gin.Context) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -70,7 +70,7 @@ func GetLoginIDByContext(c *gin.Context) (string, error) {
 	return dCtx.Auth().GetLoginID(requestContext(c))
 }
 
-// LoginByTokenByContext renews current token login state LoginByTokenByContext 使用当前 token 续期登录。
+// LoginByTokenByContext renews current token login state LoginByTokenByContext 使用当前 Token 续期登录状态。
 func LoginByTokenByContext(c *gin.Context) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -142,7 +142,7 @@ func GetTokenInfoByContext(c *gin.Context) (*manager.TokenInfo, error) {
 	return dCtx.Auth().GetTokenInfo(requestContext(c))
 }
 
-// IntrospectTokenByContext inspects current token without renewal side effects IntrospectTokenByContext 无续期副作用地检查当。token 状。
+// IntrospectTokenByContext inspects current token without renewal side effects IntrospectTokenByContext 无续期副作用地检查当前 Token 状态。
 func IntrospectTokenByContext(c *gin.Context) (*manager.TokenIntrospection, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -332,7 +332,7 @@ func HasPermissionsAndByContext(c *gin.Context, permissions []string) bool {
 	return dCtx.Access().HasPermissionsAnd(requestContext(c), permissions)
 }
 
-// AddRolesByContext adds roles to current token AddRolesByContext 为当。token 添加角色
+// AddRolesByContext adds roles to current token AddRolesByContext 为当前 Token 添加角色
 func AddRolesByContext(c *gin.Context, roles []string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -341,7 +341,7 @@ func AddRolesByContext(c *gin.Context, roles []string) error {
 	return dCtx.Access().AddRoles(requestContext(c), roles)
 }
 
-// RemoveRolesByContext removes roles from current token RemoveRolesByContext 从当。token 移除角色
+// RemoveRolesByContext removes roles from current token RemoveRolesByContext 从当前 Token 移除角色
 func RemoveRolesByContext(c *gin.Context, roles []string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -350,7 +350,7 @@ func RemoveRolesByContext(c *gin.Context, roles []string) error {
 	return dCtx.Access().RemoveRoles(requestContext(c), roles)
 }
 
-// AddPermissionsByContext adds permissions to current token AddPermissionsByContext 为当。token 添加权限
+// AddPermissionsByContext adds permissions to current token AddPermissionsByContext 为当前 Token 添加权限
 func AddPermissionsByContext(c *gin.Context, permissions []string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -359,7 +359,7 @@ func AddPermissionsByContext(c *gin.Context, permissions []string) error {
 	return dCtx.Access().AddPermissions(requestContext(c), permissions)
 }
 
-// RemovePermissionsByContext removes permissions from current token RemovePermissionsByContext 从当。token 移除权限
+// RemovePermissionsByContext removes permissions from current token RemovePermissionsByContext 从当前 Token 移除权限
 func RemovePermissionsByContext(c *gin.Context, permissions []string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

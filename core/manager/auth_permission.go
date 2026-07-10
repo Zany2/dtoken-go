@@ -226,7 +226,7 @@ func (m *Manager) GetPermissionsByToken(ctx context.Context, tokenValue string) 
 		return nil, err
 	}
 
-	// Resolve permissions by token 。Token 解析权限。
+	// Resolve permissions by token 根据 Token 解析权限。
 	return m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   tokenInfo.Device,
@@ -278,7 +278,7 @@ func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, p
 	// Build access subject 构建访问主体。
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
-	// Resolve permissions by token 。Token 解析权限。
+	// Resolve permissions by token 根据 Token 解析权限。
 	permissions := m.resolvePermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
@@ -337,7 +337,7 @@ func (m *Manager) HasPermissionsAndByToken(ctx context.Context, tokenValue strin
 	// Build access subject 构建访问主体。
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
-	// Resolve permissions by token 。Token 解析权限。
+	// Resolve permissions by token 根据 Token 解析权限。
 	permList := m.resolvePermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
@@ -397,7 +397,7 @@ func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string
 	// Build access subject 构建访问主体。
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
-	// Resolve permissions by token 。Token 解析权限。
+	// Resolve permissions by token 根据 Token 解析权限。
 	permList := m.resolvePermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
@@ -467,7 +467,7 @@ func (m *Manager) CheckPermissionByToken(ctx context.Context, tokenValue string,
 	// Build access subject 构建访问主体。
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
-	// Load permissions by token 。Token 加载权限。
+	// Load permissions by token 根据 Token 加载权限。
 	permissions, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
@@ -533,7 +533,7 @@ func (m *Manager) CheckPermissionAndByToken(ctx context.Context, tokenValue stri
 	// Build access subject 构建访问主体。
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
-	// Load permissions by token 。Token 加载权限。
+	// Load permissions by token 根据 Token 加载权限。
 	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
@@ -600,7 +600,7 @@ func (m *Manager) CheckPermissionOrByToken(ctx context.Context, tokenValue strin
 	// Build access subject 构建访问主体。
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
-	// Load permissions by token 。Token 加载权限。
+	// Load permissions by token 根据 Token 加载权限。
 	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,

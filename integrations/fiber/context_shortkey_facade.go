@@ -26,7 +26,7 @@ func CreateShortKeyWithTimeoutByContext(c *gofiber.Ctx, opts shortkey.CreateOpti
 	return dCtx.ShortKey().CreateWithTimeout(requestContext(c), opts, timeout)
 }
 
-// ConfirmShortKeyByContext confirms short key ConfirmShortKeyByContext 纭鐭?Key
+// ConfirmShortKeyByContext confirms short key ConfirmShortKeyByContext 确认短 Key
 func ConfirmShortKeyByContext(c *gofiber.Ctx, key string, opts shortkey.ConfirmOptions) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -53,7 +53,7 @@ func ValidateShortKeyByContext(c *gofiber.Ctx, key string, opts ...shortkey.Vali
 	return dCtx.ShortKey().Validate(requestContext(c), key, opts...)
 }
 
-// ConsumeShortKeyByContext consumes short key ConsumeShortKeyByContext 娑堣垂鐭?Key
+// ConsumeShortKeyByContext consumes short key ConsumeShortKeyByContext 消费短 Key
 func ConsumeShortKeyByContext(c *gofiber.Ctx, key string, opts ...shortkey.ValidateOptions) (*shortkey.ConsumeResult, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -62,7 +62,7 @@ func ConsumeShortKeyByContext(c *gofiber.Ctx, key string, opts ...shortkey.Valid
 	return dCtx.ShortKey().Consume(requestContext(c), key, opts...)
 }
 
-// RevokeShortKeyByContext revokes short key RevokeShortKeyByContext 鎾ら攢鐭?Key
+// RevokeShortKeyByContext revokes short key RevokeShortKeyByContext 撤销短 Key
 func RevokeShortKeyByContext(c *gofiber.Ctx, key string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

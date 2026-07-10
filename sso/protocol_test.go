@@ -12,6 +12,7 @@ import (
 	"time"
 )
 
+// TestEndpointsPrefixHelpers verifies the Endpoints Prefix Helpers scenario. TestEndpointsPrefixHelpers 验证对应的 SSO 协议场景。
 func TestEndpointsPrefixHelpers(t *testing.T) {
 	api := DefaultEndpoints().ReplacePrefix("/auth-center")
 	if api.Authorize != "/auth-center/authorize" || api.Token != "/auth-center/token" {
@@ -24,6 +25,7 @@ func TestEndpointsPrefixHelpers(t *testing.T) {
 	}
 }
 
+// TestClientAppExchangesTicketOverHTTP verifies the Client App Exchanges Ticket Over HTTP scenario. TestClientAppExchangesTicketOverHTTP 验证对应的 SSO 协议场景。
 func TestClientAppExchangesTicketOverHTTP(t *testing.T) {
 	var gotValues url.Values
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -61,6 +63,7 @@ func TestClientAppExchangesTicketOverHTTP(t *testing.T) {
 	}
 }
 
+// TestClientAppIntrospectAndRevokeOverHTTP verifies the Client App Introspect And Revoke Over HTTP scenario. TestClientAppIntrospectAndRevokeOverHTTP 验证对应的 SSO 协议场景。
 func TestClientAppIntrospectAndRevokeOverHTTP(t *testing.T) {
 	requests := make([]string, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -113,6 +116,7 @@ func TestClientAppIntrospectAndRevokeOverHTTP(t *testing.T) {
 	}
 }
 
+// TestSignerIgnoresParameterOrder verifies the Signer Ignores Parameter Order scenario. TestSignerIgnoresParameterOrder 验证对应的 SSO 协议场景。
 func TestSignerIgnoresParameterOrder(t *testing.T) {
 	signer := NewSigner("secret")
 	a := url.Values{"b": {"2"}, "a": {"1"}}
@@ -131,6 +135,7 @@ func TestSignerIgnoresParameterOrder(t *testing.T) {
 	}
 }
 
+// TestSignerWithZeroParamsUsesDefaults verifies the Signer With Zero Params Uses Defaults scenario. TestSignerWithZeroParamsUsesDefaults 验证对应的 SSO 协议场景。
 func TestSignerWithZeroParamsUsesDefaults(t *testing.T) {
 	values := NewSignerWithParams("secret", ParamNames{}).AttachSign(url.Values{
 		"client": {"app-a"},
@@ -143,6 +148,7 @@ func TestSignerWithZeroParamsUsesDefaults(t *testing.T) {
 	}
 }
 
+// TestClientAppBuildsSignedURLs verifies signed SSO URL construction. TestClientAppBuildsSignedURLs 验证带签名的 SSO URL 构建。
 func TestClientAppBuildsSignedURLs(t *testing.T) {
 	app := NewClientApp(ClientConfig{
 		Mode:         ModeTicket,
@@ -188,6 +194,7 @@ func TestClientAppBuildsSignedURLs(t *testing.T) {
 	}
 }
 
+// TestClientAppVerifiesLogoutCallback verifies the Client App Verifies Logout Callback scenario. TestClientAppVerifiesLogoutCallback 验证对应的 SSO 协议场景。
 func TestClientAppVerifiesLogoutCallback(t *testing.T) {
 	app := NewClientApp(ClientConfig{
 		ClientID:  "app-a",
@@ -219,6 +226,7 @@ func TestClientAppVerifiesLogoutCallback(t *testing.T) {
 	}
 }
 
+// TestClientAppRejectsExpiredLogoutCallback verifies the Client App Rejects Expired Logout Callback scenario. TestClientAppRejectsExpiredLogoutCallback 验证对应的 SSO 协议场景。
 func TestClientAppRejectsExpiredLogoutCallback(t *testing.T) {
 	app := NewClientApp(ClientConfig{
 		ClientID:             "app-a",
@@ -238,6 +246,7 @@ func TestClientAppRejectsExpiredLogoutCallback(t *testing.T) {
 	}
 }
 
+// TestClientAppLogoutCallbackHandler verifies the Client App Logout Callback Handler scenario. TestClientAppLogoutCallbackHandler 验证对应的 SSO 协议场景。
 func TestClientAppLogoutCallbackHandler(t *testing.T) {
 	app := NewClientApp(ClientConfig{
 		ClientID:  "app-a",

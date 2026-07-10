@@ -9,7 +9,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/listener"
 )
 
-// AddRoles adds roles to a user AddRoles 为用户添加角。
+// AddRoles adds roles to a user AddRoles 为用户添加角色。
 func (m *Manager) AddRoles(ctx context.Context, loginID string, roles []string) error {
 	// Validate login ID 校验登录 ID
 	if loginID == "" {
@@ -24,7 +24,7 @@ func (m *Manager) AddRoles(ctx context.Context, loginID string, roles []string) 
 		return nil
 	}
 
-	// Lock account writes 锁定账号写操。
+	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(loginID)
 
 	// Release lock on function exit 函数退出时释放。
@@ -36,10 +36,10 @@ func (m *Manager) AddRoles(ctx context.Context, loginID string, roles []string) 
 		return err
 	}
 
-	// Add roles to session 向会话追加角。
+	// Add roles to session 向会话追加角色。
 	sess.addRoles(roles...)
 
-	// Persist updated session 持久化更新后的会。
+	// Persist updated session 持久化更新后的会话。
 	if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
 		return err
 	}
@@ -56,7 +56,7 @@ func (m *Manager) AddRoles(ctx context.Context, loginID string, roles []string) 
 	return nil
 }
 
-// AddRolesByToken adds roles to a user by token AddRolesByToken 根据 Token 为用户添加角。
+// AddRolesByToken adds roles to a user by token AddRolesByToken 根据 Token 为用户添加角色。
 func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles []string) error {
 	// Normalize role values 规范化角色值。
 	roles = normalizeAccessValues(roles)
@@ -73,7 +73,7 @@ func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles 
 	}
 	lockedLoginID := tokenInfo.LoginID
 
-	// Lock account writes 锁定账号写操。
+	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(lockedLoginID)
 
 	// Release lock on function exit 函数退出时释放。
@@ -88,10 +88,10 @@ func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles 
 		return derror.ErrInvalidToken
 	}
 
-	// Add roles to session 向会话追加角。
+	// Add roles to session 向会话追加角色。
 	sess.addRoles(roles...)
 
-	// Persist updated session 持久化更新后的会。
+	// Persist updated session 持久化更新后的会话。
 	if err = m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
 		return err
 	}
@@ -108,7 +108,7 @@ func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles 
 	return nil
 }
 
-// RemoveRoles removes roles from a user RemoveRoles 删除用户的指定角。
+// RemoveRoles removes roles from a user RemoveRoles 删除用户的指定角色。
 func (m *Manager) RemoveRoles(ctx context.Context, loginID string, roles []string) error {
 	// Validate login ID 校验登录 ID
 	if loginID == "" {
@@ -123,7 +123,7 @@ func (m *Manager) RemoveRoles(ctx context.Context, loginID string, roles []strin
 		return nil
 	}
 
-	// Lock account writes 锁定账号写操。
+	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(loginID)
 
 	// Release lock on function exit 函数退出时释放。
@@ -135,10 +135,10 @@ func (m *Manager) RemoveRoles(ctx context.Context, loginID string, roles []strin
 		return err
 	}
 
-	// Remove roles from session 从会话移除角。
+	// Remove roles from session 从会话移除角色。
 	sess.removeRoles(roles...)
 
-	// Persist updated session 持久化更新后的会。
+	// Persist updated session 持久化更新后的会话。
 	if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
 		return err
 	}
@@ -155,7 +155,7 @@ func (m *Manager) RemoveRoles(ctx context.Context, loginID string, roles []strin
 	return nil
 }
 
-// RemoveRolesByToken removes roles from a user by token RemoveRolesByToken 根据 Token 删除用户的指定角。
+// RemoveRolesByToken removes roles from a user by token RemoveRolesByToken 根据 Token 删除用户的指定角色。
 func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, roles []string) error {
 	// Normalize role values 规范化角色值。
 	roles = normalizeAccessValues(roles)
@@ -172,7 +172,7 @@ func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, rol
 	}
 	lockedLoginID := tokenInfo.LoginID
 
-	// Lock account writes 锁定账号写操。
+	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(lockedLoginID)
 
 	// Release lock on function exit 函数退出时释放。
@@ -187,10 +187,10 @@ func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, rol
 		return derror.ErrInvalidToken
 	}
 
-	// Remove roles from session 从会话移除角。
+	// Remove roles from session 从会话移除角色。
 	sess.removeRoles(roles...)
 
-	// Persist updated session 持久化更新后的会。
+	// Persist updated session 持久化更新后的会话。
 	if err = m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
 		return err
 	}
@@ -207,7 +207,7 @@ func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, rol
 	return nil
 }
 
-// GetRoles retrieves the role list for a user GetRoles 获取用户的角色列。
+// GetRoles retrieves the role list for a user GetRoles 获取用户的角色列表。
 func (m *Manager) GetRoles(ctx context.Context, loginID string) ([]string, error) {
 	// Validate login ID 校验登录 ID
 	if loginID == "" {
@@ -226,7 +226,7 @@ func (m *Manager) GetRolesByToken(ctx context.Context, tokenValue string) ([]str
 		return nil, err
 	}
 
-	// Resolve roles by token 。Token 解析角色
+	// Resolve roles by token 根据 Token 解析角色
 	return m.loadRoles(ctx, sess.Roles, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   tokenInfo.Device,
@@ -235,7 +235,7 @@ func (m *Manager) GetRolesByToken(ctx context.Context, tokenValue string) ([]str
 	})
 }
 
-// HasRole checks if a user has a specific role HasRole 检查用户是否拥有指定角。
+// HasRole checks if a user has a specific role HasRole 检查用户是否拥有指定角色。
 func (m *Manager) HasRole(ctx context.Context, loginID string, role string) bool {
 	// Validate required parameters 校验必要参数
 	if loginID == "" || role == "" {
@@ -261,7 +261,7 @@ func (m *Manager) HasRole(ctx context.Context, loginID string, role string) bool
 	return hasRole
 }
 
-// HasRoleByToken checks if a user has a specific role by token HasRoleByToken 根据 Token 检查用户是否拥有指定角。
+// HasRoleByToken checks if a user has a specific role by token HasRoleByToken 根据 Token 检查用户是否拥有指定角色。
 func (m *Manager) HasRoleByToken(ctx context.Context, tokenValue string, role string) bool {
 	// Validate role 校验角色
 	if role == "" {
@@ -278,7 +278,7 @@ func (m *Manager) HasRoleByToken(ctx context.Context, tokenValue string, role st
 	// Build access subject 构建访问主体
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
-	// Resolve roles by token 。Token 解析角色
+	// Resolve roles by token 根据 Token 解析角色
 	roles := m.resolveRoles(ctx, sess.Roles, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
@@ -298,7 +298,7 @@ func (m *Manager) HasRoleByToken(ctx context.Context, tokenValue string, role st
 	return hasRole
 }
 
-// HasRolesAnd checks if a user has all specified roles HasRolesAnd 检查用户是否拥有全部指定角。
+// HasRolesAnd checks if a user has all specified roles HasRolesAnd 检查用户是否拥有全部指定角色。
 func (m *Manager) HasRolesAnd(ctx context.Context, loginID string, roles []string) bool {
 	// Validate login ID 校验登录 ID
 	if loginID == "" {
@@ -325,7 +325,7 @@ func (m *Manager) HasRolesAnd(ctx context.Context, loginID string, roles []strin
 	return hasAll
 }
 
-// HasRolesAndByToken checks if a token user has all specified roles HasRolesAndByToken 根据 Token 检查全部角。
+// HasRolesAndByToken checks if a token user has all specified roles HasRolesAndByToken 根据 Token 检查全部角色。
 func (m *Manager) HasRolesAndByToken(ctx context.Context, tokenValue string, roles []string) bool {
 	// Validate token and load context 校验 Token 并加载上下文
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
@@ -337,7 +337,7 @@ func (m *Manager) HasRolesAndByToken(ctx context.Context, tokenValue string, rol
 	// Build access subject 构建访问主体
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
-	// Resolve roles by token 。Token 解析角色
+	// Resolve roles by token 根据 Token 解析角色
 	roleList := m.resolveRoles(ctx, sess.Roles, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
@@ -397,7 +397,7 @@ func (m *Manager) HasRolesOrByToken(ctx context.Context, tokenValue string, role
 	// Build access subject 构建访问主体
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
-	// Resolve roles by token 。Token 解析角色
+	// Resolve roles by token 根据 Token 解析角色
 	roleList := m.resolveRoles(ctx, sess.Roles, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
@@ -467,7 +467,7 @@ func (m *Manager) CheckRoleByToken(ctx context.Context, tokenValue string, role 
 	// Build access subject 构建访问主体
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
-	// Load roles by token 。Token 加载角色
+	// Load roles by token 根据 Token 加载角色
 	roles, err := m.loadRoles(ctx, sess.Roles, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
@@ -533,7 +533,7 @@ func (m *Manager) CheckRoleAndByToken(ctx context.Context, tokenValue string, ro
 	// Build access subject 构建访问主体
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
-	// Load roles by token 。Token 加载角色
+	// Load roles by token 根据 Token 加载角色
 	roleList, err := m.loadRoles(ctx, sess.Roles, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
@@ -600,7 +600,7 @@ func (m *Manager) CheckRoleOrByToken(ctx context.Context, tokenValue string, rol
 	// Build access subject 构建访问主体
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
-	// Load roles by token 。Token 加载角色
+	// Load roles by token 根据 Token 加载角色
 	roleList, err := m.loadRoles(ctx, sess.Roles, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
@@ -627,9 +627,9 @@ func (m *Manager) CheckRoleOrByToken(ctx context.Context, tokenValue string, rol
 	return nil
 }
 
-// hasRoleInList checks whether role exists hasRoleInList 检查角色是否存。
+// hasRoleInList checks whether role exists hasRoleInList 检查角色是否存在。
 func (m *Manager) hasRoleInList(roles []string, role string) bool {
-	// Check each role 逐个检查角。
+	// Check each role 逐个检查角色。
 	for _, r := range roles {
 		if m.strategy.normalize().RoleMatcher(r, role) {
 			return true
@@ -638,7 +638,7 @@ func (m *Manager) hasRoleInList(roles []string, role string) bool {
 	return false
 }
 
-// hasAllRoles checks whether all roles exist hasAllRoles 检查是否拥有全部角。
+// hasAllRoles checks whether all roles exist hasAllRoles 检查是否拥有全部角色。
 func (m *Manager) hasAllRoles(roles []string, required []string) bool {
 	// Reject empty requirement 拒绝空的角色要求
 	if len(required) == 0 {
@@ -659,7 +659,7 @@ func (m *Manager) hasAllRoles(roles []string, required []string) bool {
 
 // hasAnyRole checks whether any role exists hasAnyRole 检查是否拥有任一角色
 func (m *Manager) hasAnyRole(roles []string, required []string) bool {
-	// Check each candidate 逐个检查候选角。
+	// Check each candidate 逐个检查候选角色。
 	for _, need := range required {
 		if need == "" {
 			continue

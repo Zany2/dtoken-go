@@ -10,6 +10,7 @@ import (
 	echo4 "github.com/labstack/echo/v4"
 )
 
+// TestEchoContextAdapterRequestAndResponse verifies request and response adaptation. TestEchoContextAdapterRequestAndResponse 验证请求与响应适配。
 func TestEchoContextAdapterRequestAndResponse(t *testing.T) {
 	engine := echo4.New()
 	req := httptest.NewRequest(http.MethodPost, "/demo?foo=bar", strings.NewReader("hello"))
@@ -89,6 +90,7 @@ func TestEchoContextAdapterRequestAndResponse(t *testing.T) {
 	}
 }
 
+// TestEchoContextMustGetPanicsWhenMissing verifies missing values trigger a panic. TestEchoContextMustGetPanicsWhenMissing 验证缺失值会触发 panic。
 func TestEchoContextMustGetPanicsWhenMissing(t *testing.T) {
 	engine := echo4.New()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)

@@ -142,7 +142,7 @@ func SearchTokenValueByCtx(ctx context.Context, keyword string, start, size int)
 	return dCtx.Terminal().SearchTokenValue(ctx, keyword, start, size)
 }
 
-// SearchSessionIDByCtx searches session ids SearchSessionIDByCtx ?Session ID
+// SearchSessionIDByCtx searches session ids SearchSessionIDByCtx 搜索 Session ID
 func SearchSessionIDByCtx(ctx context.Context, keyword string, start, size int) ([]string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {

@@ -11,7 +11,7 @@ import (
 	beegocontext "github.com/beego/beego/v2/server/web/context"
 )
 
-// GetTokenValueByContext gets token value from current Beego context GetTokenValueByContext 从当。Beego 上下文获。token 。
+// GetTokenValueByContext gets token value from current Beego context GetTokenValueByContext 从当前 Beego 上下文获取 Token。
 func GetTokenValueByContext(c *beegocontext.Context) (string, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -43,7 +43,7 @@ func GetManagerByContext(c *beegocontext.Context) (*manager.Manager, error) {
 	return dCtx.GetManager(), nil
 }
 
-// IsLoginByContext checks current request login state IsLoginByContext 检查当前请求登录状。
+// IsLoginByContext checks current request login state IsLoginByContext 检查当前请求登录状态。
 func IsLoginByContext(c *beegocontext.Context) bool {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -52,7 +52,7 @@ func IsLoginByContext(c *beegocontext.Context) bool {
 	return dCtx.Auth().IsLogin(requestContext(c))
 }
 
-// CheckLoginByContext checks current request login state CheckLoginByContext 校验当前请求登录状。
+// CheckLoginByContext checks current request login state CheckLoginByContext 校验当前请求登录状态。
 func CheckLoginByContext(c *beegocontext.Context) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -70,7 +70,7 @@ func GetLoginIDByContext(c *beegocontext.Context) (string, error) {
 	return dCtx.Auth().GetLoginID(requestContext(c))
 }
 
-// LoginByTokenByContext renews current token login state LoginByTokenByContext 使用当前 token 续期登录状。
+// LoginByTokenByContext renews current token login state LoginByTokenByContext 使用当前 Token 续期登录状态。
 func LoginByTokenByContext(c *beegocontext.Context) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -115,7 +115,7 @@ func GetTokenInfoByContext(c *beegocontext.Context) (*manager.TokenInfo, error) 
 	return dCtx.Auth().GetTokenInfo(requestContext(c))
 }
 
-// IntrospectTokenByContext inspects current token without renewal side effects IntrospectTokenByContext 无续期副作用地检查当。token 状。
+// IntrospectTokenByContext inspects current token without renewal side effects IntrospectTokenByContext 无续期副作用地检查当前 Token 状态。
 func IntrospectTokenByContext(c *beegocontext.Context) (*manager.TokenIntrospection, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

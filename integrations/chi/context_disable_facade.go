@@ -35,7 +35,7 @@ func DisableServiceLevelByCtx(ctx context.Context, service string, level int, du
 	return dCtx.Disable().ServiceLevel(ctx, service, level, duration, reason...)
 }
 
-// UntieServiceByCtx removes current account service disable state UntieServiceByCtx
+// UntieServiceByCtx removes current account service disable state UntieServiceByCtx 解除当前账号服务封禁状态
 func UntieServiceByCtx(ctx context.Context, service string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -116,7 +116,7 @@ func DisableDeviceAndDeviceIDByCtx(ctx context.Context, device, deviceID string,
 	return dCtx.Disable().DeviceAndDeviceID(ctx, device, deviceID, duration, reason...)
 }
 
-// UntieDeviceByCtx removes current account device disable state UntieDeviceByCtx
+// UntieDeviceByCtx removes current account device disable state UntieDeviceByCtx 解除当前账号设备封禁状态
 func UntieDeviceByCtx(ctx context.Context, device string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -125,7 +125,7 @@ func UntieDeviceByCtx(ctx context.Context, device string) error {
 	return dCtx.Disable().UntieDevice(ctx, device)
 }
 
-// UntieDeviceAndDeviceIDByCtx removes current account device ID disable state UntieDeviceAndDeviceIDByCtx  ID
+// UntieDeviceAndDeviceIDByCtx removes current account device ID disable state UntieDeviceAndDeviceIDByCtx 解除当前账号指定设备 ID 的封禁状态
 func UntieDeviceAndDeviceIDByCtx(ctx context.Context, device, deviceID string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {

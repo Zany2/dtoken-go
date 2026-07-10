@@ -87,7 +87,7 @@ func (m *Manager) saveSessionWithMinTTL(
 	return m.saveToStorage(ctx, key, value, finalExpiration)
 }
 
-// getDeviceAndDeviceID extracts device type and device ID from parameters. getDeviceAndDeviceID 获取设备类型和设备 ID。规则：device 。deviceID 是两个独立的过滤维度，互不影响。
+// getDeviceAndDeviceID extracts independent device and device ID filters. getDeviceAndDeviceID 提取相互独立的设备类型和设备 ID 过滤维度。
 func (m *Manager) getDeviceAndDeviceID(deviceAndDeviceID ...string) (string, string) {
 	// Initialize empty device fields 初始化空设备字段。
 	device := ""

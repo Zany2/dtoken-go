@@ -11,6 +11,7 @@ import (
 	"github.com/Zany2/dtoken-go/sso"
 )
 
+// TestRedisSSOFlow verifies the Redis SSO Flow scenario. TestRedisSSOFlow 验证对应的 Redis SSO 集成场景。
 func TestRedisSSOFlow(t *testing.T) {
 	redisURL := os.Getenv("DTOKEN_SSO_REDIS")
 	if redisURL == "" {

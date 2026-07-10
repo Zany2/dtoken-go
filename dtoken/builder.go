@@ -803,6 +803,7 @@ func (b *Builder) Clone() *Builder {
 func (b *Builder) Build() (*manager.Manager, error) {
 	b.ensureBuilder()
 
+	// Clone configs so validation and assembly preserve reusable builder state. 克隆配置，避免校验和装配修改可复用的构建器状态。
 	coreConfig := b.inner.GetConfig().Clone()
 	renewPoolConfig := b.renewPoolConfig.Clone()
 	loggerConfig := b.loggerConfig.Clone()
@@ -811,6 +812,7 @@ func (b *Builder) Build() (*manager.Manager, error) {
 	ticketConfig := b.ticketConfig.Clone()
 	shortKeyConfig := b.shortKeyConfig.Clone()
 
+	// Validate every config before wiring components. 在装配组件前校验全部配置。
 	if err := coreConfig.Validate(); err != nil {
 		return nil, fmt.Errorf("build manager failed: invalid core config: %w", err)
 	}
@@ -833,6 +835,7 @@ func (b *Builder) Build() (*manager.Manager, error) {
 		return nil, fmt.Errorf("build manager failed: invalid short key config: %w", err)
 	}
 
+	// Wire defaults and optional modules before applying user overrides. 先装配默认组件和可选模块，再应用用户覆盖项。
 	coreBuilder := b.inner.Clone().Config(coreConfig)
 	b.applyDefaultFactories(coreBuilder, renewPoolConfig, loggerConfig)
 	b.applyEnabledModules(coreBuilder, nonceConfig, oauth2Config, ticketConfig, shortKeyConfig)

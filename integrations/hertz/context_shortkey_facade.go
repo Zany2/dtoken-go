@@ -26,7 +26,7 @@ func CreateShortKeyWithTimeoutByContext(ctx *hertzapp.RequestContext, opts short
 	return dCtx.ShortKey().CreateWithTimeout(requestContext(ctx), opts, timeout)
 }
 
-// ConfirmShortKeyByContext confirms short key ConfirmShortKeyByContext ?Key
+// ConfirmShortKeyByContext confirms short key ConfirmShortKeyByContext 确认短 Key
 func ConfirmShortKeyByContext(ctx *hertzapp.RequestContext, key string, opts shortkey.ConfirmOptions) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -53,7 +53,7 @@ func ValidateShortKeyByContext(ctx *hertzapp.RequestContext, key string, opts ..
 	return dCtx.ShortKey().Validate(requestContext(ctx), key, opts...)
 }
 
-// ConsumeShortKeyByContext consumes short key ConsumeShortKeyByContext ?Key
+// ConsumeShortKeyByContext consumes short key ConsumeShortKeyByContext 消费短 Key
 func ConsumeShortKeyByContext(ctx *hertzapp.RequestContext, key string, opts ...shortkey.ValidateOptions) (*shortkey.ConsumeResult, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -62,7 +62,7 @@ func ConsumeShortKeyByContext(ctx *hertzapp.RequestContext, key string, opts ...
 	return dCtx.ShortKey().Consume(requestContext(ctx), key, opts...)
 }
 
-// RevokeShortKeyByContext revokes short key RevokeShortKeyByContext ?Key
+// RevokeShortKeyByContext revokes short key RevokeShortKeyByContext 撤销短 Key
 func RevokeShortKeyByContext(ctx *hertzapp.RequestContext, key string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {

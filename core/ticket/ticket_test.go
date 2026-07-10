@@ -12,6 +12,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/adapter"
 )
 
+// TestConfigValidateAndClone verifies ticket config validation and independent cloning. TestConfigValidateAndClone 验证 Ticket 配置校验与独立克隆。
 func TestConfigValidateAndClone(t *testing.T) {
 	cfg := DefaultConfig()
 	if cfg == nil || cfg.TTL != DefaultTicketTTL {
@@ -32,6 +33,7 @@ func TestConfigValidateAndClone(t *testing.T) {
 	}
 }
 
+// TestManagerCreateValidateConsume verifies the ticket create, validate, and consume lifecycle. TestManagerCreateValidateConsume 验证 Ticket 创建、校验与消费生命周期。
 func TestManagerCreateValidateConsume(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestTicketManager(time.Minute)
@@ -85,6 +87,7 @@ func TestManagerCreateValidateConsume(t *testing.T) {
 	}
 }
 
+// TestManagerBoundaries verifies ticket invalid-input and lifecycle boundaries. TestManagerBoundaries 验证 Ticket 非法输入与生命周期边界。
 func TestManagerBoundaries(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestTicketManager(time.Minute)
@@ -141,6 +144,7 @@ func TestManagerBoundaries(t *testing.T) {
 	}
 }
 
+// TestConsumeConstraintMismatchDoesNotConsumeTicket verifies mismatched constraints preserve the ticket. TestConsumeConstraintMismatchDoesNotConsumeTicket 验证约束不匹配时不会消费 Ticket。
 func TestConsumeConstraintMismatchDoesNotConsumeTicket(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestTicketManager(time.Minute)
@@ -171,6 +175,7 @@ func TestConsumeConstraintMismatchDoesNotConsumeTicket(t *testing.T) {
 	}
 }
 
+// TestRevokeDoesNotOverwriteConsumedTicket verifies revoke keeps an existing consumed state. TestRevokeDoesNotOverwriteConsumedTicket 验证撤销操作不会覆盖已消费状态。
 func TestRevokeDoesNotOverwriteConsumedTicket(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestTicketManager(time.Minute)

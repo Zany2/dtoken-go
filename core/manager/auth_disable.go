@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// Disable disables an account for a specified duration. Disable 封禁账号指定时长。duration=0 means permanent. duration=0 表示永久封禁。
+// Disable disables an account for a specified duration, where zero means permanent. Disable 按指定时长封禁账号，时长为零表示永久封禁。
 func (m *Manager) Disable(ctx context.Context, loginID string, duration time.Duration, reason ...string) error {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
@@ -31,7 +31,7 @@ func (m *Manager) Disable(ctx context.Context, loginID string, duration time.Dur
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
-	// Load session before disable 先尝试加。Session（如果存储出错，在保存封禁信息前就返回，保证原子性）
+	// Load session before disable 封禁前先尝试加载 Session，存储出错时在保存封禁信息前返回
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
 		// Ignore missing session and return other storage errors 如果只是 session 不存在，不算错误；其他存储错误则返回
@@ -85,7 +85,7 @@ func (m *Manager) Disable(ctx context.Context, loginID string, duration time.Dur
 	unlock = func() {}
 
 	if sess != nil && len(sess.TerminalInfos) > 0 {
-		// Trigger session destroy event 触发销。Session 事件
+		// Trigger session destroy event 触发销毁 Session 事件
 		m.triggerEvent(listener.EventDestroySession, loginID, "", "", "", nil)
 	}
 
@@ -161,7 +161,7 @@ func (m *Manager) GetDisableInfo(ctx context.Context, loginID string) (*DisableI
 	return &disableInfo, nil
 }
 
-// GetDisableTTL retrieves the remaining disable time for an account in seconds. GetDisableTTL 获取账号剩余封禁时间（秒）。Returns: -2: account is not disabled (未封。 -1: account is permanently disabled (永久封禁) >0: remaining seconds until unban (剩余封禁秒数)
+// GetDisableTTL returns remaining account disable seconds: -2 for enabled, -1 for permanent, and positive values for remaining time. GetDisableTTL 返回账号剩余封禁秒数：-2 表示未封禁，-1 表示永久封禁，正数表示剩余时间。
 func (m *Manager) GetDisableTTL(ctx context.Context, loginID string) (int64, error) {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
@@ -174,7 +174,7 @@ func (m *Manager) GetDisableTTL(ctx context.Context, loginID string) (int64, err
 		return 0, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
-	// Explain TTL semantics 存储适配器返。time.Duration 类型，按哨兵值和正数 TTL 语义转换为秒
+	// Explain TTL semantics 存储适配器返回 time.Duration 类型，按哨兵值和正数 TTL 语义转换为秒
 	switch {
 	case ttl == adapter.TTLNotFound:
 		return -2, nil // 未封。
@@ -304,7 +304,7 @@ func (m *Manager) IsDisableServiceLevel(ctx context.Context, loginID, service st
 	return info.Level >= level
 }
 
-// CheckDisableService checks if any of the specified services are disabled, returns error if disabled. CheckDisableService 校验账号的指定服务是否被封禁，被封禁则返。error。
+// CheckDisableService checks if any of the specified services are disabled, returns error if disabled. CheckDisableService 校验账号的指定服务是否被封禁，被封禁则返回 error。
 func (m *Manager) CheckDisableService(ctx context.Context, loginID string, services ...string) error {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
@@ -332,7 +332,7 @@ func (m *Manager) CheckDisableService(ctx context.Context, loginID string, servi
 	return nil
 }
 
-// CheckDisableServiceLevel checks if a service is disabled at or above the given level, returns error if so. CheckDisableServiceLevel 校验账号的指定服务是否达到指定封禁等级，达到则返。error。
+// CheckDisableServiceLevel checks if a service is disabled at or above the given level, returns error if so. CheckDisableServiceLevel 校验账号的指定服务是否达到指定封禁等级，达到则返回 error。
 func (m *Manager) CheckDisableServiceLevel(ctx context.Context, loginID, service string, level int) error {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
@@ -752,7 +752,7 @@ func (m *Manager) GetDisableDeviceAndDeviceIDTTL(ctx context.Context, loginID, d
 	return m.getDisableDeviceTTL(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID))
 }
 
-// getDisableDeviceInfo loads device disable info by key. getDisableDeviceInfo 。key 加载设备封禁信息。
+// getDisableDeviceInfo loads device disable info by key. getDisableDeviceInfo 按键加载设备封禁信息。
 func (m *Manager) getDisableDeviceInfo(ctx context.Context, key string) (*DeviceDisableInfo, error) {
 	// Load device disable data 加载设备封禁数据。
 	data, err := m.storage.Get(ctx, key)
@@ -781,7 +781,7 @@ func (m *Manager) getDisableDeviceInfo(ctx context.Context, key string) (*Device
 	return &info, nil
 }
 
-// getDisableDeviceTTL loads device disable ttl by key. getDisableDeviceTTL 。key 获取设备封禁剩余时间。
+// getDisableDeviceTTL loads device disable TTL by key. getDisableDeviceTTL 按键获取设备封禁剩余时间。
 func (m *Manager) getDisableDeviceTTL(ctx context.Context, key string) (int64, error) {
 	// Load disable TTL 加载封禁剩余时间。
 	ttl, err := m.storage.TTL(ctx, key)

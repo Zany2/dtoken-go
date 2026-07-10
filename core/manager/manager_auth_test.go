@@ -370,7 +370,7 @@ func TestManagerAccessProviderOverridesSessionAccess(t *testing.T) {
 	}
 }
 
-// TestManagerAccessProviderNilFallsBackToSession verifies nil provider data uses session access. TestManagerAccessProviderNilFallsBackToSession 验证提供器返。nil 时回退到会话权限。
+// TestManagerAccessProviderNilFallsBackToSession verifies nil provider data uses session access. TestManagerAccessProviderNilFallsBackToSession 验证提供器返回 nil 时回退到会话权限。
 func TestManagerAccessProviderNilFallsBackToSession(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithAccessProvider(t, nil, AccessProviderFunc{

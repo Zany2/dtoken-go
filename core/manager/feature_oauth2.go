@@ -201,6 +201,7 @@ func (m *Manager) RevokeOAuth2Token(ctx context.Context, accessToken string) err
 	return err
 }
 
+// triggerOAuth2CodeEvent emits OAuth2 authorization code events. triggerOAuth2CodeEvent 触发 OAuth2 授权码事件。
 func (m *Manager) triggerOAuth2CodeEvent(code *oauth2.AuthorizationCode) {
 	if code == nil {
 		return
@@ -214,6 +215,7 @@ func (m *Manager) triggerOAuth2CodeEvent(code *oauth2.AuthorizationCode) {
 	})
 }
 
+// triggerOAuth2TokenEvent emits OAuth2 token lifecycle events. triggerOAuth2TokenEvent 触发 OAuth2 令牌生命周期事件。
 func (m *Manager) triggerOAuth2TokenEvent(event listener.Event, token *oauth2.AccessToken, action, grantType string) {
 	if token == nil {
 		return

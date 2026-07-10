@@ -10,6 +10,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
+// Request token extraction constants 请求 Token 提取常量。
 const (
 	bearerPrefix = "Bearer "
 	authHeader   = "Authorization"

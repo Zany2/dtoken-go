@@ -15,6 +15,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/ticket"
 )
 
+// TestManagerAccessors verifies manager component and optional-module accessors. TestManagerAccessors 验证 Manager 组件与可选模块访问器。
 func TestManagerAccessors(t *testing.T) {
 	mgr := newTestManager(t, nil)
 
@@ -56,6 +57,7 @@ func TestManagerAccessors(t *testing.T) {
 	}
 }
 
+// TestManagerLoginRenewAndTokenDetails verifies login renewal and token metadata queries. TestManagerLoginRenewAndTokenDetails 验证登录续期与 Token 元数据查询。
 func TestManagerLoginRenewAndTokenDetails(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -125,6 +127,7 @@ func TestManagerLoginRenewAndTokenDetails(t *testing.T) {
 	}
 }
 
+// TestManagerLogoutKickoutReplaceScopes verifies logout, kickout, and replacement across terminal scopes. TestManagerLogoutKickoutReplaceScopes 验证不同终端作用域下的登出、踢下线与顶替操作。
 func TestManagerLogoutKickoutReplaceScopes(t *testing.T) {
 	ctx := context.Background()
 
@@ -192,6 +195,7 @@ func TestManagerLogoutKickoutReplaceScopes(t *testing.T) {
 	})
 }
 
+// TestManagerDisableBoundaries verifies account, service, and device disable boundaries. TestManagerDisableBoundaries 验证账号、服务与设备封禁边界。
 func TestManagerDisableBoundaries(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, nil)
@@ -288,6 +292,7 @@ func TestManagerDisableBoundaries(t *testing.T) {
 	}
 }
 
+// TestManagerOptionalModulesDisabled verifies disabled optional modules fail explicitly. TestManagerOptionalModulesDisabled 验证未启用的可选模块会明确失败。
 func TestManagerOptionalModulesDisabled(t *testing.T) {
 	ctx := context.Background()
 	mgr := newBareTestManager(t)
@@ -365,6 +370,7 @@ func TestManagerOptionalModulesDisabled(t *testing.T) {
 	}
 }
 
+// TestManagerNonceFacade verifies nonce generation, validation, consumption, and TTL access. TestManagerNonceFacade 验证 Nonce 生成、校验、消费与 TTL 查询。
 func TestManagerNonceFacade(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithNonce(t)

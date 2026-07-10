@@ -10,6 +10,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/derror"
 )
 
+// TestStorageBasicSemantics verifies the Storage Basic Semantics scenario. TestStorageBasicSemantics 验证对应的内存存储场景。
 func TestStorageBasicSemantics(t *testing.T) {
 	ctx := context.Background()
 	storage := New()
@@ -41,6 +42,7 @@ func TestStorageBasicSemantics(t *testing.T) {
 	}
 }
 
+// TestStorageTTLAndExpireSemantics verifies the Storage TTL And Expire Semantics scenario. TestStorageTTLAndExpireSemantics 验证对应的内存存储场景。
 func TestStorageTTLAndExpireSemantics(t *testing.T) {
 	ctx := context.Background()
 	storage := New()
@@ -71,6 +73,7 @@ func TestStorageTTLAndExpireSemantics(t *testing.T) {
 	}
 }
 
+// TestStorageExpiredKeyCannotBeRenewed verifies the Storage Expired Key Cannot Be Renewed scenario. TestStorageExpiredKeyCannotBeRenewed 验证对应的内存存储场景。
 func TestStorageExpiredKeyCannotBeRenewed(t *testing.T) {
 	ctx := context.Background()
 	storage := New()
@@ -84,6 +87,7 @@ func TestStorageExpiredKeyCannotBeRenewed(t *testing.T) {
 	}
 }
 
+// TestStorageContextAndNilSemantics verifies the Storage Context And Nil Semantics scenario. TestStorageContextAndNilSemantics 验证对应的内存存储场景。
 func TestStorageContextAndNilSemantics(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

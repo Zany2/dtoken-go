@@ -27,7 +27,7 @@ func (c *RefreshContext) Revoke(ctx context.Context, refreshToken string) error 
 	return c.d.manager.RevokeRefreshToken(ctx, refreshToken)
 }
 
-// GetTTL gets refresh token TTL GetTTL 获取刷新令牌剩余有效。
+// GetTTL gets refresh token TTL GetTTL 获取刷新令牌剩余有效期。
 func (c *RefreshContext) GetTTL(ctx context.Context, refreshToken string) (int64, error) {
 	return c.d.manager.GetRefreshTokenTTL(ctx, refreshToken)
 }

@@ -13,6 +13,7 @@ import (
 	"time"
 )
 
+// TestHTTPServerAuthorizeRedirectsWithTicket verifies the HTTP Server Authorize Redirects With Ticket scenario. TestHTTPServerAuthorizeRedirectsWithTicket 验证对应的 HTTP SSO 场景。
 func TestHTTPServerAuthorizeRedirectsWithTicket(t *testing.T) {
 	server := NewServer()
 	registerTestClient(t, server)
@@ -45,6 +46,7 @@ func TestHTTPServerAuthorizeRedirectsWithTicket(t *testing.T) {
 	}
 }
 
+// TestHTTPServerAuthorizeRejectsMissingClientByDefault verifies the HTTP Server Authorize Rejects Missing Client By Default scenario. TestHTTPServerAuthorizeRejectsMissingClientByDefault 验证对应的 HTTP SSO 场景。
 func TestHTTPServerAuthorizeRejectsMissingClientByDefault(t *testing.T) {
 	server := NewServer()
 	handler := NewHTTPServer(server, HTTPOptions{
@@ -67,6 +69,7 @@ func TestHTTPServerAuthorizeRejectsMissingClientByDefault(t *testing.T) {
 	}
 }
 
+// TestHTTPServerAuthorizeAllowsAnonymousClient verifies the HTTP Server Authorize Allows Anonymous Client scenario. TestHTTPServerAuthorizeAllowsAnonymousClient 验证对应的 HTTP SSO 场景。
 func TestHTTPServerAuthorizeAllowsAnonymousClient(t *testing.T) {
 	server := NewServer()
 	handler := NewHTTPServer(server, HTTPOptions{
@@ -99,6 +102,7 @@ func TestHTTPServerAuthorizeAllowsAnonymousClient(t *testing.T) {
 	}
 }
 
+// TestHTTPServerAuthorizeKeepsRegisteredAnonymousClient verifies the HTTP Server Authorize Keeps Registered Anonymous Client scenario. TestHTTPServerAuthorizeKeepsRegisteredAnonymousClient 验证对应的 HTTP SSO 场景。
 func TestHTTPServerAuthorizeKeepsRegisteredAnonymousClient(t *testing.T) {
 	server := NewServer()
 	if err := server.RegisterClient(&Client{
@@ -130,6 +134,7 @@ func TestHTTPServerAuthorizeKeepsRegisteredAnonymousClient(t *testing.T) {
 	}
 }
 
+// TestHTTPServerTokenConsumesTicket verifies the HTTP Server Token Consumes Ticket scenario. TestHTTPServerTokenConsumesTicket 验证对应的 HTTP SSO 场景。
 func TestHTTPServerTokenConsumesTicket(t *testing.T) {
 	server := NewServer()
 	registerTestClient(t, server)
@@ -169,6 +174,7 @@ func TestHTTPServerTokenConsumesTicket(t *testing.T) {
 	}
 }
 
+// TestHTTPServerTokenConsumesOAuth2Code verifies OAuth2 Code exchange through the HTTP token endpoint. TestHTTPServerTokenConsumesOAuth2Code 验证通过 HTTP Token 端点交换 OAuth2 授权码。
 func TestHTTPServerTokenConsumesOAuth2Code(t *testing.T) {
 	server := NewServer()
 	client := newTestClient()
@@ -212,6 +218,7 @@ func TestHTTPServerTokenConsumesOAuth2Code(t *testing.T) {
 	}
 }
 
+// TestHTTPServerIntrospectSharedToken verifies the HTTP Server Introspect Shared Token scenario. TestHTTPServerIntrospectSharedToken 验证对应的 HTTP SSO 场景。
 func TestHTTPServerIntrospectSharedToken(t *testing.T) {
 	server := NewServer()
 	client := newTestClient()
@@ -248,6 +255,7 @@ func TestHTTPServerIntrospectSharedToken(t *testing.T) {
 	}
 }
 
+// TestHTTPServerRevokeRemoteSession verifies the HTTP Server Revoke Remote Session scenario. TestHTTPServerRevokeRemoteSession 验证对应的 HTTP SSO 场景。
 func TestHTTPServerRevokeRemoteSession(t *testing.T) {
 	server := NewServer()
 	client := newTestClient()
@@ -283,6 +291,7 @@ func TestHTTPServerRevokeRemoteSession(t *testing.T) {
 	}
 }
 
+// TestHTTPServerLogoutRejectsNilServer verifies the HTTP Server Logout Rejects Nil Server scenario. TestHTTPServerLogoutRejectsNilServer 验证对应的 HTTP SSO 场景。
 func TestHTTPServerLogoutRejectsNilServer(t *testing.T) {
 	handler := NewHTTPServer(nil, HTTPOptions{
 		ServerOptions: ServerOptions{
@@ -305,6 +314,7 @@ func TestHTTPServerLogoutRejectsNilServer(t *testing.T) {
 	}
 }
 
+// TestHTTPServerSingleLogoutCallback verifies the HTTP Server Single Logout Callback scenario. TestHTTPServerSingleLogoutCallback 验证对应的 HTTP SSO 场景。
 func TestHTTPServerSingleLogoutCallback(t *testing.T) {
 	server := NewServer()
 
@@ -386,6 +396,7 @@ func TestHTTPServerSingleLogoutCallback(t *testing.T) {
 	}
 }
 
+// TestHTTPServerSingleLogoutBestEffortClearsSessions verifies the HTTP Server Single Logout Best Effort Clears Sessions scenario. TestHTTPServerSingleLogoutBestEffortClearsSessions 验证对应的 HTTP SSO 场景。
 func TestHTTPServerSingleLogoutBestEffortClearsSessions(t *testing.T) {
 	server := NewServer()
 	client := newTestClient()
@@ -427,6 +438,7 @@ func TestHTTPServerSingleLogoutBestEffortClearsSessions(t *testing.T) {
 	}
 }
 
+// TestSharedCookieHelpers verifies the Shared Cookie Helpers scenario. TestSharedCookieHelpers 验证对应的 HTTP SSO 场景。
 func TestSharedCookieHelpers(t *testing.T) {
 	options := CookieOptions{Name: "sso_login", Domain: ".example.com"}
 	rec := httptest.NewRecorder()

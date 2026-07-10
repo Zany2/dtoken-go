@@ -117,6 +117,7 @@ type RequestContext interface {
 
 // RequestContextExt defines extended request context interface RequestContextExt 定义扩展请求上下文接口
 type RequestContextExt interface {
+	// RequestContext embeds the base request context contract RequestContext 嵌入基础请求上下文契约
 	RequestContext
 
 	// JSON writes JSON response JSON 返回 JSON 格式响应

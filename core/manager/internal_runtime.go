@@ -18,7 +18,7 @@ type loginLockEntry struct {
 
 // lockLoginWrite locks write operations for one login ID lockLoginWrite 锁定指定账号的写操作
 func (m *Manager) lockLoginWrite(loginID string) func() {
-	// Return no-op unlock for empty ID 。ID 返回空解锁函数。
+	// Return no-op unlock for empty ID ID 为空时返回空解锁函数
 	if loginID == "" {
 		return func() {}
 	}
@@ -52,7 +52,7 @@ func (m *Manager) lockLoginWrite(loginID string) func() {
 	}
 }
 
-// submitAsync submits async work with goroutine fallback submitAsync 提交异步任务并在池不可用时回退。goroutine
+// submitAsync submits async work with a goroutine fallback submitAsync 提交异步任务并在池不可用时回退到 goroutine
 func (m *Manager) submitAsync(name string, task func()) {
 	// Fallback when pool is absent 协程池不存在时回退。
 	if m.pool == nil {
@@ -69,7 +69,7 @@ func (m *Manager) submitAsync(name string, task func()) {
 	}
 }
 
-// expireIfLimited renews key only when duration is limited expireIfLimited 仅在有限过期时间下续。key
+// expireIfLimited renews a key only when duration is limited expireIfLimited 仅在有限过期时间下续期存储键
 func (m *Manager) expireIfLimited(ctx context.Context, key string, expiration time.Duration) error {
 	// Skip unlimited expiration 跳过无限有效期。
 	if expiration <= 0 {

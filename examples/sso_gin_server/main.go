@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Example Gin server settings define the listen address and demo client credentials. Example Gin server settings 定义监听地址和示例客户端凭证。
 const (
 	addr         = ":9100"
 	callbackURL  = "http://localhost:9101/sso/callback"
@@ -19,6 +20,7 @@ const (
 )
 
 var (
+	// cookie configures the demo SSO login cookie. cookie 配置示例 SSO 登录 Cookie。
 	cookie = sso.CookieOptions{
 		Name:     "dtoken_sso_gin_demo",
 		Path:     "/",
@@ -26,12 +28,14 @@ var (
 		HTTPOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	}
+	// loginPage stores the parsed login page template. loginPage 保存已解析的登录页模板。
 	loginPage = template.Must(template.New("login").Parse(loginHTML))
 )
 
 func main() {
 	gin.SetMode(gin.ReleaseMode)
 
+	// Register the demo client accepted by the SSO server. 注册 SSO 服务端接受的示例客户端。
 	server := sso.NewServer()
 	if err := server.RegisterClient(&sso.Client{
 		ClientID:     clientID,
@@ -44,6 +48,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Configure protocol endpoints and cookie-based login resolution. 配置协议端点和基于 Cookie 的登录解析。
 	httpSSO := sso.NewHTTPServer(server, sso.HTTPOptions{
 		ServerOptions: sso.ServerOptions{
 			EnableSLO:                true,
@@ -69,6 +74,7 @@ func main() {
 	log.Fatal(r.Run(addr))
 }
 
+// registerSSORoutes maps standard SSO endpoints to Gin handlers. registerSSORoutes 将标准 SSO 端点映射为 Gin 处理器。
 func registerSSORoutes(r *gin.Engine, httpSSO *sso.HTTPServer) {
 	endpoints := sso.DefaultEndpoints()
 	r.GET(endpoints.Authorize, ginWrap(httpSSO.HandleAuthorize))
@@ -84,12 +90,14 @@ func registerSSORoutes(r *gin.Engine, httpSSO *sso.HTTPServer) {
 	r.POST(endpoints.Logout, ginWrap(httpSSO.HandleLogout))
 }
 
+// ginWrap adapts a net/http handler to Gin. ginWrap 将 net/http 处理器适配为 Gin 处理器。
 func ginWrap(handler http.HandlerFunc) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		handler(c.Writer, c.Request)
 	}
 }
 
+// home renders the Gin SSO server status page. home 渲染 Gin SSO 服务端状态页。
 func home(c *gin.Context) {
 	loginID, ok := sso.LoginIDFromCookie(cookie)(c.Request)
 	if !ok {
@@ -98,6 +106,7 @@ func home(c *gin.Context) {
 	c.String(http.StatusOK, "Gin SSO Server\n\nloginId: %s\n\nlogin: http://localhost:9100/login\nlogout: http://localhost:9100/sso/logout?loginId=%s\n", loginID, loginID)
 }
 
+// loginPageHandler renders the demo login page. loginPageHandler 渲染示例登录页。
 func loginPageHandler(c *gin.Context) {
 	back := c.Query("back")
 	if back == "" {
@@ -107,6 +116,7 @@ func loginPageHandler(c *gin.Context) {
 	_ = loginPage.Execute(c.Writer, map[string]string{"Back": back})
 }
 
+// loginSubmit stores the demo login cookie and redirects back. loginSubmit 保存示例登录 Cookie 并重定向返回。
 func loginSubmit(c *gin.Context) {
 	loginID := c.PostForm("loginId")
 	if loginID == "" {
@@ -120,6 +130,7 @@ func loginSubmit(c *gin.Context) {
 	c.Redirect(http.StatusFound, back)
 }
 
+// loginHTML defines the demo login page template. loginHTML 定义示例登录页模板。
 const loginHTML = `<!doctype html>
 <html lang="en">
 <head>

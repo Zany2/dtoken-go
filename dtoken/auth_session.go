@@ -79,7 +79,7 @@ func (a *Auth) GetTokenValueListByLoginID(ctx context.Context, loginID string, c
 	return mgr.GetTokenValueListByLoginID(ctx, loginID, checkAlive)
 }
 
-// GetTokenValueListByDeviceAndDeviceID returns token values for a device ID. GetTokenValueListByDeviceAndDeviceID 获取指定设备 ID 。Token 列表。
+// GetTokenValueListByDeviceAndDeviceID returns token values for a device ID. GetTokenValueListByDeviceAndDeviceID 获取指定设备 ID 的 Token 列表。
 func (a *Auth) GetTokenValueListByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string, checkAlive bool) ([]string, error) {
 	mgr, err := a.requireManager()
 	if err != nil {

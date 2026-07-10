@@ -1203,6 +1203,7 @@ func (s *Server) isValidLogoutCallbackURL(client *Client, callbackURL string) bo
 	return false
 }
 
+// originMatchesURL checks whether an origin matches a target URL. originMatchesURL 检查 Origin 是否匹配目标 URL。
 func originMatchesURL(origin string, target *url.URL) bool {
 	parsed, err := url.Parse(origin)
 	if err != nil {
@@ -1211,6 +1212,7 @@ func originMatchesURL(origin string, target *url.URL) bool {
 	return sameURLOrigin(parsed, target)
 }
 
+// sameURLOrigin checks whether two URLs share an origin. sameURLOrigin 检查两个 URL 是否同源。
 func sameURLOrigin(a, b *url.URL) bool {
 	if a == nil || b == nil {
 		return false

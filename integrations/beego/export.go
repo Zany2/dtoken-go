@@ -25,7 +25,7 @@ var (
 	DeleteAllManager = dtoken.DeleteAllManager
 )
 
-// DToken login and token operations DToken 登录。token 操作
+// DToken login and token operations DToken 登录与 Token 操作
 var (
 	Login                                     = dtoken.Login
 	LoginWithTimeout                          = dtoken.LoginWithTimeout

@@ -11,7 +11,7 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// GetTokenValueByCtx gets token value from current GF context GetTokenValueByCtx 从当。GF 上下文获。token 。
+// GetTokenValueByCtx gets token value from current GF context GetTokenValueByCtx 从当前 GF 上下文获取 Token。
 func GetTokenValueByCtx(ctx context.Context) (string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -43,7 +43,7 @@ func GetManagerByCtx(ctx context.Context) (*manager.Manager, error) {
 	return dCtx.GetManager(), nil
 }
 
-// IsLoginByCtx checks current request login state IsLoginByCtx 检查当前请求登录状。
+// IsLoginByCtx checks current request login state IsLoginByCtx 检查当前请求登录状态。
 func IsLoginByCtx(ctx context.Context) bool {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -52,7 +52,7 @@ func IsLoginByCtx(ctx context.Context) bool {
 	return dCtx.Auth().IsLogin(ctx)
 }
 
-// CheckLoginByCtx checks current request login state CheckLoginByCtx 校验当前请求登录状。
+// CheckLoginByCtx checks current request login state CheckLoginByCtx 校验当前请求登录状态。
 func CheckLoginByCtx(ctx context.Context) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -61,7 +61,7 @@ func CheckLoginByCtx(ctx context.Context) error {
 	return dCtx.Auth().CheckLogin(ctx)
 }
 
-// LoginByTokenByCtx renews current token login state LoginByTokenByCtx 使用当前 token 续期登录。
+// LoginByTokenByCtx renews current token login state LoginByTokenByCtx 使用当前 Token 续期登录状态。
 func LoginByTokenByCtx(ctx context.Context) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -305,7 +305,7 @@ func HasPermissionsAndByCtx(ctx context.Context, permissions []string) bool {
 	return dCtx.Access().HasPermissionsAnd(ctx, permissions)
 }
 
-// AddRolesByCtx adds roles to current token AddRolesByCtx 为当。token 添加角色
+// AddRolesByCtx adds roles to current token AddRolesByCtx 为当前 Token 添加角色
 func AddRolesByCtx(ctx context.Context, roles []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -314,7 +314,7 @@ func AddRolesByCtx(ctx context.Context, roles []string) error {
 	return dCtx.Access().AddRoles(ctx, roles)
 }
 
-// RemoveRolesByCtx removes roles from current token RemoveRolesByCtx 从当。token 移除角色
+// RemoveRolesByCtx removes roles from current token RemoveRolesByCtx 从当前 Token 移除角色
 func RemoveRolesByCtx(ctx context.Context, roles []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -323,7 +323,7 @@ func RemoveRolesByCtx(ctx context.Context, roles []string) error {
 	return dCtx.Access().RemoveRoles(ctx, roles)
 }
 
-// AddPermissionsByCtx adds permissions to current token AddPermissionsByCtx 为当。token 添加权限
+// AddPermissionsByCtx adds permissions to current token AddPermissionsByCtx 为当前 Token 添加权限
 func AddPermissionsByCtx(ctx context.Context, permissions []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -332,7 +332,7 @@ func AddPermissionsByCtx(ctx context.Context, permissions []string) error {
 	return dCtx.Access().AddPermissions(ctx, permissions)
 }
 
-// RemovePermissionsByCtx removes permissions from current token RemovePermissionsByCtx 从当。token 移除权限
+// RemovePermissionsByCtx removes permissions from current token RemovePermissionsByCtx 从当前 Token 移除权限
 func RemovePermissionsByCtx(ctx context.Context, permissions []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {

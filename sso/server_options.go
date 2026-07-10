@@ -142,10 +142,12 @@ func OAuth2CodeCredentialInfo(code *OAuth2Code, ttl int64) *CredentialInfo {
 	}
 }
 
+// inactiveCredential creates inactive credential information. inactiveCredential 创建非活动凭证信息。
 func inactiveCredential() *CredentialInfo {
 	return &CredentialInfo{Active: false}
 }
 
+// cloneMap clones optional metadata. cloneMap 克隆可选元数据。
 func cloneMap(values map[string]any) map[string]any {
 	if len(values) == 0 {
 		return nil

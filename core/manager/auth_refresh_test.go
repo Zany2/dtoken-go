@@ -106,6 +106,7 @@ func TestManagerRefreshTokenAllowsExpiredAccessToken(t *testing.T) {
 	}
 }
 
+// TestManagerRefreshTokenReverseLookupTTLDoesNotExceedRefreshTTL verifies reverse mappings never outlive refresh tokens. TestManagerRefreshTokenReverseLookupTTLDoesNotExceedRefreshTTL 验证反向映射不会超过刷新令牌有效期。
 func TestManagerRefreshTokenReverseLookupTTLDoesNotExceedRefreshTTL(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -224,6 +225,7 @@ func TestManagerRefreshTokenRejectsMalformedInfo(t *testing.T) {
 	}
 }
 
+// TestManagerRefreshTokenCleanupIgnoresCorruptReverseLookup verifies cleanup tolerates malformed reverse mappings. TestManagerRefreshTokenCleanupIgnoresCorruptReverseLookup 验证清理流程能够容忍损坏的反向映射。
 func TestManagerRefreshTokenCleanupIgnoresCorruptReverseLookup(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {

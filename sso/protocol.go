@@ -182,6 +182,7 @@ func ErrorResponse(code int, message string) Response {
 	return Response{Code: code, Message: message}
 }
 
+// joinPath joins a prefix with a protocol path. joinPath 连接前缀与协议路径。
 func joinPath(prefix, path string) string {
 	prefix = strings.TrimRight(prefix, "/")
 	path = "/" + strings.TrimLeft(path, "/")
@@ -191,6 +192,7 @@ func joinPath(prefix, path string) string {
 	return prefix + path
 }
 
+// replacePathPrefix replaces a protocol path prefix. replacePathPrefix 替换协议路径前缀。
 func replacePathPrefix(path, prefix string) string {
 	path = "/" + strings.TrimLeft(path, "/")
 	prefix = "/" + strings.Trim(prefix, "/")

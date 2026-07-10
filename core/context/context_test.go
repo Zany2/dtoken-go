@@ -21,7 +21,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/ticket"
 )
 
-// TestGetTokenValuePrecedence verifies header, bearer, cookie, query, and body lookup order. TestGetTokenValuePrecedence 验证 Header、Bearer、Cookie、Query 。Body 的读取顺序。
+// TestGetTokenValuePrecedence verifies header, bearer, cookie, query, and body lookup order. TestGetTokenValuePrecedence 验证 Header、Bearer、Cookie、Query 和 Body 的读取顺序。
 func TestGetTokenValuePrecedence(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.TokenName = "X-Token"

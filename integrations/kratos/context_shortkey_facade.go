@@ -26,7 +26,7 @@ func CreateShortKeyWithTimeoutByCtx(ctx context.Context, opts shortkey.CreateOpt
 	return dCtx.ShortKey().CreateWithTimeout(ctx, opts, timeout)
 }
 
-// ConfirmShortKeyByCtx confirms short key ConfirmShortKeyByCtx ?Key
+// ConfirmShortKeyByCtx confirms short key ConfirmShortKeyByCtx 确认短 Key
 func ConfirmShortKeyByCtx(ctx context.Context, key string, opts shortkey.ConfirmOptions) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -53,7 +53,7 @@ func ValidateShortKeyByCtx(ctx context.Context, key string, opts ...shortkey.Val
 	return dCtx.ShortKey().Validate(ctx, key, opts...)
 }
 
-// ConsumeShortKeyByCtx consumes short key ConsumeShortKeyByCtx ?Key
+// ConsumeShortKeyByCtx consumes short key ConsumeShortKeyByCtx 消费短 Key
 func ConsumeShortKeyByCtx(ctx context.Context, key string, opts ...shortkey.ValidateOptions) (*shortkey.ConsumeResult, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -62,7 +62,7 @@ func ConsumeShortKeyByCtx(ctx context.Context, key string, opts ...shortkey.Vali
 	return dCtx.ShortKey().Consume(ctx, key, opts...)
 }
 
-// RevokeShortKeyByCtx revokes short key RevokeShortKeyByCtx ?Key
+// RevokeShortKeyByCtx revokes short key RevokeShortKeyByCtx 撤销短 Key
 func RevokeShortKeyByCtx(ctx context.Context, key string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {

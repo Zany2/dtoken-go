@@ -12,9 +12,12 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
+// globalManagerMap stores managers by normalized auth type. globalManagerMap 按规范化认证类型存储管理器。
 var globalManagerMap sync.Map
 
+// managerBuilder abstracts builders supported by global registration. managerBuilder 抽象全局注册支持的构建器。
 type managerBuilder interface {
+	// Build creates a manager from the current builder state. Build 根据当前构建器状态创建管理器。
 	Build() (*manager.Manager, error)
 }
 

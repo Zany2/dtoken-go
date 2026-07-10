@@ -11,13 +11,13 @@ import (
 
 // Annotation defines annotation config Annotation 定义注解配置
 type Annotation struct {
-	AuthType        string    `json:"authType"`
-	CheckLogin      bool      `json:"checkLogin"`
-	CheckRole       []string  `json:"checkRole"`
-	CheckPermission []string  `json:"checkPermission"`
-	CheckDisable    bool      `json:"checkDisable"`
-	Ignore          bool      `json:"ignore"`
-	LogicType       LogicType `json:"logicType"`
+	AuthType        string    `json:"authType"`        // Optional: specify auth type 可选：指定认证类型
+	CheckLogin      bool      `json:"checkLogin"`      // Check login 检查登录
+	CheckRole       []string  `json:"checkRole"`       // Check roles 检查角色
+	CheckPermission []string  `json:"checkPermission"` // Check permissions 检查权限
+	CheckDisable    bool      `json:"checkDisable"`    // Check disable status 检查封禁状态
+	Ignore          bool      `json:"ignore"`          // Ignore authentication 忽略认证
+	LogicType       LogicType `json:"logicType"`       // OR or AND logic (default: OR) OR 或 AND 逻辑（默认：OR）
 }
 
 // GetHandler gets annotation middleware GetHandler 获取注解中间件

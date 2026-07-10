@@ -36,12 +36,18 @@ type RouteAccessHandler func(c context.Context, ctx *hertzapp.RequestContext, re
 
 // AuthHandleRequest carries auth check metadata AuthHandleRequest 携带认证校验元数据
 type AuthHandleRequest struct {
-	AuthType     string
-	CheckLogin   bool
+	// AuthType selects the auth type. AuthType 指定认证类型。
+	AuthType string
+	// CheckLogin requires login-state validation. CheckLogin 要求校验登录状态。
+	CheckLogin bool
+	// CheckDisable requires account-disable validation. CheckDisable 要求校验账号封禁状态。
 	CheckDisable bool
-	Permissions  []string
-	Roles        []string
-	LogicType    LogicType
+	// Permissions lists required permissions. Permissions 保存所需权限列表。
+	Permissions []string
+	// Roles lists required roles. Roles 保存所需角色列表。
+	Roles []string
+	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
+	LogicType LogicType
 
 	next    func()
 	exit    func()
@@ -71,11 +77,16 @@ func (req *AuthHandleRequest) IsHandled() bool {
 
 // RouteAccessRequest carries route access rules RouteAccessRequest 携带路由访问规则
 type RouteAccessRequest struct {
-	AuthType     string
-	LogicType    LogicType
+	// AuthType selects the auth type. AuthType 指定认证类型。
+	AuthType string
+	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
+	LogicType LogicType
+	// CheckDisable requires account-disable validation. CheckDisable 要求校验账号封禁状态。
 	CheckDisable bool
-	Permissions  []string
-	Roles        []string
+	// Permissions lists route-required permissions. Permissions 保存路由所需权限列表。
+	Permissions []string
+	// Roles lists route-required roles. Roles 保存路由所需角色列表。
+	Roles []string
 
 	skipAuth       bool
 	skipPermission bool
@@ -112,10 +123,15 @@ func (req *RouteAccessRequest) SetLogicType(logicType LogicType) {
 
 // AuthOptions defines middleware auth options AuthOptions 定义中间件认证选项
 type AuthOptions struct {
-	AuthType           string
-	LogicType          LogicType
-	FailFunc           func(c context.Context, ctx *hertzapp.RequestContext, err error)
-	BeforeAuthHandler  BeforeAuthHandler
+	// AuthType selects the auth type. AuthType 指定认证类型。
+	AuthType string
+	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
+	LogicType LogicType
+	// FailFunc handles authentication failures. FailFunc 处理认证失败。
+	FailFunc func(c context.Context, ctx *hertzapp.RequestContext, err error)
+	// BeforeAuthHandler runs before authentication checks. BeforeAuthHandler 在认证校验前执行。
+	BeforeAuthHandler BeforeAuthHandler
+	// RouteAccessHandler resolves route-specific access rules. RouteAccessHandler 解析路由级访问规则。
 	RouteAccessHandler RouteAccessHandler
 }
 

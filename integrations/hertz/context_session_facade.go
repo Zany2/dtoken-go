@@ -5,7 +5,7 @@ import (
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 )
 
-// SetSessionValueByContext sets current session value SetSessionValueByContext ?
+// SetSessionValueByContext sets current session value SetSessionValueByContext 设置当前会话值
 func SetSessionValueByContext(ctx *hertzapp.RequestContext, key string, value any) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {

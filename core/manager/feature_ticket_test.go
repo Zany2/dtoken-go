@@ -11,6 +11,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/ticket"
 )
 
+// TestManagerTicketCreateValidateConsume verifies Manager ticket lifecycle operations. TestManagerTicketCreateValidateConsume 验证 Manager 的 Ticket 生命周期操作。
 func TestManagerTicketCreateValidateConsume(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithTicket(t, nil)
@@ -66,6 +67,7 @@ func TestManagerTicketCreateValidateConsume(t *testing.T) {
 	}
 }
 
+// TestManagerTicketBoundaries verifies Manager ticket validation and state boundaries. TestManagerTicketBoundaries 验证 Manager 的 Ticket 校验与状态边界。
 func TestManagerTicketBoundaries(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithTicket(t, nil)
@@ -116,6 +118,7 @@ func TestManagerTicketBoundaries(t *testing.T) {
 	}
 }
 
+// TestManagerRevokeMissingTicketDoesNotTriggerEvent verifies missing-ticket revocation remains an event-free no-op. TestManagerRevokeMissingTicketDoesNotTriggerEvent 验证撤销不存在的 Ticket 是不触发事件的空操作。
 func TestManagerRevokeMissingTicketDoesNotTriggerEvent(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithTicket(t, nil)

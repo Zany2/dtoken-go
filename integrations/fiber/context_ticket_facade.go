@@ -44,7 +44,7 @@ func ValidateTicketByContext(c *gofiber.Ctx, ticketValue string, opts ...ticket.
 	return dCtx.Ticket().Validate(requestContext(c), ticketValue, opts...)
 }
 
-// ConsumeTicketByContext consumes ticket ConsumeTicketByContext 娑堣垂 Ticket
+// ConsumeTicketByContext consumes ticket ConsumeTicketByContext 消费 Ticket
 func ConsumeTicketByContext(c *gofiber.Ctx, ticketValue string, opts ...ticket.ValidateOptions) (*ticket.ConsumeResult, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -53,7 +53,7 @@ func ConsumeTicketByContext(c *gofiber.Ctx, ticketValue string, opts ...ticket.V
 	return dCtx.Ticket().Consume(requestContext(c), ticketValue, opts...)
 }
 
-// RevokeTicketByContext revokes ticket RevokeTicketByContext 鎾ら攢 Ticket
+// RevokeTicketByContext revokes ticket RevokeTicketByContext 撤销 Ticket
 func RevokeTicketByContext(c *gofiber.Ctx, ticketValue string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

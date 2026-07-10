@@ -44,7 +44,7 @@ func ValidateTicketByCtx(ctx context.Context, ticketValue string, opts ...ticket
 	return dCtx.Ticket().Validate(ctx, ticketValue, opts...)
 }
 
-// ConsumeTicketByCtx consumes ticket ConsumeTicketByCtx 娑堣垂 Ticket
+// ConsumeTicketByCtx consumes ticket ConsumeTicketByCtx 消费 Ticket
 func ConsumeTicketByCtx(ctx context.Context, ticketValue string, opts ...ticket.ValidateOptions) (*ticket.ConsumeResult, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -53,7 +53,7 @@ func ConsumeTicketByCtx(ctx context.Context, ticketValue string, opts ...ticket.
 	return dCtx.Ticket().Consume(ctx, ticketValue, opts...)
 }
 
-// RevokeTicketByCtx revokes ticket RevokeTicketByCtx 鎾ら攢 Ticket
+// RevokeTicketByCtx revokes ticket RevokeTicketByCtx 撤销 Ticket
 func RevokeTicketByCtx(ctx context.Context, ticketValue string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {

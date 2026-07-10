@@ -5,7 +5,7 @@ import (
 	"context"
 )
 
-// SetSessionValueByCtx sets current session value SetSessionValueByCtx 璁剧疆褰撳墠浼氳瘽鍊?
+// SetSessionValueByCtx sets current session value SetSessionValueByCtx 设置当前会话值
 func SetSessionValueByCtx(ctx context.Context, key string, value any) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {

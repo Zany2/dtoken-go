@@ -141,7 +141,7 @@ func SearchTokenValueByContext(c *gin.Context, keyword string, start, size int) 
 	return dCtx.Terminal().SearchTokenValue(requestContext(c), keyword, start, size)
 }
 
-// SearchSessionIDByContext searches session ids SearchSessionIDByContext 鎼滅。Session ID
+// SearchSessionIDByContext searches session ids SearchSessionIDByContext 搜索 Session ID
 func SearchSessionIDByContext(c *gin.Context, keyword string, start, size int) ([]string, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

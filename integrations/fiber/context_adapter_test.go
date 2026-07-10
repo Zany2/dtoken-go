@@ -10,6 +10,7 @@ import (
 	gofiber "github.com/gofiber/fiber/v2"
 )
 
+// TestFiberContextAdapterRequestAndResponse verifies request and response adaptation. TestFiberContextAdapterRequestAndResponse 验证请求与响应适配。
 func TestFiberContextAdapterRequestAndResponse(t *testing.T) {
 	app := gofiber.New()
 	app.Post("/demo", func(c *gofiber.Ctx) error {
@@ -94,6 +95,7 @@ func TestFiberContextAdapterRequestAndResponse(t *testing.T) {
 	}
 }
 
+// TestFiberContextMustGetPanicsWhenMissing verifies missing values trigger a panic. TestFiberContextMustGetPanicsWhenMissing 验证缺失值会触发 panic。
 func TestFiberContextMustGetPanicsWhenMissing(t *testing.T) {
 	app := gofiber.New()
 	app.Get("/", func(c *gofiber.Ctx) error {

@@ -44,7 +44,7 @@ func ValidateTicketByContext(ctx *hertzapp.RequestContext, ticketValue string, o
 	return dCtx.Ticket().Validate(requestContext(ctx), ticketValue, opts...)
 }
 
-// ConsumeTicketByContext consumes ticket ConsumeTicketByContext ?Ticket
+// ConsumeTicketByContext consumes ticket ConsumeTicketByContext 消费 Ticket
 func ConsumeTicketByContext(ctx *hertzapp.RequestContext, ticketValue string, opts ...ticket.ValidateOptions) (*ticket.ConsumeResult, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -53,7 +53,7 @@ func ConsumeTicketByContext(ctx *hertzapp.RequestContext, ticketValue string, op
 	return dCtx.Ticket().Consume(requestContext(ctx), ticketValue, opts...)
 }
 
-// RevokeTicketByContext revokes ticket RevokeTicketByContext ?Ticket
+// RevokeTicketByContext revokes ticket RevokeTicketByContext 撤销 Ticket
 func RevokeTicketByContext(ctx *hertzapp.RequestContext, ticketValue string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {

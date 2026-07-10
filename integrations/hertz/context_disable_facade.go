@@ -35,7 +35,7 @@ func DisableServiceLevelByContext(ctx *hertzapp.RequestContext, service string, 
 	return dCtx.Disable().ServiceLevel(requestContext(ctx), service, level, duration, reason...)
 }
 
-// UntieServiceByContext removes current account service disable state UntieServiceByContext
+// UntieServiceByContext removes current account service disable state UntieServiceByContext 解除当前账号服务封禁状态
 func UntieServiceByContext(ctx *hertzapp.RequestContext, service string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -116,7 +116,7 @@ func DisableDeviceAndDeviceIDByContext(ctx *hertzapp.RequestContext, device, dev
 	return dCtx.Disable().DeviceAndDeviceID(requestContext(ctx), device, deviceID, duration, reason...)
 }
 
-// UntieDeviceByContext removes current account device disable state UntieDeviceByContext
+// UntieDeviceByContext removes current account device disable state UntieDeviceByContext 解除当前账号设备封禁状态
 func UntieDeviceByContext(ctx *hertzapp.RequestContext, device string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -125,7 +125,7 @@ func UntieDeviceByContext(ctx *hertzapp.RequestContext, device string) error {
 	return dCtx.Disable().UntieDevice(requestContext(ctx), device)
 }
 
-// UntieDeviceAndDeviceIDByContext removes current account device ID disable state UntieDeviceAndDeviceIDByContext  ID
+// UntieDeviceAndDeviceIDByContext removes current account device ID disable state UntieDeviceAndDeviceIDByContext 解除当前账号指定设备 ID 的封禁状态
 func UntieDeviceAndDeviceIDByContext(ctx *hertzapp.RequestContext, device, deviceID string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {

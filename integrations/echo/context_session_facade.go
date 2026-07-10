@@ -5,7 +5,7 @@ import (
 	echo4 "github.com/labstack/echo/v4"
 )
 
-// SetSessionValueByContext sets current session value SetSessionValueByContext 璁剧疆褰撳墠浼氳瘽鍊?
+// SetSessionValueByContext sets current session value SetSessionValueByContext 设置当前会话值
 func SetSessionValueByContext(c echo4.Context, key string, value any) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
