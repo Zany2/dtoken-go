@@ -111,13 +111,8 @@ func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenV
 	}
 
 	// Check disable status after token lookup 获取 token 后检查封禁状态。
-	if m.isDisable(ctx, tokenInfo.LoginID) {
-		return nil, nil, derror.ErrAccountDisabled
-	}
-
-	// Check device disable state 检查设备封禁状态。
-	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID) {
-		return nil, nil, derror.ErrDeviceDisabled
+	if err := m.checkLoginDisableState(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID); err != nil {
+		return nil, nil, err
 	}
 
 	// Load session 加载会话。

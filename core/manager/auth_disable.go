@@ -818,6 +818,19 @@ func (m *Manager) CheckDisable(ctx context.Context, loginID string) error {
 	return nil
 }
 
+// checkLoginDisableState checks account and device disable states. checkLoginDisableState 检查账号和设备封禁状态。
+func (m *Manager) checkLoginDisableState(ctx context.Context, loginID, device, deviceID string) error {
+	if m.isDisable(ctx, loginID) {
+		return derror.ErrAccountDisabled
+	}
+
+	if m.isDisableDeviceMatch(ctx, loginID, device, deviceID) {
+		return derror.ErrDeviceDisabled
+	}
+
+	return nil
+}
+
 // isDisable checks if an account is disabled. isDisable 检查账号是否被封禁。
 func (m *Manager) isDisable(ctx context.Context, loginID string) bool {
 	// Validate login ID 校验登录 ID。

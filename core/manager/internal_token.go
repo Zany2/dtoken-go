@@ -182,13 +182,13 @@ func (m *Manager) checkTerminalTokenAliveWithContext(ctx context.Context, tokenV
 		return false, err
 	}
 
-	// Reject empty or disabled account 拒绝空账号或封禁账号。
-	if tokenInfo.LoginID == "" || m.isDisable(ctx, tokenInfo.LoginID) {
+	// Reject empty account 拒绝空账号。
+	if tokenInfo.LoginID == "" {
 		return false, nil
 	}
 
-	// Reject disabled device 拒绝已封禁设备。
-	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID) {
+	// Reject disabled account or device 拒绝已封禁账号或设备。
+	if err := m.checkLoginDisableState(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID); err != nil {
 		return false, nil
 	}
 

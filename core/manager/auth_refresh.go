@@ -124,13 +124,8 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 	}
 
 	// Recheck account and device status at rotation time. 轮换时重新检查账号和设备状态。
-	if m.isDisable(ctx, info.LoginID) {
-		return nil, derror.ErrAccountDisabled
-	}
-
-	// Reject refresh when the bound device is disabled. 绑定设备被禁用时拒绝刷新。
-	if m.isDisableDeviceMatch(ctx, info.LoginID, info.Device, info.DeviceID) {
-		return nil, derror.ErrDeviceDisabled
+	if err = m.checkLoginDisableState(ctx, info.LoginID, info.Device, info.DeviceID); err != nil {
+		return nil, err
 	}
 
 	// Atomically consume refresh token to prevent concurrent replay 原子消费刷新令牌，防止并发重放。

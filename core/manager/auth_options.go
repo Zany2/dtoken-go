@@ -109,6 +109,7 @@ func validateLoginPolicyOverrides(opts LoginOptions) error {
 	if opts.MaxLoginCount != nil && *opts.MaxLoginCount != config.NoLimit && *opts.MaxLoginCount <= 0 {
 		return derror.ErrInvalidParam
 	}
+
 	if opts.ReplacedLoginExitMode != nil {
 		switch *opts.ReplacedLoginExitMode {
 		case config.ReplacedLoginExitModeOldDevice, config.ReplacedLoginExitModeNewDevice:
@@ -116,6 +117,7 @@ func validateLoginPolicyOverrides(opts LoginOptions) error {
 			return derror.ErrInvalidParam
 		}
 	}
+
 	if opts.OverflowLogoutMode != nil {
 		switch *opts.OverflowLogoutMode {
 		case config.LogoutModeLogout, config.LogoutModeKickout, config.LogoutModeReplaced:
@@ -123,6 +125,7 @@ func validateLoginPolicyOverrides(opts LoginOptions) error {
 			return derror.ErrInvalidParam
 		}
 	}
+
 	return nil
 }
 

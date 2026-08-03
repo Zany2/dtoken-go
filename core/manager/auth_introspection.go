@@ -43,12 +43,8 @@ func (m *Manager) IntrospectToken(ctx context.Context, tokenValue string) (*Toke
 	}
 
 	// Check account and device disable status before session validation. 会话校验前先检查账号与设备封禁状态。
-	if m.isDisable(ctx, tokenInfo.LoginID) {
-		result.Error = derror.ErrAccountDisabled.Error()
-		return result, nil
-	}
-	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID) {
-		result.Error = derror.ErrDeviceDisabled.Error()
+	if disableErr := m.checkLoginDisableState(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID); disableErr != nil {
+		result.Error = disableErr.Error()
 		return result, nil
 	}
 

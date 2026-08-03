@@ -59,20 +59,16 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
-	// Reject disabled account 拒绝已封禁账号。
-	if m.isDisable(ctx, opts.LoginID) {
-		return "", derror.ErrAccountDisabled
-	}
-
 	// Parse device and token fields 解析设备和token字段。
 	device, deviceID, token := strings.TrimSpace(opts.Device), strings.TrimSpace(opts.DeviceID), strings.TrimSpace(opts.Token)
-	if opts.Token != "" && token == "" {
-		return "", derror.ErrInvalidToken
+
+	// Reject disabled account or device 拒绝已封禁账号或设备。
+	if err := m.checkLoginDisableState(ctx, opts.LoginID, device, deviceID); err != nil {
+		return "", err
 	}
 
-	// Reject disabled device 拒绝已封禁设备。
-	if m.isDisableDeviceMatch(ctx, opts.LoginID, device, deviceID) {
-		return "", derror.ErrDeviceDisabled
+	if opts.Token != "" && token == "" {
+		return "", derror.ErrInvalidToken
 	}
 
 	// Reject duplicate custom token before concurrency side effects. 并发策略产生副作用前拒绝重复的自定义 Token。
@@ -252,22 +248,6 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
-
-	// Reload token after acquiring lock 加锁后重新读取 token，避免并发下复活已失效 token
-	tokenInfo, err = m.getTokenInfo(ctx, tokenValue)
-	if err != nil {
-		return err
-	}
-
-	// Check account disable status 检查账号是否被封禁
-	if m.isDisable(ctx, tokenInfo.LoginID) {
-		return derror.ErrAccountDisabled
-	}
-
-	// Check device disable status 检查设备封禁状态。
-	if m.isDisableDeviceMatch(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID) {
-		return derror.ErrDeviceDisabled
-	}
 
 	// Validate login state without scheduling renew side effects. 校验登录态但不触发续期副作用。
 	if _, tokenInfo, err = m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue); err != nil {
