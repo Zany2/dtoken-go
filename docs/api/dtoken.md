@@ -511,6 +511,8 @@ func DeleteManager(authType ...string) error
 func DeleteAllManager()
 ```
 
+`SetManager` replaces and immediately closes the previous manager for the same auth type. Runtime replacement should begin only after the old manager has no new or in-flight work; callers must not register a manager again after it has been replaced or closed. `DeleteManager` and `DeleteAllManager` remove managers from the registry before releasing their resources. When managers share Storage, Logger, or Pool components, use `manager.WithComponentOwnership` to mark those shared components as caller-owned.
+
 ## Complete Method List
 
 ### Manager Lifecycle

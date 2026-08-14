@@ -54,18 +54,34 @@ func (m *Manager) lockLoginWrite(loginID string) func() {
 
 // submitAsync submits async work with a goroutine fallback submitAsync 提交异步任务并在池不可用时回退到 goroutine
 func (m *Manager) submitAsync(name string, task func()) {
+	// Register the task unless manager shutdown has started. Manager 开始关闭后不再接收新任务。
+	m.asyncMu.Lock()
+	if m.asyncClosed {
+		m.asyncMu.Unlock()
+		return
+	}
+	m.asyncWG.Add(1)
+	pool := m.pool
+	m.asyncMu.Unlock()
+
+	// Track task completion independently from pool ownership. 独立于协程池所有权跟踪任务完成状态。
+	trackedTask := func() {
+		defer m.asyncWG.Done()
+		task()
+	}
+
 	// Fallback when pool is absent 协程池不存在时回退。
-	if m.pool == nil {
-		go task()
+	if pool == nil {
+		go trackedTask()
 		return
 	}
 
 	// Submit task to pool 提交任务到协程池。
-	if err := m.pool.Submit(task); err != nil {
+	if err := pool.Submit(trackedTask); err != nil {
 		m.logger.Errorf("manager.submitAsync: failed to submit async task, task=%s, error=%v", name, err)
 
 		// Fallback when submit fails 提交失败时回退。
-		go task()
+		go trackedTask()
 	}
 }
 

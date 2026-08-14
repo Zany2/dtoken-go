@@ -21,12 +21,18 @@ dtoken:app:session:client-001
 ```go
 ctx := context.Background()
 storage := memory.NewStorage()
+sharedOwnership := manager.WithComponentOwnership(manager.ComponentOwnership{
+    Storage: false,
+    Logger:  true,
+    Pool:    true,
+})
 
 userMgr, err := defaults.NewBuilder().
     AuthType("user").
     KeyPrefix("dtoken").
     TokenName("user-token").
     SetStorage(storage).
+    UseManagerOption(sharedOwnership).
     Build()
 if err != nil {
     panic(err)
@@ -38,6 +44,7 @@ adminMgr, err := defaults.NewBuilder().
     KeyPrefix("dtoken").
     TokenName("admin-token").
     SetStorage(storage).
+    UseManagerOption(sharedOwnership).
     Build()
 if err != nil {
     panic(err)
@@ -48,13 +55,16 @@ userToken, _ := dtoken.Login(ctx, "10001", "", "", "user")
 adminToken, _ := dtoken.Login(ctx, "admin-1", "", "", "admin")
 ```
 
+Managers own and close Storage, Logger, and Pool components configured through a Builder by default. `ComponentOwnership` is a complete policy: every field must be set explicitly because omitted boolean fields are `false`. For shared components, set the corresponding field to `false`; the caller then closes that shared component once during application shutdown. A caller-owned Pool must remain running until all managers that use it have closed, because each manager waits for its accepted asynchronous tasks during shutdown.
+
 `BuildAndSetManager` can also override and register `AuthType` during construction:
 
 ```go
 _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         KeyPrefix("dtoken").
-        SetStorage(storage),
+        SetStorage(storage).
+        UseManagerOption(sharedOwnership),
     "admin",
 )
 ```

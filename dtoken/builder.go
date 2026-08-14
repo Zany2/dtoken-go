@@ -650,7 +650,7 @@ func (b *Builder) SetGenerator(generator adapter.Generator) *Builder {
 	return b
 }
 
-// SetStorage sets storage adapter SetStorage 设置存储适配器
+// SetStorage sets a manager-owned storage adapter by default. SetStorage 设置默认由 Manager 持有的存储适配器。
 func (b *Builder) SetStorage(storage adapter.Storage) *Builder {
 	b.ensureBuilder()
 	b.inner.SetStorage(storage)
@@ -664,14 +664,14 @@ func (b *Builder) SetCodec(codec adapter.Codec) *Builder {
 	return b
 }
 
-// SetLog sets log adapter SetLog 设置日志适配器
+// SetLog sets a manager-owned log adapter by default. SetLog 设置默认由 Manager 持有的日志适配器。
 func (b *Builder) SetLog(log adapter.Log) *Builder {
 	b.ensureBuilder()
 	b.inner.SetLog(log)
 	return b
 }
 
-// SetPool sets async task pool SetPool 设置异步任务池
+// SetPool sets a manager-owned async task pool by default. SetPool 设置默认由 Manager 持有的异步任务池。
 func (b *Builder) SetPool(pool adapter.Pool) *Builder {
 	b.ensureBuilder()
 	b.inner.SetPool(pool)
@@ -738,7 +738,7 @@ func (b *Builder) SetGeneratorFactory(factory builder.GeneratorFactory) *Builder
 	return b
 }
 
-// SetStorageFactory sets default storage factory SetStorageFactory 设置默认存储工厂
+// SetStorageFactory sets a factory for storage adapters owned by Manager by default. SetStorageFactory 设置创建默认由 Manager 持有的存储适配器的工厂。
 func (b *Builder) SetStorageFactory(factory builder.StorageFactory) *Builder {
 	b.ensureBuilder()
 	b.inner.SetStorageFactory(factory)
@@ -752,7 +752,7 @@ func (b *Builder) SetCodecFactory(factory builder.CodecFactory) *Builder {
 	return b
 }
 
-// SetLogFactory sets default log factory SetLogFactory 设置默认日志工厂
+// SetLogFactory sets a factory for log adapters owned by Manager by default. SetLogFactory 设置创建默认由 Manager 持有的日志适配器的工厂。
 func (b *Builder) SetLogFactory(factory builder.LogFactory) *Builder {
 	b.ensureBuilder()
 	b.customLogFactory = factory != nil
@@ -760,7 +760,7 @@ func (b *Builder) SetLogFactory(factory builder.LogFactory) *Builder {
 	return b
 }
 
-// SetPoolFactory sets default pool factory SetPoolFactory 设置默认任务池工厂
+// SetPoolFactory sets a factory for task pools owned by Manager by default. SetPoolFactory 设置创建默认由 Manager 持有的任务池的工厂。
 func (b *Builder) SetPoolFactory(factory builder.PoolFactory) *Builder {
 	b.ensureBuilder()
 	b.customPoolFactory = factory != nil

@@ -3,6 +3,7 @@ package manager
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
@@ -28,7 +29,12 @@ type Manager struct {
 	eventManager    *listener.Manager          // eventManager dispatches auth events. eventManager 分发鉴权事件。
 	loginLocksMu    sync.Mutex                 // loginLocksMu protects the login lock registry. loginLocksMu 保护登录锁注册表。
 	loginLocks      map[string]*loginLockEntry // loginLocks serializes writes per login ID. loginLocks 按登录 ID 串行化写操作。
+	asyncMu         sync.Mutex                 // asyncMu serializes async task admission and shutdown. asyncMu 串行化异步任务接收与关闭。
+	asyncWG         sync.WaitGroup             // asyncWG waits for accepted async tasks. asyncWG 等待已接收的异步任务完成。
+	asyncClosed     bool                       // asyncClosed rejects new async tasks during shutdown. asyncClosed 在关闭期间拒绝新的异步任务。
+	closed          atomic.Bool                // closed reports whether manager shutdown has started. closed 标记 Manager 是否已开始关闭。
 	closeOnce       sync.Once                  // closeOnce releases manager resources once. closeOnce 确保资源只释放一次。
+	ownership       ComponentOwnership         // ownership records which runtime components are manager-owned. ownership 记录由 Manager 持有的运行时组件。
 	accessProvider  AccessProvider             // accessProvider resolves roles and permissions. accessProvider 解析角色和权限。
 	strategy        *Strategy                  // strategy stores replaceable algorithms. strategy 存储可替换算法。
 }
@@ -93,6 +99,11 @@ type DeviceDisableInfo struct {
 // GetConfig retrieves the manager configuration. GetConfig 获取管理器配置。
 func (m *Manager) GetConfig() *config.Config {
 	return m.config
+}
+
+// IsClosed reports whether manager shutdown has started. IsClosed 返回 Manager 是否已开始关闭。
+func (m *Manager) IsClosed() bool {
+	return m == nil || m.closed.Load()
 }
 
 // GetGenerator retrieves the token generator. GetGenerator 获取 Token 生成器。

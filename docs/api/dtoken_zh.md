@@ -511,6 +511,8 @@ func DeleteManager(authType ...string) error
 func DeleteAllManager()
 ```
 
+`SetManager` 会替换并立即关闭相同认证类型的旧 Manager。运行期替换前应先确保旧 Manager 不再接收新请求且没有正在执行的请求；Manager 被替换或关闭后不得再次注册。`DeleteManager` 和 `DeleteAllManager` 会先从注册表移除 Manager，再释放其资源。多个 Manager 共享 Storage、Logger 或 Pool 时，应使用 `manager.WithComponentOwnership` 将共享组件标记为调用方持有。
+
 ## 完整方法列表
 
 ### Manager 生命周期

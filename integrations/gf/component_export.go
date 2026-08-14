@@ -44,6 +44,7 @@ type (
 	LogoutMode                 = config.LogoutMode
 	Manager                    = manager.Manager
 	ManagerOption              = manager.Option
+	ComponentOwnership         = manager.ComponentOwnership
 	TokenInfo                  = manager.TokenInfo
 	TokenIntrospection         = manager.TokenIntrospection
 	ManagerRefreshTokenOptions = manager.RefreshTokenOptions
@@ -274,6 +275,7 @@ var (
 	DefaultCookieConfig            = config.DefaultCookieConfig
 	NewContext                     = corecontext.NewContext
 	NewManager                     = manager.NewManager
+	WithComponentOwnership         = manager.WithComponentOwnership
 	WithNonceManager               = manager.WithNonceManager
 	WithOAuth2Manager              = manager.WithOAuth2Manager
 	NewEventManager                = listener.NewManager
