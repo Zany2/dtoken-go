@@ -3,6 +3,7 @@ package listener
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -30,6 +31,22 @@ func (e *EventData) String() string {
 		e.Event, e.AuthType, e.LoginID, e.Device, e.DeviceID, e.Timestamp)
 }
 
+// cloneEventData copies event fields and the top-level Extra map. cloneEventData 复制事件字段和顶层 Extra 映射。
+func cloneEventData(data *EventData) *EventData {
+	if data == nil {
+		return nil
+	}
+
+	cloned := *data
+	if data.Extra != nil {
+		cloned.Extra = make(map[string]any, len(data.Extra))
+		for key, value := range data.Extra {
+			cloned.Extra[key] = value
+		}
+	}
+	return &cloned
+}
+
 // Listener defines event listener interface Listener 定义事件监听器接口。
 type Listener interface {
 	// OnEvent handles triggered event OnEvent 处理被触发的事件。
@@ -52,8 +69,8 @@ func (f ListenerFunc) OnEvent(data *EventData) {
 
 // ListenerConfig defines listener config ListenerConfig 定义监听器配置。
 type ListenerConfig struct {
-	Async    bool   // Async controls async execution Async 控制是否异步执行。
-	Priority int    // Priority stores listener priority Priority 存储监听器优先级。
+	Async    bool   // Async controls async execution; asynchronous completion order is not guaranteed. Async 控制是否异步执行，异步完成顺序不受保证。
+	Priority int    // Priority stores dispatch priority; higher values are visited first. Priority 存储分发优先级，数值越高越先遍历。
 	ID       string // ID stores listener unique id ID 存储监听器唯一标识。
 }
 
@@ -79,8 +96,11 @@ type Manager struct {
 	listeners       map[Event][]listenerEntry
 	panicHandler    func(event Event, data *EventData, recovered any)
 	listenerCounter int
-	enabledEvents   map[Event]bool // enabledEvents stores enabled event map enabledEvents 存储启用事件集合。
-	asyncWaitGroup  sync.WaitGroup // asyncWaitGroup waits async listeners asyncWaitGroup 等待异步监听器完成。
+	eventStates     map[Event]bool // eventStates stores explicit event enable overrides. eventStates 存储事件启用状态覆盖值。
+	defaultEnabled  bool           // defaultEnabled applies when no event override matches. defaultEnabled 用于没有匹配覆盖值的事件。
+	asyncMu         sync.Mutex     // asyncMu protects asynchronous task accounting. asyncMu 保护异步任务计数。
+	asyncCond       *sync.Cond     // asyncCond wakes lifecycle waiters when tasks finish. asyncCond 在任务完成时唤醒生命周期等待方。
+	asyncTasks      int            // asyncTasks counts accepted asynchronous tasks. asyncTasks 统计已接收的异步任务。
 	filters         []EventFilter  // filters stores global filters filters 存储全局事件过滤器。
 	stats           *EventStats    // stats stores event stats stats 存储事件统计。
 	enableStats     bool           // enableStats controls stats collection enableStats 控制是否收集统计。
@@ -98,9 +118,10 @@ func NewManager(loggers ...adapter.Log) *Manager {
 	}
 
 	m := &Manager{
-		listeners:     make(map[Event][]listenerEntry),
-		enabledEvents: nil, // enabledEvents nil means all enabled enabledEvents 为 nil 表示启用所有事件。
-		filters:       make([]EventFilter, 0),
+		listeners:      make(map[Event][]listenerEntry),
+		eventStates:    nil,
+		defaultEnabled: true,
+		filters:        make([]EventFilter, 0),
 		stats: &EventStats{
 			EventCounts:   make(map[Event]int64),
 			LastTriggered: make(map[Event]time.Time),
@@ -108,11 +129,12 @@ func NewManager(loggers ...adapter.Log) *Manager {
 		enableStats: false, // enableStats false means stats disabled enableStats 为 false 表示默认不统计。
 		logger:      logger,
 	}
+	m.asyncCond = sync.NewCond(&m.asyncMu)
 
 	// panicHandler binds initialized logger panicHandler 绑定已初始化 logger。
 	m.panicHandler = func(event Event, data *EventData, recovered any) {
 		logger.Errorf(
-			"listener.Manager: listener panic recovered, event=%s, panic=%v",
+			"listener.Manager: event callback panic recovered, event=%s, panic=%v",
 			event, recovered,
 		)
 	}
@@ -120,14 +142,14 @@ func NewManager(loggers ...adapter.Log) *Manager {
 	return m
 }
 
-// SetPanicHandler sets panic handler SetPanicHandler 设置自定义 panic 处理。
+// SetPanicHandler sets the listener and filter panic handler. SetPanicHandler 设置监听器和过滤器的 panic 处理器。
 func (m *Manager) SetPanicHandler(handler func(event Event, data *EventData, recovered any)) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.panicHandler = handler
 }
 
-// AddFilter adds global filter AddFilter 添加全局事件过滤。
+// AddFilter adds a global filter; a panic rejects the event and is sent to the panic handler. AddFilter 添加全局事件过滤器；panic 会拒绝当前事件并交给 panic 处理器。
 func (m *Manager) AddFilter(filter EventFilter) {
 	if filter == nil {
 		return
@@ -182,40 +204,44 @@ func (m *Manager) ResetStats() {
 	}
 }
 
-// EnableEvent enables selected events EnableEvent 启用指定事件
+// EnableEvent replaces the allow-list, while no arguments restore all events. EnableEvent 替换事件白名单，不传参数时恢复全部事件。
 func (m *Manager) EnableEvent(events ...Event) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if len(events) == 0 {
-		m.enabledEvents = nil
+		m.eventStates = nil
+		m.defaultEnabled = true
 		return
 	}
 
-	m.enabledEvents = make(map[Event]bool)
+	m.eventStates = make(map[Event]bool, len(events))
+	m.defaultEnabled = false
 	for _, event := range events {
-		m.enabledEvents[event] = true
+		m.eventStates[event] = true
 	}
 }
 
-// DisableEvent disables selected events DisableEvent 禁用指定事件
+// DisableEvent disables selected events without changing unrelated events. DisableEvent 禁用指定事件且不改变其他事件状态。
 func (m *Manager) DisableEvent(events ...Event) {
+	if len(events) == 0 {
+		return
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.enabledEvents == nil {
-		m.enabledEvents = make(map[Event]bool)
-		// Add built-in and existing events 加入内置事件和当前已存在的事件。
-		for _, event := range KnownEvents {
-			m.enabledEvents[event] = true
-		}
-		for event := range m.listeners {
-			m.enabledEvents[event] = true
-		}
+	if m.eventStates == nil {
+		m.eventStates = make(map[Event]bool, len(events))
 	}
 
 	for _, event := range events {
-		delete(m.enabledEvents, event)
+		if event == EventAll {
+			m.eventStates = map[Event]bool{EventAll: false}
+			m.defaultEnabled = false
+			continue
+		}
+		m.eventStates[event] = false
 	}
 }
 
@@ -227,7 +253,7 @@ func (m *Manager) IsEventEnabled(event Event) bool {
 	return m.isEventEnabledLocked(event)
 }
 
-// Register registers listener with default config Register 使用默认配置注册监听。
+// Register registers an asynchronous listener with default priority. Register 使用默认优先级注册异步监听器。
 func (m *Manager) Register(event Event, listener Listener) string {
 	return m.RegisterWithConfig(event, listener, ListenerConfig{
 		Async:    true,
@@ -235,7 +261,7 @@ func (m *Manager) Register(event Event, listener Listener) string {
 	})
 }
 
-// RegisterWithConfig registers listener with config RegisterWithConfig 使用自定义配置注册监听器
+// RegisterWithConfig registers a listener; duplicate explicit IDs return an empty string. RegisterWithConfig 使用配置注册监听器，重复的显式 ID 会返回空字符串。
 func (m *Manager) RegisterWithConfig(event Event, listener Listener, config ListenerConfig) string {
 	if listener == nil {
 		return ""
@@ -244,10 +270,17 @@ func (m *Manager) RegisterWithConfig(event Event, listener Listener, config List
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Generate unique ID if not provided 自动生成唯一监听 ID。
+	// Generate a globally unique ID or reject a duplicate explicit ID. 生成全局唯一 ID，或拒绝重复的显式 ID。
 	if config.ID == "" {
-		m.listenerCounter++
-		config.ID = fmt.Sprintf("listener_%d", m.listenerCounter)
+		for {
+			m.listenerCounter++
+			config.ID = fmt.Sprintf("listener_%d", m.listenerCounter)
+			if !m.hasListenerIDLocked(config.ID) {
+				break
+			}
+		}
+	} else if m.hasListenerIDLocked(config.ID) {
+		return ""
 	}
 
 	if m.listeners[event] == nil {
@@ -267,7 +300,7 @@ func (m *Manager) RegisterWithConfig(event Event, listener Listener, config List
 	return config.ID
 }
 
-// RegisterFunc registers function listener RegisterFunc 注册函数监听。
+// RegisterFunc registers an asynchronous function listener. RegisterFunc 注册异步函数监听器。
 func (m *Manager) RegisterFunc(event Event, handler func(data *EventData)) string {
 	if handler == nil {
 		return ""
@@ -275,7 +308,7 @@ func (m *Manager) RegisterFunc(event Event, handler func(data *EventData)) strin
 	return m.Register(event, ListenerFunc(handler))
 }
 
-// RegisterFuncWithConfig registers function listener with config RegisterFuncWithConfig 使用配置注册函数监听。
+// RegisterFuncWithConfig registers a function listener; duplicate explicit IDs return an empty string. RegisterFuncWithConfig 使用配置注册函数监听器，重复的显式 ID 会返回空字符串。
 func (m *Manager) RegisterFuncWithConfig(event Event, handler func(data *EventData), config ListenerConfig) string {
 	if handler == nil {
 		return ""
@@ -315,8 +348,25 @@ func (m *Manager) sortListeners(event Event) {
 	}
 }
 
-// Trigger dispatches event to listeners Trigger 将事件分发给已注册监听器
+// hasListenerIDLocked checks ID uniqueness while m.mu is held. hasListenerIDLocked 在持有 m.mu 时检查 ID 唯一性。
+func (m *Manager) hasListenerIDLocked(listenerID string) bool {
+	for _, entries := range m.listeners {
+		for _, entry := range entries {
+			if entry.config.ID == listenerID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Trigger dispatches an event on the current goroutine; asynchronous listeners are started but not awaited. Trigger 在当前 goroutine 分发事件，异步监听器启动后不等待其完成。
 func (m *Manager) Trigger(data *EventData) {
+	m.trigger(cloneEventData(data), nil)
+}
+
+// trigger dispatches one owned event snapshot and optionally tracks this dispatch's listeners. trigger 分发一个独立事件快照，并按需跟踪本次分发的监听器。
+func (m *Manager) trigger(data *EventData, localWaitGroup *sync.WaitGroup) {
 	if data == nil {
 		return
 	}
@@ -331,7 +381,7 @@ func (m *Manager) Trigger(data *EventData) {
 	}
 
 	for _, filter := range filters {
-		if filter != nil && !filter(data) {
+		if !m.safeFilter(filter, data) {
 			return
 		}
 	}
@@ -340,31 +390,25 @@ func (m *Manager) Trigger(data *EventData) {
 		m.recordStats(data.Event)
 	}
 
-	extraInfo := ""
-	if len(data.Extra) > 0 {
-		extraInfo = fmt.Sprintf(", extra=%+v", data.Extra)
-	}
 	if logger != nil {
 		logger.Infof(
-			"listener.Manager.Trigger: event triggered, event=%s, authType=%s, loginID=%s, device=%s, deviceId=%s, token=%s, timestamp=%d, listeners=%d%s",
+			"listener.Manager.Trigger: event triggered, event=%s, authType=%s, timestamp=%d, listeners=%d",
 			data.Event,
 			data.AuthType,
-			data.LoginID,
-			data.Device,
-			data.DeviceID,
-			data.Token,
 			data.Timestamp,
 			len(listenersToCall),
-			extraInfo,
 		)
 	}
 
 	for _, entry := range listenersToCall {
+		listener := entry.listener
+		listenerData := cloneEventData(data)
 		if entry.config.Async {
-			m.asyncWaitGroup.Add(1)
-			go m.safeCall(entry.listener, data, &m.asyncWaitGroup)
+			m.startAsync(localWaitGroup, func() {
+				m.safeCall(listener, listenerData)
+			})
 		} else {
-			m.safeCall(entry.listener, data, nil)
+			m.safeCall(listener, listenerData)
 		}
 	}
 }
@@ -382,9 +426,14 @@ func (m *Manager) snapshot(event Event) ([]listenerEntry, []EventFilter, bool, a
 	if listeners, ok := m.listeners[event]; ok {
 		listenersToCall = append(listenersToCall, listeners...)
 	}
-	if listeners, ok := m.listeners[EventAll]; ok {
-		listenersToCall = append(listenersToCall, listeners...)
+	if event != EventAll {
+		if listeners, ok := m.listeners[EventAll]; ok {
+			listenersToCall = append(listenersToCall, listeners...)
+		}
 	}
+	sort.SliceStable(listenersToCall, func(i, j int) bool {
+		return listenersToCall[i].config.Priority > listenersToCall[j].config.Priority
+	})
 
 	filters := append([]EventFilter(nil), m.filters...)
 	return listenersToCall, filters, m.enableStats, m.logger, true
@@ -404,53 +453,130 @@ func (m *Manager) recordStats(event Event) {
 
 // isEventEnabledLocked checks event state under lock isEventEnabledLocked 在锁内检查事件启用状态。
 func (m *Manager) isEventEnabledLocked(event Event) bool {
-	if m.enabledEvents == nil {
-		return true
+	if enabled, ok := m.eventStates[event]; ok {
+		return enabled
 	}
-	return m.enabledEvents[event] || m.enabledEvents[EventAll]
+	if enabled, ok := m.eventStates[EventAll]; ok {
+		return enabled
+	}
+	return m.defaultEnabled
 }
 
-// TriggerAsync triggers event asynchronously TriggerAsync 异步触发事件并立即返回。
+// TriggerAsync snapshots and dispatches an event asynchronously, and the dispatch is tracked by Wait. TriggerAsync 快照并异步分发事件，整个分发过程会被 Wait 跟踪。
 func (m *Manager) TriggerAsync(data *EventData) {
-	if data == nil {
+	snapshot := cloneEventData(data)
+	if snapshot == nil {
 		return
 	}
-	go m.Trigger(data)
+
+	m.startAsync(nil, func() {
+		m.trigger(snapshot, nil)
+	})
 }
 
-// TriggerSync triggers event synchronously TriggerSync 同步触发事件并等待完成。
+// TriggerSync dispatches an event and waits for asynchronous listeners started directly by this dispatch. TriggerSync 分发事件并等待本次分发直接启动的异步监听器完成。
 func (m *Manager) TriggerSync(data *EventData) {
-	m.Trigger(data)
-	m.Wait()
+	snapshot := cloneEventData(data)
+	if snapshot == nil {
+		return
+	}
+
+	var localWaitGroup sync.WaitGroup
+	m.trigger(snapshot, &localWaitGroup)
+	localWaitGroup.Wait()
+}
+
+// startAsync registers and starts one asynchronous task. startAsync 登记并启动一个异步任务。
+func (m *Manager) startAsync(localWaitGroup *sync.WaitGroup, task func()) {
+	if localWaitGroup != nil {
+		localWaitGroup.Add(1)
+	}
+
+	m.asyncMu.Lock()
+	m.asyncTasks++
+	m.asyncMu.Unlock()
+
+	go func() {
+		if localWaitGroup != nil {
+			defer localWaitGroup.Done()
+		}
+		defer m.finishAsync()
+		task()
+	}()
+}
+
+// finishAsync marks one asynchronous task complete. finishAsync 标记一个异步任务完成。
+func (m *Manager) finishAsync() {
+	m.asyncMu.Lock()
+	defer m.asyncMu.Unlock()
+
+	m.asyncTasks--
+	if m.asyncTasks == 0 {
+		m.asyncCond.Broadcast()
+	}
+}
+
+// safeFilter executes a filter safely and rejects the event after a panic. safeFilter 安全执行过滤器，并在 panic 后拒绝当前事件。
+func (m *Manager) safeFilter(filter EventFilter, data *EventData) (allowed bool) {
+	if filter == nil {
+		return true
+	}
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			allowed = false
+			m.handlePanic(data.Event, data, recovered)
+		}
+	}()
+
+	return filter(data)
 }
 
 // safeCall executes listener safely safeCall 安全执行监听器并恢复 panic
-func (m *Manager) safeCall(listener Listener, data *EventData, wg *sync.WaitGroup) {
-	if wg != nil {
-		defer wg.Done()
-	}
+func (m *Manager) safeCall(listener Listener, data *EventData) {
 	if listener == nil || data == nil {
 		return
 	}
 
 	defer func() {
-		if r := recover(); r != nil {
-			m.mu.RLock()
-			handler := m.panicHandler
-			m.mu.RUnlock()
-
-			if handler != nil {
-				handler(data.Event, data, r)
-			}
+		if recovered := recover(); recovered != nil {
+			m.handlePanic(data.Event, data, recovered)
 		}
 	}()
 
 	listener.OnEvent(data)
 }
 
-// Wait waits async listeners Wait 等待所有异步监听器完成
+// handlePanic invokes the configured handler and contains handler failures. handlePanic 调用已配置的处理器并隔离处理器自身故障。
+func (m *Manager) handlePanic(event Event, data *EventData, recovered any) {
+	m.mu.RLock()
+	handler := m.panicHandler
+	logger := m.logger
+	m.mu.RUnlock()
+	if handler == nil {
+		return
+	}
+
+	defer func() {
+		if handlerPanic := recover(); handlerPanic != nil && logger != nil {
+			logger.Errorf(
+				"listener.Manager: panic handler panic recovered, event=%s, panic=%v",
+				event, handlerPanic,
+			)
+		}
+	}()
+
+	handler(event, data, recovered)
+}
+
+// Wait waits until the manager has no accepted asynchronous tasks. Wait 等待 Manager 已接收的异步任务全部完成。
 func (m *Manager) Wait() {
-	m.asyncWaitGroup.Wait()
+	m.asyncMu.Lock()
+	defer m.asyncMu.Unlock()
+
+	for m.asyncTasks > 0 {
+		m.asyncCond.Wait()
+	}
 }
 
 // Clear clears all listeners Clear 清除所有监听器
