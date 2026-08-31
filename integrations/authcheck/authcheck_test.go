@@ -15,6 +15,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/manager"
+	"github.com/Zany2/dtoken-go/dtoken"
 )
 
 // TestNeedAuth verifies empty requests skip auth checks TestNeedAuth 验证空请求会跳过认证校验。
@@ -28,6 +29,49 @@ func TestNeedAuth(t *testing.T) {
 	if !NeedAuth(Request{Permissions: []string{"read"}}) {
 		t.Fatal("NeedAuth(Permissions) = false, want true")
 	}
+}
+
+// TestResolveManagerPrefersExplicit verifies explicit manager injection bypasses the global registry. TestResolveManagerPrefersExplicit 验证显式注入的 Manager 会优先于全局注册表。
+func TestResolveManagerPrefersExplicit(t *testing.T) {
+	explicit := newAuthcheckTestManager(t)
+	resolved, err := ResolveManager(explicit, "missing-auth-type")
+	if err != nil {
+		t.Fatalf("ResolveManager() error = %v", err)
+	}
+	if resolved != explicit {
+		t.Fatalf("ResolveManager() = %p, want %p", resolved, explicit)
+	}
+}
+
+// TestResolveManagerFromContextPrefersCached verifies implicit auth reuses the request manager. TestResolveManagerFromContextPrefersCached 验证隐式认证会复用请求级 Manager。
+func TestResolveManagerFromContextPrefersCached(t *testing.T) {
+	cached := newAuthcheckTestManager(t)
+	resolved, err := ResolveManagerFromContext("", managerSource{manager: cached})
+	if err != nil {
+		t.Fatalf("ResolveManagerFromContext() error = %v", err)
+	}
+	if resolved != cached {
+		t.Fatalf("ResolveManagerFromContext() = %p, want %p", resolved, cached)
+	}
+}
+
+// TestResolveManagerFromContextExplicitAuthTypeUsesRegistry verifies explicit auth type selection bypasses cached manager. TestResolveManagerFromContextExplicitAuthTypeUsesRegistry 验证显式认证类型会绕过缓存 Manager 并使用全局注册表。
+func TestResolveManagerFromContextExplicitAuthTypeUsesRegistry(t *testing.T) {
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+
+	cached := newAuthcheckTestManager(t)
+	if _, err := ResolveManagerFromContext("missing-auth-type", managerSource{manager: cached}); !errors.Is(err, derror.ErrManagerNotFound) {
+		t.Fatalf("ResolveManagerFromContext() error = %v, want ErrManagerNotFound", err)
+	}
+}
+
+type managerSource struct {
+	manager *manager.Manager
+}
+
+func (s managerSource) GetManager() *manager.Manager {
+	return s.manager
 }
 
 // TestCheckLoginDisablePermissionsAndRoles verifies shared auth decision behavior TestCheckLoginDisablePermissionsAndRoles 验证公共认证决策行为。

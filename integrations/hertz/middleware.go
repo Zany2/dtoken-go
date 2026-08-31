@@ -125,6 +125,8 @@ func (req *RouteAccessRequest) SetLogicType(logicType LogicType) {
 type AuthOptions struct {
 	// AuthType selects the auth type. AuthType 指定认证类型。
 	AuthType string
+	// Manager selects the manager explicitly; nil falls back to the global registry. Manager 显式指定 Manager；为 nil 时回退到全局注册表。
+	Manager *manager.Manager
 	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
 	LogicType LogicType
 	// FailFunc handles authentication failures. FailFunc 处理认证失败。
@@ -144,6 +146,15 @@ func defaultAuthOptions() *AuthOptions {
 func WithAuthType(authType string) AuthOption {
 	return func(o *AuthOptions) {
 		o.AuthType = authType
+	}
+}
+
+// WithManager sets the manager used by middleware. WithManager 设置中间件使用的 Manager。
+func WithManager(mgr *manager.Manager) AuthOption {
+	return func(o *AuthOptions) {
+		if mgr != nil {
+			o.Manager = mgr
+		}
 	}
 }
 
@@ -183,7 +194,7 @@ func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) he
 	}
 
 	return func(c context.Context, reqCtx *hertzapp.RequestContext) {
-		mgr, err := authcheck.GetManager(options.AuthType)
+		mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, reqCtx, err)
@@ -217,7 +228,7 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) hertzapp.HandlerFun
 			return
 		}
 
-		mgr, err := authcheck.GetManager(options.AuthType)
+		mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, reqCtx, err)
@@ -268,7 +279,7 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) hertzapp.HandlerF
 			return
 		}
 
-		mgr, err := authcheck.GetManager(accessReq.AuthType)
+		mgr, err := authcheck.ResolveManager(options.Manager, accessReq.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, reqCtx, err)
@@ -337,7 +348,7 @@ func PermissionMiddleware(
 			return
 		}
 
-		mgr, err := authcheck.GetManager(options.AuthType)
+		mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, reqCtx, err)
@@ -397,7 +408,7 @@ func RoleMiddleware(
 			return
 		}
 
-		mgr, err := authcheck.GetManager(options.AuthType)
+		mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, reqCtx, err)

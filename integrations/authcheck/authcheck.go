@@ -48,6 +48,26 @@ func GetManager(authType string) (*manager.Manager, error) {
 	return dtoken.GetManager(authType)
 }
 
+// ResolveManager prefers an explicitly injected manager and falls back to the global registry. ResolveManager 优先使用显式注入的 Manager，否则回退到全局注册表。
+func ResolveManager(explicit *manager.Manager, authType string) (*manager.Manager, error) {
+	if explicit != nil {
+		return explicit, nil
+	}
+	return GetManager(authType)
+}
+
+// ResolveManagerFromContext prefers a request-scoped manager when auth type is implicit. ResolveManagerFromContext 在未指定认证类型时优先使用请求级 Manager。
+func ResolveManagerFromContext(authType string, cached any) (*manager.Manager, error) {
+	if authType == "" {
+		if source, ok := cached.(interface{ GetManager() *manager.Manager }); ok {
+			if mgr := source.GetManager(); mgr != nil {
+				return mgr, nil
+			}
+		}
+	}
+	return GetManager(authType)
+}
+
 // NeedAuth reports whether request needs auth checks NeedAuth 判断请求是否需要执行认证检查。
 func NeedAuth(req Request) bool {
 	return req.CheckLogin || req.CheckDisable || len(req.Permissions) > 0 || len(req.Roles) > 0

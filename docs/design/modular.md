@@ -41,6 +41,20 @@ github.com/Zany2/dtoken-go/dtoken
 - manage the global `Manager`
 - provide unified `context.Context`-based calling style
 
+### SSO Modules
+
+```text
+github.com/Zany2/dtoken-go/sso
+github.com/Zany2/dtoken-go/sso/storage/redis
+```
+
+**Responsibilities**:
+- coordinate server and client single sign-on flows
+- issue and consume one-time Ticket and OAuth2 Code values
+- isolate SSO storage ownership from the core manager
+
+The Redis submodule adds a production storage constructor without making Redis a dependency of the base `sso` module.
+
 ### Storage Modules
 
 #### Memory Storage
@@ -72,7 +86,7 @@ Besides storage, the current repository also splits out these replaceable compon
 - `com/codec/json`
 - `com/codec/jsonv2`
 - `com/codec/msgpack`
-- `com/generator/sgenerator`
+- `com/generator/dgenerator`
 - `com/log/gf`
 - `com/log/nop`
 - `com/log/dlog`
@@ -89,6 +103,7 @@ The current repository provides these independent integrations:
 - `integrations/chi`
 - `integrations/hertz`
 - `integrations/kratos`
+- `integrations/beego`
 
 Each integration module is responsible for:
 
@@ -98,12 +113,14 @@ Each integration module is responsible for:
 - annotation-style check wrappers
 - unified export layer in `export.go`
 
+Beego follows the same module boundary but maps annotation rules to Beego filters through `RouteAccessHandlerFromAnnotations`.
+
 ## Dependency Relationships
 
 ```text
 Application Code
   ↓
-Framework Integration (integrations/*)    or    dtoken
+Framework Integration (integrations/*)    or    dtoken    or    sso
   ↓
 core
   ↓
@@ -133,7 +150,7 @@ go get github.com/Zany2/dtoken-go/com/storage/redis
 ```
 
 **Suitable for**:
-- direct integration with Gin / Echo / Fiber / Chi / GoFrame / Hertz / Kratos
+- direct integration with Gin / Echo / Fiber / Chi / GoFrame / Hertz / Kratos / Beego
 - using the integration package as the unified export surface
 
 ### Scenario 3: Replacing Components
@@ -154,7 +171,7 @@ go get github.com/Zany2/dtoken-go/com/pool/ants
 
 ### Each Module Has Its Own go.mod
 
-Core modules, component modules, integration modules, and example modules all have independent `go.mod` files.
+Core, SSO, component, integration, and example modules all have independent `go.mod` files where they are published separately.
 
 For example:
 
@@ -166,7 +183,10 @@ com/storage/redis/go.mod
 com/codec/json/go.mod
 integrations/gin/go.mod
 integrations/gf/go.mod
+integrations/beego/go.mod
 examples/quick_start/go.mod
+sso/go.mod
+sso/storage/redis/go.mod
 ```
 
 ### Local Development Is Unified by go.work
@@ -181,7 +201,7 @@ use (
     ./com/codec/json
     ./com/codec/jsonv2
     ./com/codec/msgpack
-    ./com/generator/sgenerator
+    ./com/generator/dgenerator
     ./com/log/dlog
     ./com/log/gf
     ./com/log/nop
@@ -189,7 +209,9 @@ use (
     ./com/storage/memory
     ./com/storage/redis
     ./core
+    ./defaults
     ./dtoken
+    ./examples/beego
     ./examples/chi
     ./examples/echo
     ./examples/fiber
@@ -198,13 +220,23 @@ use (
     ./examples/hertz
     ./examples/kratos
     ./examples/quick_start
+    ./examples/sso_client
+    ./examples/sso_gin_client
+    ./examples/sso_gin_server
+    ./examples/sso_server
+    ./integrations/authcheck
+    ./integrations/beego
     ./integrations/chi
-    ./integrations/fiber
     ./integrations/echo
+    ./integrations/fiber
     ./integrations/gf
     ./integrations/gin
     ./integrations/hertz
     ./integrations/kratos
+    ./sso
+    ./sso/storage/redis
+    ./tests/gin_core_app
+    ./tests/gin_core_flow
 )
 ```
 

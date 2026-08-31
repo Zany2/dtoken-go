@@ -3,6 +3,8 @@ package sso
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 )
@@ -48,6 +50,34 @@ func TestSSONewServerWithConfigFallsBackToBuiltIns(t *testing.T) {
 	}
 	if ticket.Ticket == "" {
 		t.Fatal("GenerateTicket() returned empty ticket")
+	}
+}
+
+// TestSSOServerCloseOwnership verifies server-owned storage is closed exactly once. TestSSOServerCloseOwnership 验证 Server 仅关闭自有存储且只关闭一次。
+func TestSSOServerCloseOwnership(t *testing.T) {
+	externalStorage := &closeTrackingStorage{MemoryStorage: NewMemoryStorage()}
+	externalServer := NewServer(WithStorage(externalStorage))
+	if err := externalServer.Close(); err != nil {
+		t.Fatalf("Close() external storage error = %v", err)
+	}
+	if externalStorage.closeCount != 0 {
+		t.Fatalf("Close() external storage count = %d, want 0", externalStorage.closeCount)
+	}
+
+	closeErr := errors.New("close failed")
+	ownedStorage := &closeTrackingStorage{
+		MemoryStorage: NewMemoryStorage(),
+		closeErr:      closeErr,
+	}
+	ownedServer := NewServer(WithStorage(ownedStorage), WithStorageOwnership(true))
+	if err := ownedServer.Close(); !errors.Is(err, closeErr) {
+		t.Fatalf("Close() owned storage error = %v, want %v", err, closeErr)
+	}
+	if err := ownedServer.Close(); !errors.Is(err, closeErr) {
+		t.Fatalf("Close() owned storage second error = %v, want %v", err, closeErr)
+	}
+	if ownedStorage.closeCount != 1 {
+		t.Fatalf("Close() owned storage count = %d, want 1", ownedStorage.closeCount)
 	}
 }
 
@@ -265,6 +295,57 @@ func TestSSOClientSessionFlow(t *testing.T) {
 	}
 	if len(sessions) != 0 {
 		t.Fatalf("GetClientSessions() after clear = %+v, want empty", sessions)
+	}
+}
+
+// TestSSOClientSessionConcurrentRegistration preserves all local index updates. TestSSOClientSessionConcurrentRegistration 验证并发注册不会丢失当前实例内的索引更新。
+func TestSSOClientSessionConcurrentRegistration(t *testing.T) {
+	ctx := context.Background()
+	server := NewServer()
+	const clientCount = 32
+
+	for i := 0; i < clientCount; i++ {
+		clientID := fmt.Sprintf("app-%d", i)
+		if err := server.RegisterClient(&Client{
+			ClientID:     clientID,
+			RedirectURIs: []string{fmt.Sprintf("https://%s.example.com/callback", clientID)},
+			Modes:        []Mode{ModeTicket},
+		}); err != nil {
+			t.Fatalf("RegisterClient(%q) error = %v", clientID, err)
+		}
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < clientCount; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			clientID := fmt.Sprintf("app-%d", i)
+			callback := fmt.Sprintf("https://%s.example.com/callback", clientID)
+			if _, err := server.RegisterClientSession(ctx, "user-concurrent", clientID, callback); err != nil {
+				t.Errorf("RegisterClientSession(%q) error = %v", clientID, err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	sessions, err := server.GetClientSessions(ctx, "user-concurrent")
+	if err != nil {
+		t.Fatalf("GetClientSessions() error = %v", err)
+	}
+	if len(sessions) != clientCount {
+		t.Fatalf("GetClientSessions() count = %d, want %d", len(sessions), clientCount)
+	}
+	seen := make(map[string]bool, len(sessions))
+	for _, session := range sessions {
+		seen[session.ClientID] = true
+	}
+	for i := 0; i < clientCount; i++ {
+		clientID := fmt.Sprintf("app-%d", i)
+		if !seen[clientID] {
+			t.Fatalf("GetClientSessions() missing client %q", clientID)
+		}
 	}
 }
 
@@ -541,4 +622,17 @@ func registerTestClient(t *testing.T, server *Server) {
 	if err := server.RegisterClient(newTestClient()); err != nil {
 		t.Fatalf("RegisterClient() error = %v", err)
 	}
+}
+
+// closeTrackingStorage records close calls for lifecycle tests. closeTrackingStorage 为生命周期测试记录关闭调用。
+type closeTrackingStorage struct {
+	*MemoryStorage
+	closeCount int
+	closeErr   error
+}
+
+// Close records one close call and returns the configured error. Close 记录一次关闭调用并返回预设错误。
+func (s *closeTrackingStorage) Close() error {
+	s.closeCount++
+	return s.closeErr
 }

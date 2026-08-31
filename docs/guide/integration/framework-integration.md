@@ -257,6 +257,15 @@ adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuthType("admin")))
 adminGroup.Use(gindt.PermissionMiddleware(ctx, []string{"admin:read"}, gindt.WithAuthType("admin")))
 ```
 
+For applications that do not use the global manager registry, inject a manager directly with `WithManager`. The explicit manager takes precedence over `WithAuthType` and works with context, auth, access, permission, and role middleware:
+
+```go
+auth.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithManager(mgr)))
+auth.Use(gindt.AuthMiddleware(ctx, gindt.WithManager(mgr)))
+```
+
+Annotation handlers with an empty `AuthType` reuse the manager already stored in the request context. An explicit annotation `AuthType` continues to resolve through the global registry for multi-auth routes.
+
 ### Permission And Role Logic
 
 Permission and role middleware support different logic modes:

@@ -27,6 +27,13 @@ From the repository root:
 go test ./tests/gin_core_flow -v
 ```
 
+To enable the Redis-backed flows:
+
+```powershell
+$env:DTOKEN_REDIS_URL='redis://:password@localhost:6379/0'
+go test ./tests/gin_core_flow -v
+```
+
 If your Windows shell has a non-Windows target configured:
 
 ```powershell
@@ -38,11 +45,13 @@ go test ./tests/gin_core_flow -v
 
 ## Storage
 
-The current `gin_core_flow` suite uses Redis by default:
+The `gin_core_flow` suite uses Redis only when `DTOKEN_REDIS_URL` is explicitly set:
 
 ```text
-redis://:root@192.168.19.104:6379/0
+redis://localhost:6379/0
 ```
+
+Without this environment variable, Redis-backed flow tests are skipped. The reusable `gin_core_app` fixture uses in-memory storage when `Config.RedisURL` is empty.
 
 Each test app gets a short isolated key prefix:
 

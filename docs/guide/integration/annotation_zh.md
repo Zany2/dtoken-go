@@ -41,7 +41,7 @@ r := gin.Default()
 r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
 ```
 
-后续注解中间件会复用请求里缓存的 `DTokenContext`。
+后续注解中间件会复用请求里缓存的 `DTokenContext`。如果该上下文由 `WithManager` 创建，`AuthType` 为空的注解会继续使用同一个显式 Manager；注解显式填写 `AuthType` 时，仍保留通过全局注册表选择认证体系的行为。
 
 ## 基础用法
 
@@ -174,7 +174,7 @@ r.GET("/admin",
 
 ## 其他框架
 
-`gf`、`echo`、`fiber`、`chi`、`hertz`、`kratos` 都已经有同风格封装，只是函数签名会贴合各自框架。
+`gf`、`echo`、`fiber`、`chi`、`hertz`、`kratos` 都已经有同风格封装，只是函数签名会贴合各自框架。Beego 使用过滤器模型，通过 `RouteAccessHandlerFromAnnotations` 配合 `AccessMiddleware` 提供等价入口。
 
 核心思路不变：先注册 `DTokenContext`，再挂注解式中间件。
 

@@ -103,7 +103,7 @@ The usage is the same as with UUID or random token styles.
 ## Generator APIs
 
 ```go
-generator := sgenerator.NewGenerator(7200, "your-secret", adapter.TokenStyleJWT)
+generator := dgenerator.NewGenerator(7200, "your-secret", adapter.TokenStyleJWT)
 
 token, err := generator.Generate("10001", "web", "chrome-mac")
 claims, err := generator.ParseJWT(token)

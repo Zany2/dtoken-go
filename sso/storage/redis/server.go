@@ -13,7 +13,7 @@ func NewServer(redisURL string, options ...sso.Option) (*sso.Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	options = append([]sso.Option{sso.WithStorage(storage)}, options...)
+	options = append([]sso.Option{sso.WithStorage(storage), sso.WithStorageOwnership(true)}, options...)
 	return sso.NewServer(options...), nil
 }
 
@@ -23,7 +23,7 @@ func NewServerFromConfig(cfg *redis.Config, options ...sso.Option) (*sso.Server,
 	if err != nil {
 		return nil, err
 	}
-	options = append([]sso.Option{sso.WithStorage(storage)}, options...)
+	options = append([]sso.Option{sso.WithStorage(storage), sso.WithStorageOwnership(true)}, options...)
 	return sso.NewServer(options...), nil
 }
 

@@ -111,7 +111,7 @@ ttl, err := dtoken.GetTokenTTL(ctx, token)
 ## 生成器能力
 
 ```go
-generator := sgenerator.NewGenerator(7200, "your-secret", adapter.TokenStyleJWT)
+generator := dgenerator.NewGenerator(7200, "your-secret", adapter.TokenStyleJWT)
 
 token, err := generator.Generate("10001", "web", "chrome-mac")
 claims, err := generator.ParseJWT(token)

@@ -69,18 +69,31 @@
 - 以 `context.Context` 为统一入口
 - 内部通过全局 `Manager` 映射管理不同认证体系
 
-### 3. 组件实现层 (com/)
+### 3. SSO 层 (sso/)
+
+**职责**：提供跨服务单点登录流程，同时不让核心 Manager 依赖具体 Web 框架。
+
+**主要能力**：
+- 服务端签发登录 Ticket 和一次性 OAuth2 Code
+- 客户端注册与单点登出回调
+- 可插拔存储，多实例部署可使用 Redis
+
+**依赖特点**：
+- 依赖核心认证契约和 Storage 适配器
+- 由 `sso.Server` 管理 SSO 生命周期和存储所有权
+
+### 4. 组件实现层 (com/)
 
 **职责**：提供可替换组件实现。
 
 **当前模块**：
 - `com/storage/*` - 存储实现
 - `com/codec/*` - 编解码实现
-- `com/generator/sgenerator` - Token 生成器
+- `com/generator/dgenerator` - Token 生成器
 - `com/log/*` - 日志实现
 - `com/pool/ants` - 续期协程池实现
 
-### 4. 框架集成层 (integrations/)
+### 5. 框架集成层 (integrations/)
 
 **职责**：提供 Web 框架适配。
 
@@ -92,6 +105,7 @@
 - `chi`
 - `hertz`
 - `kratos`
+- `beego`
 
 **主要功能**：
 - 请求上下文适配

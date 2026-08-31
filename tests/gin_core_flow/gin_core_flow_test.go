@@ -9,7 +9,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,9 +25,6 @@ import (
 	"github.com/Zany2/dtoken-go/core/listener"
 	gincoreapp "github.com/Zany2/dtoken-go/tests/gin_core_app"
 )
-
-// flowRedisURL stores the Redis endpoint used by end-to-end flow tests. flowRedisURL 保存端到端流程测试使用的 Redis 地址。
-const flowRedisURL = "redis://:root@192.168.19.104:6379/0"
 
 // Shared flow-test state coordinates unique prefixes and Redis availability checks. Shared flow-test state 协调唯一前缀和 Redis 可用性检查。
 var (
@@ -55,8 +55,9 @@ type flowClient struct {
 func newFlowClient(t *testing.T, cfg gincoreapp.Config) *flowClient {
 	t.Helper()
 
-	skipFlowRedisUnavailable(t)
-	cfg.RedisURL = flowRedisURL
+	redisURL := configuredFlowRedisURL(t)
+	skipFlowRedisUnavailable(t, redisURL)
+	cfg.RedisURL = redisURL
 	keyPrefix := flowKeyPrefix(t)
 	cfg.KeyPrefix = keyPrefix
 	app, err := gincoreapp.NewApp(cfg)
@@ -74,11 +75,29 @@ func newFlowClient(t *testing.T, cfg gincoreapp.Config) *flowClient {
 }
 
 // skipFlowRedisUnavailable skips a flow test when Redis is unavailable. skipFlowRedisUnavailable 在 Redis 不可用时跳过流程测试。
-func skipFlowRedisUnavailable(t *testing.T) {
+func skipFlowRedisUnavailable(t *testing.T, redisURL string) {
 	t.Helper()
 
 	flowRedisCheck.Do(func() {
-		conn, err := net.DialTimeout("tcp", "192.168.19.104:6379", 300*time.Millisecond)
+		parsed, err := url.Parse(redisURL)
+		if err != nil {
+			flowRedisCheckErr = fmt.Errorf("parse DTOKEN_REDIS_URL: %w", err)
+			return
+		}
+		if (parsed.Scheme != "redis" && parsed.Scheme != "rediss") || parsed.Hostname() == "" {
+			flowRedisCheckErr = fmt.Errorf("DTOKEN_REDIS_URL must use redis:// or rediss:// with a host")
+			return
+		}
+		port := parsed.Port()
+		if port == "" {
+			port = "6379"
+		}
+		portNumber, portErr := strconv.Atoi(port)
+		if portErr != nil || portNumber <= 0 {
+			flowRedisCheckErr = fmt.Errorf("invalid Redis port %q", port)
+			return
+		}
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(parsed.Hostname(), strconv.Itoa(portNumber)), 300*time.Millisecond)
 		if err != nil {
 			flowRedisCheckErr = err
 			return
@@ -88,6 +107,16 @@ func skipFlowRedisUnavailable(t *testing.T) {
 	if flowRedisCheckErr != nil {
 		t.Skipf("skip gin core flow test: redis unavailable: %v", flowRedisCheckErr)
 	}
+}
+
+// configuredFlowRedisURL returns the explicit endpoint for end-to-end tests. configuredFlowRedisURL 返回端到端测试显式配置的 Redis 地址。
+func configuredFlowRedisURL(t *testing.T) string {
+	t.Helper()
+	value := strings.TrimSpace(os.Getenv("DTOKEN_REDIS_URL"))
+	if value == "" {
+		t.Skip("set DTOKEN_REDIS_URL to run Redis-backed flow tests")
+	}
+	return value
 }
 
 // flowKeyPrefix creates a unique storage prefix for a flow test. flowKeyPrefix 为流程测试创建唯一存储前缀。

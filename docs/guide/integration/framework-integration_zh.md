@@ -257,6 +257,15 @@ adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuthType("admin")))
 adminGroup.Use(gindt.PermissionMiddleware(ctx, []string{"admin:read"}, gindt.WithAuthType("admin")))
 ```
 
+如果应用不使用全局 Manager 注册表，可以通过 `WithManager` 直接注入 Manager。显式注入的 Manager 优先于 `WithAuthType`，并适用于上下文、认证、访问、权限和角色中间件：
+
+```go
+auth.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithManager(mgr)))
+auth.Use(gindt.AuthMiddleware(ctx, gindt.WithManager(mgr)))
+```
+
+当注解的 `AuthType` 为空时，注解处理器会复用请求上下文中已经保存的 Manager；显式填写 `AuthType` 时，仍通过全局注册表解析，适合多认证体系路由。
+
 ### 权限和角色逻辑
 
 权限、角色中间件支持不同逻辑类型。常见用法是：

@@ -193,19 +193,27 @@
 
 ## 运行
 
-自动化流程测试会强制使用下面这个固定 Redis URL。这样可以让测试行为更接近多进程生产存储语义，也能覆盖 Redis 扫描和清理逻辑。`tests/gin_core_app` 自身在 `Config.RedisURL` 为空时仍然使用内存存储。
+自动化流程测试仅在显式配置 `DTOKEN_REDIS_URL` 时使用 Redis。这样默认测试命令不依赖外部服务，同时仍可覆盖多进程存储语义、Redis 扫描和清理逻辑。
 
 Redis URL 示例：
 
 ```text
-redis://:root@192.168.19.104:6379/0
 redis://localhost:6379/0
 redis://:password@localhost:6379/0
 ```
 
+未设置 `DTOKEN_REDIS_URL` 时，Redis 流程测试会自动跳过。
+
 在当前目录运行：
 
 ```powershell
+go test ./...
+```
+
+如需启用 Redis 流程测试，请先设置地址：
+
+```powershell
+$env:DTOKEN_REDIS_URL='redis://:password@localhost:6379/0'
 go test ./...
 ```
 

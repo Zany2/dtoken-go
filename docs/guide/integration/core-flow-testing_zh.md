@@ -27,6 +27,13 @@ httptest.NewServer(app.Router())
 go test ./tests/gin_core_flow -v
 ```
 
+如需启用 Redis 流程测试：
+
+```powershell
+$env:DTOKEN_REDIS_URL='redis://:password@localhost:6379/0'
+go test ./tests/gin_core_flow -v
+```
+
 如果 Windows 环境里曾经设置过非 Windows 目标，可以先重置：
 
 ```powershell
@@ -38,11 +45,13 @@ go test ./tests/gin_core_flow -v
 
 ## 存储配置
 
-当前 `gin_core_flow` 默认使用 Redis：
+`gin_core_flow` 仅在显式设置 `DTOKEN_REDIS_URL` 时使用 Redis：
 
 ```text
-redis://:root@192.168.19.104:6379/0
+redis://localhost:6379/0
 ```
+
+未设置该环境变量时，Redis 流程测试会自动跳过。可复用的 `gin_core_app` fixture 在 `Config.RedisURL` 为空时使用内存存储。
 
 每个测试 app 会生成独立短前缀：
 

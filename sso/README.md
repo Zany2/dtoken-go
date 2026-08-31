@@ -114,6 +114,7 @@ server, err := ssoredis.NewServer(
 if err != nil {
 	return err
 }
+defer server.Close() // The URL/config constructors create the Redis client and transfer ownership to Server.
 ```
 
 You can also inject an existing storage explicitly:
@@ -123,6 +124,8 @@ server := sso.NewServer(
 	sso.WithStorage(storage),
 )
 ```
+
+`server.Close()` does not close injected storage by default; close that storage from the owner that created it.
 
 ## Client Helper
 
@@ -267,7 +270,7 @@ To reduce SSRF risk from malicious `callback` values, the login center only reco
 
 ## Redis Storage
 
-Production deployments should use Redis storage for the SSO Server. One-time credentials such as Ticket and OAuth2 Code require atomic get-and-delete behavior, which the Redis component provides. ClientSession records used by single logout can also be shared across multiple SSO Server instances.
+Production deployments should use Redis storage for the SSO Server. One-time credentials such as Ticket and OAuth2 Code require atomic get-and-delete behavior, which the Redis component provides. ClientSession records used by single logout can also be shared across multiple SSO Server instances. Registrations are serialized within each Server instance; deployments that concurrently register the same login subject across instances should add a storage-level atomic merge operation before relying on that write pattern.
 
 ```go
 import ssoredis "github.com/Zany2/dtoken-go/sso/storage/redis"
@@ -288,7 +291,7 @@ For Redis verification, focus on four flows: Ticket issue and consume, OAuth2 Co
 You can also run the optional Redis integration test with an environment variable:
 
 ```powershell
-$env:DTOKEN_SSO_REDIS="redis://:password@127.0.0.1:6379/0"
+$env:DTOKEN_REDIS_URL="redis://:password@127.0.0.1:6379/0"
 go test ./sso/storage/redis/... -v
 ```
 

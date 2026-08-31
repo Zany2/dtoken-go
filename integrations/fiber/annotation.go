@@ -43,7 +43,8 @@ func GetHandler(ctx context.Context, handler gofiber.Handler, failFunc func(c *g
 			return c.Next()
 		}
 
-		mgr, err := authcheck.GetManager(ann.AuthType)
+		cached, _ := GetDTokenContext(c)
+		mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached)
 		if err != nil {
 			if failFunc != nil {
 				failFunc(c, err)

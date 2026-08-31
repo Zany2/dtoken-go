@@ -3,19 +3,15 @@ package manager
 import (
 	"context"
 	"errors"
+	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/redis/go-redis/v9"
-)
-
-const (
-	managerRedisTestAddr     = "192.168.19.104:6379"
-	managerRedisTestPassword = "root"
-	managerRedisTestDatabase = 0
 )
 
 var _ adapter.FullStorage = (*managerRedisTestStorage)(nil)
@@ -28,14 +24,19 @@ type managerRedisTestStorage struct {
 func newManagerRedisTestStorage(t interface {
 	Helper()
 	Fatalf(string, ...any)
+	Skipf(string, ...any)
 	Cleanup(func())
 }, cfg *config.Config) adapter.FullStorage {
 	t.Helper()
-	client := redis.NewClient(&redis.Options{
-		Addr:     managerRedisTestAddr,
-		Password: managerRedisTestPassword,
-		DB:       managerRedisTestDatabase,
-	})
+	redisURL := strings.TrimSpace(os.Getenv("DTOKEN_REDIS_URL"))
+	if redisURL == "" {
+		t.Skipf("set DTOKEN_REDIS_URL to run manager Redis tests")
+	}
+	redisOptions, err := redis.ParseURL(redisURL)
+	if err != nil {
+		t.Fatalf("parse DTOKEN_REDIS_URL error = %v", err)
+	}
+	client := redis.NewClient(redisOptions)
 	storage := &managerRedisTestStorage{client: client, prefix: cfg.KeyPrefix}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

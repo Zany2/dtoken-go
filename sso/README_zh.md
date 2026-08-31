@@ -114,6 +114,7 @@ server, err := ssoredis.NewServer(
 if err != nil {
 	return err
 }
+defer server.Close() // URL/Config 构造器创建的 Redis Client 由 Server 负责关闭。
 ```
 
 也可以显式注入已有存储：
@@ -123,6 +124,8 @@ server := sso.NewServer(
 	sso.WithStorage(storage),
 )
 ```
+
+`server.Close()` 默认不会关闭注入的已有存储；请由创建该存储的调用方负责关闭。
 
 ## Client 辅助
 
@@ -267,7 +270,7 @@ httpSSO.Register(mux)
 
 ## Redis 存储
 
-生产环境建议把 SSO Server 切换到 Redis 存储。Ticket、OAuth2 Code 这类一次性凭证依赖原子读删，Redis 组件已经提供对应能力；ClientSession 这类单点注销记录也可以跨多实例共享。
+生产环境建议把 SSO Server 切换到 Redis 存储。Ticket、OAuth2 Code 这类一次性凭证依赖原子读删，Redis 组件已经提供对应能力；ClientSession 这类单点注销记录也可以跨多实例共享。每个 Server 实例内的注册操作已串行化；如果多个实例会并发注册同一登录主体，应先为存储层增加原子合并能力，再依赖这种写入模式。
 
 ```go
 import ssoredis "github.com/Zany2/dtoken-go/sso/storage/redis"
@@ -288,7 +291,7 @@ Redis 下建议重点验证四条链路：Ticket 生成与消费、OAuth2 Code �
 也可以通过环境变量运行 Redis 可选集成测试：
 
 ```powershell
-$env:DTOKEN_SSO_REDIS="redis://:password@127.0.0.1:6379/0"
+$env:DTOKEN_REDIS_URL="redis://:password@127.0.0.1:6379/0"
 go test ./sso/storage/redis/... -v
 ```
 

@@ -19,11 +19,12 @@ type Option func(*serverBuildOptions)
 
 // serverBuildOptions stores normalized constructor dependencies. serverBuildOptions 保存规范化后的构造依赖。
 type serverBuildOptions struct {
-	authType   string
-	keyPrefix  string
-	storage    adapter.Storage
-	serializer adapter.Codec
-	config     *Config
+	authType     string
+	keyPrefix    string
+	storage      adapter.Storage
+	storageOwned bool
+	serializer   adapter.Codec
+	config       *Config
 }
 
 // NewServer creates a Server with built-in JSON codec and memory storage. NewServer 使用内置 JSON 编解码和内存存储创建 Server。
@@ -31,7 +32,6 @@ func NewServer(options ...Option) *Server {
 	opts := serverBuildOptions{
 		authType:   DefaultAuthType,
 		keyPrefix:  DefaultKeyPrefix,
-		storage:    NewMemoryStorage(),
 		serializer: JSONCodec{},
 		config:     DefaultConfig(),
 	}
@@ -40,7 +40,7 @@ func NewServer(options ...Option) *Server {
 			option(&opts)
 		}
 	}
-	return NewServerWithConfig(opts.authType, opts.keyPrefix, opts.storage, opts.serializer, opts.config)
+	return newServerWithConfig(opts.authType, opts.keyPrefix, opts.storage, opts.serializer, opts.config, opts.storageOwned)
 }
 
 // WithAuthType sets the SSO namespace. WithAuthType 设置 SSO 命名空间。
@@ -66,7 +66,15 @@ func WithStorage(storage adapter.Storage) Option {
 	return func(opts *serverBuildOptions) {
 		if storage != nil {
 			opts.storage = storage
+			opts.storageOwned = false
 		}
+	}
+}
+
+// WithStorageOwnership sets whether the server owns and closes the storage adapter. WithStorageOwnership 设置 Server 是否持有并关闭存储适配器。
+func WithStorageOwnership(owned bool) Option {
+	return func(opts *serverBuildOptions) {
+		opts.storageOwned = owned
 	}
 }
 

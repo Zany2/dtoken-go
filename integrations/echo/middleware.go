@@ -122,6 +122,8 @@ func (req *RouteAccessRequest) SetLogicType(logicType LogicType) {
 type AuthOptions struct {
 	// AuthType selects the auth type. AuthType 指定认证类型。
 	AuthType string
+	// Manager selects the manager explicitly; nil falls back to the global registry. Manager 显式指定 Manager；为 nil 时回退到全局注册表。
+	Manager *manager.Manager
 	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
 	LogicType LogicType
 	// FailFunc handles authentication failures. FailFunc 处理认证失败。
@@ -141,6 +143,15 @@ func defaultAuthOptions() *AuthOptions {
 func WithAuthType(authType string) AuthOption {
 	return func(o *AuthOptions) {
 		o.AuthType = authType
+	}
+}
+
+// WithManager sets the manager used by middleware. WithManager 设置中间件使用的 Manager。
+func WithManager(mgr *manager.Manager) AuthOption {
+	return func(o *AuthOptions) {
+		if mgr != nil {
+			o.Manager = mgr
+		}
 	}
 }
 
@@ -181,7 +192,7 @@ func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) ec
 
 	return func(next echo4.HandlerFunc) echo4.HandlerFunc {
 		return func(c echo4.Context) error {
-			mgr, err := authcheck.GetManager(options.AuthType)
+			mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					return options.FailFunc(c, err)
@@ -212,7 +223,7 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) echo4.MiddlewareFun
 				return authReq.result
 			}
 
-			mgr, err := authcheck.GetManager(options.AuthType)
+			mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					return options.FailFunc(c, err)
@@ -258,7 +269,7 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) echo4.MiddlewareF
 				return next(c)
 			}
 
-			mgr, err := authcheck.GetManager(accessReq.AuthType)
+			mgr, err := authcheck.ResolveManager(options.Manager, accessReq.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					return options.FailFunc(c, err)
@@ -316,7 +327,7 @@ func PermissionMiddleware(ctx context.Context, permissions []string, opts ...Aut
 				return next(c)
 			}
 
-			mgr, err := authcheck.GetManager(options.AuthType)
+			mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					return options.FailFunc(c, err)
@@ -365,7 +376,7 @@ func RoleMiddleware(ctx context.Context, roles []string, opts ...AuthOption) ech
 				return next(c)
 			}
 
-			mgr, err := authcheck.GetManager(options.AuthType)
+			mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					return options.FailFunc(c, err)

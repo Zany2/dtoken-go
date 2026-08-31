@@ -13,9 +13,9 @@ import (
 
 // TestRedisSSOFlow verifies the Redis SSO Flow scenario. TestRedisSSOFlow 验证对应的 Redis SSO 集成场景。
 func TestRedisSSOFlow(t *testing.T) {
-	redisURL := os.Getenv("DTOKEN_SSO_REDIS")
+	redisURL := strings.TrimSpace(os.Getenv("DTOKEN_REDIS_URL"))
 	if redisURL == "" {
-		t.Skip("set DTOKEN_SSO_REDIS to run Redis SSO integration test")
+		t.Skip("set DTOKEN_REDIS_URL to run Redis SSO integration test")
 	}
 
 	ctx := context.Background()

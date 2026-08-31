@@ -53,7 +53,8 @@ func GetHandler(
 			return
 		}
 
-		mgr, err := authcheck.GetManager(ann.AuthType)
+		cached, _ := GetDTokenContext(reqCtx)
+		mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached)
 		if err != nil {
 			if failFunc != nil {
 				failFunc(c, reqCtx, err)

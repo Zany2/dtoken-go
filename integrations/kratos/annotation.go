@@ -41,7 +41,8 @@ func GetHandler(failFunc FailFunc, annotations ...*Annotation) middleware.Middle
 				return next(ctx, req)
 			}
 
-			mgr, err := authcheck.GetManager(ann.AuthType)
+			cached, _ := GetDTokenContext(ctx)
+			mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached)
 			if err != nil {
 				return nil, dispatchFail(ctx, failFunc, err)
 			}
@@ -148,7 +149,8 @@ func GetLoginIDFromRequest(ctx context.Context, authType ...string) (string, err
 
 // IsLoginFromRequest checks login state from request context IsLoginFromRequest 从请求上下文检查登录状态
 func IsLoginFromRequest(ctx context.Context, authType ...string) bool {
-	mgr, err := authcheck.GetManager(firstAuthType(authType...))
+	cached, _ := GetDTokenContext(ctx)
+	mgr, err := authcheck.ResolveManagerFromContext(firstAuthType(authType...), cached)
 	if err != nil {
 		return false
 	}
@@ -163,7 +165,8 @@ func IsLoginFromRequest(ctx context.Context, authType ...string) bool {
 
 // GetTokenFromRequest gets token from request context GetTokenFromRequest 从请求上下文获取 Token
 func GetTokenFromRequest(ctx context.Context, authType ...string) string {
-	mgr, err := authcheck.GetManager(firstAuthType(authType...))
+	cached, _ := GetDTokenContext(ctx)
+	mgr, err := authcheck.ResolveManagerFromContext(firstAuthType(authType...), cached)
 	if err != nil {
 		return ""
 	}

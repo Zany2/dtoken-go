@@ -3,6 +3,10 @@ package redis
 
 import (
 	"context"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,25 +15,10 @@ import (
 	redisv9 "github.com/redis/go-redis/v9"
 )
 
-// Redis test connection settings Redis 测试连接配置
-const (
-	testRedisAddr     = "192.168.19.104:6379"
-	testRedisHost     = "192.168.19.104"
-	testRedisPort     = 6379
-	testRedisPassword = "root"
-	testRedisDatabase = 0
-)
-
 // TestStorageContract verifies Redis storage follows the shared storage contract. TestStorageContract 验证 Redis 存储符合共享存储契约。
 func TestStorageContract(t *testing.T) {
 	storagetest.RunStorageContract(t, func(t *testing.T) adapter.FullStorage {
-		storage, err := NewStorageFromConfig(&Config{
-			Host:             testRedisHost,
-			Port:             testRedisPort,
-			Password:         testRedisPassword,
-			Database:         testRedisDatabase,
-			OperationTimeout: 3 * time.Second,
-		})
+		storage, err := NewStorage(redisTestURL(t))
 		if err != nil {
 			t.Skipf("skip redis storage contract: %v", err)
 		}
@@ -42,11 +31,7 @@ func TestStorageContract(t *testing.T) {
 
 // TestNewStorageFromClient verifies client injection behavior 测试客户端注入行为
 func TestNewStorageFromClient(t *testing.T) {
-	client := redisv9.NewClient(&redisv9.Options{
-		Addr:     testRedisAddr,
-		Password: testRedisPassword,
-		DB:       testRedisDatabase,
-	})
+	client := redisv9.NewClient(&redisv9.Options{})
 	storage := NewStorageFromClient(client)
 
 	if storage == nil {
@@ -76,11 +61,10 @@ func TestNewStorageFromConfigRejectsNil(t *testing.T) {
 
 // TestNewStorageFromClientHasNoOperationTimeout verifies client injection keeps caller context behavior 测试客户端注入不强制覆盖调用方上下文
 func TestNewStorageFromClientHasNoOperationTimeout(t *testing.T) {
-	storage := NewStorageFromClient(redisv9.NewClient(&redisv9.Options{
-		Addr:     testRedisAddr,
-		Password: testRedisPassword,
-		DB:       testRedisDatabase,
-	}))
+	storage := NewStorageFromClient(redisv9.NewClient(&redisv9.Options{}))
+	t.Cleanup(func() {
+		_ = storage.Close()
+	})
 	ctx, cancel := storage.withOperationTimeout(context.Background())
 	defer cancel()
 
@@ -106,13 +90,7 @@ func TestWithOperationTimeoutAppliesConfiguredTimeout(t *testing.T) {
 
 // TestNewStorageFromConfigConnects verifies configured Redis connectivity TestNewStorageFromConfigConnects 验证指定 Redis 配置可连接。
 func TestNewStorageFromConfigConnects(t *testing.T) {
-	storage, err := NewStorageFromConfig(&Config{
-		Host:             testRedisHost,
-		Port:             testRedisPort,
-		Password:         testRedisPassword,
-		Database:         testRedisDatabase,
-		OperationTimeout: 3 * time.Second,
-	})
+	storage, err := NewStorageFromConfig(redisTestConfig(t))
 	if err != nil {
 		t.Skipf("skip redis storage connectivity test: %v", err)
 	}
@@ -124,6 +102,58 @@ func TestNewStorageFromConfigConnects(t *testing.T) {
 
 	if err := storage.Ping(context.Background()); err != nil {
 		t.Fatalf("Ping() error = %v", err)
+	}
+}
+
+// redisTestURL returns the explicitly configured Redis endpoint. redisTestURL 返回显式配置的 Redis 地址。
+func redisTestURL(t *testing.T) string {
+	t.Helper()
+	value := strings.TrimSpace(os.Getenv("DTOKEN_REDIS_URL"))
+	if value == "" {
+		t.Skip("set DTOKEN_REDIS_URL to run Redis integration tests")
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || (parsed.Scheme != "redis" && parsed.Scheme != "rediss") || parsed.Hostname() == "" {
+		t.Fatalf("DTOKEN_REDIS_URL must use redis:// or rediss:// with a host")
+	}
+	return value
+}
+
+// redisTestConfig converts the configured Redis URL into storage config. redisTestConfig 将配置的 Redis URL 转换为存储配置。
+func redisTestConfig(t *testing.T) *Config {
+	t.Helper()
+	value := redisTestURL(t)
+	parsed, err := url.Parse(value)
+	if err != nil {
+		t.Fatalf("parse DTOKEN_REDIS_URL error = %v", err)
+	}
+	if parsed.Scheme != "redis" || parsed.Hostname() == "" {
+		t.Skip("NewStorageFromConfig connectivity test requires a redis:// URL")
+	}
+	port := 6379
+	if parsed.Port() != "" {
+		port, err = strconv.Atoi(parsed.Port())
+		if err != nil || port <= 0 {
+			t.Fatalf("parse DTOKEN_REDIS_URL port error = %v", err)
+		}
+	}
+	password := ""
+	if parsed.User != nil {
+		password, _ = parsed.User.Password()
+	}
+	database := 0
+	if parsed.Path != "" && parsed.Path != "/" {
+		database, err = strconv.Atoi(strings.TrimPrefix(parsed.Path, "/"))
+		if err != nil || database < 0 {
+			t.Fatalf("parse DTOKEN_REDIS_URL database error = %v", err)
+		}
+	}
+	return &Config{
+		Host:             parsed.Hostname(),
+		Port:             port,
+		Password:         password,
+		Database:         database,
+		OperationTimeout: 3 * time.Second,
 	}
 }
 

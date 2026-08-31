@@ -6,11 +6,7 @@
 
 `NewApp` uses in-memory storage when `Config.RedisURL` is empty. Pass `Config.RedisURL` to use Redis storage instead.
 
-The command-line server in `cmd/server` uses `DTOKEN_REDIS_URL` when it is set. If the environment variable is empty, it falls back to:
-
-```text
-redis://:root@192.168.19.104:6379/0
-```
+The command-line server in `cmd/server` uses `DTOKEN_REDIS_URL` when it is set. If the environment variable is empty, it uses in-memory storage.
 
 ## Run Manually
 

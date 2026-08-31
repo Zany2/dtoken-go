@@ -47,7 +47,8 @@ func GetHandler(ctx context.Context, handler gin.HandlerFunc, failFunc func(c *g
 			return
 		}
 
-		mgr, err := authcheck.GetManager(ann.AuthType)
+		cached, _ := GetDTokenContext(c)
+		mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached)
 		if err != nil {
 			if failFunc != nil {
 				failFunc(c, err)

@@ -69,18 +69,31 @@ English | [中文文档](architecture_zh.md)
 - uses `context.Context` as the unified entry
 - manages different auth systems through the global manager registry
 
-### 3. Component Layer (com/)
+### 3. SSO Layer (sso/)
+
+**Responsibilities**: provide cross-service single sign-on flows without coupling the core manager to a web framework.
+
+**Main capabilities**:
+- server-issued login tickets and one-time OAuth2 codes
+- client registration and single logout callbacks
+- pluggable storage, with Redis support for multi-instance deployments
+
+**Dependency characteristics**:
+- depends on core auth contracts and storage adapters
+- keeps SSO lifecycle and storage ownership inside `sso.Server`
+
+### 4. Component Layer (com/)
 
 **Responsibilities**: provide replaceable component implementations.
 
 **Current modules**:
 - `com/storage/*` - storage implementations
 - `com/codec/*` - codec implementations
-- `com/generator/sgenerator` - token generator
+- `com/generator/dgenerator` - token generator
 - `com/log/*` - log implementations
 - `com/pool/ants` - renew task pool implementation
 
-### 4. Framework Integration Layer (integrations/)
+### 5. Framework Integration Layer (integrations/)
 
 **Responsibilities**: provide web framework adapters.
 
@@ -92,6 +105,7 @@ English | [中文文档](architecture_zh.md)
 - `chi`
 - `hertz`
 - `kratos`
+- `beego`
 
 **Main features**:
 - request context adaptation

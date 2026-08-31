@@ -102,11 +102,11 @@ Redis 下建议重点观察以下 key 类型：
 可选集成测试：
 
 ```powershell
-$env:DTOKEN_SSO_REDIS="redis://:password@127.0.0.1:6379/0"
+$env:DTOKEN_REDIS_URL="redis://:password@127.0.0.1:6379/0"
 go test ./sso/storage/redis/... -v
 ```
 
-没有设置 `DTOKEN_SSO_REDIS` 时，该测试会自动跳过。
+没有设置 `DTOKEN_REDIS_URL` 时，该测试会自动跳过。
 
 ## 安全边界
 

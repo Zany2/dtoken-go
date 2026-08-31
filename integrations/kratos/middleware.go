@@ -127,6 +127,8 @@ func (req *RouteAccessRequest) SetLogicType(logicType LogicType) {
 type AuthOptions struct {
 	// AuthType selects the auth type. AuthType 指定认证类型。
 	AuthType string
+	// Manager selects the manager explicitly; nil falls back to the global registry. Manager 显式指定 Manager；为 nil 时回退到全局注册表。
+	Manager *manager.Manager
 	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
 	LogicType LogicType
 	// FailFunc handles authentication failures. FailFunc 处理认证失败。
@@ -151,6 +153,15 @@ func authMiddlewareLoginError() error {
 func WithAuthType(authType string) AuthOption {
 	return func(o *AuthOptions) {
 		o.AuthType = authType
+	}
+}
+
+// WithManager sets the manager used by middleware. WithManager 设置中间件使用的 Manager。
+func WithManager(mgr *manager.Manager) AuthOption {
+	return func(o *AuthOptions) {
+		if mgr != nil {
+			o.Manager = mgr
+		}
 	}
 }
 
@@ -191,7 +202,7 @@ func RegisterDTokenContextMiddleware(opts ...AuthOption) middleware.Middleware {
 
 	return func(next middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req any) (any, error) {
-			mgr, err := authcheck.GetManager(options.AuthType)
+			mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
 			if err != nil {
 				return nil, dispatchFail(ctx, options.FailFunc, err)
 			}
@@ -219,7 +230,7 @@ func AuthMiddleware(opts ...AuthOption) middleware.Middleware {
 				return authReq.result, authReq.err
 			}
 
-			mgr, err := authcheck.GetManager(options.AuthType)
+			mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
 			if err != nil {
 				return nil, dispatchFail(ctx, options.FailFunc, err)
 			}
@@ -257,7 +268,7 @@ func AccessMiddleware(opts ...AuthOption) middleware.Middleware {
 				return next(ctx, req)
 			}
 
-			mgr, err := authcheck.GetManager(accessReq.AuthType)
+			mgr, err := authcheck.ResolveManager(options.Manager, accessReq.AuthType)
 			if err != nil {
 				return nil, dispatchFail(ctx, options.FailFunc, err)
 			}
@@ -307,7 +318,7 @@ func PermissionMiddleware(permissions []string, opts ...AuthOption) middleware.M
 				return next(ctx, req)
 			}
 
-			mgr, err := authcheck.GetManager(options.AuthType)
+			mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
 			if err != nil {
 				return nil, dispatchFail(ctx, options.FailFunc, err)
 			}
@@ -355,7 +366,7 @@ func PermissionPathMiddleware(permissions []string, opts ...AuthOption) middlewa
 				return next(ctx, req)
 			}
 
-			mgr, err := authcheck.GetManager(options.AuthType)
+			mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
 			if err != nil {
 				return nil, dispatchFail(ctx, options.FailFunc, err)
 			}
@@ -398,7 +409,7 @@ func RoleMiddleware(roles []string, opts ...AuthOption) middleware.Middleware {
 				return next(ctx, req)
 			}
 
-			mgr, err := authcheck.GetManager(options.AuthType)
+			mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
 			if err != nil {
 				return nil, dispatchFail(ctx, options.FailFunc, err)
 			}
@@ -465,7 +476,8 @@ func GetDTokenContextByCtx(ctx context.Context) (*corecontext.DTokenContext, boo
 
 // GetLoginIDByCtx gets login ID by context GetLoginIDByCtx 从上下文获取登录 ID
 func GetLoginIDByCtx(ctx context.Context, authType ...string) (string, error) {
-	mgr, err := authcheck.GetManager(firstAuthType(authType...))
+	cached, _ := GetDTokenContext(ctx)
+	mgr, err := authcheck.ResolveManagerFromContext(firstAuthType(authType...), cached)
 	if err != nil {
 		return "", err
 	}
@@ -476,7 +488,8 @@ func GetLoginIDByCtx(ctx context.Context, authType ...string) (string, error) {
 
 // GetTokenInfoByCtx gets token info by context GetTokenInfoByCtx 从上下文获取 Token 信息
 func GetTokenInfoByCtx(ctx context.Context, authType ...string) (*manager.TokenInfo, error) {
-	mgr, err := authcheck.GetManager(firstAuthType(authType...))
+	cached, _ := GetDTokenContext(ctx)
+	mgr, err := authcheck.ResolveManagerFromContext(firstAuthType(authType...), cached)
 	if err != nil {
 		return nil, err
 	}
@@ -487,7 +500,8 @@ func GetTokenInfoByCtx(ctx context.Context, authType ...string) (*manager.TokenI
 
 // IntrospectTokenByCtx inspects current token without renewal side effects IntrospectTokenByCtx 无续期副作用地检查当前 token 状态
 func IntrospectTokenByCtx(ctx context.Context, authType ...string) (*manager.TokenIntrospection, error) {
-	mgr, err := authcheck.GetManager(firstAuthType(authType...))
+	cached, _ := GetDTokenContext(ctx)
+	mgr, err := authcheck.ResolveManagerFromContext(firstAuthType(authType...), cached)
 	if err != nil {
 		return nil, err
 	}

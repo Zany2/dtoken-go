@@ -41,7 +41,7 @@ r := gin.Default()
 r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
 ```
 
-The annotation middleware then reuses the cached `DTokenContext` on the request.
+The annotation middleware then reuses the cached `DTokenContext` on the request. If that context was created with `WithManager`, annotations with an empty `AuthType` use the same explicit manager; an annotation that sets `AuthType` keeps the global multi-auth lookup behavior.
 
 ## Basic Examples
 
@@ -174,7 +174,7 @@ r.GET("/admin",
 
 ## Other Frameworks
 
-`gf`, `echo`, `fiber`, `chi`, `hertz`, and `kratos` already follow the same structure, with signatures adjusted for each framework.
+`gf`, `echo`, `fiber`, `chi`, `hertz`, and `kratos` already follow the same structure, with signatures adjusted for each framework. Beego uses its filter model and exposes the equivalent entry point through `RouteAccessHandlerFromAnnotations` plus `AccessMiddleware`.
 
 The core idea stays the same: register `DTokenContext` first, then attach annotation-style middleware.
 

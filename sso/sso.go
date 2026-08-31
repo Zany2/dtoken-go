@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
@@ -207,7 +208,11 @@ type Server struct {
 	remoteSessionExpiration time.Duration   // remoteSessionExpiration stores default remote session ttl. remoteSessionExpiration 存储默认远程会话有效期。
 	oauth2CodeExpiration    time.Duration   // oauth2CodeExpiration stores default OAuth2 code ttl. oauth2CodeExpiration 存储默认 OAuth2 授权码有效期。
 	storage                 adapter.Storage // storage stores clients and SSO credentials. storage 存储客户端和 SSO 凭证。
+	storageOwned            bool            // storageOwned controls whether Server closes storage. storageOwned 控制 Server 是否关闭存储。
 	serializer              adapter.Codec   // serializer encodes clients and credentials before storage. serializer 在存储前编解码客户端和凭证。
+	clientSessionMu         sync.Mutex      // clientSessionMu serializes local client-session index updates. clientSessionMu 串行化当前实例的客户端会话索引更新。
+	closeOnce               sync.Once       // closeOnce makes Server.Close idempotent. closeOnce 确保 Server.Close 幂等。
+	closeErr                error           // closeErr stores the first storage close error. closeErr 存储首次关闭存储时的错误。
 }
 
 // NewDefaultServer creates SSO server with default config. NewDefaultServer 使用默认配置创建 SSO 服务端。
@@ -217,11 +222,17 @@ func NewDefaultServer(authType, prefix string, storage adapter.Storage, serializ
 
 // NewServerWithConfig creates SSO server with config and falls back to defaults for invalid ttl. NewServerWithConfig 使用配置创建 SSO 服务端，并在有效期无效时回退默认值。
 func NewServerWithConfig(authType, prefix string, storage adapter.Storage, serializer adapter.Codec, cfg *Config) *Server {
+	return newServerWithConfig(authType, prefix, storage, serializer, cfg, storage == nil)
+}
+
+// newServerWithConfig creates a server with an explicit storage ownership policy. newServerWithConfig 使用明确的存储所有权策略创建 Server。
+func newServerWithConfig(authType, prefix string, storage adapter.Storage, serializer adapter.Codec, cfg *Config, storageOwned bool) *Server {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
 	if storage == nil {
 		storage = NewMemoryStorage()
+		storageOwned = true
 	}
 	if serializer == nil {
 		serializer = JSONCodec{}
@@ -250,8 +261,25 @@ func NewServerWithConfig(authType, prefix string, storage adapter.Storage, seria
 		remoteSessionExpiration: remoteSessionExpiration,
 		oauth2CodeExpiration:    oauth2CodeExpiration,
 		storage:                 storage,
+		storageOwned:            storageOwned,
 		serializer:              serializer,
 	}
+}
+
+// Close releases the server-owned storage adapter once. Close 仅关闭 Server 持有的存储适配器，并且保证幂等。
+func (s *Server) Close() error {
+	if s == nil {
+		return nil
+	}
+	s.closeOnce.Do(func() {
+		if !s.storageOwned || s.storage == nil {
+			return
+		}
+		if closer, ok := s.storage.(interface{ Close() error }); ok {
+			s.closeErr = closer.Close()
+		}
+	})
+	return s.closeErr
 }
 
 // RegisterClient registers an SSO client. RegisterClient 注册 SSO 客户端。
@@ -729,6 +757,11 @@ func (s *Server) RegisterClientSession(ctx context.Context, loginID, clientID, l
 	if !s.isValidLogoutCallbackURL(client, logoutCallbackURL) {
 		return nil, ErrInvalidCallbackURL
 	}
+
+	// Serialize the index read-modify-write sequence within one server instance. 在单个 Server 实例内串行化索引读改写流程。
+	s.clientSessionMu.Lock()
+	defer s.clientSessionMu.Unlock()
+
 	now := time.Now().Unix()
 	session := &ClientSession{
 		LoginID:           loginID,
@@ -774,6 +807,11 @@ func (s *Server) ClearClientSessions(ctx context.Context, loginID string) error 
 	if loginID == "" {
 		return ErrUserIDEmpty
 	}
+
+	// Keep clear ordered with registrations on this server instance. 保证当前 Server 实例内清理与注册操作有序。
+	s.clientSessionMu.Lock()
+	defer s.clientSessionMu.Unlock()
+
 	return s.deleteClientSessionIndex(ctx, loginID)
 }
 
@@ -902,7 +940,7 @@ func (s *Server) saveOAuth2Code(ctx context.Context, code *OAuth2Code, timeout t
 }
 
 // saveClientSession serializes and stores a client session in the login index. saveClientSession 将客户端会话序列化并保存到登录索引。
-// Note: This read-modify-write sequence is not atomic. Concurrent registrations may cause session loss in multi-instance deployments. 注意：读-改-写序列非原子，多实例并发注册可能导致会话记录丢失。
+// Note: the server lock protects one process; concurrent registrations across server instances still need storage-level atomic merge support. 注意：Server 锁只保护单进程；跨实例并发注册仍需要存储层提供原子合并能力。
 func (s *Server) saveClientSession(ctx context.Context, session *ClientSession) error {
 	sessions, err := s.GetClientSessions(ctx, session.LoginID)
 	if err != nil {

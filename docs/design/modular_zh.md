@@ -41,6 +41,20 @@ github.com/Zany2/dtoken-go/dtoken
 - 管理全局 `Manager`
 - 提供统一的 `context.Context` 风格调用方式
 
+### SSO 模块
+
+```text
+github.com/Zany2/dtoken-go/sso
+github.com/Zany2/dtoken-go/sso/storage/redis
+```
+
+**职责**：
+- 协调服务端与客户端单点登录流程
+- 签发并消费一次性 Ticket 和 OAuth2 Code
+- 将 SSO 存储所有权与核心 Manager 隔离
+
+Redis 子模块只提供生产环境存储构造器，不会让基础 `sso` 模块引入 Redis 依赖。
+
 ### 存储模块
 
 #### Memory 存储
@@ -72,7 +86,7 @@ github.com/Zany2/dtoken-go/com/storage/redis
 - `com/codec/json`
 - `com/codec/jsonv2`
 - `com/codec/msgpack`
-- `com/generator/sgenerator`
+- `com/generator/dgenerator`
 - `com/log/gf`
 - `com/log/nop`
 - `com/log/dlog`
@@ -89,6 +103,7 @@ github.com/Zany2/dtoken-go/com/storage/redis
 - `integrations/chi`
 - `integrations/hertz`
 - `integrations/kratos`
+- `integrations/beego`
 
 每个集成模块都负责：
 
@@ -98,12 +113,14 @@ github.com/Zany2/dtoken-go/com/storage/redis
 - 注解式校验封装
 - `export.go` 统一导出层
 
+Beego 遵循相同的模块边界，但通过 `RouteAccessHandlerFromAnnotations` 将注解规则映射到 Beego 过滤器。
+
 ## 依赖关系
 
 ```text
 应用代码
   ↓
-框架集成 (integrations/*)    或    dtoken
+框架集成 (integrations/*)    或    dtoken    或    sso
   ↓
 core
   ↓
@@ -133,7 +150,7 @@ go get github.com/Zany2/dtoken-go/com/storage/redis
 ```
 
 **适合场景**：
-- 直接接入 Gin / Echo / Fiber / Chi / GoFrame / Hertz / Kratos
+- 直接接入 Gin / Echo / Fiber / Chi / GoFrame / Hertz / Kratos / Beego
 - 希望使用集成包统一导出的构建器、中间件和工具函数
 
 ### 场景3：替换组件实现
@@ -154,7 +171,7 @@ go get github.com/Zany2/dtoken-go/com/pool/ants
 
 ### 每个模块都有独立 go.mod
 
-当前仓库中核心模块、组件模块、集成模块、示例模块都具备独立 `go.mod`。
+当前仓库中核心、SSO、组件、集成和示例模块在独立发布时都具备独立 `go.mod`。
 
 例如：
 
@@ -166,7 +183,10 @@ com/storage/redis/go.mod
 com/codec/json/go.mod
 integrations/gin/go.mod
 integrations/gf/go.mod
+integrations/beego/go.mod
 examples/quick_start/go.mod
+sso/go.mod
+sso/storage/redis/go.mod
 ```
 
 ### 本地开发通过 go.work 统一管理
@@ -181,7 +201,7 @@ use (
     ./com/codec/json
     ./com/codec/jsonv2
     ./com/codec/msgpack
-    ./com/generator/sgenerator
+    ./com/generator/dgenerator
     ./com/log/dlog
     ./com/log/gf
     ./com/log/nop
@@ -189,7 +209,9 @@ use (
     ./com/storage/memory
     ./com/storage/redis
     ./core
+    ./defaults
     ./dtoken
+    ./examples/beego
     ./examples/chi
     ./examples/echo
     ./examples/fiber
@@ -198,13 +220,23 @@ use (
     ./examples/hertz
     ./examples/kratos
     ./examples/quick_start
+    ./examples/sso_client
+    ./examples/sso_gin_client
+    ./examples/sso_gin_server
+    ./examples/sso_server
+    ./integrations/authcheck
+    ./integrations/beego
     ./integrations/chi
-    ./integrations/fiber
     ./integrations/echo
+    ./integrations/fiber
     ./integrations/gf
     ./integrations/gin
     ./integrations/hertz
     ./integrations/kratos
+    ./sso
+    ./sso/storage/redis
+    ./tests/gin_core_app
+    ./tests/gin_core_flow
 )
 ```
 

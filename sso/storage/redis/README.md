@@ -4,6 +4,8 @@
 
 The base `sso.NewServer()` uses in-memory storage and is intended only for local verification and unit tests. Real SSO services should use Redis because Ticket and OAuth2 Code consumption require atomic get-and-delete behavior.
 
+The Redis integration tests read `DTOKEN_REDIS_URL`; when it is unset, the tests are skipped.
+
 ## Usage
 
 ```go

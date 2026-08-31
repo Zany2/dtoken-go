@@ -4,6 +4,8 @@
 
 基础 `sso.NewServer()` 内置的是内存存储，只适合本地验证和单元测试。真实 SSO 服务建议使用 Redis，因为 Ticket 和 OAuth2 Code 都需要原子读删能力。
 
+Redis 集成测试读取 `DTOKEN_REDIS_URL`；未设置该变量时，测试会自动跳过。
+
 ## 使用方式
 
 ```go

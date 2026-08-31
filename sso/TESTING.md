@@ -102,11 +102,11 @@ Verification checklist:
 Optional integration test:
 
 ```powershell
-$env:DTOKEN_SSO_REDIS="redis://:password@127.0.0.1:6379/0"
+$env:DTOKEN_REDIS_URL="redis://:password@127.0.0.1:6379/0"
 go test ./sso/storage/redis/... -v
 ```
 
-When `DTOKEN_SSO_REDIS` is not set, this test is skipped automatically.
+When `DTOKEN_REDIS_URL` is not set, this test is skipped automatically.
 
 ## Security Boundaries
 

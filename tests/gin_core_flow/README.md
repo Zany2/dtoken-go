@@ -193,19 +193,27 @@ This directory contains HTTP flow tests for `tests/gin_core_app`.
 
 ## Run
 
-The automated flow tests force Redis storage with the fixed URL below. This keeps test behavior close to multi-process production storage semantics and lets the suite verify Redis scanning and cleanup behavior. `tests/gin_core_app` itself still uses in-memory storage when `Config.RedisURL` is empty.
+The automated flow tests use Redis only when `DTOKEN_REDIS_URL` is explicitly configured. This keeps the default test command self-contained while still allowing multi-process storage semantics and Redis scanning/cleanup coverage.
 
 Example Redis URLs:
 
 ```text
-redis://:root@192.168.19.104:6379/0
 redis://localhost:6379/0
 redis://:password@localhost:6379/0
 ```
 
+Without `DTOKEN_REDIS_URL`, Redis-backed flow tests are skipped.
+
 From this directory:
 
 ```powershell
+go test ./...
+```
+
+To enable the Redis-backed flows, set the endpoint first:
+
+```powershell
+$env:DTOKEN_REDIS_URL='redis://:password@localhost:6379/0'
 go test ./...
 ```
 
