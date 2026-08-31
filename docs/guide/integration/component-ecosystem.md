@@ -12,7 +12,7 @@ DToken-Go decouples core authentication logic from component implementations. Th
 | Atomic storage | `adapter.AtomicStorage` | Redis, Memory | Atomic get-and-delete operations such as one-time Nonce consumption |
 | Scanner storage | `adapter.ScannerStorage` | Redis, Memory | Search Tokens and Session IDs |
 | Admin storage | `adapter.AdminStorage` | Redis, Memory | Test cleanup or administrative clear operations |
-| Codec | `adapter.Codec` | JSON, JSON v2, MessagePack, Base64 | Serialize stored structures |
+| Codec | `adapter.Codec` | JSON, MessagePack, Base64 | Serialize stored structures |
 | Logger | `adapter.Log` | DLog, GoFrame, Nop | Runtime and error logging |
 | Token generator | `adapter.Generator` | `dgenerator` | Generate UUID, random, JWT, and other Token styles |
 | Async task pool | `adapter.Pool` | Ants | Auto-renew and async event tasks |
@@ -52,6 +52,8 @@ mgr, err := defaults.NewBuilder().
 ```
 
 Factories are useful when component creation depends on config values such as `AuthType`, `KeyPrefix`, or deployment environment.
+
+`com/codec/jsonv2` reserves the future standard-library JSON v2 adapter. It intentionally exposes no Codec while the project targets Go 1.25 and is planned for implementation after the minimum version reaches Go 1.27. Use JSON, MessagePack, Base64, or a custom `adapter.Codec` for now.
 
 ## Storage Recommendations
 

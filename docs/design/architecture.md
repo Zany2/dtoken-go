@@ -118,11 +118,14 @@ English | [中文文档](architecture_zh.md)
 ### 1. Builder Pattern
 
 ```go
-mgr := defaults.NewBuilder().
+mgr, err := defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     TokenName("Authorization").
     Timeout(86400).
     Build()
+if err != nil {
+    panic(err)
+}
 ```
 
 **Advantages**:
@@ -265,7 +268,7 @@ Current keys are composed as:
 With default values, common key examples are:
 
 ```text
-dtoken:auth:{tokenValue}                         -> TokenInfo
+dtoken:auth:token:{tokenValue}                   -> TokenInfo
 dtoken:auth:session:{loginID}                   -> Session
 dtoken:auth:renew:{tokenValue}                  -> renew throttle marker
 dtoken:auth:active:{tokenValue}                 -> last active timestamp
@@ -277,11 +280,14 @@ dtoken:auth:disable:service:{loginID}:{service} -> service disable info
 
 ```go
 type TokenInfo struct {
-    AuthType   string
-    LoginID    string
-    Device     string
-    DeviceID   string
-    CreateTime int64
+    AuthType      string
+    LoginID       string
+    Device        string
+    DeviceID      string
+    CreateTime    int64
+    Timeout       int64
+    ActiveTimeout int64
+    Extra         map[string]any
 }
 ```
 
@@ -295,6 +301,7 @@ type Session struct {
     TerminalInfos        []TerminalInfo
     Permissions          []string
     Roles                []string
+    Data                 map[string]any
     HistoryTerminalCount int64
 }
 ```

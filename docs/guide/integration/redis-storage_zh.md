@@ -40,11 +40,12 @@ func initDToken() {
         panic(err)
     }
 
-    dtoken.SetManager(
+    if _, err = dtoken.BuildAndSetManager(
         defaults.NewBuilder().
-            SetStorage(storage).
-            Build(),
-    )
+            SetStorage(storage),
+    ); err != nil {
+        panic(err)
+    }
 }
 ```
 
@@ -66,11 +67,12 @@ if err != nil {
     panic(err)
 }
 
-dtoken.SetManager(
+if _, err = dtoken.BuildAndSetManager(
     defaults.NewBuilder().
-        SetStorage(storage).
-        Build(),
-)
+        SetStorage(storage),
+); err != nil {
+    panic(err)
+}
 ```
 
 ### 方式三：复用现有 go-redis Client
@@ -84,11 +86,12 @@ rdb := goredis.NewClient(&goredis.Options{
 
 storage := redis.NewStorageFromClient(rdb)
 
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
-        SetStorage(storage).
-        Build(),
-)
+        SetStorage(storage),
+); err != nil {
+    panic(err)
+}
 ```
 
 ## Config 字段
@@ -102,26 +105,32 @@ dtoken.SetManager(
 | `Password` | 密码 |
 | `Database` | 库索引 |
 | `PoolSize` | 连接池大小 |
-| `DialTimeout` | 建连超时 |
-| `ReadTimeout` | 读超时 |
-| `WriteTimeout` | 写超时 |
-| `PoolTimeout` | 取连接超时 |
-| `OperationTimeout` | 预留字段，当前存储实现未在各操作中单独套用 |
+| `DialTimeout` | TCP 建连超时（`time.Duration`） |
+| `ReadTimeout` | Redis 读超时（`time.Duration`） |
+| `WriteTimeout` | Redis 写超时（`time.Duration`） |
+| `PoolTimeout` | 连接池取连接超时（`time.Duration`） |
+| `OperationTimeout` | 每次存储操作的上下文超时（`time.Duration`）；在 `NewStorageFromConfig` 中，`<= 0` 使用 3 秒默认值 |
+
+`NewStorage` 同样使用 3 秒的单次操作超时。`NewStorageFromClient` 不启用这一层包装，每次操作的超时由调用方传入的 context 控制。
 
 ## 和 DToken 搭配使用
 
 ```go
-storage, _ := redis.NewStorage("redis://localhost:6379/0")
+storage, err := redis.NewStorage("redis://localhost:6379/0")
+if err != nil {
+    panic(err)
+}
 
-dtoken.SetManager(
+if _, err = dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(storage).
         TokenName("dtoken").
         Timeout(2 * 60 * 60).
         ActiveTimeout(30 * 60).
-        AutoRenew(true).
-        Build(),
-)
+        AutoRenew(true),
+); err != nil {
+    panic(err)
+}
 ```
 
 这时登录态、Session、权限、角色、Nonce、OAuth2 Token 等数据都会走 Redis。
@@ -192,6 +201,7 @@ dt:gcf:1:*
 - `Set`
 - `Get`
 - `GetAndDelete`
+- `SetIfAbsent`
 - `Delete`
 - `Exists`
 - `Keys`

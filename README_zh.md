@@ -28,7 +28,7 @@ DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，已提供登
 你可以把它用于：
 
 - 后台管理系统、用户中心、开放平台等需要统一认证授权的业务系统。
-- Gin、Echo、Fiber、Chi、GoFrame、Hertz、Kratos 等 Go Web 项目的登录与权限接入。
+- Gin、Echo、Fiber、Chi、GoFrame、Hertz、Kratos、Beego 等 Go Web 项目的登录与权限接入。
 - 微服务网关、统一认证中心、跨系统单点登录和统一登出场景。
 - App、小程序、Web、多设备、多终端的登录态与会话管理。
 - 扫码确认、一次性访问、临时授权、短链接凭证和第三方系统 Token 校验。
@@ -81,6 +81,7 @@ go get github.com/Zany2/dtoken-go/integrations/chi
 go get github.com/Zany2/dtoken-go/integrations/gf
 go get github.com/Zany2/dtoken-go/integrations/hertz
 go get github.com/Zany2/dtoken-go/integrations/kratos
+go get github.com/Zany2/dtoken-go/integrations/beego
 ```
 
 ### 使用可插拔组件
@@ -213,7 +214,7 @@ func main() {
 	user.GET("/me", func(c *gin.Context) {
 		// 从请求上下文中获取当前 Token 对应的登录账号。
 		dCtx, _ := gindt.GetDTokenContext(c)
-		loginID, _ := dCtx.GetLoginID(c.Request.Context())
+		loginID, _ := dCtx.Auth().GetLoginID(c.Request.Context())
 		c.JSON(http.StatusOK, gin.H{"loginId": loginID})
 	})
 
@@ -238,6 +239,7 @@ func main() {
 | GoFrame | [examples/gf](examples/gf/) | `github.com/Zany2/dtoken-go/integrations/gf` |
 | Hertz | [examples/hertz](examples/hertz/) | `github.com/Zany2/dtoken-go/integrations/hertz` |
 | Kratos | [examples/kratos](examples/kratos/) | `github.com/Zany2/dtoken-go/integrations/kratos` |
+| Beego | [examples/beego](examples/beego/) | `github.com/Zany2/dtoken-go/integrations/beego` |
 
 ## 深入阅读
 
@@ -283,7 +285,8 @@ dtoken-go/
 │   ├── chi/                      # Chi 中间件、上下文适配和 API 导出
 │   ├── gf/                       # GoFrame 中间件、上下文适配和 API 导出
 │   ├── hertz/                    # Hertz 中间件、上下文适配和 API 导出
-│   └── kratos/                   # Kratos 中间件、上下文适配和 API 导出
+│   ├── kratos/                   # Kratos 中间件、上下文适配和 API 导出
+│   └── beego/                    # Beego 过滤器、上下文适配和 API 导出
 ├── examples/                     # 快速开始与框架接入示例
 │   ├── quick_start/              # 默认 Builder + 全局 API 最小示例
 │   ├── gin/                      # Gin 示例
@@ -296,7 +299,8 @@ dtoken-go/
 │   ├── chi/                      # Chi 示例
 │   ├── gf/                       # GoFrame 示例
 │   ├── hertz/                    # Hertz 示例
-│   └── kratos/                   # Kratos 示例
+│   ├── kratos/                   # Kratos 示例
+│   └── beego/                    # Beego 示例
 ├── tests/                        # 流程测试与测试应用
 │   ├── gin_core_app/             # Gin 核心流程测试应用
 │   └── gin_core_flow/            # 基于 HTTP 流程的核心功能测试
@@ -354,6 +358,7 @@ dtoken-go/
 | [examples/gf](examples/gf/) | GoFrame 框架接入示例 |
 | [examples/hertz](examples/hertz/) | Hertz 框架接入示例 |
 | [examples/kratos](examples/kratos/) | Kratos 框架接入示例 |
+| [examples/beego](examples/beego/) | Beego 框架接入示例 |
 
 ## 贡献
 

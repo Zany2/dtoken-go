@@ -3,7 +3,7 @@ package jsonv2
 
 import "testing"
 
-// TestPackagePlaceholder keeps the jsonv2 package covered while it has no exported implementation 测试 jsonv2 占位包可编译
+// TestPackagePlaceholder documents the intentional placeholder until Go 1.27 becomes the project minimum. TestPackagePlaceholder 记录在项目最低版本升级到 Go 1.27 前有意保留占位包。
 func TestPackagePlaceholder(t *testing.T) {
 	t.Helper()
 }

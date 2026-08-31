@@ -18,11 +18,12 @@ import (
 )
 
 func initDToken() {
-    dtoken.SetManager(
+    if _, err := dtoken.BuildAndSetManager(
         defaults.NewBuilder().
-            SetStorage(memory.NewStorage()).
-            Build(),
-    )
+            SetStorage(memory.NewStorage()),
+    ); err != nil {
+        panic(err)
+    }
 }
 
 func main() {
@@ -103,16 +104,22 @@ if err == nil {
     fmt.Println("设备类型:", info.Device)
     fmt.Println("设备 ID:", info.DeviceID)
     fmt.Println("创建时间:", info.CreateTime)
+    fmt.Println("有效期:", info.Timeout)
+    fmt.Println("不活跃超时:", info.ActiveTimeout)
+    fmt.Println("扩展数据:", info.Extra)
 }
 ```
 
-当前 `TokenInfo` 只包含：
+当前 `TokenInfo` 包含：
 
 - `AuthType`
 - `LoginID`
 - `Device`
 - `DeviceID`
 - `CreateTime`
+- `Timeout`（秒）
+- `ActiveTimeout`（秒；`0` 表示继承 Manager 配置）
+- `Extra`
 
 ### 获取 Token 其他信息
 
@@ -209,12 +216,13 @@ singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001
 ### 并发登录
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
-        IsConcurrent(true).
-        Build(),
-)
+        IsConcurrent(true),
+); err != nil {
+    panic(err)
+}
 ```
 
 `IsConcurrent(true)` 表示允许同账号多端并发登录。  
@@ -223,13 +231,14 @@ dtoken.SetManager(
 ### 共享 Token
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         IsConcurrent(true).
-        IsShare(true).
-        Build(),
-)
+        IsShare(true),
+); err != nil {
+    panic(err)
+}
 ```
 
 `IsShare(true)` 表示并发登录时可复用已有 token，但只会在相同设备维度内复用。  
@@ -238,14 +247,15 @@ dtoken.SetManager(
 ### 最大登录数
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         IsConcurrent(true).
         IsShare(false).
-        MaxLoginCount(3).
-        Build(),
-)
+        MaxLoginCount(3),
+); err != nil {
+    panic(err)
+}
 ```
 
 当 `MaxLoginCount > 0` 时，超过上限的旧终端会被自动清理。
@@ -255,15 +265,16 @@ dtoken.SetManager(
 ### 配置方式
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         Timeout(24 * 60 * 60).
         AutoRenew(true).
         RenewMaxRefresh(30 * 60).
-        RenewInterval(60).
-        Build(),
-)
+        RenewInterval(60),
+); err != nil {
+    panic(err)
+}
 ```
 
 ### 工作机制
@@ -282,13 +293,14 @@ dtoken.SetManager(
 ### 配置方式
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         Timeout(24 * 60 * 60).
-        ActiveTimeout(30 * 60).
-        Build(),
-)
+        ActiveTimeout(30 * 60),
+); err != nil {
+    panic(err)
+}
 ```
 
 ### 工作机制
@@ -305,7 +317,7 @@ dtoken.SetManager(
 ## 完整配置示例
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         TokenName("dtoken").
@@ -317,9 +329,10 @@ dtoken.SetManager(
         IsConcurrent(true).
         IsShare(false).
         MaxLoginCount(3).
-        IsReadHeader(true).
-        Build(),
-)
+        IsReadHeader(true),
+); err != nil {
+    panic(err)
+}
 ```
 
 ## 相关文档

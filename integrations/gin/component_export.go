@@ -1,4 +1,6 @@
 // @Author daixk 2025/12/22 15:56:00
+//
+//go:generate go run ./internal/integrationexportgen
 package gin
 
 import (
@@ -107,7 +109,7 @@ type (
 	NopLogger                  = nop.NopLogger
 )
 
-// Common constants forward core configuration values. Common 常量转发核心配置值。 Common 常量转发核心配置值。
+// Common constants forward core configuration values. Common 常量转发核心配置值。
 const (
 	Version                        = corepkg.Version
 	SameSiteStrict                 = config.SameSiteStrict

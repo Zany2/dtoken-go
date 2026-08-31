@@ -22,11 +22,13 @@ import (
 var ctx = context.Background()
 
 func init() {
-    dtoken.SetManager(
-        defaults.NewBuilder().
-            SetStorage(memory.NewStorage()).
-            Build(),
-    )
+    mgr, err := defaults.NewBuilder().
+        SetStorage(memory.NewStorage()).
+        Build()
+    if err != nil {
+        panic(err)
+    }
+    dtoken.SetManager(mgr)
 }
 ```
 
@@ -464,11 +466,14 @@ func GetTokenInfo(ctx context.Context, tokenValue string, authType ...string) (*
 **Returns**:
 ```go
 type TokenInfo struct {
-    AuthType   string `json:"authType"`
-    LoginID    string `json:"loginId"`
-    Device     string `json:"device"`
-    DeviceID   string `json:"deviceId"`
-    CreateTime int64  `json:"createTime"`
+    AuthType      string         `json:"authType"`
+    LoginID       string         `json:"loginId"`
+    Device        string         `json:"device"`
+    DeviceID      string         `json:"deviceId"`
+    CreateTime    int64          `json:"createTime"`
+    Timeout       int64          `json:"timeout"`
+    ActiveTimeout int64          `json:"activeTimeout,omitempty"`
+    Extra         map[string]any `json:"extra,omitempty"`
 }
 ```
 

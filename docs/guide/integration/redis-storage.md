@@ -40,11 +40,12 @@ func initDToken() {
         panic(err)
     }
 
-    dtoken.SetManager(
+    if _, err = dtoken.BuildAndSetManager(
         defaults.NewBuilder().
-            SetStorage(storage).
-            Build(),
-    )
+            SetStorage(storage),
+    ); err != nil {
+        panic(err)
+    }
 }
 ```
 
@@ -66,11 +67,12 @@ if err != nil {
     panic(err)
 }
 
-dtoken.SetManager(
+if _, err = dtoken.BuildAndSetManager(
     defaults.NewBuilder().
-        SetStorage(storage).
-        Build(),
-)
+        SetStorage(storage),
+); err != nil {
+    panic(err)
+}
 ```
 
 ### Option 3: Reuse an Existing go-redis Client
@@ -84,11 +86,12 @@ rdb := goredis.NewClient(&goredis.Options{
 
 storage := redis.NewStorageFromClient(rdb)
 
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
-        SetStorage(storage).
-        Build(),
-)
+        SetStorage(storage),
+); err != nil {
+    panic(err)
+}
 ```
 
 ## Config Fields
@@ -102,26 +105,32 @@ Current `redis.Config` fields:
 | `Password` | Redis password |
 | `Database` | DB index |
 | `PoolSize` | pool size |
-| `DialTimeout` | dial timeout |
-| `ReadTimeout` | read timeout |
-| `WriteTimeout` | write timeout |
-| `PoolTimeout` | pool acquisition timeout |
-| `OperationTimeout` | reserved field; not applied per operation by the current storage implementation |
+| `DialTimeout` | TCP dial timeout (`time.Duration`) |
+| `ReadTimeout` | Redis read timeout (`time.Duration`) |
+| `WriteTimeout` | Redis write timeout (`time.Duration`) |
+| `PoolTimeout` | connection-pool acquisition timeout (`time.Duration`) |
+| `OperationTimeout` | per-operation context timeout (`time.Duration`); values `<= 0` use the 3-second default in `NewStorageFromConfig` |
+
+`NewStorage` also uses a 3-second per-operation timeout. `NewStorageFromClient` leaves this wrapper disabled, so the caller's context controls each operation.
 
 ## Using It With DToken
 
 ```go
-storage, _ := redis.NewStorage("redis://localhost:6379/0")
+storage, err := redis.NewStorage("redis://localhost:6379/0")
+if err != nil {
+    panic(err)
+}
 
-dtoken.SetManager(
+if _, err = dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(storage).
         TokenName("dtoken").
         Timeout(2 * 60 * 60).
         ActiveTimeout(30 * 60).
-        AutoRenew(true).
-        Build(),
-)
+        AutoRenew(true),
+); err != nil {
+    panic(err)
+}
 ```
 
 Login state, session data, permissions, roles, nonce data, and OAuth2 tokens will then all use Redis.
@@ -192,6 +201,7 @@ The Redis adapter currently implements:
 - `Set`
 - `Get`
 - `GetAndDelete`
+- `SetIfAbsent`
 - `Delete`
 - `Exists`
 - `Keys`

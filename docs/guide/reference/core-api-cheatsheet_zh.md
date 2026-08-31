@@ -13,7 +13,7 @@ loginID, err := dtoken.GetLoginID(ctx, token)
 tokenInfo, err := dtoken.GetTokenInfo(ctx, token)
 ttl, err := dtoken.GetTokenTTL(ctx, token)
 
-err = dtoken.RenewTimeout(ctx, token, 7200)
+err = dtoken.RenewTimeout(ctx, token, 2*time.Hour)
 err = dtoken.Logout(ctx, token)
 err = dtoken.LogoutByLoginID(ctx, "user-1001")
 ```

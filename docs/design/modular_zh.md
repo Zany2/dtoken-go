@@ -84,7 +84,7 @@ github.com/Zany2/dtoken-go/com/storage/redis
 
 - `com/codec/base64`
 - `com/codec/json`
-- `com/codec/jsonv2`
+- `com/codec/jsonv2` - 项目最低版本为 Go 1.25 期间保留占位，升级到 Go 1.27 后计划实现
 - `com/codec/msgpack`
 - `com/generator/dgenerator`
 - `com/log/gf`
@@ -114,6 +114,21 @@ github.com/Zany2/dtoken-go/com/storage/redis
 - `export.go` 统一导出层
 
 Beego 遵循相同的模块边界，但通过 `RouteAccessHandlerFromAnnotations` 将注解规则映射到 Beego 过滤器。
+
+### 集成组件导出维护
+
+各框架包有意暴露相同的内置组件别名、构造器、强类型 API、错误和门面操作。Gin 版本的 `component_export.go`、`api_export.go`、`error_export.go` 和 `facade_export.go` 分别是它们的标准源，其他集成包中的对应文件由这些标准源生成；GoFrame 专用日志导出只在生成 `component_export.go` 时自动注入。
+
+修改标准导出清单后，在 `integrations/gin` 目录重新生成其他框架文件：
+
+```bash
+go generate
+```
+
+不要直接修改生成的导出文件。
+如果导出清单引入了新的组件模块，还需要单独更新受影响集成包的 `go.mod`。
+
+`export.go` 暂时继续独立维护：所有集成包暴露的符号一致，但部分包按业务领域分组，其他包使用单个声明块。保留两种布局可以避免大量只涉及排版的改写。
 
 ## 依赖关系
 

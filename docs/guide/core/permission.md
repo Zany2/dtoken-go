@@ -28,11 +28,12 @@ import (
 )
 
 func initDToken() {
-    dtoken.SetManager(
+    if _, err := dtoken.BuildAndSetManager(
         defaults.NewBuilder().
-            SetStorage(memory.NewStorage()).
-            Build(),
-    )
+            SetStorage(memory.NewStorage()),
+    ); err != nil {
+        panic(err)
+    }
 }
 ```
 
@@ -221,7 +222,7 @@ _ = dtoken.UntieService(ctx, "10001", "comment")
 ## Custom Permission and Role Callbacks
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         SetCustomPermissionListFunc(func(loginID, authType string) ([]string, error) {
@@ -235,9 +236,10 @@ dtoken.SetManager(
                 return []string{"admin"}, nil
             }
             return []string{"user"}, nil
-        }).
-        Build(),
-)
+        }),
+); err != nil {
+    panic(err)
+}
 ```
 
 Extended callbacks can also use `device` and `deviceID`:

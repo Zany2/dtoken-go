@@ -128,12 +128,14 @@ dtoken.IsLogin(ctx, token)
 dtoken.CheckLogin(ctx, token)
 ```
 
-### 4. 获取登录信息
+### 4. 获取已校验的登录信息
 
 ```go
 dtoken.GetLoginID(ctx, token)
-dtoken.GetTokenInfo(ctx, token)
+dtoken.GetDevice(ctx, token)
 ```
+
+`dtoken.GetTokenInfo` 只读取存储中的 Token 信息，不执行登录校验，因此不会触发自动续签。
 
 ## 配置选项
 

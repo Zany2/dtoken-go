@@ -12,7 +12,7 @@ DToken-Go 将核心认证逻辑和组件实现解耦。核心只依赖接口，�
 | 原子存储 | `adapter.AtomicStorage` | Redis、Memory | Nonce 一次性消费等需要原子读删的场景 |
 | 扫描存储 | `adapter.ScannerStorage` | Redis、Memory | 搜索 Token、Session ID |
 | 管理存储 | `adapter.AdminStorage` | Redis、Memory | 测试清理或管理性清空 |
-| 编解码 | `adapter.Codec` | JSON、JSON v2、MessagePack、Base64 | 序列化存储结构 |
+| 编解码 | `adapter.Codec` | JSON、MessagePack、Base64 | 序列化存储结构 |
 | 日志 | `adapter.Log` | DLog、GoFrame、Nop | 运行日志、错误日志 |
 | Token 生成器 | `adapter.Generator` | `dgenerator` | 生成 UUID、随机串、JWT 等 Token |
 | 异步任务池 | `adapter.Pool` | Ants | 自动续期、异步事件等后台任务 |
@@ -52,6 +52,8 @@ mgr, err := defaults.NewBuilder().
 ```
 
 工厂适合组件依赖配置项的场景，例如根据 `AuthType`、`KeyPrefix` 或部署环境创建不同实例。
+
+`com/codec/jsonv2` 为未来的标准库 JSON v2 适配器预留。项目以 Go 1.25 为最低版本期间有意不导出 Codec，等最低版本升级到 Go 1.27 后再实现。现阶段请使用 JSON、MessagePack、Base64，或自行实现 `adapter.Codec`。
 
 ## 存储组件建议
 

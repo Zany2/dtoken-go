@@ -18,11 +18,12 @@ import (
 )
 
 func initDToken() {
-    dtoken.SetManager(
+    if _, err := dtoken.BuildAndSetManager(
         defaults.NewBuilder().
-            SetStorage(memory.NewStorage()).
-            Build(),
-    )
+            SetStorage(memory.NewStorage()),
+    ); err != nil {
+        panic(err)
+    }
 }
 
 func main() {
@@ -103,6 +104,9 @@ if err == nil {
     fmt.Println("Device:", info.Device)
     fmt.Println("Device ID:", info.DeviceID)
     fmt.Println("Create Time:", info.CreateTime)
+    fmt.Println("Timeout:", info.Timeout)
+    fmt.Println("Active Timeout:", info.ActiveTimeout)
+    fmt.Println("Extra:", info.Extra)
 }
 ```
 
@@ -113,6 +117,9 @@ Current `TokenInfo` includes:
 - `Device`
 - `DeviceID`
 - `CreateTime`
+- `Timeout` (seconds)
+- `ActiveTimeout` (seconds; `0` means inherit the manager setting)
+- `Extra`
 
 ### Get Additional Token Fields
 
@@ -209,12 +216,13 @@ singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001
 ### Concurrent Login
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
-        IsConcurrent(true).
-        Build(),
-)
+        IsConcurrent(true),
+); err != nil {
+    panic(err)
+}
 ```
 
 `IsConcurrent(true)` allows multiple active terminals for the same account.  
@@ -223,13 +231,14 @@ dtoken.SetManager(
 ### Shared Token
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         IsConcurrent(true).
-        IsShare(true).
-        Build(),
-)
+        IsShare(true),
+); err != nil {
+    panic(err)
+}
 ```
 
 `IsShare(true)` reuses an existing token during concurrent login, but only within the same device dimension.  
@@ -238,14 +247,15 @@ When `IsConcurrent(true)` and `IsShare(false)` are both set, each login creates 
 ### Max Login Count
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         IsConcurrent(true).
         IsShare(false).
-        MaxLoginCount(3).
-        Build(),
-)
+        MaxLoginCount(3),
+); err != nil {
+    panic(err)
+}
 ```
 
 When `MaxLoginCount > 0`, older terminals beyond the limit are removed automatically.
@@ -255,15 +265,16 @@ When `MaxLoginCount > 0`, older terminals beyond the limit are removed automatic
 ### Configuration
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         Timeout(24 * 60 * 60).
         AutoRenew(true).
         RenewMaxRefresh(30 * 60).
-        RenewInterval(60).
-        Build(),
-)
+        RenewInterval(60),
+); err != nil {
+    panic(err)
+}
 ```
 
 ### How It Works
@@ -282,13 +293,14 @@ This avoids unnecessary renewals on high-frequency traffic.
 ### Configuration
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         Timeout(24 * 60 * 60).
-        ActiveTimeout(30 * 60).
-        Build(),
-)
+        ActiveTimeout(30 * 60),
+); err != nil {
+    panic(err)
+}
 ```
 
 ### How It Works
@@ -305,7 +317,7 @@ When `ActiveTimeout` is enabled:
 ## Complete Configuration Example
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         TokenName("dtoken").
@@ -317,9 +329,10 @@ dtoken.SetManager(
         IsConcurrent(true).
         IsShare(false).
         MaxLoginCount(3).
-        IsReadHeader(true).
-        Build(),
-)
+        IsReadHeader(true),
+); err != nil {
+    panic(err)
+}
 ```
 
 ## Related Documentation

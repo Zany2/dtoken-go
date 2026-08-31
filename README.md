@@ -28,7 +28,7 @@ DToken-Go is a modular and pluggable Go authentication and authorization framewo
 You can use it for:
 
 - Admin systems, user centers, open platforms, and other systems that need unified authentication and authorization.
-- Login and permission integration for Gin, Echo, Fiber, Chi, GoFrame, Hertz, Kratos, and other Go Web projects.
+- Login and permission integration for Gin, Echo, Fiber, Chi, GoFrame, Hertz, Kratos, Beego, and other Go Web projects.
 - Microservice gateways, centralized authentication centers, cross-system SSO, and unified logout.
 - Login state and session management across apps, mini-programs, web clients, multiple devices, and multiple terminals.
 - QR confirmation, one-time access, temporary authorization, short-link credentials, and third-party Token validation.
@@ -81,6 +81,7 @@ go get github.com/Zany2/dtoken-go/integrations/chi
 go get github.com/Zany2/dtoken-go/integrations/gf
 go get github.com/Zany2/dtoken-go/integrations/hertz
 go get github.com/Zany2/dtoken-go/integrations/kratos
+go get github.com/Zany2/dtoken-go/integrations/beego
 ```
 
 ### Pluggable Components
@@ -213,7 +214,7 @@ func main() {
 	user.GET("/me", func(c *gin.Context) {
 		// Resolve the current login account from request context.
 		dCtx, _ := gindt.GetDTokenContext(c)
-		loginID, _ := dCtx.GetLoginID(c.Request.Context())
+		loginID, _ := dCtx.Auth().GetLoginID(c.Request.Context())
 		c.JSON(http.StatusOK, gin.H{"loginId": loginID})
 	})
 
@@ -238,6 +239,7 @@ func main() {
 | GoFrame | [examples/gf](examples/gf/) | `github.com/Zany2/dtoken-go/integrations/gf` |
 | Hertz | [examples/hertz](examples/hertz/) | `github.com/Zany2/dtoken-go/integrations/hertz` |
 | Kratos | [examples/kratos](examples/kratos/) | `github.com/Zany2/dtoken-go/integrations/kratos` |
+| Beego | [examples/beego](examples/beego/) | `github.com/Zany2/dtoken-go/integrations/beego` |
 
 ## Deep Reading
 
@@ -283,7 +285,8 @@ dtoken-go/
 │   ├── chi/                      # Chi middleware, context adapter, and API exports
 │   ├── gf/                       # GoFrame middleware, context adapter, and API exports
 │   ├── hertz/                    # Hertz middleware, context adapter, and API exports
-│   └── kratos/                   # Kratos middleware, context adapter, and API exports
+│   ├── kratos/                   # Kratos middleware, context adapter, and API exports
+│   └── beego/                    # Beego filters, context adapter, and API exports
 ├── examples/                     # Quick-start and framework integration examples
 │   ├── quick_start/              # Minimal example with the default Builder and global API
 │   ├── gin/                      # Gin example
@@ -296,7 +299,8 @@ dtoken-go/
 │   ├── chi/                      # Chi example
 │   ├── gf/                       # GoFrame example
 │   ├── hertz/                    # Hertz example
-│   └── kratos/                   # Kratos example
+│   ├── kratos/                   # Kratos example
+│   └── beego/                    # Beego example
 ├── tests/                        # Flow tests and test applications
 │   ├── gin_core_app/             # Gin core flow test application
 │   └── gin_core_flow/            # HTTP flow tests for core features
@@ -354,6 +358,7 @@ dtoken-go/
 | [examples/gf](examples/gf/) | GoFrame framework integration example |
 | [examples/hertz](examples/hertz/) | Hertz framework integration example |
 | [examples/kratos](examples/kratos/) | Kratos framework integration example |
+| [examples/beego](examples/beego/) | Beego framework integration example |
 
 ## Contributing
 

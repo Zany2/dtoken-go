@@ -118,11 +118,14 @@
 ### 1. Builder 模式
 
 ```go
-mgr := defaults.NewBuilder().
+mgr, err := defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     TokenName("Authorization").
     Timeout(86400).
     Build()
+if err != nil {
+    panic(err)
+}
 ```
 
 **优势**：
@@ -265,7 +268,7 @@ CheckPermissionMiddleware / HasPermission
 组成，默认前缀示例如下：
 
 ```text
-dtoken:auth:{tokenValue}                    -> TokenInfo
+dtoken:auth:token:{tokenValue}              -> TokenInfo
 dtoken:auth:session:{loginID}              -> Session
 dtoken:auth:renew:{tokenValue}             -> 续期节流标记
 dtoken:auth:active:{tokenValue}            -> 最近活跃时间
@@ -277,11 +280,14 @@ dtoken:auth:disable:service:{loginID}:{service} -> 服务封禁信息
 
 ```go
 type TokenInfo struct {
-    AuthType   string
-    LoginID    string
-    Device     string
-    DeviceID   string
-    CreateTime int64
+    AuthType      string
+    LoginID       string
+    Device        string
+    DeviceID      string
+    CreateTime    int64
+    Timeout       int64
+    ActiveTimeout int64
+    Extra         map[string]any
 }
 ```
 
@@ -295,6 +301,7 @@ type Session struct {
     TerminalInfos        []TerminalInfo
     Permissions          []string
     Roles                []string
+    Data                 map[string]any
     HistoryTerminalCount int64
 }
 ```

@@ -84,7 +84,7 @@ Besides storage, the current repository also splits out these replaceable compon
 
 - `com/codec/base64`
 - `com/codec/json`
-- `com/codec/jsonv2`
+- `com/codec/jsonv2` - reserved while the project targets Go 1.25; planned for implementation when the minimum reaches Go 1.27
 - `com/codec/msgpack`
 - `com/generator/dgenerator`
 - `com/log/gf`
@@ -114,6 +114,21 @@ Each integration module is responsible for:
 - unified export layer in `export.go`
 
 Beego follows the same module boundary but maps annotation rules to Beego filters through `RouteAccessHandlerFromAnnotations`.
+
+### Integration Component Export Maintenance
+
+The framework packages intentionally expose the same bundled component aliases, constructors, typed APIs, errors, and facade operations. The Gin versions of `component_export.go`, `api_export.go`, `error_export.go`, and `facade_export.go` are their canonical sources; the corresponding files in the other integration packages are generated from them. GoFrame-specific logger exports are injected only while generating `component_export.go`.
+
+After changing the canonical export list, regenerate the other framework files from `integrations/gin`:
+
+```bash
+go generate
+```
+
+Generated export files should not be edited directly.
+If the export list introduces a new component module, update the affected integration `go.mod` files separately.
+
+`export.go` remains independently maintained for now: all integration packages expose the same symbols, but some group operations by domain while others use one consolidated declaration. Keeping both layouts avoids a large formatting-only rewrite.
 
 ## Dependency Relationships
 

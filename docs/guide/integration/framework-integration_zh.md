@@ -155,11 +155,14 @@ func main() {
     ctx := context.Background()
     storage := memory.NewStorage()
 
-    mgr := defaults.NewBuilder().
+    mgr, err := defaults.NewBuilder().
         SetStorage(storage).
         TokenName("token").
         Timeout(2 * 60 * 60).
         Build()
+    if err != nil {
+        panic(err)
+    }
     dtoken.SetManager(mgr)
 
     r := gin.Default()

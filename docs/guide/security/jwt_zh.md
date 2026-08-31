@@ -64,14 +64,15 @@ import (
 )
 
 func initDToken() {
-    dtoken.SetManager(
+    if _, err := dtoken.BuildAndSetManager(
         defaults.NewBuilder().
             SetStorage(memory.NewStorage()).
             TokenStyle(adapter.TokenStyleJWT).
             JwtSecretKey("your-very-strong-secret-key").
-            Timeout(2 * 60 * 60).
-            Build(),
-    )
+            Timeout(2 * 60 * 60),
+    ); err != nil {
+        panic(err)
+    }
 }
 
 func main() {

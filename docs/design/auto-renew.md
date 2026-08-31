@@ -128,12 +128,14 @@ dtoken.IsLogin(ctx, token)
 dtoken.CheckLogin(ctx, token)
 ```
 
-### 4. Fetching Login Information
+### 4. Fetching Checked Login Information
 
 ```go
 dtoken.GetLoginID(ctx, token)
-dtoken.GetTokenInfo(ctx, token)
+dtoken.GetDevice(ctx, token)
 ```
+
+`dtoken.GetTokenInfo` only loads the stored Token information and does not run login validation, so it does not trigger auto-renew.
 
 ## Configuration Options
 
