@@ -242,6 +242,96 @@ func TestLoggerRuntimeControls(t *testing.T) {
 	logger.Close()
 }
 
+// TestLoggerLevelFiltering verifies messages below the configured level are skipped. TestLoggerLevelFiltering 验证低于配置级别的日志会被过滤。
+func TestLoggerLevelFiltering(t *testing.T) {
+	dir := t.TempDir()
+	logger, err := NewLoggerWithConfig(&LoggerConfig{
+		Path:       dir,
+		FileFormat: "level.log",
+		Level:      LevelWarn,
+		Stdout:     false,
+		QueueSize:  8,
+	})
+	if err != nil {
+		t.Fatalf("NewLoggerWithConfig() error = %v", err)
+	}
+	defer logger.Close()
+
+	logger.Debug("debug")
+	logger.Info("info")
+	logger.Warn("warn")
+	logger.Error("error")
+	logger.Flush()
+
+	data, err := os.ReadFile(filepath.Join(dir, "level.log"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	text := string(data)
+	if strings.Contains(text, "debug") || strings.Contains(text, "info") {
+		t.Fatalf("low-level logs were written: %q", text)
+	}
+	if !strings.Contains(text, "warn") || !strings.Contains(text, "error") {
+		t.Fatalf("accepted levels missing: %q", text)
+	}
+}
+
+// TestLoggerFileNameFormatting verifies date placeholders and the default suffix. TestLoggerFileNameFormatting 验证日期占位符和默认后缀。
+func TestLoggerFileNameFormatting(t *testing.T) {
+	logger := &Logger{}
+	now := time.Date(2024, time.January, 2, 3, 4, 5, 0, time.UTC)
+
+	if got := logger.formatFileName(now, LoggerConfig{FileFormat: "APP_{Y}-{m}-{d}"}); got != "APP_2024-01-02.log" {
+		t.Fatalf("formatFileName() = %q, want %q", got, "APP_2024-01-02.log")
+	}
+	if got := logger.formatFileName(now, LoggerConfig{FileFormat: "custom.log"}); got != "custom.log" {
+		t.Fatalf("formatFileName(existing suffix) = %q, want %q", got, "custom.log")
+	}
+	if got := logger.formatFileName(now, LoggerConfig{}); got != "DTOKEN_2024-01-02.log" {
+		t.Fatalf("formatFileName(default) = %q, want %q", got, "DTOKEN_2024-01-02.log")
+	}
+}
+
+// TestLoggerSetConfigRejectsInvalidConfig verifies invalid runtime config does not replace the active config. TestLoggerSetConfigRejectsInvalidConfig 验证非法运行时配置不会替换当前配置。
+func TestLoggerSetConfigRejectsInvalidConfig(t *testing.T) {
+	logger, err := NewLoggerWithConfig(&LoggerConfig{StdoutOnly: true, Prefix: "[ORIGINAL] "})
+	if err != nil {
+		t.Fatalf("NewLoggerWithConfig() error = %v", err)
+	}
+	defer logger.Close()
+
+	logger.SetConfig(&LoggerConfig{StdoutOnly: true, Prefix: "[INVALID] ", Level: LogLevel(99)})
+	if got := logger.currentCfg().Prefix; got != "[ORIGINAL] " {
+		t.Fatalf("SetConfig(invalid) replaced prefix with %q", got)
+	}
+}
+
+// TestLoggerClosedIgnoresWrites verifies writes after Close are ignored. TestLoggerClosedIgnoresWrites 验证关闭后写入会被忽略。
+func TestLoggerClosedIgnoresWrites(t *testing.T) {
+	dir := t.TempDir()
+	logger, err := NewLoggerWithConfig(&LoggerConfig{
+		Path:       dir,
+		FileFormat: "closed.log",
+		Stdout:     false,
+		QueueSize:  4,
+	})
+	if err != nil {
+		t.Fatalf("NewLoggerWithConfig() error = %v", err)
+	}
+	logger.Info("before close")
+	logger.Close()
+	logger.Info("after close")
+
+	data, err := os.ReadFile(filepath.Join(dir, "closed.log"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "before close") || strings.Contains(text, "after close") {
+		t.Fatalf("closed logger output = %q", text)
+	}
+}
+
 // TestNilLoggerMethodsAreSafe verifies nil logger calls do not panic TestNilLoggerMethodsAreSafe 验证空日志器调用安全。
 func TestNilLoggerMethodsAreSafe(t *testing.T) {
 	var logger *Logger

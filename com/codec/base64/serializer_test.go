@@ -10,6 +10,9 @@ import (
 // TestBase64SerializerName verifies the serializer name 测试序列化器名称
 func TestBase64SerializerName(t *testing.T) {
 	s := NewBase64Serializer()
+	if s == nil {
+		t.Fatal("NewBase64Serializer() returned nil")
+	}
 	if got := s.Name(); got != "base64" {
 		t.Fatalf("Name() = %q, want %q", got, "base64")
 	}
@@ -58,5 +61,34 @@ func TestBase64SerializerErrors(t *testing.T) {
 	badJSON := []byte(base64.StdEncoding.EncodeToString([]byte("{bad-json}")))
 	if err := s.Decode(badJSON, &out); err == nil {
 		t.Fatal("Decode() should fail for malformed JSON")
+	}
+}
+
+// TestBase64SerializerNilAndInvalidTargets verifies null values and invalid decode targets. TestBase64SerializerNilAndInvalidTargets 验证 null 值和非法解码目标。
+func TestBase64SerializerNilAndInvalidTargets(t *testing.T) {
+	s := NewBase64Serializer()
+
+	data, err := s.Encode(nil)
+	if err != nil {
+		t.Fatalf("Encode(nil) error = %v", err)
+	}
+	if string(data) != base64.StdEncoding.EncodeToString([]byte("null")) {
+		t.Fatalf("Encode(nil) = %q, want base64-encoded null", data)
+	}
+
+	var got any
+	if err := s.Decode(data, &got); err != nil {
+		t.Fatalf("Decode(null) error = %v", err)
+	}
+	if got != nil {
+		t.Fatalf("Decode(null) = %#v, want nil", got)
+	}
+
+	if err := s.Decode(data, map[string]string{}); err == nil {
+		t.Fatal("Decode() should reject a non-pointer target")
+	}
+	var nilTarget *struct{}
+	if err := s.Decode(data, nilTarget); err == nil {
+		t.Fatal("Decode() should reject a nil pointer target")
 	}
 }

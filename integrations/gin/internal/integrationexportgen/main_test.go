@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -78,4 +81,47 @@ func TestRenderGoFrameFramework(t *testing.T) {
 			t.Fatalf("generated output count for %q is not 1:\n%s", expected, text)
 		}
 	}
+}
+
+// TestGeneratedFilesAreUpToDate verifies committed exports match the Gin canonical sources. TestGeneratedFilesAreUpToDate 验证已提交导出文件与 Gin 标准源保持同步。
+func TestGeneratedFilesAreUpToDate(t *testing.T) {
+	canonicalDir := filepath.Join("..", "..")
+	integrationsDir := filepath.Join("..", "..", "..")
+
+	for _, exportFile := range exportFiles {
+		exportFile := exportFile
+		t.Run(exportFile.name, func(t *testing.T) {
+			sourcePath := filepath.Join(canonicalDir, exportFile.name)
+			source, err := os.ReadFile(sourcePath)
+			if err != nil {
+				t.Fatalf("read canonical source %q: %v", sourcePath, err)
+			}
+
+			for _, packageName := range targetPackages {
+				packageName := packageName
+				t.Run(packageName, func(t *testing.T) {
+					expected, err := render(source, targetSpec{
+						packageName:     packageName,
+						includeGFLogger: exportFile.includeGFLogger && packageName == "gf",
+					})
+					if err != nil {
+						t.Fatalf("render %s: %v", packageName, err)
+					}
+
+					targetPath := filepath.Join(integrationsDir, packageName, exportFile.name)
+					actual, err := os.ReadFile(targetPath)
+					if err != nil {
+						t.Fatalf("read generated file %q: %v", targetPath, err)
+					}
+					if !bytes.Equal(normalizeLineEndings(actual), normalizeLineEndings(expected)) {
+						t.Fatalf("generated file %q is out of date; run go generate in integrations/gin", targetPath)
+					}
+				})
+			}
+		})
+	}
+}
+
+func normalizeLineEndings(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
 }

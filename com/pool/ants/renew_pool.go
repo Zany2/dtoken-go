@@ -179,7 +179,10 @@ func (m *RenewPoolManager) autoScale() {
 			// Expand when usage exceeds the threshold and capacity is below MaxSize 当使用率超过扩容阈值且容量小于最大值时扩容
 			case usage > m.config.ScaleUpRate && capacity < m.config.MaxSize:
 				newCap := int(float64(capacity) * 1.5) // Increase capacity by 1.5x 扩容为当前的 1.5 倍
-				if newCap > m.config.MaxSize {         // Cap to maximum size 限制最大值
+				if newCap <= capacity {
+					newCap = capacity + 1 // Ensure a scale-up for small capacities 确保小容量场景也能实际扩容
+				}
+				if newCap > m.config.MaxSize { // Cap to maximum size 限制最大值
 					newCap = m.config.MaxSize
 				}
 				m.pool.Tune(newCap) // Apply new pool capacity 调整 ants 池容量

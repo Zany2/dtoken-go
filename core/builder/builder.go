@@ -485,17 +485,42 @@ func (b *Builder) Build() (*manager.Manager, error) {
 
 	// Resolve components per build so later config changes do not reuse stale factory products 每次构建独立装配组件，避免后续配置变化继续复用旧工厂产物
 	components := b.components
+	var createdStorage adapter.Storage
+	var createdLogger adapter.Log
+	var createdPool adapter.Pool
+	cleanup := func() {
+		// Stop factory-created pools before closing their dependent storage. 先停止工厂创建的协程池，再关闭其依赖的存储。
+		if createdPool != nil {
+			createdPool.Stop()
+			createdPool = nil
+		}
+
+		// Close factory-created storage only; explicit components remain caller-owned on failed builds. 仅关闭工厂创建的存储，构建失败时显式组件仍由调用方持有。
+		if storageCloser, ok := createdStorage.(interface{ Close() error }); ok {
+			_ = storageCloser.Close()
+		}
+		createdStorage = nil
+
+		// Flush and close factory-created loggers when they expose lifecycle control. 工厂创建的日志器支持生命周期控制时先刷新再关闭。
+		if logControl, ok := createdLogger.(adapter.LogControl); ok {
+			logControl.Flush()
+			logControl.Close()
+		}
+		createdLogger = nil
+	}
 
 	// Resolve token generator 解析 Token 生成器
 	if components.Generator == nil {
 		if b.factories.Generator != nil {
 			generator, err := b.factories.Generator(cfg)
 			if err != nil {
+				cleanup()
 				return nil, fmt.Errorf("build manager failed: create token generator failed: %w", err)
 			}
 			components.Generator = generator
 		}
 		if components.Generator == nil {
+			cleanup()
 			return nil, fmt.Errorf("build manager failed: token generator is missing, call SetGenerator or SetGeneratorFactory")
 		}
 	}
@@ -505,11 +530,14 @@ func (b *Builder) Build() (*manager.Manager, error) {
 		if b.factories.Storage != nil {
 			storage, err := b.factories.Storage(cfg)
 			if err != nil {
+				cleanup()
 				return nil, fmt.Errorf("build manager failed: create storage adapter failed: %w", err)
 			}
 			components.Storage = storage
+			createdStorage = storage
 		}
 		if components.Storage == nil {
+			cleanup()
 			return nil, fmt.Errorf("build manager failed: storage adapter is missing, call SetStorage or SetStorageFactory")
 		}
 	}
@@ -519,11 +547,13 @@ func (b *Builder) Build() (*manager.Manager, error) {
 		if b.factories.Codec != nil {
 			codec, err := b.factories.Codec(cfg)
 			if err != nil {
+				cleanup()
 				return nil, fmt.Errorf("build manager failed: create codec adapter failed: %w", err)
 			}
 			components.Codec = codec
 		}
 		if components.Codec == nil {
+			cleanup()
 			return nil, fmt.Errorf("build manager failed: codec adapter is missing, call SetCodec or SetCodecFactory")
 		}
 	}
@@ -534,11 +564,14 @@ func (b *Builder) Build() (*manager.Manager, error) {
 			if b.factories.Log != nil {
 				logger, err := b.factories.Log(cfg)
 				if err != nil {
+					cleanup()
 					return nil, fmt.Errorf("build manager failed: create log adapter failed: %w", err)
 				}
 				components.Log = logger
+				createdLogger = logger
 			}
 			if components.Log == nil {
+				cleanup()
 				return nil, fmt.Errorf("build manager failed: log adapter is missing, call SetLog or SetLogFactory")
 			}
 		}
@@ -551,9 +584,11 @@ func (b *Builder) Build() (*manager.Manager, error) {
 	if cfg.AutoRenew && components.Pool == nil && b.factories.Pool != nil {
 		pool, err := b.factories.Pool(cfg)
 		if err != nil {
+			cleanup()
 			return nil, fmt.Errorf("build manager failed: create renew task pool failed: %w", err)
 		}
 		components.Pool = pool
+		createdPool = pool
 	}
 
 	// Print banner when enabled 开启时打印 Banner
@@ -608,11 +643,22 @@ func (b *Builder) ensureCookieConfig() *config.CookieConfig {
 	return b.cfg.CookieConfig
 }
 
-// durationToSeconds rounds positive durations up to whole seconds durationToSeconds 将正时长向上取整到整秒
+// durationToSeconds rounds positive durations up and keeps negative durations invalid. durationToSeconds 将正时长向上取整，并保持负时长无效。
 func durationToSeconds(d time.Duration) int64 {
-	// Keep non-positive durations for validation 保留非正时长交给校验处理
+	// Keep zero invalid and map negative durations below NoLimit so validation cannot mistake them for unlimited. 保留零值无效，并将负时长映射到 NoLimit 以下，避免被误认为无限制。
 	if d <= 0 {
-		return int64(d.Seconds())
+		if d == 0 {
+			return 0
+		}
+
+		seconds := int64(d / time.Second)
+		if d%time.Second != 0 {
+			seconds--
+		}
+		if seconds >= config.NoLimit {
+			return config.NoLimit - 1
+		}
+		return seconds
 	}
 
 	// Convert whole seconds first 先转换整秒部分

@@ -9,6 +9,9 @@ import (
 // TestMsgPackSerializer_Name tests serializer name behavior 测试序列化器名称行为
 func TestMsgPackSerializer_Name(t *testing.T) {
 	s := NewMsgPackSerializer()
+	if s == nil {
+		t.Fatal("NewMsgPackSerializer() returned nil")
+	}
 	if got := s.Name(); got != "msgpack" {
 		t.Errorf("Name() = %q, want %q", got, "msgpack")
 	}
@@ -125,5 +128,55 @@ func TestMsgPackSerializer_Decode(t *testing.T) {
 				t.Errorf("Decode() got = %v, want %v", targetPtr, tt.want)
 			}
 		})
+	}
+}
+
+// TestMsgPackSerializerNilAndBinaryRoundTrip verifies nil and binary payloads round trip correctly. TestMsgPackSerializerNilAndBinaryRoundTrip 验证 nil 和二进制载荷可以正确往返。
+func TestMsgPackSerializerNilAndBinaryRoundTrip(t *testing.T) {
+	s := NewMsgPackSerializer()
+
+	nilData, err := s.Encode(nil)
+	if err != nil {
+		t.Fatalf("Encode(nil) error = %v", err)
+	}
+	if len(nilData) == 0 {
+		t.Fatal("Encode(nil) returned empty data")
+	}
+	var nilValue any
+	if err := s.Decode(nilData, &nilValue); err != nil {
+		t.Fatalf("Decode(nil) error = %v", err)
+	}
+	if nilValue != nil {
+		t.Fatalf("Decode(nil) = %#v, want nil", nilValue)
+	}
+
+	want := []byte{0x00, 0x01, 0x7f, 0x80, 0xff}
+	data, err := s.Encode(want)
+	if err != nil {
+		t.Fatalf("Encode(binary) error = %v", err)
+	}
+	var got []byte
+	if err := s.Decode(data, &got); err != nil {
+		t.Fatalf("Decode(binary) error = %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Decode(binary) = %#v, want %#v", got, want)
+	}
+}
+
+// TestMsgPackSerializerInvalidTargets verifies invalid decode targets return errors. TestMsgPackSerializerInvalidTargets 验证非法解码目标会返回错误。
+func TestMsgPackSerializerInvalidTargets(t *testing.T) {
+	s := NewMsgPackSerializer()
+	data, err := s.Encode(map[string]string{"name": "Alice"})
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+
+	if err := s.Decode(data, map[string]string{}); err == nil {
+		t.Fatal("Decode() should reject a non-pointer target")
+	}
+	var nilTarget *struct{}
+	if err := s.Decode(data, nilTarget); err == nil {
+		t.Fatal("Decode() should reject a nil pointer target")
 	}
 }

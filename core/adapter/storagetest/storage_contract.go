@@ -100,6 +100,15 @@ func RunStorageContract(t *testing.T, factory StorageFactory) {
 		if got != "first" {
 			t.Fatalf("Get(setnx) = %v, want first", got)
 		}
+
+		// Verify non-positive atomic expiration means no expiry 验证原子写入的非正过期时间表示永不过期。
+		ok, err = storage.SetIfAbsent(ctx, "contract:setnx:forever", "value", -time.Second)
+		if err != nil || !ok {
+			t.Fatalf("SetIfAbsent(negative expiration) = %v, %v, want true nil", ok, err)
+		}
+		if ttl, err := storage.TTL(ctx, "contract:setnx:forever"); err != nil || ttl != adapter.TTLNoExpire {
+			t.Fatalf("TTL(setnx negative expiration) = %v, %v, want %v nil", ttl, err, adapter.TTLNoExpire)
+		}
 	})
 
 	t.Run("ttl and expire", func(t *testing.T) {
@@ -117,6 +126,12 @@ func RunStorageContract(t *testing.T, factory StorageFactory) {
 		}
 		if ttl, err := storage.TTL(ctx, "contract:forever"); err != nil || ttl != adapter.TTLNoExpire {
 			t.Fatalf("TTL(no-expire) = %v, %v, want %v nil", ttl, err, adapter.TTLNoExpire)
+		}
+		if err := storage.Set(ctx, "contract:negative-expiration", "value", -time.Second); err != nil {
+			t.Fatalf("Set(negative expiration) error = %v", err)
+		}
+		if ttl, err := storage.TTL(ctx, "contract:negative-expiration"); err != nil || ttl != adapter.TTLNoExpire {
+			t.Fatalf("TTL(negative expiration) = %v, %v, want %v nil", ttl, err, adapter.TTLNoExpire)
 		}
 
 		// Verify positive TTL and shorter expire behavior 验证正 TTL 和缩短过期时间行为。
@@ -218,8 +233,17 @@ func RunStorageContract(t *testing.T, factory StorageFactory) {
 		if err := storage.Set(ctx, "contract:canceled", "v", 0); !errors.Is(err, context.Canceled) {
 			t.Fatalf("Set(canceled) error = %v, want %v", err, context.Canceled)
 		}
+		if _, err := storage.GetAndDelete(ctx, "contract:canceled"); !errors.Is(err, context.Canceled) {
+			t.Fatalf("GetAndDelete(canceled) error = %v, want %v", err, context.Canceled)
+		}
+		if _, err := storage.SetIfAbsent(ctx, "contract:canceled", "v", 0); !errors.Is(err, context.Canceled) {
+			t.Fatalf("SetIfAbsent(canceled) error = %v, want %v", err, context.Canceled)
+		}
 		if _, err := storage.Get(ctx, "contract:canceled"); !errors.Is(err, context.Canceled) {
 			t.Fatalf("Get(canceled) error = %v, want %v", err, context.Canceled)
+		}
+		if err := storage.Delete(ctx, "contract:canceled"); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Delete(canceled) error = %v, want %v", err, context.Canceled)
 		}
 		if storage.Exists(ctx, "contract:canceled") {
 			t.Fatal("Exists(canceled) should return false")

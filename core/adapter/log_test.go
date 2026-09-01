@@ -40,3 +40,19 @@ func TestNopLoggerMethodsDoNotPanic(t *testing.T) {
 	logger.Error("error")
 	logger.Errorf("%s", "error")
 }
+
+// TestNilNopLoggerMethodsDoNotPanic verifies the no-op logger remains safe as a nil receiver. TestNilNopLoggerMethodsDoNotPanic 验证空日志器作为 nil 接收者时仍可安全调用。
+func TestNilNopLoggerMethodsDoNotPanic(t *testing.T) {
+	var logger *NopLogger
+
+	logger.Print("plain")
+	logger.Printf("%s", "plain")
+	logger.Debug("debug")
+	logger.Debugf("%s", "debug")
+	logger.Info("info")
+	logger.Infof("%s", "info")
+	logger.Warn("warn")
+	logger.Warnf("%s", "warn")
+	logger.Error("error")
+	logger.Errorf("%s", "error")
+}

@@ -2,6 +2,7 @@
 package gf
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
@@ -47,4 +48,44 @@ func TestNilGFLoggerDoesNotPanic(t *testing.T) {
 
 	var nilLogger *GFLogger
 	nilLogger.Info("drop")
+}
+
+// TestGFLoggerMethodsDelegateToGoFrame verifies all log levels reach the configured writer. TestGFLoggerMethodsDelegateToGoFrame 验证所有日志级别都会写入配置的 Writer。
+func TestGFLoggerMethodsDelegateToGoFrame(t *testing.T) {
+	var output bytes.Buffer
+	raw := glog.NewWithWriter(&output)
+	raw.SetStdoutPrint(false)
+	raw.SetHeaderPrint(false)
+	raw.SetLevelPrint(false)
+	raw.SetLevel(glog.LEVEL_ALL)
+	logger := NewGFLogger(context.Background(), raw)
+
+	logger.Print("print-message")
+	logger.Printf("printf-%s", "message")
+	logger.Debug("debug-message")
+	logger.Debugf("debugf-%s", "message")
+	logger.Info("info-message")
+	logger.Infof("infof-%s", "message")
+	logger.Warn("warn-message")
+	logger.Warnf("warnf-%s", "message")
+	logger.Error("error-message")
+	logger.Errorf("errorf-%s", "message")
+
+	text := output.String()
+	for _, want := range []string{
+		"print-message",
+		"printf-message",
+		"debug-message",
+		"debugf-message",
+		"info-message",
+		"infof-message",
+		"warn-message",
+		"warnf-message",
+		"error-message",
+		"errorf-message",
+	} {
+		if !bytes.Contains(output.Bytes(), []byte(want)) {
+			t.Fatalf("GoFrame output missing %q: %q", want, text)
+		}
+	}
 }

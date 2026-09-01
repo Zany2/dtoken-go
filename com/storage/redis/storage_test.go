@@ -59,6 +59,24 @@ func TestNewStorageFromConfigRejectsNil(t *testing.T) {
 	}
 }
 
+// TestNewStorageFromConfigReturnsConnectionError verifies failed startup does not return a usable storage. TestNewStorageFromConfigReturnsConnectionError 验证连接失败时不会返回可用存储。
+func TestNewStorageFromConfigReturnsConnectionError(t *testing.T) {
+	storage, err := NewStorageFromConfig(&Config{
+		Host:             "127.0.0.1",
+		Port:             0,
+		OperationTimeout: 25 * time.Millisecond,
+	})
+	if err == nil {
+		if storage != nil {
+			_ = storage.Close()
+		}
+		t.Fatal("NewStorageFromConfig(unreachable) error = nil, want connection error")
+	}
+	if storage != nil {
+		t.Fatalf("NewStorageFromConfig(unreachable) storage = %v, want nil", storage)
+	}
+}
+
 // TestNewStorageFromClientHasNoOperationTimeout verifies client injection keeps caller context behavior 测试客户端注入不强制覆盖调用方上下文
 func TestNewStorageFromClientHasNoOperationTimeout(t *testing.T) {
 	storage := NewStorageFromClient(redisv9.NewClient(&redisv9.Options{}))
@@ -70,6 +88,17 @@ func TestNewStorageFromClientHasNoOperationTimeout(t *testing.T) {
 
 	if _, ok := ctx.Deadline(); ok {
 		t.Fatal("NewStorageFromClient() should not set operation timeout by default")
+	}
+}
+
+// TestNewStorageFromClientNilReceiverAndClose verifies nil receiver helpers are safe. TestNewStorageFromClientNilReceiverAndClose 验证 nil 接收者辅助方法安全。
+func TestNewStorageFromClientNilReceiverAndClose(t *testing.T) {
+	var storage *Storage
+	if storage.GetClient() != nil {
+		t.Fatal("GetClient(nil) should return nil")
+	}
+	if err := storage.Close(); err != nil {
+		t.Fatalf("Close(nil) error = %v", err)
 	}
 }
 
@@ -85,6 +114,24 @@ func TestWithOperationTimeoutAppliesConfiguredTimeout(t *testing.T) {
 	}
 	if remaining := time.Until(deadline); remaining <= 0 || remaining > time.Second {
 		t.Fatalf("withOperationTimeout() remaining = %v, want within 1s", remaining)
+	}
+}
+
+// TestWithOperationTimeoutPreservesParentCancellation verifies parent context cancellation and nil contexts. TestWithOperationTimeoutPreservesParentCancellation 验证父 context 取消和 nil context 处理。
+func TestWithOperationTimeoutPreservesParentCancellation(t *testing.T) {
+	storage := &Storage{operationTimeout: time.Minute}
+	parent, cancel := context.WithCancel(context.Background())
+	ctx, childCancel := storage.withOperationTimeout(parent)
+	defer childCancel()
+	cancel()
+	if err := ctx.Err(); err != context.Canceled {
+		t.Fatalf("withOperationTimeout(cancelled parent) err = %v, want %v", err, context.Canceled)
+	}
+
+	ctx, childCancel = storage.withOperationTimeout(nil)
+	defer childCancel()
+	if ctx == nil {
+		t.Fatal("withOperationTimeout(nil) returned nil context")
 	}
 }
 

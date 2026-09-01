@@ -6,6 +6,7 @@ import (
 	"errors"
 	"reflect"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -198,5 +199,93 @@ func TestStorageContextCancellation(t *testing.T) {
 	}
 	if err := s.Ping(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Ping(canceled) error = %v, want %v", err, context.Canceled)
+	}
+}
+
+// TestStorageExpiredEntriesAreRemoved verifies expired entries disappear from all read paths. TestStorageExpiredEntriesAreRemoved 验证过期条目会从所有读取路径消失。
+func TestStorageExpiredEntriesAreRemoved(t *testing.T) {
+	s := NewStorage()
+	if err := s.Set(context.Background(), "short-lived", "value", 10*time.Millisecond); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	time.Sleep(30 * time.Millisecond)
+
+	if s.Exists(context.Background(), "short-lived") {
+		t.Fatal("Exists(expired) = true, want false")
+	}
+	if value, err := s.Get(context.Background(), "short-lived"); err != nil || value != nil {
+		t.Fatalf("Get(expired) = %v, %v, want nil nil", value, err)
+	}
+	if ttl, err := s.TTL(context.Background(), "short-lived"); err != nil || ttl != TTLNotFound {
+		t.Fatalf("TTL(expired) = %v, %v, want %v nil", ttl, err, TTLNotFound)
+	}
+	keys, err := s.Keys(context.Background(), "short-lived")
+	if err != nil {
+		t.Fatalf("Keys(expired) error = %v", err)
+	}
+	if len(keys) != 0 {
+		t.Fatalf("Keys(expired) = %v, want empty", keys)
+	}
+}
+
+// TestStorageSetIfAbsentIsAtomic verifies concurrent first-writer-wins behavior. TestStorageSetIfAbsentIsAtomic 验证并发 SetIfAbsent 的先写入者获胜语义。
+func TestStorageSetIfAbsentIsAtomic(t *testing.T) {
+	s := NewStorage()
+	const writers = 32
+
+	var wg sync.WaitGroup
+	results := make(chan bool, writers)
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(value int) {
+			defer wg.Done()
+			ok, err := s.SetIfAbsent(context.Background(), "once", value, 0)
+			if err != nil {
+				t.Errorf("SetIfAbsent() error = %v", err)
+			}
+			results <- ok
+		}(i)
+	}
+	wg.Wait()
+	close(results)
+
+	successes := 0
+	for ok := range results {
+		if ok {
+			successes++
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("SetIfAbsent() successes = %d, want 1", successes)
+	}
+	if !s.Exists(context.Background(), "once") {
+		t.Fatal("SetIfAbsent() winner key does not exist")
+	}
+}
+
+// TestMatchPatternBoundaries verifies wildcard, escape, and empty-pattern behavior. TestMatchPatternBoundaries 验证通配符、转义和空模式边界。
+func TestMatchPatternBoundaries(t *testing.T) {
+	tests := []struct {
+		key     string
+		pattern string
+		want    bool
+	}{
+		{key: "", pattern: "*", want: true},
+		{key: "", pattern: "?", want: false},
+		{key: "abc", pattern: "a**c", want: true},
+		{key: "abc", pattern: "a?c", want: true},
+		{key: "abc", pattern: "a?d", want: false},
+		{key: "a?c", pattern: `a\?c`, want: true},
+		{key: `a\\`, pattern: `a\\`, want: true},
+		{key: "abc", pattern: `abc\`, want: true},
+		{key: "abc", pattern: "", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.key+"/"+tt.pattern, func(t *testing.T) {
+			if got := matchPattern(tt.key, tt.pattern); got != tt.want {
+				t.Fatalf("matchPattern(%q, %q) = %v, want %v", tt.key, tt.pattern, got, tt.want)
+			}
+		})
 	}
 }

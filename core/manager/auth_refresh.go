@@ -196,13 +196,14 @@ func (m *Manager) RevokeRefreshToken(ctx context.Context, refreshToken string) e
 		keys = append(keys, m.getTokenRefreshKey(info.AccessToken))
 	}
 	err = m.storage.Delete(ctx, keys...)
-	if err == nil {
-		m.triggerEvent(listener.EventRefreshTokenRevoke, info.LoginID, info.Device, info.DeviceID, info.AccessToken, map[string]any{
-			listener.ExtraKeyAction:       listener.ActionRevoke,
-			listener.ExtraKeyRefreshToken: refreshToken,
-		})
+	if err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
-	return err
+	m.triggerEvent(listener.EventRefreshTokenRevoke, info.LoginID, info.Device, info.DeviceID, info.AccessToken, map[string]any{
+		listener.ExtraKeyAction:       listener.ActionRevoke,
+		listener.ExtraKeyRefreshToken: refreshToken,
+	})
+	return nil
 }
 
 // GetRefreshTokenTTL returns refresh token remaining lifetime seconds. GetRefreshTokenTTL 返回刷新令牌剩余有效秒数。
@@ -331,9 +332,15 @@ func (m *Manager) cleanRefreshTokenByAccessToken(ctx context.Context, accessToke
 	}
 	refreshToken := string(refreshBytes)
 	if refreshToken == "" {
-		return m.storage.Delete(ctx, m.getTokenRefreshKey(accessToken))
+		if err := m.storage.Delete(ctx, m.getTokenRefreshKey(accessToken)); err != nil {
+			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
+		return nil
 	}
-	return m.storage.Delete(ctx, m.getRefreshTokenKey(refreshToken), m.getTokenRefreshKey(accessToken))
+	if err := m.storage.Delete(ctx, m.getRefreshTokenKey(refreshToken), m.getTokenRefreshKey(accessToken)); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	return nil
 }
 
 // requireAtomicStorageForRefreshToken returns atomic storage required by refresh-token rotation. requireAtomicStorageForRefreshToken 返回刷新令牌轮换所需的原子存储。
