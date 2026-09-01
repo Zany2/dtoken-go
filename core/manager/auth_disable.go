@@ -261,7 +261,7 @@ func (m *Manager) UntieService(ctx context.Context, loginID, service string) err
 	}
 
 	// Delete service disable marker 删除服务封禁标记。
-	if err := m.storage.Delete(ctx, m.getDisableServiceKey(loginID, service)); err != nil {
+	if err := m.deleteWithLegacyKey(ctx, m.getDisableServiceKey(loginID, service), m.getLegacyDisableServiceKey(loginID, service)); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
@@ -284,7 +284,7 @@ func (m *Manager) IsDisableService(ctx context.Context, loginID, service string)
 	}
 
 	// Check service disable marker 检查服务封禁标记。
-	return m.storage.Exists(ctx, m.getDisableServiceKey(loginID, service))
+	return m.existsWithLegacyKey(ctx, m.getDisableServiceKey(loginID, service), m.getLegacyDisableServiceKey(loginID, service))
 }
 
 // IsDisableServiceLevel checks if a specific service is disabled at or above the given level. IsDisableServiceLevel 检查账号的指定服务是否达到指定封禁等级。
@@ -384,7 +384,7 @@ func (m *Manager) GetDisableServiceInfo(ctx context.Context, loginID, service st
 	}
 
 	// Load service disable data 加载服务封禁数据。
-	data, err := m.storage.Get(ctx, m.getDisableServiceKey(loginID, service))
+	data, err := m.getWithLegacyKey(ctx, m.getDisableServiceKey(loginID, service), m.getLegacyDisableServiceKey(loginID, service))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
@@ -426,7 +426,7 @@ func (m *Manager) GetDisableServiceTTL(ctx context.Context, loginID, service str
 	}
 
 	// Load service disable TTL 加载服务封禁剩余时间。
-	ttl, err := m.storage.TTL(ctx, m.getDisableServiceKey(loginID, service))
+	ttl, err := m.ttlWithLegacyKey(ctx, m.getDisableServiceKey(loginID, service), m.getLegacyDisableServiceKey(loginID, service))
 	if err != nil {
 		return 0, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
@@ -552,7 +552,7 @@ func (m *Manager) UntieDevice(ctx context.Context, loginID, device string) error
 	}
 
 	// Delete device disable marker 删除设备封禁标记。
-	if err := m.storage.Delete(ctx, m.getDisableDeviceKey(loginID, device)); err != nil {
+	if err := m.deleteWithLegacyKey(ctx, m.getDisableDeviceKey(loginID, device), m.getLegacyDisableDeviceKey(loginID, device)); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
@@ -579,7 +579,7 @@ func (m *Manager) UntieDeviceAndDeviceID(ctx context.Context, loginID, device, d
 	}
 
 	// Delete concrete device disable marker 删除具体设备封禁标记。
-	if err := m.storage.Delete(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID)); err != nil {
+	if err := m.deleteWithLegacyKey(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID), m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID)); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
@@ -600,7 +600,7 @@ func (m *Manager) IsDisableDevice(ctx context.Context, loginID, device string) b
 	}
 
 	// Check device disable marker 检查设备封禁标记。
-	return m.storage.Exists(ctx, m.getDisableDeviceKey(loginID, device))
+	return m.existsWithLegacyKey(ctx, m.getDisableDeviceKey(loginID, device), m.getLegacyDisableDeviceKey(loginID, device))
 }
 
 // IsDisableDeviceAndDeviceID checks concrete device disable state. IsDisableDeviceAndDeviceID 检查具体设备封禁状态。
@@ -659,14 +659,14 @@ func (m *Manager) CheckDisableDeviceAndDeviceID(ctx context.Context, loginID, de
 	}
 
 	// Check device type disable first 先检查设备类型封禁。
-	if _, err := m.getDisableDeviceInfo(ctx, m.getDisableDeviceKey(loginID, device)); err == nil {
+	if _, err := m.getDisableDeviceInfoWithLegacy(ctx, m.getDisableDeviceKey(loginID, device), m.getLegacyDisableDeviceKey(loginID, device)); err == nil {
 		return derror.ErrDeviceDisabled
 	} else if !errors.Is(err, derror.ErrDeviceNotDisabled) {
 		return err
 	}
 
 	// Check concrete device disable 再检查具体设备封禁。
-	if _, err := m.getDisableDeviceInfo(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID)); err == nil {
+	if _, err := m.getDisableDeviceInfoWithLegacy(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID), m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID)); err == nil {
 		return derror.ErrDeviceDisabled
 	} else if !errors.Is(err, derror.ErrDeviceNotDisabled) {
 		return err
@@ -690,7 +690,7 @@ func (m *Manager) GetDisableDeviceInfo(ctx context.Context, loginID, device stri
 	}
 
 	// Load device disable info 加载设备封禁信息。
-	return m.getDisableDeviceInfo(ctx, m.getDisableDeviceKey(loginID, device))
+	return m.getDisableDeviceInfoWithLegacy(ctx, m.getDisableDeviceKey(loginID, device), m.getLegacyDisableDeviceKey(loginID, device))
 }
 
 // GetDisableDeviceAndDeviceIDInfo returns concrete device disable information. GetDisableDeviceAndDeviceIDInfo 获取具体设备封禁信息。
@@ -710,7 +710,7 @@ func (m *Manager) GetDisableDeviceAndDeviceIDInfo(ctx context.Context, loginID, 
 	}
 
 	// Load concrete device disable info 加载具体设备封禁信息。
-	return m.getDisableDeviceInfo(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID))
+	return m.getDisableDeviceInfoWithLegacy(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID), m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID))
 }
 
 // GetDisableDeviceTTL returns device type disable TTL in seconds. GetDisableDeviceTTL 获取设备类型封禁剩余秒数。
@@ -729,7 +729,7 @@ func (m *Manager) GetDisableDeviceTTL(ctx context.Context, loginID, device strin
 	}
 
 	// Load device disable TTL 加载设备封禁剩余时间。
-	return m.getDisableDeviceTTL(ctx, m.getDisableDeviceKey(loginID, device))
+	return m.getDisableDeviceTTLWithLegacy(ctx, m.getDisableDeviceKey(loginID, device), m.getLegacyDisableDeviceKey(loginID, device))
 }
 
 // GetDisableDeviceAndDeviceIDTTL returns concrete device disable TTL in seconds. GetDisableDeviceAndDeviceIDTTL 获取具体设备封禁剩余秒数。
@@ -749,13 +749,18 @@ func (m *Manager) GetDisableDeviceAndDeviceIDTTL(ctx context.Context, loginID, d
 	}
 
 	// Load concrete device disable TTL 加载具体设备封禁剩余时间。
-	return m.getDisableDeviceTTL(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID))
+	return m.getDisableDeviceTTLWithLegacy(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID), m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID))
 }
 
 // getDisableDeviceInfo loads device disable info by key. getDisableDeviceInfo 按键加载设备封禁信息。
 func (m *Manager) getDisableDeviceInfo(ctx context.Context, key string) (*DeviceDisableInfo, error) {
+	return m.getDisableDeviceInfoWithLegacy(ctx, key, key)
+}
+
+// getDisableDeviceInfoWithLegacy loads device info with migration fallback. getDisableDeviceInfoWithLegacy 加载设备封禁信息并兼容旧键。
+func (m *Manager) getDisableDeviceInfoWithLegacy(ctx context.Context, key, legacyKey string) (*DeviceDisableInfo, error) {
 	// Load device disable data 加载设备封禁数据。
-	data, err := m.storage.Get(ctx, key)
+	data, err := m.getWithLegacyKey(ctx, key, legacyKey)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
@@ -783,8 +788,13 @@ func (m *Manager) getDisableDeviceInfo(ctx context.Context, key string) (*Device
 
 // getDisableDeviceTTL loads device disable TTL by key. getDisableDeviceTTL 按键获取设备封禁剩余时间。
 func (m *Manager) getDisableDeviceTTL(ctx context.Context, key string) (int64, error) {
+	return m.getDisableDeviceTTLWithLegacy(ctx, key, key)
+}
+
+// getDisableDeviceTTLWithLegacy loads device TTL with migration fallback. getDisableDeviceTTLWithLegacy 加载设备封禁 TTL 并兼容旧键。
+func (m *Manager) getDisableDeviceTTLWithLegacy(ctx context.Context, key, legacyKey string) (int64, error) {
 	// Load disable TTL 加载封禁剩余时间。
-	ttl, err := m.storage.TTL(ctx, key)
+	ttl, err := m.ttlWithLegacyKey(ctx, key, legacyKey)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
@@ -820,15 +830,20 @@ func (m *Manager) CheckDisable(ctx context.Context, loginID string) error {
 
 // checkLoginDisableState checks account and device disable states. checkLoginDisableState 检查账号和设备封禁状态。
 func (m *Manager) checkLoginDisableState(ctx context.Context, loginID, device, deviceID string) error {
-	if m.isDisable(ctx, loginID) {
-		return derror.ErrAccountDisabled
+	// Use error-aware lookups so storage failures cannot become an implicit allow. 使用可返回错误的查询，避免存储故障被误判为允许访问。
+	if err := m.CheckDisable(ctx, loginID); err != nil {
+		return err
 	}
 
-	if m.isDisableDeviceMatch(ctx, loginID, device, deviceID) {
-		return derror.ErrDeviceDisabled
+	device = strings.TrimSpace(device)
+	deviceID = strings.TrimSpace(deviceID)
+	if device == "" {
+		return nil
 	}
-
-	return nil
+	if deviceID != "" {
+		return m.CheckDisableDeviceAndDeviceID(ctx, loginID, device, deviceID)
+	}
+	return m.CheckDisableDevice(ctx, loginID, device)
 }
 
 // isDisable checks if an account is disabled. isDisable 检查账号是否被封禁。
@@ -854,10 +869,10 @@ func (m *Manager) isDisableDeviceMatch(ctx context.Context, loginID, device, dev
 	}
 
 	// Match device type disable 匹配设备类型封禁。
-	if m.storage.Exists(ctx, m.getDisableDeviceKey(loginID, device)) {
+	if m.existsWithLegacyKey(ctx, m.getDisableDeviceKey(loginID, device), m.getLegacyDisableDeviceKey(loginID, device)) {
 		return true
 	}
 
 	// Match concrete device disable 匹配具体设备封禁。
-	return deviceID != "" && m.storage.Exists(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID))
+	return deviceID != "" && m.existsWithLegacyKey(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID), m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID))
 }

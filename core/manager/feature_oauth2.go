@@ -59,14 +59,16 @@ func (m *Manager) OAuth2Token(ctx context.Context, req *oauth2.TokenRequest, val
 		return nil, err
 	}
 	event := listener.EventOAuth2TokenIssue
+	action := listener.ActionIssue
 	grantType := ""
 	if req != nil {
 		grantType = string(req.GrantType)
 		if req.GrantType == oauth2.GrantTypeRefreshToken {
 			event = listener.EventOAuth2TokenRefresh
+			action = listener.ActionRefresh
 		}
 	}
-	m.triggerOAuth2TokenEvent(event, token, listener.ActionIssue, grantType)
+	m.triggerOAuth2TokenEvent(event, token, action, grantType)
 	return token, nil
 }
 

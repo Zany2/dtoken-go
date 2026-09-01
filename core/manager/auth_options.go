@@ -99,9 +99,16 @@ type loginInternalOptions struct {
 
 // concurrencyResult describes the outcome of concurrency handling. concurrencyResult 描述并发策略处理结果。
 type concurrencyResult struct {
-	reuseToken       string // reuseToken stores a shared token when login can reuse one. reuseToken 保存可复用的共享 Token。
-	handled          bool   // handled reports whether concurrency logic already took an action. handled 表示并发逻辑是否已经处理。
-	destroyedSession bool   // destroyedSession reports whether the whole old session was removed. destroyedSession 表示是否移除了整个旧会话。
+	reuseToken       string                   // reuseToken stores a shared token when login can reuse one. reuseToken 保存可复用的共享 Token。
+	handled          bool                     // handled reports whether concurrency logic already took an action. handled 表示并发逻辑是否已经处理。
+	destroyedSession bool                     // destroyedSession reports whether the whole old session was removed. destroyedSession 表示是否移除了整个旧会话。
+	terminalEvents   []terminalLifecycleEvent // terminalEvents stores terminal lifecycle events emitted after releasing the login lock. terminalEvents 保存登录锁释放后触发的终端生命周期事件。
+}
+
+// terminalLifecycleEvent describes one terminal state change caused by concurrency handling. terminalLifecycleEvent 描述并发处理导致的一次终端状态变更。
+type terminalLifecycleEvent struct {
+	terminal TerminalInfo // terminal stores the affected terminal. terminal 保存受影响终端。
+	state    TokenState   // state stores the resulting terminal state. state 保存终端最终状态。
 }
 
 // validateLoginPolicyOverrides validates per-login policy overrides. validateLoginPolicyOverrides 校验单次登录策略覆盖项。

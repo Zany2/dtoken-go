@@ -17,9 +17,11 @@ func (m *Manager) handleConcurrency(
 	policy loginPolicy,
 ) (concurrencyResult, error) {
 	// Clean expired tokens 清理已过期的 token
-	destroyedByClean, err := m.cleanExpiredTerminals(ctx, sess)
+	destroyedByClean, activeTimeoutTerminals, err := m.cleanExpiredTerminals(ctx, sess)
+	result := concurrencyResult{destroyedSession: destroyedByClean}
+	addTerminalLifecycleEvents(&result, activeTimeoutTerminals, TokenStateActiveTimeout)
 	if err != nil {
-		return concurrencyResult{}, err
+		return result, err
 	}
 
 	// Handle non-concurrent login 处理不允许并发登录。
@@ -38,35 +40,37 @@ func (m *Manager) handleConcurrency(
 			// Check active terminal 检查是否存在活跃终端。
 			hasActiveTerminal, activeErr := m.hasActiveTerminal(ctx, terminals, sess)
 			if activeErr != nil {
-				return concurrencyResult{}, activeErr
+				return result, activeErr
 			}
 
 			// Reject login when active terminal exists 存在活跃终端时拒绝登录。
 			if hasActiveTerminal {
-				return concurrencyResult{}, derror.ErrLoginLimitExceeded
+				return result, derror.ErrLoginLimitExceeded
 			}
 
 			// Allow login when no active terminal 无活跃终端时允许继续登录。
-			return concurrencyResult{destroyedSession: destroyedByClean}, nil
+			return result, nil
 		}
 
 		// Replace old sessions when concurrency is disabled 不允许并发：顶掉旧会话。
 		// Replace terminals by configured scope 按配置作用域顶掉旧终端。
-		destroyedSession := destroyedByClean
 		if m.config.ConcurrencyScope == config.ConcurrencyScopeAccount {
-			if destroyedByReplace, err := m.removeTerminalInfosAndTokens(ctx, sess, config.LogoutModeReplaced); err != nil {
-				return concurrencyResult{}, err
+			if destroyedByReplace, removed, err := m.removeTerminalInfosAndTokens(ctx, sess, config.LogoutModeReplaced); err != nil {
+				return result, err
 			} else {
-				destroyedSession = destroyedSession || destroyedByReplace
+				result.destroyedSession = result.destroyedSession || destroyedByReplace
+				addTerminalLifecycleEvents(&result, removed, TokenStateReplaced)
 			}
 		} else if m.config.ConcurrencyScope == config.ConcurrencyScopeDevice {
-			if destroyedByReplace, err := m.removeTerminalInfosAndTokens(ctx, sess, config.LogoutModeReplaced, device); err != nil {
-				return concurrencyResult{}, err
+			if destroyedByReplace, removed, err := m.removeTerminalInfosAndTokens(ctx, sess, config.LogoutModeReplaced, device); err != nil {
+				return result, err
 			} else {
-				destroyedSession = destroyedSession || destroyedByReplace
+				result.destroyedSession = result.destroyedSession || destroyedByReplace
+				addTerminalLifecycleEvents(&result, removed, TokenStateReplaced)
 			}
 		}
-		return concurrencyResult{handled: true, destroyedSession: destroyedSession}, nil
+		result.handled = true
+		return result, nil
 	}
 
 	// Try token sharing when enabled 开启共享时尝试复用 Token。
@@ -74,10 +78,12 @@ func (m *Manager) handleConcurrency(
 		// Try token sharing reuse only within the same device dimension. 仅在相同设备维度内尝试复用 Token。
 		token, shareErr := m.getTokenAndShare(ctx, sess, device, deviceID)
 		if shareErr != nil {
-			return concurrencyResult{}, shareErr
+			return result, shareErr
 		}
 		if token != "" {
-			return concurrencyResult{reuseToken: token, handled: true, destroyedSession: destroyedByClean}, nil
+			result.reuseToken = token
+			result.handled = true
+			return result, nil
 		}
 	}
 
@@ -85,30 +91,64 @@ func (m *Manager) handleConcurrency(
 	if m.config.ConcurrencyScope == config.ConcurrencyScopeAccount {
 		removedOverflow := false
 		for policy.maxLoginCount > 0 && int64(len(sess.TerminalInfos)) >= policy.maxLoginCount {
-			if err := m.removeOldestTerminalInfoAndToken(ctx, sess, policy.overflowLogoutMode); err != nil {
-				return concurrencyResult{}, err
+			terminal, removed, err := m.removeOldestTerminalInfoAndToken(ctx, sess, policy.overflowLogoutMode)
+			if err != nil {
+				return result, err
+			}
+			if removed {
+				addTerminalLifecycleEvents(&result, []TerminalInfo{terminal}, tokenStateFromLogoutMode(policy.overflowLogoutMode))
 			}
 			removedOverflow = true
 		}
 		if removedOverflow {
-			return concurrencyResult{handled: true, destroyedSession: destroyedByClean}, nil
+			result.handled = true
+			return result, nil
 		}
 	} else if m.config.ConcurrencyScope == config.ConcurrencyScopeDevice {
 		// Enforce device-level max login count 执行设备级最大登录数限制。
 		removedOverflow := false
 		for policy.maxLoginCount > 0 && int64(len(sess.getTerminalsByDevice(device))) >= policy.maxLoginCount {
-			if err := m.removeOldestTerminalInfoAndToken(ctx, sess, policy.overflowLogoutMode, device); err != nil {
-				return concurrencyResult{}, err
+			terminal, removed, err := m.removeOldestTerminalInfoAndToken(ctx, sess, policy.overflowLogoutMode, device)
+			if err != nil {
+				return result, err
+			}
+			if removed {
+				addTerminalLifecycleEvents(&result, []TerminalInfo{terminal}, tokenStateFromLogoutMode(policy.overflowLogoutMode))
 			}
 			removedOverflow = true
 		}
 		if removedOverflow {
-			return concurrencyResult{handled: true, destroyedSession: destroyedByClean}, nil
+			result.handled = true
+			return result, nil
 		}
 	}
 
 	// No concurrency action needed 无需并发处理。
-	return concurrencyResult{destroyedSession: destroyedByClean}, nil
+	return result, nil
+}
+
+// addTerminalLifecycleEvents appends terminal state changes to a concurrency result. addTerminalLifecycleEvents 向并发结果追加终端状态事件。
+func addTerminalLifecycleEvents(result *concurrencyResult, terminals []TerminalInfo, state TokenState) {
+	if result == nil || state == "" {
+		return
+	}
+	for _, terminal := range terminals {
+		result.terminalEvents = append(result.terminalEvents, terminalLifecycleEvent{terminal: terminal, state: state})
+	}
+}
+
+// tokenStateFromLogoutMode maps overflow handling mode to terminal state. tokenStateFromLogoutMode 将超限处理模式映射为终端状态。
+func tokenStateFromLogoutMode(mode config.LogoutMode) TokenState {
+	switch mode {
+	case config.LogoutModeLogout:
+		return TokenStateLogout
+	case config.LogoutModeKickout:
+		return TokenStateKickOut
+	case config.LogoutModeReplaced:
+		return TokenStateReplaced
+	default:
+		return ""
+	}
 }
 
 // getTokenAndShare retrieves and shares a token within one device dimension. getTokenAndShare 在同一设备维度内获取并共享 token。

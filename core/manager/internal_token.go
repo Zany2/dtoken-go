@@ -189,7 +189,10 @@ func (m *Manager) checkTerminalTokenAliveWithContext(ctx context.Context, tokenV
 
 	// Reject disabled account or device 拒绝已封禁账号或设备。
 	if err := m.checkLoginDisableState(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID); err != nil {
-		return false, nil
+		if errors.Is(err, derror.ErrAccountDisabled) || errors.Is(err, derror.ErrDeviceDisabled) {
+			return false, nil
+		}
+		return false, err
 	}
 
 	// Reject foreign token when caller provided a session. 传入会话时拒绝不属于该会话的 Token。

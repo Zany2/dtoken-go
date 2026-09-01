@@ -109,6 +109,10 @@ func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenV
 	if err != nil {
 		return nil, nil, err
 	}
+	if tokenInfo.LoginID == "" {
+		// Reject malformed token metadata before account-scoped checks. 在执行账号范围校验前拒绝缺少主体的畸形 Token。
+		return nil, nil, derror.ErrInvalidToken
+	}
 
 	// Check disable status after token lookup 获取 token 后检查封禁状态。
 	if err := m.checkLoginDisableState(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID); err != nil {
@@ -158,6 +162,8 @@ func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenV
 				if err = m.markActiveTimeoutLocked(ctx, tokenInfo.LoginID, tokenValue, sess); err != nil {
 					return nil, nil, err
 				}
+				// Return the updated session and token so the caller can publish lifecycle events after unlocking. 返回更新后的会话和 Token，供调用方解锁后发布生命周期事件。
+				return sess, tokenInfo, derror.ErrActiveTimeout
 			} else {
 				// Mark inactive timeout separately so later checks keep the exact cause. 单独标记不活跃超时以保留精确原因。
 				if err = m.processTerminals(ctx, tokenInfo.LoginID, func(sess *Session) []TerminalInfo {
@@ -257,31 +263,97 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 	return err
 }
 
-// cleanExpiredTerminals removes expired tokens from session. cleanExpiredTerminals 清理会话中已过期的 token。
-func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (bool, error) {
+// cleanExpiredTerminals removes structurally inactive tokens without treating temporary disable state as expiration. cleanExpiredTerminals 清理结构性失效 Token，但不把临时封禁状态视为过期。
+func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (bool, []TerminalInfo, error) {
 	// Skip empty session 跳过空会话。
 	if sess == nil || len(sess.TerminalInfos) == 0 {
-		return false, nil
+		return false, nil, nil
 	}
 
 	// Prepare valid terminal list 准备有效终端列表。
 	var validTerminals []TerminalInfo
+	var activeTimeoutTerminals []TerminalInfo
 	hasExpired := false
 
 	// Check each terminal 逐个检查终端。
 	for _, ti := range sess.TerminalInfos {
-		// Check token by full alive rules 按完整存活规则检查 token
-		alive, err := m.checkTerminalTokenAliveWithContext(ctx, ti.Token, nil, sess)
+		// Load token metadata without applying reversible disable rules. 加载 Token 元数据，但不应用可解除的封禁规则。
+		tokenInfo, err := m.getTokenInfo(ctx, ti.Token)
 		if err != nil {
-			return false, err
+			if isTokenInactiveError(err) {
+				// Clean metadata for inactive tokens while preserving any logical token state. 清理失效 Token 的元数据，同时保留其逻辑状态。
+				if cleanErr := m.cleanTokenMetadata(ctx, []string{ti.Token}); cleanErr != nil {
+					return false, activeTimeoutTerminals, cleanErr
+				}
+				hasExpired = true
+				continue
+			}
+			return false, activeTimeoutTerminals, err
 		}
-		if alive {
+		if tokenInfo.LoginID == "" {
+			// Drop malformed token records that cannot be associated with an account. 删除无法关联账号的畸形 Token 记录。
+			if deleteErr := m.storage.Delete(ctx, m.getTokenKey(ti.Token)); deleteErr != nil {
+				return false, activeTimeoutTerminals, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, deleteErr)
+			}
+			if cleanErr := m.cleanTokenMetadata(ctx, []string{ti.Token}); cleanErr != nil {
+				return false, activeTimeoutTerminals, cleanErr
+			}
+			hasExpired = true
+			continue
+		}
+		if tokenInfo.LoginID != sess.LoginID {
+			hasExpired = true
+			continue
+		}
+
+		// Keep tokens that do not use active timeout. 保留未启用活跃超时的 Token。
+		activeTimeout := m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout)
+		if activeTimeout <= 0 {
 			validTerminals = append(validTerminals, ti)
 			continue
 		}
 
-		// Remove invalid terminal 移除无效终端
-		hasExpired = true
+		// Load and validate active timestamp. 加载并校验活跃时间戳。
+		activeValue, activeErr := m.storage.Get(ctx, m.getActiveKey(ti.Token))
+		if activeErr != nil {
+			return false, activeTimeoutTerminals, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, activeErr)
+		}
+		if activeValue == nil {
+			if deleteErr := m.storage.Delete(ctx, m.getTokenKey(ti.Token)); deleteErr != nil {
+				return false, activeTimeoutTerminals, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, deleteErr)
+			}
+			if cleanErr := m.cleanTokenMetadata(ctx, []string{ti.Token}); cleanErr != nil {
+				return false, activeTimeoutTerminals, cleanErr
+			}
+			hasExpired = true
+			continue
+		}
+
+		activeAt, convertErr := utils.ToInt64(activeValue)
+		if convertErr != nil {
+			if deleteErr := m.storage.Delete(ctx, m.getTokenKey(ti.Token)); deleteErr != nil {
+				return false, activeTimeoutTerminals, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, deleteErr)
+			}
+			if cleanErr := m.cleanTokenMetadata(ctx, []string{ti.Token}); cleanErr != nil {
+				return false, activeTimeoutTerminals, cleanErr
+			}
+			hasExpired = true
+			continue
+		}
+
+		if time.Now().Unix()-activeAt > activeTimeout {
+			if stateErr := m.setTokenState(ctx, ti.Token, TokenStateActiveTimeout, m.tokenStateExpiration(ctx, ti.Token)); stateErr != nil {
+				return false, activeTimeoutTerminals, stateErr
+			}
+			if cleanErr := m.cleanTokenMetadata(ctx, []string{ti.Token}); cleanErr != nil {
+				return false, activeTimeoutTerminals, cleanErr
+			}
+			activeTimeoutTerminals = append(activeTimeoutTerminals, ti)
+			hasExpired = true
+			continue
+		}
+
+		validTerminals = append(validTerminals, ti)
 	}
 
 	// Update session when expired tokens exist 存在过期 Token 时更新 Session
@@ -292,15 +364,15 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (boo
 		// Delete session when all terminals expired 所有终端均已过期时删除整个 session
 		if len(validTerminals) == 0 {
 			if err := m.storage.Delete(ctx, m.getSessionKey(sess.LoginID)); err != nil {
-				return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+				return false, activeTimeoutTerminals, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 			}
-			return true, nil
+			return true, activeTimeoutTerminals, nil
 		} else {
 			if err := m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
-				return false, err
+				return false, activeTimeoutTerminals, err
 			}
 		}
 	}
 
-	return false, nil
+	return false, activeTimeoutTerminals, nil
 }

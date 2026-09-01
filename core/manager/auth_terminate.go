@@ -12,7 +12,6 @@ import (
 func (m *Manager) Terminate(ctx context.Context, opts TerminateOptions) error {
 	// Normalize option fields before dispatching 规范化选项字段后再分发。
 	opts.Token = strings.TrimSpace(opts.Token)
-	opts.LoginID = strings.TrimSpace(opts.LoginID)
 	opts.Device = strings.TrimSpace(opts.Device)
 	opts.DeviceID = strings.TrimSpace(opts.DeviceID)
 

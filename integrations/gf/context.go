@@ -26,8 +26,8 @@ func NewGFContext(c *ghttp.Request) adapter.RequestContext {
 
 // Get implements adapter.RequestContext 实现 adapter.RequestContext 接口
 func (g *GFContext) Get(key string) (interface{}, bool) {
-	v := g.c.Get(key)
-	return v, v.IsNil()
+	v := g.c.GetCtxVar(key)
+	return v.Val(), !v.IsNil()
 }
 
 // GetClientIP implements adapter.RequestContext 实现 adapter.RequestContext 接口
@@ -37,7 +37,11 @@ func (g *GFContext) GetClientIP() string {
 
 // GetCookie implements adapter.RequestContext 实现 adapter.RequestContext 接口
 func (g *GFContext) GetCookie(key string) string {
-	return g.c.Cookie.Get(key).String()
+	v := g.c.Cookie.Get(key)
+	if v == nil {
+		return ""
+	}
+	return v.String()
 }
 
 // GetHeader implements adapter.RequestContext 实现 adapter.RequestContext 接口
@@ -75,6 +79,7 @@ func (g *GFContext) SetCookie(name string, value string, maxAge int, path string
 		Domain:   domain,
 		Secure:   secure,
 		HttpOnly: httpOnly,
+		SameSite: http.SameSiteLaxMode,
 	})
 }
 
@@ -124,7 +129,7 @@ func (g *GFContext) SetCookieWithOptions(options *adapter.CookieOptions) {
 		Domain:   options.Domain,
 		Secure:   options.Secure,
 		HttpOnly: options.HttpOnly,
-		SameSite: http.SameSite(0),
+		SameSite: http.SameSiteLaxMode,
 	}
 
 	switch options.SameSite {
@@ -141,17 +146,17 @@ func (g *GFContext) SetCookieWithOptions(options *adapter.CookieOptions) {
 
 // GetString implements adapter.RequestContext 实现 adapter.RequestContext 接口
 func (g *GFContext) GetString(key string) string {
-	v := g.c.Get(key)
+	v := g.c.GetCtxVar(key)
 	return v.String()
 }
 
 // MustGet implements adapter.RequestContext 实现 adapter.RequestContext 接口
 func (g *GFContext) MustGet(key string) any {
-	v := g.c.Get(key)
+	v := g.c.GetCtxVar(key)
 	if v.IsNil() {
 		panic("key not found: " + key)
 	}
-	return v
+	return v.Val()
 }
 
 // Abort implements adapter.RequestContext 实现 adapter.RequestContext 接口

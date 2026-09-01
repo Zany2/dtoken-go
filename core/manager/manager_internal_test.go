@@ -458,9 +458,9 @@ func TestManagerSessionCollectionHelpers(t *testing.T) {
 	if _, ok = session.removeOldestTerminal("missing"); ok {
 		t.Fatal("removeOldestTerminal(missing) = true, want false")
 	}
-	removed = session.removeAllTerminals()
-	if len(removed) != 1 || len(session.TerminalInfos) != 0 {
-		t.Fatalf("removeAllTerminals() = %+v; remaining = %+v", removed, session.TerminalInfos)
+	removedAll := session.removeAllTerminals()
+	if len(removedAll) != 1 || len(session.TerminalInfos) != 0 {
+		t.Fatalf("removeAllTerminals() = %+v; remaining = %+v", removedAll, session.TerminalInfos)
 	}
 
 	values := addUniqueStrings([]string{"a"}, "", "a", "b", "b")

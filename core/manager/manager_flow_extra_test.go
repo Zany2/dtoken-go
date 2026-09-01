@@ -1259,12 +1259,15 @@ func TestManagerLogoutHelpersHandleNoopAndEmptyTokenMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getSession() error = %v", err)
 	}
-	destroyed, err := mgr.removeTerminalInfosAndTokens(ctx, sess, config.LogoutModeLogout, "mobile")
+	destroyed, removed, err := mgr.removeTerminalInfosAndTokens(ctx, sess, config.LogoutModeLogout, "mobile")
 	if err != nil {
 		t.Fatalf("removeTerminalInfosAndTokens(no match) error = %v", err)
 	}
 	if destroyed {
 		t.Fatal("removeTerminalInfosAndTokens(no match) destroyed session")
+	}
+	if len(removed) != 0 {
+		t.Fatalf("removeTerminalInfosAndTokens(no match) removed = %+v, want empty", removed)
 	}
 	if err = mgr.CheckLogin(ctx, token); err != nil {
 		t.Fatalf("CheckLogin() after no-op remove error = %v", err)

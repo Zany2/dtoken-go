@@ -41,11 +41,19 @@ func (m *Manager) IntrospectToken(ctx context.Context, tokenValue string) (*Toke
 		}
 		return nil, err
 	}
+	if tokenInfo.LoginID == "" {
+		// Treat malformed token metadata as an inactive token rather than leaking an ID validation error. 将缺少主体的畸形 Token 视为非活跃，避免泄漏 ID 校验错误。
+		result.Error = "invalid_token"
+		return result, nil
+	}
 
 	// Check account and device disable status before session validation. 会话校验前先检查账号与设备封禁状态。
 	if disableErr := m.checkLoginDisableState(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID); disableErr != nil {
-		result.Error = disableErr.Error()
-		return result, nil
+		if errors.Is(disableErr, derror.ErrAccountDisabled) || errors.Is(disableErr, derror.ErrDeviceDisabled) {
+			result.Error = disableErr.Error()
+			return result, nil
+		}
+		return nil, disableErr
 	}
 
 	sess, sessErr := m.getSession(ctx, tokenInfo.LoginID)

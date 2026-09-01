@@ -31,8 +31,15 @@ func backgroundForManager(m *Manager) *managerBackground {
 
 // StartRenewPoolStatusLogger starts renew pool status logging. StartRenewPoolStatusLogger 启动续期池状态日志。
 func (m *Manager) StartRenewPoolStatusLogger(interval time.Duration) {
-	// Validate logger preconditions 校验日志器启动条件。
-	if m == nil || interval <= 0 || m.pool == nil || m.logger == nil {
+	// Validate immutable preconditions 校验不可变启动条件。
+	if m == nil || interval <= 0 {
+		return
+	}
+
+	// Serialize logger startup with manager shutdown. 将状态日志启动与 Manager 关闭流程串行化。
+	m.asyncMu.Lock()
+	defer m.asyncMu.Unlock()
+	if m.asyncClosed || m.pool == nil || m.logger == nil {
 		return
 	}
 

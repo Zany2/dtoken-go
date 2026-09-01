@@ -67,8 +67,8 @@ func (g *GinContext) Set(key string, value interface{}) {
 
 // SetCookie implements adapter.RequestContext 实现 adapter.RequestContext 接口
 func (g *GinContext) SetCookie(name string, value string, maxAge int, path string, domain string, secure bool, httpOnly bool) {
-	g.c.SetCookie(name, value, maxAge, path, domain, secure, httpOnly)
 	g.c.SetSameSite(http.SameSiteLaxMode)
+	g.c.SetCookie(name, value, maxAge, path, domain, secure, httpOnly)
 }
 
 // SetHeader implements adapter.RequestContext 实现 adapter.RequestContext 接口
@@ -108,6 +108,14 @@ func (g *GinContext) GetUserAgent() string {
 
 // SetCookieWithOptions implements adapter.RequestContext 实现 adapter.RequestContext 接口
 func (g *GinContext) SetCookieWithOptions(options *adapter.CookieOptions) {
+	sameSite := http.SameSiteLaxMode
+	switch options.SameSite {
+	case "Strict":
+		sameSite = http.SameSiteStrictMode
+	case "None":
+		sameSite = http.SameSiteNoneMode
+	}
+	g.c.SetSameSite(sameSite)
 	g.c.SetCookie(
 		options.Name,
 		options.Value,
@@ -117,15 +125,6 @@ func (g *GinContext) SetCookieWithOptions(options *adapter.CookieOptions) {
 		options.Secure,
 		options.HttpOnly,
 	)
-
-	switch options.SameSite {
-	case "Strict":
-		g.c.SetSameSite(http.SameSiteStrictMode)
-	case "Lax":
-		g.c.SetSameSite(http.SameSiteLaxMode)
-	case "None":
-		g.c.SetSameSite(http.SameSiteNoneMode)
-	}
 }
 
 // GetString implements adapter.RequestContext 实现 adapter.RequestContext 接口

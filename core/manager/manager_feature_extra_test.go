@@ -187,7 +187,7 @@ func TestManagerOAuth2TokenEndpointRefreshEvent(t *testing.T) {
 	}
 
 	assertManagerEvent(t, events, listener.EventOAuth2TokenRefresh, client.ClientID, "", "", refreshed.Token, map[string]any{
-		listener.ExtraKeyAction:    listener.ActionIssue,
+		listener.ExtraKeyAction:    listener.ActionRefresh,
 		listener.ExtraKeyGrantType: string(oauth2.GrantTypeRefreshToken),
 	})
 }

@@ -95,6 +95,8 @@ func TestExtractBearerToken(t *testing.T) {
 		{name: "empty bearer", auth: "Bearer", want: ""},
 		{name: "empty bearer with spaces", auth: "Bearer   ", want: ""},
 		{name: "raw compatibility", auth: "raw-token", want: "raw-token"},
+		{name: "non bearer scheme", auth: "Basic abc", want: ""},
+		{name: "raw value with spaces", auth: "raw token", want: ""},
 		{name: "empty", auth: "  ", want: ""},
 	}
 
@@ -806,6 +808,516 @@ func TestContextOptionalFacadeVariants(t *testing.T) {
 	}
 }
 
+// TestContextBaseAccessAndSessionFacades verifies base accessors, access lookups, and session variants. TestContextBaseAccessAndSessionFacades 验证基础访问器、权限角色查询和 Session 变体。
+func TestContextBaseAccessAndSessionFacades(t *testing.T) {
+	ctx := stdctx.Background()
+	dctx, req, mgr := newTestDTokenContext(t)
+
+	if dctx.GetRequestContext() != req {
+		t.Fatal("GetRequestContext() did not return the original request context")
+	}
+	if dctx.GetManager() != mgr {
+		t.Fatal("GetManager() did not return the original manager")
+	}
+
+	token, err := dctx.Auth().LoginWithOptions(ctx, manager.LoginOptions{
+		LoginID:  "access-context-user",
+		Device:   "web",
+		DeviceID: "browser-1",
+		Timeout:  time.Minute,
+		Extra:    map[string]any{"source": "context"},
+	})
+	if err != nil {
+		t.Fatalf("Auth.LoginWithOptions() error = %v", err)
+	}
+	req.headers[mgr.GetConfig().TokenName] = token
+
+	if err = dctx.Auth().CheckLogin(ctx); err != nil {
+		t.Fatalf("Auth.CheckLogin() error = %v", err)
+	}
+	if deviceID, err := dctx.Auth().GetDeviceID(ctx); err != nil || deviceID != "browser-1" {
+		t.Fatalf("Auth.GetDeviceID() = %q, %v, want browser-1, nil", deviceID, err)
+	}
+	if createTime, err := dctx.Auth().GetTokenCreateTime(ctx); err != nil || createTime <= 0 {
+		t.Fatalf("Auth.GetTokenCreateTime() = %d, %v, want positive timestamp", createTime, err)
+	}
+	if ttl, err := dctx.Auth().GetTokenTTL(ctx); err != nil || ttl <= 0 {
+		t.Fatalf("Auth.GetTokenTTL() = %d, %v, want positive ttl", ttl, err)
+	}
+	info, err := dctx.Auth().GetTokenInfo(ctx)
+	if err != nil {
+		t.Fatalf("Auth.GetTokenInfo() error = %v", err)
+	}
+	if info.LoginID != "access-context-user" || info.DeviceID != "browser-1" || info.Extra["source"] != "context" {
+		t.Fatalf("Auth.GetTokenInfo() = %+v, want login/device/extra fields", info)
+	}
+
+	if err = dctx.Access().AddRoles(ctx, []string{"admin", "editor"}); err != nil {
+		t.Fatalf("Access.AddRoles() error = %v", err)
+	}
+	roles, err := dctx.Access().GetRoles(ctx)
+	if err != nil {
+		t.Fatalf("Access.GetRoles() error = %v", err)
+	}
+	if !sameContextStrings(roles, []string{"admin", "editor"}) {
+		t.Fatalf("Access.GetRoles() = %v, want admin/editor", roles)
+	}
+	rolesByToken, err := dctx.Access().GetRolesByToken(ctx)
+	if err != nil {
+		t.Fatalf("Access.GetRolesByToken() error = %v", err)
+	}
+	if !sameContextStrings(rolesByToken, roles) {
+		t.Fatalf("Access.GetRolesByToken() = %v, want %v", rolesByToken, roles)
+	}
+	if !dctx.Access().HasRole(ctx, "admin") || !dctx.Access().HasRoles(ctx, []string{"missing", "admin"}) || !dctx.Access().HasRolesAnd(ctx, []string{"admin", "editor"}) {
+		t.Fatal("Access role predicates returned false for configured roles")
+	}
+	if err = dctx.Access().CheckRole(ctx, "admin"); err != nil {
+		t.Fatalf("Access.CheckRole() error = %v", err)
+	}
+	if err = dctx.Access().CheckRolesAnd(ctx, []string{"admin", "editor"}); err != nil {
+		t.Fatalf("Access.CheckRolesAnd() error = %v", err)
+	}
+
+	if err = dctx.Access().AddPermissions(ctx, []string{"read", "write"}); err != nil {
+		t.Fatalf("Access.AddPermissions() error = %v", err)
+	}
+	permissions, err := dctx.Access().GetPermissions(ctx)
+	if err != nil {
+		t.Fatalf("Access.GetPermissions() error = %v", err)
+	}
+	if !sameContextStrings(permissions, []string{"read", "write"}) {
+		t.Fatalf("Access.GetPermissions() = %v, want read/write", permissions)
+	}
+	permissionsByToken, err := dctx.Access().GetPermissionsByToken(ctx)
+	if err != nil {
+		t.Fatalf("Access.GetPermissionsByToken() error = %v", err)
+	}
+	if !sameContextStrings(permissionsByToken, permissions) {
+		t.Fatalf("Access.GetPermissionsByToken() = %v, want %v", permissionsByToken, permissions)
+	}
+	if !dctx.Access().HasPermission(ctx, "read") || !dctx.Access().HasPermissions(ctx, []string{"missing", "read"}) || !dctx.Access().HasPermissionsAnd(ctx, []string{"read", "write"}) {
+		t.Fatal("Access permission predicates returned false for configured permissions")
+	}
+	if err = dctx.Access().CheckPermission(ctx, "read"); err != nil {
+		t.Fatalf("Access.CheckPermission() error = %v", err)
+	}
+	if err = dctx.Access().CheckPermissionsAnd(ctx, []string{"read", "write"}); err != nil {
+		t.Fatalf("Access.CheckPermissionsAnd() error = %v", err)
+	}
+	if err = dctx.Access().CheckPermissionsOr(ctx, []string{"missing", "write"}); err != nil {
+		t.Fatalf("Access.CheckPermissionsOr() error = %v", err)
+	}
+
+	sessionByID, err := dctx.Session().Get(ctx)
+	if err != nil {
+		t.Fatalf("Session.Get() error = %v", err)
+	}
+	sessionByToken, err := dctx.Session().GetByToken(ctx)
+	if err != nil {
+		t.Fatalf("Session.GetByToken() error = %v", err)
+	}
+	if sessionByID.LoginID != "access-context-user" || sessionByToken.LoginID != sessionByID.LoginID {
+		t.Fatalf("Session values = %+v / %+v, want same access-context-user session", sessionByID, sessionByToken)
+	}
+
+	if err = dctx.Access().RemoveRoles(ctx, []string{"editor"}); err != nil {
+		t.Fatalf("Access.RemoveRoles() error = %v", err)
+	}
+	if dctx.Access().HasRole(ctx, "editor") {
+		t.Fatal("Access.HasRole(editor) = true after removal, want false")
+	}
+	if err = dctx.Access().RemovePermissions(ctx, []string{"write"}); err != nil {
+		t.Fatalf("Access.RemovePermissions() error = %v", err)
+	}
+	if dctx.Access().HasPermission(ctx, "write") {
+		t.Fatal("Access.HasPermission(write) = true after removal, want false")
+	}
+}
+
+// TestContextDisableRemainingFacades verifies disable read, level, device, and untie helpers not covered by the main flow. TestContextDisableRemainingFacades 验证主流程未覆盖的封禁读取、等级、设备和解封快捷方法。
+func TestContextDisableRemainingFacades(t *testing.T) {
+	ctx := stdctx.Background()
+	dctx, req, mgr := newTestDTokenContext(t)
+
+	token, err := dctx.Auth().LoginWithTimeout(ctx, "disable-complete-user", time.Minute, "app", "current")
+	if err != nil {
+		t.Fatalf("Auth.LoginWithTimeout() error = %v", err)
+	}
+	req.headers[mgr.GetConfig().TokenName] = token
+
+	if dctx.Disable().IsAccount(ctx) {
+		t.Fatal("Disable.IsAccount() = true before account disable")
+	}
+	if err = dctx.Disable().CheckAccount(ctx); err != nil {
+		t.Fatalf("Disable.CheckAccount() before disable error = %v", err)
+	}
+	if _, err = dctx.Disable().AccountInfo(ctx); !errors.Is(err, derror.ErrAccountNotDisabled) {
+		t.Fatalf("Disable.AccountInfo() error = %v, want ErrAccountNotDisabled", err)
+	}
+	if ttl, err := dctx.Disable().AccountTTL(ctx); err != nil || ttl != -2 {
+		t.Fatalf("Disable.AccountTTL() = %d, %v, want -2, nil", ttl, err)
+	}
+	if err = dctx.Disable().UntieAccount(ctx); err != nil {
+		t.Fatalf("Disable.UntieAccount() before disable error = %v", err)
+	}
+
+	if err = dctx.Disable().Service(ctx, "billing", time.Minute, "service"); err != nil {
+		t.Fatalf("Disable.Service() error = %v", err)
+	}
+	if !dctx.Disable().IsService(ctx, "billing") {
+		t.Fatal("Disable.IsService() = false, want true")
+	}
+	if err = dctx.Disable().CheckService(ctx, "billing"); !errors.Is(err, derror.ErrServiceDisabled) {
+		t.Fatalf("Disable.CheckService() error = %v, want ErrServiceDisabled", err)
+	}
+	serviceInfo, err := dctx.Disable().GetServiceInfo(ctx, "billing")
+	if err != nil || serviceInfo.DisableReason != "service" {
+		t.Fatalf("Disable.GetServiceInfo() = %+v, %v, want service reason", serviceInfo, err)
+	}
+	if ttl, err := dctx.Disable().GetServiceTTL(ctx, "billing"); err != nil || ttl <= 0 {
+		t.Fatalf("Disable.GetServiceTTL() = %d, %v, want positive ttl", ttl, err)
+	}
+	if err = dctx.Disable().UntieService(ctx, "billing"); err != nil {
+		t.Fatalf("Disable.UntieService() error = %v", err)
+	}
+
+	if err = dctx.Disable().ServiceLevel(ctx, "reports", 3, time.Minute, "level"); err != nil {
+		t.Fatalf("Disable.ServiceLevel() error = %v", err)
+	}
+	if !dctx.Disable().IsServiceLevel(ctx, "reports", 2) {
+		t.Fatal("Disable.IsServiceLevel() = false, want true for lower level")
+	}
+	if err = dctx.Disable().CheckServiceLevel(ctx, "reports", 2); !errors.Is(err, derror.ErrServiceDisabled) {
+		t.Fatalf("Disable.CheckServiceLevel() error = %v, want ErrServiceDisabled", err)
+	}
+	if err = dctx.Disable().UntieService(ctx, "reports"); err != nil {
+		t.Fatalf("Disable.UntieService(reports) error = %v", err)
+	}
+
+	if err = dctx.Disable().Device(ctx, "web", time.Minute, "device"); err != nil {
+		t.Fatalf("Disable.Device() error = %v", err)
+	}
+	if !dctx.Disable().IsDevice(ctx, "web") {
+		t.Fatal("Disable.IsDevice() = false, want true")
+	}
+	if err = dctx.Disable().CheckDevice(ctx, "web"); !errors.Is(err, derror.ErrDeviceDisabled) {
+		t.Fatalf("Disable.CheckDevice() error = %v, want ErrDeviceDisabled", err)
+	}
+	deviceInfo, err := dctx.Disable().GetDeviceInfo(ctx, "web")
+	if err != nil || deviceInfo.Device != "web" || deviceInfo.DisableReason != "device" {
+		t.Fatalf("Disable.GetDeviceInfo() = %+v, %v, want web/device", deviceInfo, err)
+	}
+	if ttl, err := dctx.Disable().GetDeviceTTL(ctx, "web"); err != nil || ttl <= 0 {
+		t.Fatalf("Disable.GetDeviceTTL() = %d, %v, want positive ttl", ttl, err)
+	}
+	if err = dctx.Disable().UntieDevice(ctx, "web"); err != nil {
+		t.Fatalf("Disable.UntieDevice() error = %v", err)
+	}
+
+	if err = dctx.Disable().DeviceAndDeviceID(ctx, "web", "browser-1", time.Minute, "concrete"); err != nil {
+		t.Fatalf("Disable.DeviceAndDeviceID() error = %v", err)
+	}
+	if !dctx.Disable().IsDeviceAndDeviceID(ctx, "web", "browser-1") {
+		t.Fatal("Disable.IsDeviceAndDeviceID() = false, want true")
+	}
+	if err = dctx.Disable().CheckDeviceAndDeviceID(ctx, "web", "browser-1"); !errors.Is(err, derror.ErrDeviceDisabled) {
+		t.Fatalf("Disable.CheckDeviceAndDeviceID() error = %v, want ErrDeviceDisabled", err)
+	}
+	concreteInfo, err := dctx.Disable().GetDeviceAndDeviceIDInfo(ctx, "web", "browser-1")
+	if err != nil || concreteInfo.DeviceID != "browser-1" || concreteInfo.DisableReason != "concrete" {
+		t.Fatalf("Disable.GetDeviceAndDeviceIDInfo() = %+v, %v, want browser-1/concrete", concreteInfo, err)
+	}
+	if ttl, err := dctx.Disable().GetDeviceAndDeviceIDTTL(ctx, "web", "browser-1"); err != nil || ttl <= 0 {
+		t.Fatalf("Disable.GetDeviceAndDeviceIDTTL() = %d, %v, want positive ttl", ttl, err)
+	}
+	if err = dctx.Disable().UntieDeviceAndDeviceID(ctx, "web", "browser-1"); err != nil {
+		t.Fatalf("Disable.UntieDeviceAndDeviceID() error = %v", err)
+	}
+}
+
+// TestContextLegacyCookieFallback verifies cookie writes when no CookieConfig is configured. TestContextLegacyCookieFallback 验证未配置 CookieConfig 时的兼容 Cookie 写入。
+func TestContextLegacyCookieFallback(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.IsReadCookie = false
+	cfg.CookieConfig = nil
+	cfg.IsPrintBanner = false
+	cfg.IsLog = false
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("legacy cookie test config invalid: %v", err)
+	}
+	mgr := manager.NewManager(cfg, nil, nil, nil, nil, nil, nil)
+	t.Cleanup(mgr.CloseManager)
+	req := &testRequestContext{
+		headers: map[string]string{},
+		cookies: map[string]string{},
+		queries: map[string]string{},
+		forms:   map[string]string{},
+	}
+	dctx := NewContext(req, mgr)
+
+	dctx.Cookie().SetToken("legacy-token")
+	assertContextCookie(t, req.cookie, cfg.TokenName, "legacy-token", 0, "/", "", false, true, "")
+	dctx.Cookie().SetToken("")
+	assertContextCookie(t, req.cookie, cfg.TokenName, "legacy-token", 0, "/", "", false, true, "")
+	dctx.Cookie().ClearToken()
+	assertContextCookie(t, req.cookie, cfg.TokenName, "", -1, "/", "", false, true, "")
+}
+
+// TestContextTerminalScopedActions verifies every scoped terminal facade forwards the correct scope and state. TestContextTerminalScopedActions 验证所有范围终端操作快捷方法的作用域和状态。
+func TestContextTerminalScopedActions(t *testing.T) {
+	ctx := stdctx.Background()
+	cases := []struct {
+		name      string
+		action    func(*DTokenContext) error
+		wantState manager.TokenState
+	}{
+		{name: "logout by device", action: func(dctx *DTokenContext) error { return dctx.Terminal().LogoutByDevice(ctx, "web") }},
+		{name: "logout by device and id", action: func(dctx *DTokenContext) error {
+			return dctx.Terminal().LogoutByDeviceAndDeviceID(ctx, "web", "target")
+		}},
+		{name: "kickout by device", action: func(dctx *DTokenContext) error { return dctx.Terminal().KickoutByDevice(ctx, "web") }, wantState: manager.TokenStateKickOut},
+		{name: "kickout by device and id", action: func(dctx *DTokenContext) error {
+			return dctx.Terminal().KickoutByDeviceAndDeviceID(ctx, "web", "target")
+		}, wantState: manager.TokenStateKickOut},
+		{name: "replace by device", action: func(dctx *DTokenContext) error { return dctx.Terminal().ReplaceByDevice(ctx, "web") }, wantState: manager.TokenStateReplaced},
+		{name: "replace by device and id", action: func(dctx *DTokenContext) error {
+			return dctx.Terminal().ReplaceByDeviceAndDeviceID(ctx, "web", "target")
+		}, wantState: manager.TokenStateReplaced},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			dctx, req, mgr := newTestDTokenContext(t)
+			current, err := dctx.Auth().Login(ctx, "scoped-user", "app", "current")
+			if err != nil {
+				t.Fatalf("Auth.Login(current) error = %v", err)
+			}
+			target, err := dctx.Auth().Login(ctx, "scoped-user", "web", "target")
+			if err != nil {
+				t.Fatalf("Auth.Login(target) error = %v", err)
+			}
+			req.headers[mgr.GetConfig().TokenName] = current
+			if err = tt.action(dctx); err != nil {
+				t.Fatalf("scoped action error = %v", err)
+			}
+			if !mgr.IsLogin(ctx, current) {
+				t.Fatal("current token is no longer active, want scoped action to preserve it")
+			}
+			if tt.wantState == "" {
+				if mgr.IsLogin(ctx, target) {
+					t.Fatal("target token is still active after logout")
+				}
+				return
+			}
+			if err = mgr.CheckLogin(ctx, target); !errors.Is(err, tokenStateErrorForContextTest(tt.wantState)) {
+				t.Fatalf("target CheckLogin() error = %v, want state %s", err, tt.wantState)
+			}
+		})
+	}
+}
+
+// TestContextTerminalBatchAndTerminateFacades verifies current-token aliases, batch operations, and automatic Terminate targeting. TestContextTerminalBatchAndTerminateFacades 验证当前 Token 别名、批量操作和 Terminate 自动定位。
+func TestContextTerminalBatchAndTerminateFacades(t *testing.T) {
+	ctx := stdctx.Background()
+
+	t.Run("batch operations", func(t *testing.T) {
+		cases := []struct {
+			name   string
+			action func(*DTokenContext) error
+			state  error
+		}{
+			{name: "logout all", action: func(dctx *DTokenContext) error { return dctx.Terminal().LogoutAll(ctx) }},
+			{name: "kickout all", action: func(dctx *DTokenContext) error { return dctx.Terminal().KickoutAll(ctx) }, state: derror.ErrTokenKickout},
+			{name: "replace all", action: func(dctx *DTokenContext) error { return dctx.Terminal().ReplaceAll(ctx) }, state: derror.ErrTokenReplaced},
+		}
+		for _, tt := range cases {
+			t.Run(tt.name, func(t *testing.T) {
+				dctx, req, mgr := newTestDTokenContext(t)
+				token, err := dctx.Auth().Login(ctx, "batch-user", "web", "browser")
+				if err != nil {
+					t.Fatalf("Auth.Login() error = %v", err)
+				}
+				req.headers[mgr.GetConfig().TokenName] = token
+				if err = tt.action(dctx); err != nil {
+					t.Fatalf("batch action error = %v", err)
+				}
+				if tt.state == nil {
+					if mgr.IsLogin(ctx, token) {
+						t.Fatal("token remains active after LogoutAll")
+					}
+					return
+				}
+				if err = mgr.CheckLogin(ctx, token); !errors.Is(err, tt.state) {
+					t.Fatalf("CheckLogin() error = %v, want %v", err, tt.state)
+				}
+			})
+		}
+	})
+
+	t.Run("current aliases and terminate", func(t *testing.T) {
+		dctx, req, mgr := newTestDTokenContext(t)
+		token, err := dctx.Auth().Login(ctx, "alias-user", "web", "browser")
+		if err != nil {
+			t.Fatalf("Auth.Login() error = %v", err)
+		}
+		req.headers[mgr.GetConfig().TokenName] = token
+		if err = dctx.Terminal().Kickout(ctx); err != nil {
+			t.Fatalf("Terminal.Kickout() error = %v", err)
+		}
+		if err = mgr.CheckLogin(ctx, token); !errors.Is(err, derror.ErrTokenKickout) {
+			t.Fatalf("CheckLogin(after Kickout) error = %v, want ErrTokenKickout", err)
+		}
+
+		replacement, err := dctx.Auth().Login(ctx, "alias-user", "web", "replacement")
+		if err != nil {
+			t.Fatalf("Auth.Login(replacement) error = %v", err)
+		}
+		req.headers[mgr.GetConfig().TokenName] = replacement
+		if err = dctx.Terminal().Replace(ctx); err != nil {
+			t.Fatalf("Terminal.Replace() error = %v", err)
+		}
+		if err = mgr.CheckLogin(ctx, replacement); !errors.Is(err, derror.ErrTokenReplaced) {
+			t.Fatalf("CheckLogin(after Replace) error = %v, want ErrTokenReplaced", err)
+		}
+
+		logoutToken, err := dctx.Auth().Login(ctx, "alias-user", "web", "logout")
+		if err != nil {
+			t.Fatalf("Auth.Login(logout) error = %v", err)
+		}
+		req.headers[mgr.GetConfig().TokenName] = logoutToken
+		if err = dctx.Terminal().Terminate(ctx, manager.TerminateOptions{}); err != nil {
+			t.Fatalf("Terminal.Terminate(empty options) error = %v", err)
+		}
+		if mgr.IsLogin(ctx, logoutToken) {
+			t.Fatal("Terminate(empty options) left current token active")
+		}
+
+		searchResult, err := dctx.Terminal().SearchSessionId(ctx, "alias-user", 0, -1)
+		if err != nil {
+			t.Fatalf("Terminal.SearchSessionId() error = %v", err)
+		}
+		if len(searchResult) != 0 {
+			t.Fatalf("Terminal.SearchSessionId() = %v, want no session after Terminate", searchResult)
+		}
+	})
+}
+
+// TestContextTicketShortKeyAndPKCEFacades verifies uncovered optional credential and PKCE context methods. TestContextTicketShortKeyAndPKCEFacades 验证未覆盖的可选凭证和 PKCE 上下文方法。
+func TestContextTicketShortKeyAndPKCEFacades(t *testing.T) {
+	ctx := stdctx.Background()
+	dctx, _, mgr := newTestDTokenContext(t)
+	enableContextOptionalManagers(mgr)
+
+	createdTicket, err := dctx.Ticket().Create(ctx, ticket.CreateOptions{
+		LoginID:   "optional-direct-user",
+		Device:    "web",
+		DeviceID:  "browser-1",
+		TargetApp: "admin",
+	})
+	if err != nil {
+		t.Fatalf("Ticket.Create() error = %v", err)
+	}
+	validatedTicket, err := dctx.Ticket().Validate(ctx, createdTicket.Ticket, ticket.ValidateOptions{LoginID: "optional-direct-user", TargetApp: "admin"})
+	if err != nil {
+		t.Fatalf("Ticket.Validate() error = %v", err)
+	}
+	if validatedTicket.Status != ticket.StatusValid {
+		t.Fatalf("Ticket.Validate().Status = %s, want valid", validatedTicket.Status)
+	}
+	if ttl, err := dctx.Ticket().GetTTL(ctx, createdTicket.Ticket); err != nil || ttl <= 0 {
+		t.Fatalf("Ticket.GetTTL() = %d, %v, want positive ttl", ttl, err)
+	}
+	if err = dctx.Ticket().Revoke(ctx, createdTicket.Ticket); err != nil {
+		t.Fatalf("Ticket.Revoke() error = %v", err)
+	}
+	if status, err := dctx.Ticket().GetStatus(ctx, createdTicket.Ticket); err != nil || status != ticket.StatusRevoked {
+		t.Fatalf("Ticket.GetStatus(revoked) = %s, %v, want revoked, nil", status, err)
+	}
+
+	consumableTicket, err := dctx.Ticket().CreateWithTimeout(ctx, ticket.CreateOptions{LoginID: "optional-direct-user"}, time.Minute)
+	if err != nil {
+		t.Fatalf("Ticket.CreateWithTimeout() error = %v", err)
+	}
+	consumedTicket, err := dctx.Ticket().Consume(ctx, consumableTicket.Ticket, ticket.ValidateOptions{LoginID: "optional-direct-user"})
+	if err != nil {
+		t.Fatalf("Ticket.Consume() error = %v", err)
+	}
+	if consumedTicket.Ticket.Status != ticket.StatusConsumed {
+		t.Fatalf("Ticket.Consume().Status = %s, want consumed", consumedTicket.Ticket.Status)
+	}
+
+	createdShortKey, err := dctx.ShortKey().Create(ctx, shortkey.CreateOptions{Scene: "login"})
+	if err != nil {
+		t.Fatalf("ShortKey.Create() error = %v", err)
+	}
+	if _, err = dctx.ShortKey().Validate(ctx, createdShortKey.Key); !errors.Is(err, shortkey.ErrShortKeyPending) {
+		t.Fatalf("ShortKey.Validate(pending) error = %v, want ErrShortKeyPending", err)
+	}
+	confirmedShortKey, err := dctx.ShortKey().Confirm(ctx, createdShortKey.Key, shortkey.ConfirmOptions{LoginID: "optional-direct-user", Device: "web", DeviceID: "browser-1"})
+	if err != nil {
+		t.Fatalf("ShortKey.Confirm() error = %v", err)
+	}
+	if confirmedShortKey.Status != shortkey.StatusConfirmed {
+		t.Fatalf("ShortKey.Confirm().Status = %s, want confirmed", confirmedShortKey.Status)
+	}
+	if _, err = dctx.ShortKey().Validate(ctx, createdShortKey.Key, shortkey.ValidateOptions{LoginID: "optional-direct-user", Device: "web"}); err != nil {
+		t.Fatalf("ShortKey.Validate(confirmed) error = %v", err)
+	}
+	if ttl, err := dctx.ShortKey().GetTTL(ctx, createdShortKey.Key); err != nil || ttl <= 0 {
+		t.Fatalf("ShortKey.GetTTL() = %d, %v, want positive ttl", ttl, err)
+	}
+	consumedShortKey, err := dctx.ShortKey().Consume(ctx, createdShortKey.Key, shortkey.ValidateOptions{LoginID: "optional-direct-user"})
+	if err != nil {
+		t.Fatalf("ShortKey.Consume() error = %v", err)
+	}
+	if consumedShortKey.ShortKey.Status != shortkey.StatusConsumed {
+		t.Fatalf("ShortKey.Consume().Status = %s, want consumed", consumedShortKey.ShortKey.Status)
+	}
+
+	client := &oauth2.Client{
+		ClientID:     "context-pkce-client",
+		ClientSecret: "secret",
+		RedirectURIs: []string{"https://example.com/callback"},
+		GrantTypes:   []oauth2.GrantType{oauth2.GrantTypeAuthorizationCode},
+		Scopes:       []string{"read"},
+	}
+	if err = dctx.OAuth2().RegisterClient(client); err != nil {
+		t.Fatalf("OAuth2.RegisterClient() error = %v", err)
+	}
+	code, err := dctx.OAuth2().GenerateAuthorizationCodeWithPKCE(ctx, client.ClientID, "pkce-user", client.RedirectURIs[0], []string{"read"}, "plain-verifier", "")
+	if err != nil {
+		t.Fatalf("OAuth2.GenerateAuthorizationCodeWithPKCE() error = %v", err)
+	}
+	if code.CodeChallengeMethod != oauth2.CodeChallengeMethodPlain {
+		t.Fatalf("CodeChallengeMethod = %q, want plain", code.CodeChallengeMethod)
+	}
+	if _, err = dctx.OAuth2().ExchangeCodeForTokenWithPKCE(ctx, code.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], "wrong-verifier"); !errors.Is(err, derror.ErrInvalidCodeVerifier) {
+		t.Fatalf("OAuth2.ExchangeCodeForTokenWithPKCE(wrong verifier) error = %v, want ErrInvalidCodeVerifier", err)
+	}
+	accessToken, err := dctx.OAuth2().ExchangeCodeForTokenWithPKCE(ctx, code.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], "plain-verifier")
+	if err != nil {
+		t.Fatalf("OAuth2.ExchangeCodeForTokenWithPKCE() error = %v", err)
+	}
+	if accessToken.Token == "" || accessToken.UserID != "pkce-user" {
+		t.Fatalf("OAuth2.ExchangeCodeForTokenWithPKCE() = %+v, want pkce-user token", accessToken)
+	}
+	if err = dctx.OAuth2().UnregisterClient(client.ClientID); err != nil {
+		t.Fatalf("OAuth2.UnregisterClient() error = %v", err)
+	}
+}
+
+func tokenStateErrorForContextTest(state manager.TokenState) error {
+	switch state {
+	case manager.TokenStateKickOut:
+		return derror.ErrTokenKickout
+	case manager.TokenStateReplaced:
+		return derror.ErrTokenReplaced
+	default:
+		return derror.ErrInvalidToken
+	}
+}
+
 type testRequestContext struct {
 	headers map[string]string
 	cookies map[string]string
@@ -837,7 +1349,16 @@ func (c *testRequestContext) IsTLS() bool                      { return false }
 func (c *testRequestContext) SetStatusCode(int)                {}
 func (c *testRequestContext) SetHeader(string, string)         {}
 func (c *testRequestContext) Write(data []byte) (int, error)   { return len(data), nil }
-func (c *testRequestContext) SetCookie(string, string, int, string, string, bool, bool) {
+func (c *testRequestContext) SetCookie(name, value string, maxAge int, path, domain string, secure, httpOnly bool) {
+	c.cookie = &adapter.CookieOptions{
+		Name:     name,
+		Value:    value,
+		MaxAge:   maxAge,
+		Path:     path,
+		Domain:   domain,
+		Secure:   secure,
+		HttpOnly: httpOnly,
+	}
 }
 func (c *testRequestContext) SetCookieWithOptions(options *adapter.CookieOptions) {
 	c.cookie = options

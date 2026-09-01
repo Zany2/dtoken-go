@@ -7,6 +7,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
+	"sort"
 	"strings"
 	"time"
 )
@@ -178,6 +179,37 @@ func (m *Manager) saveToStorageIfAbsent(
 	return true, nil
 }
 
+// getWithLegacyKey reads the current key and falls back to a legacy key during migrations. getWithLegacyKey 读取当前键，迁移期间找不到时回退旧键。
+func (m *Manager) getWithLegacyKey(ctx context.Context, key, legacyKey string) (any, error) {
+	value, err := m.storage.Get(ctx, key)
+	if err != nil || value != nil || legacyKey == key {
+		return value, err
+	}
+	return m.storage.Get(ctx, legacyKey)
+}
+
+// ttlWithLegacyKey reads TTL and falls back to a legacy key when the current key is absent. ttlWithLegacyKey 读取 TTL，当前键不存在时回退旧键。
+func (m *Manager) ttlWithLegacyKey(ctx context.Context, key, legacyKey string) (time.Duration, error) {
+	ttl, err := m.storage.TTL(ctx, key)
+	if err != nil || ttl != adapter.TTLNotFound || legacyKey == key {
+		return ttl, err
+	}
+	return m.storage.TTL(ctx, legacyKey)
+}
+
+// existsWithLegacyKey checks current and legacy keys. existsWithLegacyKey 同时检查当前键和旧键。
+func (m *Manager) existsWithLegacyKey(ctx context.Context, key, legacyKey string) bool {
+	return m.storage.Exists(ctx, key) || (legacyKey != key && m.storage.Exists(ctx, legacyKey))
+}
+
+// deleteWithLegacyKey removes current and legacy keys together. deleteWithLegacyKey 同时删除当前键和旧键。
+func (m *Manager) deleteWithLegacyKey(ctx context.Context, key, legacyKey string) error {
+	if legacyKey == key {
+		return m.storage.Delete(ctx, key)
+	}
+	return m.storage.Delete(ctx, key, legacyKey)
+}
+
 // searchKeys searches storage keys by pattern with pagination. searchKeys 根据模式搜索存储键并分页。
 func (m *Manager) searchKeys(ctx context.Context, pattern string, start, size int) ([]string, error) {
 	// Require scanner storage capability 要求存储支持扫描能力。
@@ -191,6 +223,8 @@ func (m *Manager) searchKeys(ctx context.Context, pattern string, start, size in
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
+	// Stabilize pagination across unordered storage scanners. 对无序存储扫描结果排序以稳定分页。
+	sort.Strings(keys)
 
 	// Normalize pagination start 规范化分页起点。
 	total := len(keys)
@@ -207,9 +241,10 @@ func (m *Manager) searchKeys(ctx context.Context, pattern string, start, size in
 	// Calculate pagination end 计算分页终点。
 	end := total
 	if size >= 0 {
-		end = start + size
-		if end > total {
+		if size >= total-start {
 			end = total
+		} else {
+			end = start + size
 		}
 	}
 

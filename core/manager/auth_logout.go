@@ -255,30 +255,31 @@ func (m *Manager) ReplaceByLoginID(ctx context.Context, loginID string) error {
 }
 
 // removeOldestTerminalInfoAndToken removes the oldest terminal and its token. removeOldestTerminalInfoAndToken 移除最旧的终端信息并按模式处理 Token。
-func (m *Manager) removeOldestTerminalInfoAndToken(ctx context.Context, sess *Session, mode config.LogoutMode, device ...string) error {
+func (m *Manager) removeOldestTerminalInfoAndToken(ctx context.Context, sess *Session, mode config.LogoutMode, device ...string) (TerminalInfo, bool, error) {
 	// Remove oldest terminal 移除最旧终端。
 	terminalInfo, ok := sess.removeOldestTerminal(device...)
 	if ok {
 		// Apply overflow mode 应用超限处理模式
 		if err := m.applyLogoutModeToToken(ctx, terminalInfo.Token, mode); err != nil {
-			return err
+			return TerminalInfo{}, false, err
 		}
 
 		// Clean metadata 清理 metadata
 		if err := m.cleanTokenMetadata(ctx, []string{terminalInfo.Token}); err != nil {
-			return err
+			return TerminalInfo{}, false, err
 		}
 
 		// Save session data 保存会话数据
 		if err := m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
-			return err
+			return TerminalInfo{}, false, err
 		}
+		return terminalInfo, true, nil
 	}
-	return nil
+	return TerminalInfo{}, false, nil
 }
 
 // removeTerminalInfosAndTokens removes terminal information and tokens. removeTerminalInfosAndTokens 移除终端信息和 Token。
-func (m *Manager) removeTerminalInfosAndTokens(ctx context.Context, sess *Session, mode config.LogoutMode, device ...string) (bool, error) {
+func (m *Manager) removeTerminalInfosAndTokens(ctx context.Context, sess *Session, mode config.LogoutMode, device ...string) (bool, []TerminalInfo, error) {
 	// Prepare removed terminals 准备被移除终端列表。
 	var terminalInfos []TerminalInfo
 	if len(device) > 0 {
@@ -289,13 +290,13 @@ func (m *Manager) removeTerminalInfosAndTokens(ctx context.Context, sess *Sessio
 		terminalInfos = sess.removeAllTerminals()
 	}
 	if len(terminalInfos) == 0 {
-		return false, nil
+		return false, nil, nil
 	}
 
 	// Apply mode to all removed tokens 按模式处理所有被移除 Token
 	for _, terminalInfo := range terminalInfos {
 		if err := m.applyLogoutModeToToken(ctx, terminalInfo.Token, mode); err != nil {
-			return false, err
+			return false, nil, err
 		}
 	}
 
@@ -306,24 +307,24 @@ func (m *Manager) removeTerminalInfosAndTokens(ctx context.Context, sess *Sessio
 		tokens[i] = info.Token
 	}
 	if err := m.cleanTokenMetadata(ctx, tokens); err != nil {
-		return false, err
+		return false, nil, err
 	}
 
 	// Delete session when no terminals remain 如果 session 中没有剩余终端，删除整个 session
 	destroyedSession := false
 	if len(sess.TerminalInfos) == 0 {
 		if err := m.storage.Delete(ctx, m.getSessionKey(sess.LoginID)); err != nil {
-			return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+			return false, nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
 		destroyedSession = true
 	} else {
 		// Save updated session otherwise 否则保存更新后的 session
 		if err := m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
-			return false, err
+			return false, nil, err
 		}
 	}
 
-	return destroyedSession, nil
+	return destroyedSession, terminalInfos, nil
 }
 
 // logoutTerminals performs common logout logic. logoutTerminals 通用登出逻辑：移除终。+ 删除 token + 清理 metadata。

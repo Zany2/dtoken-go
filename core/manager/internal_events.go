@@ -38,3 +38,26 @@ func (m *Manager) triggerEvent(event listener.Event, loginID, device, deviceID, 
 	// Dispatch event synchronously 同步分发事件
 	m.eventManager.Trigger(eventData)
 }
+
+// triggerTerminalLifecycleEvents emits terminal events after account writes are unlocked. triggerTerminalLifecycleEvents 在账号写锁释放后触发终端生命周期事件。
+func (m *Manager) triggerTerminalLifecycleEvents(loginID string, events []terminalLifecycleEvent) {
+	for _, lifecycleEvent := range events {
+		var event listener.Event
+		switch lifecycleEvent.state {
+		case TokenStateLogout:
+			event = listener.EventLogout
+		case TokenStateKickOut:
+			event = listener.EventKickout
+		case TokenStateReplaced:
+			event = listener.EventReplace
+		case TokenStateActiveTimeout:
+			event = listener.EventActiveTimeout
+		}
+		if event == "" {
+			continue
+		}
+
+		terminal := lifecycleEvent.terminal
+		m.triggerEvent(event, loginID, terminal.Device, terminal.DeviceID, terminal.Token, nil)
+	}
+}
