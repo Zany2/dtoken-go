@@ -36,7 +36,7 @@ http://localhost:9101/protected
 登录成功后访问：
 
 ```text
-http://localhost:9100/sso/logout?loginId=user-1001
+http://localhost:9100/sso/logout
 ```
 
 SSO Server 会推送 `/sso/logout-callback`，Client 收到回调后会删除 `user-1001` 的本地会话。

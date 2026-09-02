@@ -12,7 +12,7 @@ type ServerOptions struct {
 	HomeRoute                string            // HomeRoute stores default landing route. HomeRoute 存储默认主页地址。
 	EnableSLO                bool              // EnableSLO enables single logout. EnableSLO 启用单点注销。
 	AutoRenewTimeout         bool              // AutoRenewTimeout reserves center token renewal behavior. AutoRenewTimeout 预留中心 Token 续期行为。
-	MaxRegisteredClient      int               // MaxRegisteredClient stores max client records per account. MaxRegisteredClient 存储账号可记录客户端上限。
+	MaxRegisteredClient      int               // MaxRegisteredClient stores max client records per account; negative disables the limit. MaxRegisteredClient 存储账号可记录客户端上限；负数表示不限制。
 	LogoutCallbackBestEffort bool              // LogoutCallbackBestEffort continues logout when a client callback fails. LogoutCallbackBestEffort 在客户端回调失败时仍继续注销。
 	LogoutCallbackTimeout    time.Duration     // LogoutCallbackTimeout stores timeout for each logout callback. LogoutCallbackTimeout 存储单个注销回调超时时间。
 	LogoutHTTPClient         *http.Client      // LogoutHTTPClient stores optional logout callback HTTP client. LogoutHTTPClient 存储可选注销回调 HTTP 客户端。

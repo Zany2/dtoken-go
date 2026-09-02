@@ -19,16 +19,18 @@ const (
 	callbackURL  = "http://localhost:9101/sso/callback"
 	clientID     = "gin-demo-client"
 	clientSecret = "gin-demo-secret"
+	cookieSecret = "gin-demo-cookie-signing-secret"
 )
 
 var (
 	// cookie configures the demo SSO login cookie. cookie 配置示例 SSO 登录 Cookie。
 	cookie = sso.CookieOptions{
-		Name:     "dtoken_sso_gin_demo",
-		Path:     "/",
-		MaxAge:   2 * time.Hour,
-		HTTPOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		Name:      "dtoken_sso_gin_demo",
+		Path:      "/",
+		MaxAge:    2 * time.Hour,
+		HTTPOnly:  true,
+		SameSite:  http.SameSiteLaxMode,
+		SecretKey: cookieSecret,
 	}
 	// loginPage stores the parsed login page template. loginPage 保存已解析的登录页模板。
 	loginPage = template.Must(template.New("login").Parse(loginHTML))
@@ -80,13 +82,9 @@ func main() {
 func registerSSORoutes(r *gin.Engine, httpSSO *sso.HTTPServer) {
 	endpoints := sso.DefaultEndpoints()
 	r.GET(endpoints.Authorize, ginWrap(httpSSO.HandleAuthorize))
-	r.GET(endpoints.Token, ginWrap(httpSSO.HandleToken))
 	r.POST(endpoints.Token, ginWrap(httpSSO.HandleToken))
-	r.GET(endpoints.Introspect, ginWrap(httpSSO.HandleIntrospect))
 	r.POST(endpoints.Introspect, ginWrap(httpSSO.HandleIntrospect))
-	r.GET(endpoints.UserInfo, ginWrap(httpSSO.HandleUserInfo))
 	r.POST(endpoints.UserInfo, ginWrap(httpSSO.HandleUserInfo))
-	r.GET(endpoints.Revoke, ginWrap(httpSSO.HandleRevoke))
 	r.POST(endpoints.Revoke, ginWrap(httpSSO.HandleRevoke))
 	r.GET(endpoints.Logout, ginWrap(httpSSO.HandleLogout))
 	r.POST(endpoints.Logout, ginWrap(httpSSO.HandleLogout))
@@ -105,7 +103,7 @@ func home(c *gin.Context) {
 	if !ok {
 		loginID = "not logged in"
 	}
-	c.String(http.StatusOK, "Gin SSO Server\n\nloginId: %s\n\nlogin: http://localhost:9100/login\nlogout: http://localhost:9100/sso/logout?loginId=%s\n", loginID, loginID)
+	c.String(http.StatusOK, "Gin SSO Server\n\nloginId: %s\n\nlogin: http://localhost:9100/login\nlogout: http://localhost:9100/sso/logout\n", loginID)
 }
 
 // loginPageHandler renders the demo login page. loginPageHandler 渲染示例登录页。

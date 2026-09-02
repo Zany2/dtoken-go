@@ -50,11 +50,13 @@ http://localhost:9101/protected
 
 ## 统一登出验证
 
-登录成功后访问：
+登录成功并保留登录中心 Cookie 后访问：
 
 ```text
-http://localhost:9100/sso/logout?loginId=user-1001
+http://localhost:9100/sso/logout
 ```
+
+服务端会通过可信登录解析器确定注销主体，不能使用 `loginId` 查询参数任意指定账号。
 
 预期结果：
 

@@ -38,6 +38,7 @@ func TestCookieWrappers(t *testing.T) {
 	options.Name = "sso_login"
 	options.Path = "/auth"
 	options.MaxAge = time.Minute
+	options.SecretKey = "cookie-secret"
 
 	recorder := httptest.NewRecorder()
 	SetLoginIDCookie(recorder, options, "user-1")
@@ -45,7 +46,7 @@ func TestCookieWrappers(t *testing.T) {
 	if len(cookies) != 1 {
 		t.Fatalf("SetLoginIDCookie wrote %d cookies, want 1", len(cookies))
 	}
-	if cookies[0].Name != "sso_login" || cookies[0].Value != "user-1" || cookies[0].Path != "/auth" {
+	if cookies[0].Name != "sso_login" || cookies[0].Value == "" || cookies[0].Value == "user-1" || cookies[0].Path != "/auth" {
 		t.Fatalf("cookie = %+v, want configured login cookie", cookies[0])
 	}
 

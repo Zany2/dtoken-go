@@ -19,16 +19,18 @@ const (
 	callbackURL  = "http://localhost:9001/sso/callback"
 	clientID     = "demo-client"
 	clientSecret = "demo-secret"
+	cookieSecret = "demo-cookie-signing-secret"
 )
 
 var (
 	// cookie configures the demo SSO login cookie. cookie 配置示例 SSO 登录 Cookie。
 	cookie = sso.CookieOptions{
-		Name:     "dtoken_sso_demo",
-		Path:     "/",
-		MaxAge:   2 * time.Hour,
-		HTTPOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		Name:      "dtoken_sso_demo",
+		Path:      "/",
+		MaxAge:    2 * time.Hour,
+		HTTPOnly:  true,
+		SameSite:  http.SameSiteLaxMode,
+		SecretKey: cookieSecret,
 	}
 	// loginPage stores the parsed login page template. loginPage 保存已解析的登录页模板。
 	loginPage = template.Must(template.New("login").Parse(loginHTML))

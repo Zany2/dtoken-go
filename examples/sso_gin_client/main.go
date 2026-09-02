@@ -83,7 +83,7 @@ func protected(c *gin.Context) {
 		c.Redirect(http.StatusFound, authURL)
 		return
 	}
-	c.String(http.StatusOK, "Protected resource\n\nloginId: %s\n\nlocal logout: http://localhost:9101/logout\ncenter logout: http://localhost:9100/sso/logout?loginId=%s\n", loginID, loginID)
+	c.String(http.StatusOK, "Protected resource\n\nloginId: %s\n\nlocal logout: http://localhost:9101/logout\ncenter logout: http://localhost:9100/sso/logout\n", loginID)
 }
 
 // callback exchanges the SSO Ticket and creates a local session. callback 交换 SSO Ticket 并创建本地会话。

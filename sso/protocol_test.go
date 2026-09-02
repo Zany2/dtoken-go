@@ -148,6 +148,32 @@ func TestSignerWithZeroParamsUsesDefaults(t *testing.T) {
 	}
 }
 
+// TestSigningAndLogoutCallbackRequireSecurityInputs verifies enabled signing and callback freshness fail closed. TestSigningAndLogoutCallbackRequireSecurityInputs 验证启用签名和回调时效校验时采用安全失败策略。
+func TestSigningAndLogoutCallbackRequireSecurityInputs(t *testing.T) {
+	cfg := DefaultClientConfig()
+	cfg.ClientID = "app-a"
+	cfg.ServerURL = "https://sso.example.com"
+	app := NewClientApp(cfg)
+	if _, err := app.AuthURL("https://app.example.com/callback", nil); !errors.Is(err, ErrSignSecretRequired) {
+		t.Fatalf("AuthURL() without signing secret error = %v, want ErrSignSecretRequired", err)
+	}
+
+	unsignedApp := NewClientApp(ClientConfig{ClientID: "app-a", CheckSign: false})
+	missingTimestamp := url.Values{"loginId": {"user-1"}, "client": {"app-a"}}
+	request := httptest.NewRequest(http.MethodPost, "/sso/logout-callback", strings.NewReader(missingTimestamp.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if _, err := unsignedApp.VerifyLogoutCallback(request); !errors.Is(err, ErrCallbackExpired) {
+		t.Fatalf("VerifyLogoutCallback() missing timestamp error = %v, want ErrCallbackExpired", err)
+	}
+
+	missingClient := url.Values{"loginId": {"user-1"}, "timestamp": {time.Now().Format(time.RFC3339)}}
+	request = httptest.NewRequest(http.MethodPost, "/sso/logout-callback", strings.NewReader(missingClient.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if _, err := unsignedApp.VerifyLogoutCallback(request); !errors.Is(err, ErrClientMismatch) {
+		t.Fatalf("VerifyLogoutCallback() missing client error = %v, want ErrClientMismatch", err)
+	}
+}
+
 // TestClientAppBuildsSignedURLs verifies signed SSO URL construction. TestClientAppBuildsSignedURLs 验证带签名的 SSO URL 构建。
 func TestClientAppBuildsSignedURLs(t *testing.T) {
 	app := NewClientApp(ClientConfig{
@@ -189,8 +215,8 @@ func TestClientAppBuildsSignedURLs(t *testing.T) {
 		t.Fatalf("url.Parse(exchangeURL) error = %v", err)
 	}
 	values = parsed.Query()
-	if values.Get("ticket") != "ticket-value" || values.Get("redirect") == "" || values.Get("clientSecret") != "secret-a" {
-		t.Fatalf("ExchangeTicketURLWithRedirect() query = %v, want ticket redirect and clientSecret", values)
+	if values.Get("ticket") != "ticket-value" || values.Get("redirect") == "" || values.Get("clientSecret") != "" {
+		t.Fatalf("ExchangeTicketURLWithRedirect() query = %v, want ticket and redirect without clientSecret", values)
 	}
 }
 
@@ -262,6 +288,7 @@ func TestClientAppLogoutCallbackHandler(t *testing.T) {
 	form := url.Values{}
 	form.Set("loginId", "user-1001")
 	form.Set("client", "app-a")
+	form.Set("timestamp", time.Now().Format(time.RFC3339))
 	req := httptest.NewRequest(http.MethodPost, "/sso/logout-callback", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()

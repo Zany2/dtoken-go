@@ -53,8 +53,8 @@ func TestGinLoginAndHome(t *testing.T) {
 		t.Fatalf("login redirect status=%d location=%q", login.Code, login.Header().Get("Location"))
 	}
 	cookies := login.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].Name != cookie.Name || cookies[0].Value != "alice" {
-		t.Fatalf("login cookies = %+v, want alice login cookie", cookies)
+	if len(cookies) != 1 || cookies[0].Name != cookie.Name || cookies[0].Value == "" || cookies[0].Value == "alice" {
+		t.Fatalf("login cookies = %+v, want signed alice login cookie", cookies)
 	}
 
 	homeRequest := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -97,7 +97,9 @@ func TestGinSSORoutesIssueAndExchangeTicket(t *testing.T) {
 	registerSSORoutes(router, httpSSO)
 
 	authorizeRequest := httptest.NewRequest(http.MethodGet, "/sso/authorize?client="+url.QueryEscape(clientID)+"&redirect="+url.QueryEscape(callbackURL), nil)
-	authorizeRequest.AddCookie(&http.Cookie{Name: cookie.Name, Value: "alice"})
+	cookieRecorder := httptest.NewRecorder()
+	sso.SetLoginIDCookie(cookieRecorder, cookie, "alice")
+	authorizeRequest.AddCookie(cookieRecorder.Result().Cookies()[0])
 	authorizeRecorder := httptest.NewRecorder()
 	router.ServeHTTP(authorizeRecorder, authorizeRequest)
 	if authorizeRecorder.Code != http.StatusFound {

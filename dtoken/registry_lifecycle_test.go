@@ -379,9 +379,17 @@ func TestRegistryRejectsInvalidBuilderResults(t *testing.T) {
 	if _, err := BuildAndSetManager(nilCustomBuilder); !errors.Is(err, derror.ErrManagerNotFound) {
 		t.Fatalf("BuildAndSetManager(typed nil) error = %v, want ErrManagerNotFound", err)
 	}
+	buildFailure := errors.New("registry builder failure")
+	if got, err := BuildAndSetManager(&registryTestBuilder{err: buildFailure}); got != nil || !errors.Is(err, buildFailure) {
+		t.Fatalf("BuildAndSetManager(build error) = %v, %v, want original build error", got, err)
+	}
 
 	closedManager := newRegistryTestManager("closed-builder", nil)
 	closedManager.CloseManager()
+	SetManager(closedManager)
+	if _, err := GetManager("closed-builder"); !errors.Is(err, derror.ErrManagerNotFound) {
+		t.Fatalf("GetManager(closed SetManager) error = %v, want ErrManagerNotFound", err)
+	}
 	closedBuilder := &registryTestBuilder{manager: closedManager}
 	if _, err := BuildAndSetManager(closedBuilder); !errors.Is(err, derror.ErrManagerInvalidType) {
 		t.Fatalf("BuildAndSetManager(closed result) error = %v, want ErrManagerInvalidType", err)
@@ -405,6 +413,11 @@ func TestRegistryRejectsInvalidBuilderResults(t *testing.T) {
 		t.Fatalf("custom builder build count = %d, want 0", customBuilder.builds)
 	}
 	customManager.CloseManager()
+
+	globalManagerMap.Store("invalid-registry:", struct{}{})
+	if err := DeleteManager("invalid-registry"); !errors.Is(err, derror.ErrManagerInvalidType) {
+		t.Fatalf("DeleteManager(invalid value) error = %v, want ErrManagerInvalidType", err)
+	}
 }
 
 func newRegistryTestManager(authType string, pool adapter.Pool) *manager.Manager {
@@ -415,12 +428,13 @@ func newRegistryTestManager(authType string, pool adapter.Pool) *manager.Manager
 
 type registryTestBuilder struct {
 	manager *manager.Manager
+	err     error
 	builds  int
 }
 
 func (b *registryTestBuilder) Build() (*manager.Manager, error) {
 	b.builds++
-	return b.manager, nil
+	return b.manager, b.err
 }
 
 type registryTestPool struct {

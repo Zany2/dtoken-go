@@ -36,8 +36,6 @@ func TestSafeBackAllowsLocalPathsOnly(t *testing.T) {
 
 // TestHomeAndLoginFlow verifies anonymous and authenticated pages, login cookies, and redirects. TestHomeAndLoginFlow 验证匿名与已登录页面、登录 Cookie 及回跳。
 func TestHomeAndLoginFlow(t *testing.T) {
-	loginCookie := &http.Cookie{Name: cookie.Name, Value: "alice"}
-
 	anonymous := httptest.NewRecorder()
 	home(anonymous, httptest.NewRequest(http.MethodGet, "/", nil))
 	if anonymous.Code != http.StatusOK || !strings.Contains(anonymous.Body.String(), "not logged in") {
@@ -59,11 +57,11 @@ func TestHomeAndLoginFlow(t *testing.T) {
 		t.Fatalf("login redirect status=%d location=%q, want /protected", loggedIn.Code, loggedIn.Header().Get("Location"))
 	}
 	cookies := loggedIn.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].Name != cookie.Name || cookies[0].Value != "alice" || !cookies[0].HttpOnly || cookies[0].MaxAge <= 0 {
-		t.Fatalf("login cookies = %+v, want secure alice session cookie", cookies)
+	if len(cookies) != 1 || cookies[0].Name != cookie.Name || cookies[0].Value == "" || cookies[0].Value == "alice" || !cookies[0].HttpOnly || cookies[0].MaxAge <= 0 {
+		t.Fatalf("login cookies = %+v, want signed alice session cookie", cookies)
 	}
 
-	loginCookie = cookies[0]
+	loginCookie := cookies[0]
 	homeRequest := httptest.NewRequest(http.MethodGet, "/", nil)
 	homeRequest.AddCookie(loginCookie)
 	authenticated := httptest.NewRecorder()
@@ -80,8 +78,8 @@ func TestHomeAndLoginFlow(t *testing.T) {
 		t.Fatalf("unsafe back status=%d location=%q, want /", unsafe.Code, unsafe.Header().Get("Location"))
 	}
 	unsafeCookies := unsafe.Result().Cookies()
-	if len(unsafeCookies) != 1 || unsafeCookies[0].Name != cookie.Name || unsafeCookies[0].Value != "user-1001" {
-		t.Fatalf("default login cookie = %+v, want user-1001", unsafeCookies)
+	if len(unsafeCookies) != 1 || unsafeCookies[0].Name != cookie.Name || unsafeCookies[0].Value == "" || unsafeCookies[0].Value == "user-1001" {
+		t.Fatalf("default login cookie = %+v, want signed user-1001 cookie", unsafeCookies)
 	}
 }
 
@@ -128,7 +126,9 @@ func TestHTTPSSORoutesIssueAndExchangeTicket(t *testing.T) {
 	httpSSO.Register(mux)
 
 	authorizeRequest := httptest.NewRequest(http.MethodGet, "/sso/authorize?client="+url.QueryEscape(clientID)+"&redirect="+url.QueryEscape(callbackURL), nil)
-	authorizeRequest.AddCookie(&http.Cookie{Name: cookie.Name, Value: "alice"})
+	cookieRecorder := httptest.NewRecorder()
+	sso.SetLoginIDCookie(cookieRecorder, cookie, "alice")
+	authorizeRequest.AddCookie(cookieRecorder.Result().Cookies()[0])
 	authorizeRecorder := httptest.NewRecorder()
 	mux.ServeHTTP(authorizeRecorder, authorizeRequest)
 	if authorizeRecorder.Code != http.StatusFound {

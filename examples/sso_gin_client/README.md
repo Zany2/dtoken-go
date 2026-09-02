@@ -36,7 +36,7 @@ The browser redirects to the SSO Server login page, returns to the Client with a
 After login, open:
 
 ```text
-http://localhost:9100/sso/logout?loginId=user-1001
+http://localhost:9100/sso/logout
 ```
 
 The SSO Server pushes `/sso/logout-callback`, and the Client deletes local sessions for `user-1001`.

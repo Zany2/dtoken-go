@@ -119,7 +119,8 @@ func (c *ClientApp) ExchangeTicketURL(ticket string, extra url.Values) (string, 
 	return c.ExchangeTicketURLWithRedirect(ticket, "", extra)
 }
 
-// ExchangeTicketURLWithRedirect returns ticket exchange URL with callback URI. ExchangeTicketURLWithRedirect 返回携带回调地址的 Ticket 交换地址。
+// ExchangeTicketURLWithRedirect returns a public-client ticket URL without embedding client secrets. ExchangeTicketURLWithRedirect 返回不嵌入客户端密钥的公开客户端 Ticket 地址。
+// Deprecated: use ExchangeTicket so confidential credentials are sent with POST. Deprecated：请使用 ExchangeTicket，通过 POST 发送机密凭证。
 func (c *ClientApp) ExchangeTicketURLWithRedirect(ticket, redirectURI string, extra url.Values) (string, error) {
 	if c == nil {
 		return "", ErrServerNotInitialized
@@ -132,13 +133,10 @@ func (c *ClientApp) ExchangeTicketURLWithRedirect(ticket, redirectURI string, ex
 	if c.config.ClientID != "" {
 		values.Set(c.config.Params.Client, c.config.ClientID)
 	}
-	if c.config.ClientSecret != "" {
-		values.Set(c.config.Params.ClientSecret, c.config.ClientSecret)
-	}
 	return c.buildServerURL(c.config.Endpoints.Token, values)
 }
 
-// SignoutURL returns SSO server signout URL. SignoutURL 返回 SSO 服务端单点注销地址。
+// SignoutURL returns an SSO server signout URL. The loginID argument is a legacy hint; the server must resolve and verify the trusted logout subject. SignoutURL 返回 SSO 服务端单点注销地址。loginID 参数仅为兼容保留的提示值，服务端必须解析并校验可信注销主体。
 func (c *ClientApp) SignoutURL(loginID string, extra url.Values) (string, error) {
 	if c == nil {
 		return "", ErrServerNotInitialized
@@ -231,7 +229,10 @@ func (c *ClientApp) VerifyLogoutCallback(r *http.Request) (*LogoutCallback, erro
 		return nil, err
 	}
 	values := cloneValues(r.Form)
-	if c.config.CheckSign && c.config.SecretKey != "" {
+	if c.config.CheckSign {
+		if c.config.SecretKey == "" {
+			return nil, ErrSignSecretRequired
+		}
 		if !NewSignerWithParams(c.config.SecretKey, c.config.Params).Verify(values) {
 			return nil, ErrInvalidSign
 		}
@@ -245,8 +246,10 @@ func (c *ClientApp) VerifyLogoutCallback(r *http.Request) (*LogoutCallback, erro
 	if callback.LoginID == "" {
 		return nil, ErrUserIDEmpty
 	}
-	if c.config.ClientID != "" && callback.ClientID != "" && callback.ClientID != c.config.ClientID {
-		return nil, ErrClientMismatch
+	if c.config.ClientID != "" {
+		if callback.ClientID == "" || callback.ClientID != c.config.ClientID {
+			return nil, ErrClientMismatch
+		}
 	}
 	if err := c.verifyLogoutCallbackTime(callback.Timestamp); err != nil {
 		return nil, err
@@ -278,7 +281,10 @@ func (c *ClientApp) buildServerURL(path string, values url.Values) (string, erro
 	if err != nil {
 		return "", err
 	}
-	if c.config.CheckSign && c.config.SecretKey != "" {
+	if c.config.CheckSign {
+		if c.config.SecretKey == "" {
+			return "", ErrSignSecretRequired
+		}
 		values = NewSignerWithParams(c.config.SecretKey, c.config.Params).AttachSign(values)
 	}
 	base.RawQuery = values.Encode()
@@ -287,8 +293,11 @@ func (c *ClientApp) buildServerURL(path string, values url.Values) (string, erro
 
 // verifyLogoutCallbackTime validates logout callback freshness. verifyLogoutCallbackTime 校验登出回调时效性。
 func (c *ClientApp) verifyLogoutCallbackTime(value string) error {
-	if value == "" || c.config.LogoutCallbackMaxAge <= 0 {
+	if c.config.LogoutCallbackMaxAge <= 0 {
 		return nil
+	}
+	if value == "" {
+		return ErrCallbackExpired
 	}
 	timestamp, err := time.Parse(time.RFC3339, value)
 	if err != nil {
@@ -338,7 +347,10 @@ func (c *ClientApp) postForm(ctx context.Context, path string, values url.Values
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if c.config.CheckSign && c.config.SecretKey != "" {
+	if c.config.CheckSign {
+		if c.config.SecretKey == "" {
+			return ErrSignSecretRequired
+		}
 		values = NewSignerWithParams(c.config.SecretKey, c.config.Params).AttachSign(values)
 	}
 	target := joinURL(c.config.ServerURL, path)

@@ -167,6 +167,9 @@ func TestSSOTicketErrorBoundaries(t *testing.T) {
 	if _, err = server.ConsumeTicket(ctx, ticket.Ticket, "app-a", "secret-a", "https://other.example.com/callback"); !errors.Is(err, ErrRedirectURIMismatch) {
 		t.Fatalf("ConsumeTicket() redirect mismatch error = %v, want ErrRedirectURIMismatch", err)
 	}
+	if consumed, err := server.ConsumeTicket(ctx, ticket.Ticket, "app-a", "secret-a", "https://app.example.com/sso/callback"); err != nil || consumed == nil || !consumed.Used {
+		t.Fatalf("ConsumeTicket() after rejected request = %+v, %v, want successful consume", consumed, err)
+	}
 }
 
 // TestSSOTicketTTLRevokeAndExpire verifies the SSO Ticket TTL Revoke And Expire scenario. TestSSOTicketTTLRevokeAndExpire 验证对应的 SSO 服务端场景。
@@ -466,15 +469,19 @@ func TestSSORemoteSessionFlow(t *testing.T) {
 		t.Fatalf("ValidateRemoteSession() sessionID = %q, want %q", validated.SessionID, session.SessionID)
 	}
 
-	if err = server.RenewRemoteSession(ctx, session.SessionID, 2*time.Second); err != nil {
+	if err = server.RenewRemoteSession(ctx, session.SessionID, 3*time.Second); err != nil {
 		t.Fatalf("RenewRemoteSession() error = %v", err)
 	}
 	ttl, err := server.GetRemoteSessionTTL(ctx, session.SessionID)
 	if err != nil {
 		t.Fatalf("GetRemoteSessionTTL() error = %v", err)
 	}
-	if ttl < 0 || ttl > 2 {
-		t.Fatalf("GetRemoteSessionTTL() = %d, want 0..2", ttl)
+	if ttl < 0 || ttl > 3 {
+		t.Fatalf("GetRemoteSessionTTL() = %d, want 0..3", ttl)
+	}
+	time.Sleep(1100 * time.Millisecond)
+	if validated, err = server.ValidateRemoteSession(ctx, session.SessionID, "app-a"); err != nil || validated.ExpiresIn != 3 {
+		t.Fatalf("ValidateRemoteSession() after original deadline = %+v, %v, want renewed session", validated, err)
 	}
 
 	if err = server.RevokeRemoteSession(ctx, session.SessionID); err != nil {
@@ -578,6 +585,9 @@ func TestSSOOAuth2CodeBoundaries(t *testing.T) {
 	}
 	if _, err = server.ConsumeOAuth2Code(ctx, code.Code, "app-a", "secret-a", "https://other.example.com/callback"); !errors.Is(err, ErrRedirectURIMismatch) {
 		t.Fatalf("ConsumeOAuth2Code() redirect mismatch error = %v, want ErrRedirectURIMismatch", err)
+	}
+	if consumed, err := server.ConsumeOAuth2Code(ctx, code.Code, "app-a", "secret-a", "https://app.example.com/sso/callback"); err != nil || consumed == nil || !consumed.Used {
+		t.Fatalf("ConsumeOAuth2Code() after rejected request = %+v, %v, want successful consume", consumed, err)
 	}
 
 	expiringCode, err := server.GenerateOAuth2CodeWithTimeout(ctx, "app-a", "user-1001", "https://app.example.com/sso/callback", nil, nil, time.Second)

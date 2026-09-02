@@ -147,13 +147,7 @@ if err != nil {
 
 fmt.Println(authURL)
 
-exchangeURL, err := app.ExchangeTicketURLWithRedirect("ticket-value", callbackURL, nil)
-if err != nil {
-	return err
-}
-
-fmt.Println(exchangeURL)
-
+// Confidential clients exchange identity over POST so the client secret never enters a URL.
 result, err := app.ExchangeTicket(ctx, "ticket-value", callbackURL)
 if err != nil {
 	return err
@@ -238,11 +232,11 @@ Default routes:
 
 | Route | Description |
 | --- | --- |
-| `GET /sso/authorize` | Checks center login state, issues a Ticket, and redirects back to the client app |
-| `GET/POST /sso/token` | Exchanges a Ticket or OAuth2 Code for login subject information |
-| `GET/POST /sso/introspect` | Checks whether a Ticket, shared token, remote session, or OAuth2 Code is active |
-| `GET/POST /sso/userinfo` | Reads login subject, client, and scope information from a valid credential |
-| `GET/POST /sso/revoke` | Revokes a Ticket, shared token, remote session, or OAuth2 Code |
+| `GET /sso/authorize` | Checks center login state, issues a credential for the requested Mode, and redirects back to the client app |
+| `POST /sso/token` | Exchanges a Ticket or OAuth2 Code for login subject information |
+| `POST /sso/introspect` | Checks whether a Ticket, shared token, remote session, or OAuth2 Code is active |
+| `POST /sso/userinfo` | Reads login subject, client, and scope information from a valid credential |
+| `POST /sso/revoke` | Revokes a Ticket, shared token, remote session, or OAuth2 Code |
 | `GET/POST /sso/logout` | Clears shared cookie state, pushes registered client logout callbacks, and returns logout result |
 
 ## Single Logout
@@ -264,7 +258,7 @@ When the user logs out from the login center, `HTTPServer` sends concurrent `POS
 
 After receiving the callback, the client application should delete its local Session, Cookie, or Token. After all callbacks succeed, the login center clears the stored client session records for that login subject.
 
-`LogoutCallbackBestEffort` controls failure behavior. When it is `false`, any failed client callback makes the center logout return an error. When it is `true`, the server still attempts all callbacks and clears center-side client session records. `LogoutHTTPClient` can inject a custom HTTP client for proxy, TLS, or stricter timeout control.
+`LogoutCallbackBestEffort` controls failure behavior. When it is `false`, any failed client callback makes the center logout return an error. When it is `true`, the server still attempts all callbacks and clears center-side client session records. The default callback client does not follow redirects; `LogoutHTTPClient` can inject a custom HTTP client for proxy, TLS, or stricter timeout control.
 
 To reduce SSRF risk from malicious `callback` values, the login center only records logout callback URLs that belong to the current client: exact `RedirectURIs` matches, same-origin URLs as a registered redirect URI, or origins explicitly configured in `AllowOrigins`.
 
@@ -297,7 +291,7 @@ go test ./sso/storage/redis/... -v
 
 ## Shared Cookie
 
-For applications under the same parent domain, shared cookies can be used as the SSO-center session source. This fits deployments such as `sso.example.com`, `app-a.example.com`, and `app-b.example.com`.
+For applications under the same parent domain, shared cookies can be used as the SSO-center session source. This fits deployments such as `sso.example.com`, `app-a.example.com`, and `app-b.example.com`. A strong random `SecretKey` is required; without one, the cookie is not accepted as a trusted login identity.
 
 ```go
 cookie := sso.CookieOptions{
@@ -308,6 +302,7 @@ cookie := sso.CookieOptions{
 	HTTPOnly: true,
 	Secure:   true,
 	SameSite: http.SameSiteLaxMode,
+	SecretKey: "replace-with-a-strong-cookie-signing-secret",
 }
 
 // Write the shared cookie after the user signs in at the login center.
@@ -363,15 +358,15 @@ if !signer.Verify(signedValues) {
 - A Ticket is a one-time credential and is deleted from storage after successful consumption.
 - `ConsumeTicket` validates the client secret, target client, callback URL, expiration state, and allowed SSO mode.
 - The built-in `MemoryStorage` used by `sso.NewServer()` is intended for local debugging and tests only. Data is lost after process restart and it is not suitable for multi-instance deployments.
-- Production deployments should use `sso/storage/redis`. Redis storage implements atomic get-and-delete, which is required by one-time Ticket and OAuth2 Code consumption.
+- Production deployments should use `sso/storage/redis`. Redis storage implements atomic get-and-delete for cross-instance one-time Ticket and OAuth2 Code consumption.
 - Production deployments should enable `CheckSign` and configure `SecretKey` so Server and Client traffic, including logout callbacks, is protected against tampering.
 - Logout callback URLs are checked against client registration data. Avoid adding overly broad origins to `AllowOrigins`.
-- Custom storage must implement `adapter.AtomicStorage` so Ticket and SSO OAuth2 code consumption can read and delete atomically.
+- The framework prefers `adapter.AtomicStorage` for atomic Ticket and SSO OAuth2 Code consumption. Plain `Storage` uses a single-server serialized fallback and is not atomic across server instances.
 - `ModeSharedToken` is for trusted internal systems that reuse a short-lived credential and is client-scoped by default.
 - `ModeRemoteSession` is for applications that remotely check login state at the SSO center.
 - `ModeOAuth2` is an SSO authorization-code primitive, not the full OAuth2 Token Server.
 - `Signer` ignores the `sign` field itself and signs sorted parameter names and values, making it suitable for tamper protection between Server and Client.
-- Current HTTP routes cover `ModeTicket` redirect exchange, OAuth2 Code exchange, credential introspection, credential revocation, userinfo, and unified logout callback pushing.
+- The HTTP authorization route can issue Ticket, shared-token, remote-session, or OAuth2-Code credentials by Mode, with exchange, introspection, revocation, userinfo, and unified logout callback endpoints.
 
 ## Testing And Examples
 

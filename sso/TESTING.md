@@ -50,11 +50,13 @@ Expected flow:
 
 ## Single Logout Verification
 
-After login, open:
+After login, while the center login Cookie is still present, open:
 
 ```text
-http://localhost:9100/sso/logout?loginId=user-1001
+http://localhost:9100/sso/logout
 ```
+
+The server resolves the logout subject from the trusted login resolver; a `loginId` query parameter cannot select an arbitrary account.
 
 Expected result:
 

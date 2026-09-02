@@ -2,12 +2,69 @@ package dtoken
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/Zany2/dtoken-go/core/derror"
+	"github.com/Zany2/dtoken-go/core/oauth2"
 	"github.com/Zany2/dtoken-go/core/shortkey"
 	"github.com/Zany2/dtoken-go/core/ticket"
 )
+
+// TestOptionalFacadesReportDisabledModules verifies optional facades preserve disabled-module errors and zero values. TestOptionalFacadesReportDisabledModules 验证可选模块门面保留未启用错误和约定零值。
+func TestOptionalFacadesReportDisabledModules(t *testing.T) {
+	DeleteAllManager()
+	t.Cleanup(DeleteAllManager)
+
+	ctx := context.Background()
+	mgr, err := NewBuilder().IsPrintBanner(false).AutoRenew(false).AuthType("optional-disabled").Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	SetManager(mgr)
+	auth := New(mgr)
+	client := &oauth2.Client{ClientID: "disabled-client"}
+
+	globalTicketStatus, globalTicketErr := GetTicketStatus(ctx, "ticket", "optional-disabled")
+	instanceTicketStatus, instanceTicketErr := auth.GetTicketStatus(ctx, "ticket")
+	globalShortKeyStatus, globalShortKeyErr := GetShortKeyStatus(ctx, "key", "optional-disabled")
+	instanceShortKeyStatus, instanceShortKeyErr := auth.GetShortKeyStatus(ctx, "key")
+	errChecks := map[string]error{
+		"GenerateNonce":             func() error { _, err := GenerateNonce(ctx, "optional-disabled"); return err }(),
+		"Auth.GenerateNonce":        func() error { _, err := auth.GenerateNonce(ctx); return err }(),
+		"CreateTicket":              func() error { _, err := CreateTicket(ctx, "user", "optional-disabled"); return err }(),
+		"Auth.CreateTicket":         func() error { _, err := auth.CreateTicket(ctx, "user"); return err }(),
+		"GetTicketStatus":           globalTicketErr,
+		"Auth.GetTicketStatus":      instanceTicketErr,
+		"CreateShortKey":            func() error { _, err := CreateShortKey(ctx, "optional-disabled"); return err }(),
+		"Auth.CreateShortKey":       func() error { _, err := auth.CreateShortKey(ctx); return err }(),
+		"GetShortKeyStatus":         globalShortKeyErr,
+		"Auth.GetShortKeyStatus":    instanceShortKeyErr,
+		"RegisterOAuth2Client":      RegisterOAuth2Client(client, "optional-disabled"),
+		"Auth.RegisterOAuth2Client": auth.RegisterOAuth2Client(client),
+		"ValidateOAuth2AccessTokenInfo": func() error {
+			_, err := ValidateOAuth2AccessTokenAndGetInfo(ctx, "token", "optional-disabled")
+			return err
+		}(),
+		"Auth.ValidateOAuth2TokenInfo": func() error { _, err := auth.ValidateOAuth2AccessTokenAndGetInfo(ctx, "token"); return err }(),
+	}
+	for name, err := range errChecks {
+		if !errors.Is(err, derror.ErrModuleNotEnabled) {
+			t.Fatalf("%s error = %v, want ErrModuleNotEnabled", name, err)
+		}
+	}
+
+	if globalTicketStatus != ticket.StatusInvalid || instanceTicketStatus != ticket.StatusInvalid {
+		t.Fatalf("disabled ticket statuses = %q/%q, want invalid", globalTicketStatus, instanceTicketStatus)
+	}
+	if globalShortKeyStatus != shortkey.StatusInvalid || instanceShortKeyStatus != shortkey.StatusInvalid {
+		t.Fatalf("disabled short key statuses = %q/%q, want invalid", globalShortKeyStatus, instanceShortKeyStatus)
+	}
+	if ValidateOAuth2AccessToken(ctx, "token", "optional-disabled") || auth.ValidateOAuth2AccessToken(ctx, "token") {
+		t.Fatal("disabled OAuth2 validation should return false")
+	}
+}
 
 // TestGlobalRefreshAndIntrospectionFacades verifies refresh-token and introspection global helpers. TestGlobalRefreshAndIntrospectionFacades 验证刷新令牌和令牌检查全局门面。
 func TestGlobalRefreshAndIntrospectionFacades(t *testing.T) {
