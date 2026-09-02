@@ -53,7 +53,7 @@ mgr, err := defaults.NewBuilder().
 
 工厂适合组件依赖配置项的场景，例如根据 `AuthType`、`KeyPrefix` 或部署环境创建不同实例。
 
-`com/codec/jsonv2` 为未来的标准库 JSON v2 适配器预留。项目以 Go 1.25 为最低版本期间有意不导出 Codec，等最低版本升级到 Go 1.27 后再实现。现阶段请使用 JSON、MessagePack、Base64，或自行实现 `adapter.Codec`。
+`com/codec/jsonv2` 提供基于 Go 1.27 标准库 `encoding/json/v2` 的适配器，需要启用 `GOEXPERIMENT=jsonv2`。如果不需要 JSON v2 的实验特性，可继续使用 JSON、MessagePack、Base64，或自行实现 `adapter.Codec`。
 
 ## 存储组件建议
 
