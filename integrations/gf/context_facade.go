@@ -415,6 +415,10 @@ func VerifyAndConsumeNonceByCtx(ctx context.Context, nonce string) error {
 
 // requireDTokenContextByCtx gets required DToken context requireDTokenContextByCtx 获取必需的 DToken 上下文。
 func requireDTokenContextByCtx(ctx context.Context, authType ...string) (*DTokenContext, error) {
+	if ctx == nil {
+		return nil, ErrNotLogin
+	}
+
 	dCtx, ok := GetDTokenContextByCtx(ctx)
 	if ok && len(authType) == 0 {
 		return dCtx, nil

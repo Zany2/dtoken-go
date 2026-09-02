@@ -5,6 +5,8 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Zany2/dtoken-go/sso"
@@ -108,10 +110,7 @@ func home(c *gin.Context) {
 
 // loginPageHandler renders the demo login page. loginPageHandler 渲染示例登录页。
 func loginPageHandler(c *gin.Context) {
-	back := c.Query("back")
-	if back == "" {
-		back = "/"
-	}
+	back := safeBack(c.Query("back"))
 	c.Status(http.StatusOK)
 	_ = loginPage.Execute(c.Writer, map[string]string{"Back": back})
 }
@@ -123,11 +122,20 @@ func loginSubmit(c *gin.Context) {
 		loginID = "user-1001"
 	}
 	sso.SetLoginIDCookie(c.Writer, cookie, loginID)
-	back := c.PostForm("back")
-	if back == "" {
-		back = "/"
-	}
+	back := safeBack(c.PostForm("back"))
 	c.Redirect(http.StatusFound, back)
+}
+
+// safeBack accepts only local paths to prevent open redirects. safeBack 仅接受站内路径以防止开放重定向。
+func safeBack(raw string) string {
+	if raw == "" {
+		return "/"
+	}
+	target, err := url.Parse(raw)
+	if err != nil || target.IsAbs() || target.Host != "" || target.User != nil || strings.Contains(target.Path, "\\") || !strings.HasPrefix(target.Path, "/") || strings.HasPrefix(target.Path, "//") {
+		return "/"
+	}
+	return target.RequestURI()
 }
 
 // loginHTML defines the demo login page template. loginHTML 定义示例登录页模板。

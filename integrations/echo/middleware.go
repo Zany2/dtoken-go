@@ -433,6 +433,10 @@ func runBeforeAuthHandler(ctx context.Context, c echo4.Context, options *AuthOpt
 
 // GetDTokenContext gets cached DToken context from Echo request GetDTokenContext 从 Echo 请求中获取缓存的 DToken 上下文
 func GetDTokenContext(c echo4.Context) (*corecontext.DTokenContext, bool) {
+	if c == nil {
+		return nil, false
+	}
+
 	value := c.Get(DTokenCtxKey)
 	if value == nil {
 		return nil, false

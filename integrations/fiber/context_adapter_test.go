@@ -19,8 +19,15 @@ func TestFiberContextAdapterRequestAndResponse(t *testing.T) {
 		if got := ctx.GetHeader("X-Token"); got != "token" {
 			t.Fatalf("GetHeader() = %q, want token", got)
 		}
+		if got := ctx.GetHeaders()["X-Token"]; len(got) != 1 || got[0] != "token" {
+			t.Fatalf("GetHeaders()[X-Token] = %v, want [token]", got)
+		}
 		if got := ctx.GetQuery("foo"); got != "bar" {
 			t.Fatalf("GetQuery() = %q, want bar", got)
+		}
+		query := ctx.GetQueryAll()["foo"]
+		if len(query) != 2 || query[0] != "bar" || query[1] != "baz" {
+			t.Fatalf("GetQueryAll()[foo] = %v, want [bar baz]", query)
 		}
 		if got := ctx.GetCookie("sid"); got != "cookie-token" {
 			t.Fatalf("GetCookie() = %q, want cookie-token", got)
@@ -35,11 +42,17 @@ func TestFiberContextAdapterRequestAndResponse(t *testing.T) {
 		if got := ctx.GetPath(); got != "/demo" {
 			t.Fatalf("GetPath() = %q, want /demo", got)
 		}
-		if got := ctx.GetURL(); got != "/demo?foo=bar" {
-			t.Fatalf("GetURL() = %q, want /demo?foo=bar", got)
+		if got := ctx.GetURL(); got != "/demo?foo=bar&foo=baz" {
+			t.Fatalf("GetURL() = %q, want /demo?foo=bar&foo=baz", got)
 		}
 		if got := ctx.GetUserAgent(); got != "fiber-test" {
 			t.Fatalf("GetUserAgent() = %q, want fiber-test", got)
+		}
+		if got := ctx.GetPostForm("missing"); got != "" {
+			t.Fatalf("GetPostForm(missing) = %q, want empty", got)
+		}
+		if ctx.IsTLS() {
+			t.Fatal("IsTLS() = true for HTTP request")
 		}
 
 		ctx.Set("name", "dtoken")
@@ -58,13 +71,14 @@ func TestFiberContextAdapterRequestAndResponse(t *testing.T) {
 		}
 
 		ctx.SetHeader("X-Result", "ok")
+		ctx.SetCookie("legacy", "value", 60, "/", "", false, true)
 		ctx.SetCookieWithOptions(&adapter.CookieOptions{Name: "dt", Value: "v", Path: "/", SameSite: "Strict"})
 		ctx.SetStatusCode(http.StatusAccepted)
 		_, err = ctx.Write([]byte("done"))
 		return err
 	})
 
-	req, err := http.NewRequest(http.MethodPost, "/demo?foo=bar", strings.NewReader("hello"))
+	req, err := http.NewRequest(http.MethodPost, "/demo?foo=bar&foo=baz", strings.NewReader("hello"))
 	if err != nil {
 		t.Fatalf("NewRequest() error = %v", err)
 	}
@@ -90,8 +104,8 @@ func TestFiberContextAdapterRequestAndResponse(t *testing.T) {
 	if string(body) != "done" {
 		t.Fatalf("response body = %q, want done", body)
 	}
-	if len(resp.Cookies()) == 0 {
-		t.Fatal("SetCookieWithOptions() did not write cookie")
+	if len(resp.Cookies()) != 2 {
+		t.Fatalf("Set-Cookie count = %d, want 2", len(resp.Cookies()))
 	}
 }
 

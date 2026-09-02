@@ -4,7 +4,6 @@ package dtoken
 import (
 	"context"
 
-	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
@@ -192,7 +191,7 @@ func CheckRolesOrWithOptions(ctx context.Context, opts RoleOptions, authType ...
 func MustDefault() *Auth {
 	auth, err := Default()
 	if err != nil {
-		panic(derror.ErrManagerNotFound)
+		panic(err)
 	}
 	return auth
 }

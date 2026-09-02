@@ -521,24 +521,32 @@ func runBeforeAuthHandler(w http.ResponseWriter, r *http.Request, options *AuthO
 
 // GetDTokenContext gets cached DToken context GetDTokenContext 获取缓存的 DToken 上下文
 func GetDTokenContext(r *http.Request) (*DContext.DTokenContext, bool) {
+	if r == nil {
+		return nil, false
+	}
+
 	v := r.Context().Value(DTokenCtxKey)
 	if v == nil {
 		return nil, false
 	}
 
 	dCtx, ok := v.(*DContext.DTokenContext)
-	return dCtx, ok
+	return dCtx, ok && dCtx != nil
 }
 
 // GetDTokenContextByCtx gets DToken context by context GetDTokenContextByCtx 从上下文获取 DToken 上下文
 func GetDTokenContextByCtx(ctx context.Context) (*DContext.DTokenContext, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+
 	v := ctx.Value(DTokenCtxKey)
 	if v == nil {
 		return nil, false
 	}
 
 	dCtx, ok := v.(*DContext.DTokenContext)
-	return dCtx, ok
+	return dCtx, ok && dCtx != nil
 }
 
 // GetLoginIDByCtx gets login ID by context GetLoginIDByCtx 从上下文获取登录 ID
@@ -572,7 +580,7 @@ func IntrospectTokenByCtx(ctx context.Context) (*manager.TokenIntrospection, err
 func getDTokenContext(chiCtx *ChiContext, mgr *manager.Manager) *DContext.DTokenContext {
 	if v := chiCtx.r.Context().Value(DTokenCtxKey); v != nil {
 		if dCtx, ok := v.(*DContext.DTokenContext); ok {
-			if dCtx.GetManager() == mgr {
+			if dCtx != nil && dCtx.GetManager() == mgr {
 				return dCtx
 			}
 		}

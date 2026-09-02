@@ -43,7 +43,9 @@ func main() {
 	auth.Get("/articles", fiberdt.PermissionMiddleware(ctx, []string{"article:read"}), handleArticles)
 	auth.Post("/logout", handleLogout)
 
-	_ = app.Listen(":8080")
+	if err := app.Listen(":8080"); err != nil {
+		panic(err)
+	}
 }
 
 // initDToken initializes integration manager initDToken 初始化集成管理器
@@ -76,8 +78,12 @@ func handleLogin(c *gofiber.Ctx) error {
 	}
 
 	// Seed demo authorization data 初始化示例权限数据
-	_ = fiberdt.AddRoles(c.UserContext(), req.Username, []string{"admin"})
-	_ = fiberdt.AddPermissions(c.UserContext(), req.Username, []string{"article:read"})
+	if err = fiberdt.AddRoles(c.UserContext(), req.Username, []string{"admin"}); err != nil {
+		return writeJSON(c, http.StatusInternalServerError, fiberdt.CodeServerError, err.Error(), nil)
+	}
+	if err = fiberdt.AddPermissions(c.UserContext(), req.Username, []string{"article:read"}); err != nil {
+		return writeJSON(c, http.StatusInternalServerError, fiberdt.CodeServerError, err.Error(), nil)
+	}
 
 	return writeJSON(c, http.StatusOK, fiberdt.CodeSuccess, "ok", gofiber.Map{"token": token})
 }
@@ -94,8 +100,14 @@ func handleMe(c *gofiber.Ctx) error {
 		return writeJSON(c, http.StatusUnauthorized, fiberdt.CodeNotLogin, err.Error(), nil)
 	}
 
-	roles, _ := dCtx.Access().GetRoles(c.UserContext())
-	permissions, _ := dCtx.Access().GetPermissions(c.UserContext())
+	roles, err := dCtx.Access().GetRoles(c.UserContext())
+	if err != nil {
+		return writeJSON(c, http.StatusInternalServerError, fiberdt.CodeServerError, err.Error(), nil)
+	}
+	permissions, err := dCtx.Access().GetPermissions(c.UserContext())
+	if err != nil {
+		return writeJSON(c, http.StatusInternalServerError, fiberdt.CodeServerError, err.Error(), nil)
+	}
 
 	return writeJSON(c, http.StatusOK, fiberdt.CodeSuccess, "ok", gofiber.Map{
 		"loginId":     loginID,

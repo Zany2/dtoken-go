@@ -201,6 +201,7 @@ func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) gi
 			} else {
 				writeErrorResponse(c, err)
 			}
+			c.Abort()
 			return
 		}
 
@@ -471,6 +472,10 @@ func runBeforeAuthHandler(ctx context.Context, c *gin.Context, options *AuthOpti
 
 // GetDTokenContext gets cached DToken context GetDTokenContext 获取缓存的 DToken 上下文
 func GetDTokenContext(c *gin.Context) (*DContext.DTokenContext, bool) {
+	if c == nil {
+		return nil, false
+	}
+
 	v, exists := c.Get(DTokenCtxKey)
 	if !exists {
 		return nil, false

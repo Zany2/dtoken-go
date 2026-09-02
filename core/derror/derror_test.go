@@ -2,6 +2,7 @@ package derror
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -31,6 +32,32 @@ func TestDTokenErrorWithoutWrappedError(t *testing.T) {
 	}
 	if err.Unwrap() != nil {
 		t.Fatalf("Unwrap() = %v, want nil", err.Unwrap())
+	}
+}
+
+// TestDTokenErrorSupportsNestedErrors verifies errors.Is and errors.As across nested wrapping. TestDTokenErrorSupportsNestedErrors 验证嵌套包装时 errors.Is 与 errors.As 仍然有效。
+func TestDTokenErrorSupportsNestedErrors(t *testing.T) {
+	inner := NewDTokenError(CodeTokenExpired, "expired", ErrTokenExpired)
+	outer := fmt.Errorf("request failed: %w", inner)
+
+	if !errors.Is(outer, ErrTokenExpired) {
+		t.Fatal("errors.Is() = false, want wrapped sentinel")
+	}
+
+	var got *DTokenError
+	if !errors.As(outer, &got) || got != inner {
+		t.Fatalf("errors.As() = %v, want inner DTokenError", got)
+	}
+}
+
+// TestDTokenErrorNilReceiver verifies a typed-nil DTokenError is safe to inspect. TestDTokenErrorNilReceiver 验证 typed-nil DTokenError 可安全读取。
+func TestDTokenErrorNilReceiver(t *testing.T) {
+	var err *DTokenError
+	if got := err.Error(); got != "<nil>" {
+		t.Fatalf("Error() = %q, want <nil>", got)
+	}
+	if got := err.Unwrap(); got != nil {
+		t.Fatalf("Unwrap() = %v, want nil", got)
 	}
 }
 

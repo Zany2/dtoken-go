@@ -478,17 +478,25 @@ func dispatchFail(r *ghttp.Request, options *AuthOptions, err error) {
 
 // GetDTokenContext gets cached DToken context GetDTokenContext 获取缓存的 DToken 上下文
 func GetDTokenContext(r *ghttp.Request) (*DContext.DTokenContext, bool) {
+	if r == nil {
+		return nil, false
+	}
+
 	v := r.GetCtxVar(DTokenCtxKey)
 	if v == nil {
 		return nil, false
 	}
 
 	ctx, ok := v.Val().(*DContext.DTokenContext)
-	return ctx, ok
+	return ctx, ok && ctx != nil
 }
 
 // GetDTokenContextByCtx gets DToken context by context GetDTokenContextByCtx 从上下文获取 DToken 上下文
 func GetDTokenContextByCtx(ctx context.Context) (*DContext.DTokenContext, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+
 	request := g.RequestFromCtx(ctx)
 	if request == nil {
 		return nil, false
@@ -499,14 +507,14 @@ func GetDTokenContextByCtx(ctx context.Context) (*DContext.DTokenContext, bool) 
 	}
 
 	tokenContext, ok := ctxVar.Val().(*DContext.DTokenContext)
-	return tokenContext, ok
+	return tokenContext, ok && tokenContext != nil
 }
 
 // getDContext gets or creates DToken context getDContext 获取或创建 DToken 上下文
 func getDContext(r *ghttp.Request, mgr *manager.Manager) *DContext.DTokenContext {
 	if v := r.GetCtxVar(DTokenCtxKey); v != nil {
 		if dCtx, ok := v.Val().(*DContext.DTokenContext); ok {
-			if dCtx.GetManager() == mgr {
+			if dCtx != nil && dCtx.GetManager() == mgr {
 				return dCtx
 			}
 		}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
+	"github.com/Zany2/dtoken-go/core/derror"
 )
 
 // TestConfigValidateAndClone verifies short key config validation and independent cloning. TestConfigValidateAndClone 验证短 Key 配置校验与独立克隆。
@@ -36,6 +37,9 @@ func TestConfigValidateAndClone(t *testing.T) {
 		if err := cfg.Validate(); err == nil {
 			t.Fatalf("Validate(%s) error = nil, want error", name)
 		}
+	}
+	if (*Config)(nil).Clone() != nil || (*Config)(nil).Validate() != nil {
+		t.Fatal("nil config Clone/Validate should be safe")
 	}
 }
 
@@ -245,6 +249,52 @@ func TestRevokeDoesNotOverwriteConsumedShortKey(t *testing.T) {
 	}
 }
 
+// TestShortKeyExpirationBoundaryAndDurationRounding verifies exact expiry and positive metadata for sub-second TTLs. TestShortKeyExpirationBoundaryAndDurationRounding 验证恰好到期边界及亚秒 TTL 的正数元数据。
+func TestShortKeyExpirationBoundaryAndDurationRounding(t *testing.T) {
+	if got := durationSeconds(500 * time.Millisecond); got != 1 {
+		t.Fatalf("durationSeconds(500ms) = %d, want 1", got)
+	}
+	if got := durationSeconds(2 * time.Second); got != 2 {
+		t.Fatalf("durationSeconds(2s) = %d, want 2", got)
+	}
+
+	mgr := newTestShortKeyManager(time.Minute)
+	expired := &ShortKey{
+		Key:        "expired-boundary",
+		CreateTime: time.Now().Unix() - 1,
+		ExpiresIn:  1,
+		Status:     StatusConfirmed,
+	}
+	if err := mgr.save(context.Background(), expired, time.Minute); err != nil {
+		t.Fatalf("save(expired boundary) error = %v", err)
+	}
+	if _, err := mgr.Validate(context.Background(), expired.Key); !errors.Is(err, ErrShortKeyExpired) {
+		t.Fatalf("Validate(expired boundary) error = %v, want ErrShortKeyExpired", err)
+	}
+
+	created, err := mgr.CreateWithTimeout(context.Background(), CreateOptions{}, 500*time.Millisecond)
+	if err != nil {
+		t.Fatalf("CreateWithTimeout(500ms) error = %v", err)
+	}
+	if created.ExpiresIn < 1 {
+		t.Fatalf("CreateWithTimeout(500ms) ExpiresIn = %d, want positive", created.ExpiresIn)
+	}
+}
+
+// TestShortKeyConsumeReportsStateSaveFailure verifies consumption does not hide persistence errors. TestShortKeyConsumeReportsStateSaveFailure 验证消费不会隐藏状态持久化错误。
+func TestShortKeyConsumeReportsStateSaveFailure(t *testing.T) {
+	storage := &shortKeyConsumeSaveFailStorage{shortKeyTestStorage: newShortKeyTestStorage()}
+	mgr := NewManagerWithConfig("test", "dt:", storage, shortKeyTestCodec{}, &Config{TTL: time.Minute, Length: DefaultLength, MaxGenerateRetries: 4})
+	created, err := mgr.Create(context.Background(), CreateOptions{LoginID: "user-1"})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	storage.failSets = true
+	if _, err = mgr.Consume(context.Background(), created.Key); !errors.Is(err, derror.ErrStorageUnavailable) {
+		t.Fatalf("Consume() error = %v, want ErrStorageUnavailable", err)
+	}
+}
+
 func newTestShortKeyManager(ttl time.Duration) *Manager {
 	return NewManagerWithConfig("test", "dt:", newShortKeyTestStorage(), shortKeyTestCodec{}, &Config{
 		TTL:                ttl,
@@ -264,6 +314,18 @@ func (shortKeyTestCodec) Decode(data []byte, v any) error { return json.Unmarsha
 type shortKeyTestStorage struct {
 	mu    sync.Mutex
 	items map[string]shortKeyTestStorageItem
+}
+
+type shortKeyConsumeSaveFailStorage struct {
+	*shortKeyTestStorage
+	failSets bool
+}
+
+func (s *shortKeyConsumeSaveFailStorage) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
+	if s.failSets {
+		return errors.New("consume state save failed")
+	}
+	return s.shortKeyTestStorage.Set(ctx, key, value, expiration)
 }
 
 type shortKeyTestStorageItem struct {

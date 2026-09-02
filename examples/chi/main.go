@@ -46,7 +46,9 @@ func main() {
 		auth.Post("/logout", handleLogout)
 	})
 
-	_ = http.ListenAndServe(":8080", r)
+	if err := http.ListenAndServe(":8080", r); err != nil {
+		panic(err)
+	}
 }
 
 // initDToken initializes integration manager initDToken 初始化集成管理器
@@ -82,8 +84,14 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Seed demo authorization data 初始化示例权限数据
-	_ = chidt.AddRoles(r.Context(), req.Username, []string{"admin"})
-	_ = chidt.AddPermissions(r.Context(), req.Username, []string{"article:read"})
+	if err = chidt.AddRoles(r.Context(), req.Username, []string{"admin"}); err != nil {
+		writeJSON(w, http.StatusInternalServerError, chidt.CodeServerError, err.Error(), nil)
+		return
+	}
+	if err = chidt.AddPermissions(r.Context(), req.Username, []string{"article:read"}); err != nil {
+		writeJSON(w, http.StatusInternalServerError, chidt.CodeServerError, err.Error(), nil)
+		return
+	}
 
 	writeJSON(w, http.StatusOK, chidt.CodeSuccess, "ok", map[string]interface{}{"token": token})
 }
@@ -102,8 +110,16 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	roles, _ := dCtx.Access().GetRoles(r.Context())
-	permissions, _ := dCtx.Access().GetPermissions(r.Context())
+	roles, err := dCtx.Access().GetRoles(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, chidt.CodeServerError, err.Error(), nil)
+		return
+	}
+	permissions, err := dCtx.Access().GetPermissions(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, chidt.CodeServerError, err.Error(), nil)
+		return
+	}
 
 	writeJSON(w, http.StatusOK, chidt.CodeSuccess, "ok", map[string]interface{}{
 		"loginId":     loginID,

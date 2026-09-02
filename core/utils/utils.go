@@ -54,9 +54,9 @@ func ToInt64(value any) (int64, error) {
 		}
 		return int64(v), nil
 	case float32:
-		return int64(v), nil
+		return floatToInt64(float64(v))
 	case float64:
-		return int64(v), nil
+		return floatToInt64(v)
 	case string:
 		return parseInt64String(v)
 	case []byte:
@@ -69,6 +69,17 @@ func ToInt64(value any) (int64, error) {
 	default:
 		return 0, fmt.Errorf("unsupported type: %T", value)
 	}
+}
+
+// floatToInt64 validates floating-point values before truncating to int64. floatToInt64 在截断为 int64 前校验浮点值。
+func floatToInt64(value float64) (int64, error) {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return 0, fmt.Errorf("cannot convert non-finite float %v to int64", value)
+	}
+	if value < float64(math.MinInt64) || value >= float64(math.MaxInt64) {
+		return 0, fmt.Errorf("float value %v overflows int64", value)
+	}
+	return int64(value), nil
 }
 
 // parseInt64String parses a strict base-10 int64 string parseInt64String 解析严格十进制 int64 字符串

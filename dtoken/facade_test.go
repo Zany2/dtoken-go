@@ -192,6 +192,10 @@ func TestInstanceFacadeOptionalModules(t *testing.T) {
 	if err = auth.VerifyAndConsumeNonce(ctx, nonceValue); err != nil {
 		t.Fatalf("Auth.VerifyAndConsumeNonce() error = %v", err)
 	}
+	shortNonce, err := auth.GenerateNonceWithTimeout(ctx, time.Minute)
+	if err != nil || shortNonce == "" || !auth.VerifyNonce(ctx, shortNonce) {
+		t.Fatalf("Auth.GenerateNonceWithTimeout()/VerifyNonce() = %q, %v", shortNonce, err)
+	}
 
 	createdTicket, err := auth.CreateTicket(ctx, "user-3")
 	if err != nil {

@@ -92,10 +92,13 @@ func TestExtractBearerToken(t *testing.T) {
 	}{
 		{name: "bearer", auth: "Bearer abc", want: "abc"},
 		{name: "case insensitive", auth: "bearer abc", want: "abc"},
+		{name: "bearer tab separator", auth: "Bearer\tabc", want: "abc"},
 		{name: "empty bearer", auth: "Bearer", want: ""},
 		{name: "empty bearer with spaces", auth: "Bearer   ", want: ""},
+		{name: "bearer payload with spaces", auth: "Bearer abc def", want: ""},
 		{name: "raw compatibility", auth: "raw-token", want: "raw-token"},
 		{name: "non bearer scheme", auth: "Basic abc", want: ""},
+		{name: "non bearer tab scheme", auth: "Basic\tabc", want: ""},
 		{name: "raw value with spaces", auth: "raw token", want: ""},
 		{name: "empty", auth: "  ", want: ""},
 	}
@@ -341,6 +344,20 @@ func TestContextNoTokenErrors(t *testing.T) {
 	}
 	if _, err := dctx.ShortKey().ConfirmForCurrentLogin(ctx, "short-key", shortkey.ConfirmOptions{}); !errors.Is(err, derror.ErrNotLogin) {
 		t.Fatalf("ShortKey.ConfirmForCurrentLogin() error = %v, want ErrNotLogin", err)
+	}
+}
+
+// TestContextCookieLogoutClearsCookieOnNotLogin verifies failed logout still clears a stale response cookie. TestContextCookieLogoutClearsCookieOnNotLogin 验证未登录时登出仍会清理响应 Cookie。
+func TestContextCookieLogoutClearsCookieOnNotLogin(t *testing.T) {
+	ctx := stdctx.Background()
+	dctx, req, _ := newTestDTokenContext(t)
+	dctx.Cookie().SetToken("stale-token")
+
+	if err := dctx.Cookie().Logout(ctx); !errors.Is(err, derror.ErrNotLogin) {
+		t.Fatalf("Cookie.Logout(without request token) error = %v, want ErrNotLogin", err)
+	}
+	if req.cookie == nil || req.cookie.Value != "" || req.cookie.MaxAge != -1 {
+		t.Fatalf("Cookie.Logout(without request token) cookie = %+v, want cleared cookie", req.cookie)
 	}
 }
 

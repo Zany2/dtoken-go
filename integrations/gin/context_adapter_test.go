@@ -63,3 +63,21 @@ func TestGinContextValuesAndAbort(t *testing.T) {
 		t.Fatal("IsAborted() = false, want true")
 	}
 }
+
+// TestGinContextRequestCollections verifies headers and repeated query values are preserved. TestGinContextRequestCollections 验证请求头与重复查询参数不会丢失。
+func TestGinContextRequestCollections(t *testing.T) {
+	gingonic.SetMode(gingonic.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gingonic.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/demo?tag=one&tag=two", nil)
+	c.Request.Header.Add("X-Test", "one")
+	c.Request.Header.Add("X-Test", "two")
+	ctx := NewGinContext(c)
+
+	if values := ctx.GetHeaders()["X-Test"]; len(values) != 2 || values[0] != "one" || values[1] != "two" {
+		t.Fatalf("GetHeaders()[X-Test] = %v, want [one two]", values)
+	}
+	if values := ctx.GetQueryAll()["tag"]; len(values) != 2 || values[0] != "one" || values[1] != "two" {
+		t.Fatalf("GetQueryAll()[tag] = %v, want [one two]", values)
+	}
+}

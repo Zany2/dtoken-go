@@ -134,6 +134,12 @@ func TestOAuth2ClientRegistrationBoundaries(t *testing.T) {
 	if _, err = server.GetClient(client.ClientID); !errors.Is(err, derror.ErrClientNotFound) {
 		t.Fatalf("GetClient(after unregister) error = %v, want ErrClientNotFound", err)
 	}
+	if _, err = server.GetClient(""); !errors.Is(err, derror.ErrClientOrClientIDEmpty) {
+		t.Fatalf("GetClient(empty) error = %v, want ErrClientOrClientIDEmpty", err)
+	}
+	if err = server.UnregisterClient(""); !errors.Is(err, derror.ErrClientOrClientIDEmpty) {
+		t.Fatalf("UnregisterClient(empty) error = %v, want ErrClientOrClientIDEmpty", err)
+	}
 }
 
 // TestOAuth2TokenEndpointBoundaries verifies token endpoint invalid requests TestOAuth2TokenEndpointBoundaries 验证令牌端点非法请求
@@ -277,6 +283,56 @@ func TestOAuth2PKCEPlainDefault(t *testing.T) {
 	}
 	if _, err = server.ExchangeCodeForTokenWithPKCE(ctx, code.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], verifier); err != nil {
 		t.Fatalf("ExchangeCodeForTokenWithPKCE() error = %v", err)
+	}
+}
+
+// TestOAuth2ConfigFallbacksAndDurationRounding verifies constructor defaults and sub-second metadata rounding. TestOAuth2ConfigFallbacksAndDurationRounding 验证构造器默认值和亚秒元数据取整。
+func TestOAuth2ConfigFallbacksAndDurationRounding(t *testing.T) {
+	storage := newOAuth2TestStorage()
+	server := NewOAuth2ServerWithConfig("auth:", "dt:", storage, oauth2TestCodec{}, &Config{
+		CodeExpiration:    500 * time.Millisecond,
+		TokenExpiration:   500 * time.Millisecond,
+		RefreshExpiration: 1500 * time.Millisecond,
+	})
+	if server.codeExpiration != 500*time.Millisecond || server.tokenExpiration != 500*time.Millisecond || server.refreshExpiration != 1500*time.Millisecond {
+		t.Fatalf("constructor changed configured durations: %+v", server)
+	}
+	if got := durationSeconds(500 * time.Millisecond); got != 1 {
+		t.Fatalf("durationSeconds(500ms) = %d, want 1", got)
+	}
+	if got := durationSeconds(2 * time.Second); got != 2 {
+		t.Fatalf("durationSeconds(2s) = %d, want 2", got)
+	}
+
+	defaulted := NewOAuth2ServerWithConfig("auth:", "dt:", storage, oauth2TestCodec{}, &Config{})
+	if defaulted.codeExpiration != DefaultCodeExpiration || defaulted.tokenExpiration != DefaultTokenExpiration || defaulted.refreshExpiration != DefaultRefreshTTL {
+		t.Fatalf("constructor fallback durations = %v/%v/%v, want defaults", defaulted.codeExpiration, defaulted.tokenExpiration, defaulted.refreshExpiration)
+	}
+}
+
+// TestOAuth2PKCEValidationBoundaries verifies PKCE normalization and verifier rejection rules. TestOAuth2PKCEValidationBoundaries 验证 PKCE 规范化和校验器拒绝规则。
+func TestOAuth2PKCEValidationBoundaries(t *testing.T) {
+	if method, err := normalizeCodeChallengeMethod("", "unsupported"); err != nil || method != "" {
+		t.Fatalf("normalizeCodeChallengeMethod(no challenge) = %q, %v, want empty and nil", method, err)
+	}
+	if method, err := normalizeCodeChallengeMethod("challenge", " "); err != nil || method != CodeChallengeMethodPlain {
+		t.Fatalf("normalizeCodeChallengeMethod(default) = %q, %v, want plain", method, err)
+	}
+	if _, err := normalizeCodeChallengeMethod("challenge", "MD5"); !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("normalizeCodeChallengeMethod(unsupported) error = %v, want ErrInvalidParam", err)
+	}
+
+	if err := verifyCodeChallenge("", "S256", ""); err != nil {
+		t.Fatalf("verifyCodeChallenge(no challenge) error = %v, want nil", err)
+	}
+	if err := verifyCodeChallenge("plain", CodeChallengeMethodPlain, " plain "); err != nil {
+		t.Fatalf("verifyCodeChallenge(plain) error = %v, want nil", err)
+	}
+	if !errors.Is(verifyCodeChallenge("plain", CodeChallengeMethodPlain, "wrong"), derror.ErrInvalidCodeVerifier) {
+		t.Fatal("verifyCodeChallenge(wrong plain verifier) did not reject")
+	}
+	if !errors.Is(verifyCodeChallenge("challenge", "unknown", "value"), derror.ErrInvalidParam) {
+		t.Fatal("verifyCodeChallenge(unknown method) did not reject")
 	}
 }
 

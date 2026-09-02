@@ -6,6 +6,8 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Zany2/dtoken-go/sso"
@@ -83,10 +85,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		// Render the page with the requested return location. 使用请求的返回地址渲染页面。
-		back := r.URL.Query().Get("back")
-		if back == "" {
-			back = "/"
-		}
+		back := safeBack(r.URL.Query().Get("back"))
 		_ = loginPage.Execute(w, map[string]string{"Back": back})
 	case http.MethodPost:
 		// Persist the demo login ID and return to the original page. 保存示例登录 ID 并返回原页面。
@@ -99,14 +98,23 @@ func login(w http.ResponseWriter, r *http.Request) {
 			loginID = "user-1001"
 		}
 		sso.SetLoginIDCookie(w, cookie, loginID)
-		back := r.FormValue("back")
-		if back == "" {
-			back = "/"
-		}
+		back := safeBack(r.FormValue("back"))
 		http.Redirect(w, r, back, http.StatusFound)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// safeBack accepts only local paths to prevent open redirects. safeBack 仅接受站内路径以防止开放重定向。
+func safeBack(raw string) string {
+	if raw == "" {
+		return "/"
+	}
+	target, err := url.Parse(raw)
+	if err != nil || target.IsAbs() || target.Host != "" || target.User != nil || strings.Contains(target.Path, "\\") || !strings.HasPrefix(target.Path, "/") || strings.HasPrefix(target.Path, "//") {
+		return "/"
+	}
+	return target.RequestURI()
 }
 
 // loginHTML defines the demo login page template. loginHTML 定义示例登录页模板。

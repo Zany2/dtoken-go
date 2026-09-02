@@ -79,8 +79,14 @@ func handleLogin(c *beegocontext.Context) {
 	}
 
 	// Seed demo authorization data 初始化示例权限数据
-	_ = beegodt.AddRoles(c.Request.Context(), username, []string{"admin"})
-	_ = beegodt.AddPermissions(c.Request.Context(), username, []string{"article:read"})
+	if err = beegodt.AddRoles(c.Request.Context(), username, []string{"admin"}); err != nil {
+		writeJSON(c, http.StatusInternalServerError, beegodt.CodeServerError, err.Error(), nil)
+		return
+	}
+	if err = beegodt.AddPermissions(c.Request.Context(), username, []string{"article:read"}); err != nil {
+		writeJSON(c, http.StatusInternalServerError, beegodt.CodeServerError, err.Error(), nil)
+		return
+	}
 
 	writeJSON(c, http.StatusOK, beegodt.CodeSuccess, "ok", map[string]interface{}{"token": token})
 }
@@ -99,8 +105,16 @@ func handleMe(c *beegocontext.Context) {
 		return
 	}
 
-	roles, _ := dCtx.Access().GetRoles(c.Request.Context())
-	permissions, _ := dCtx.Access().GetPermissions(c.Request.Context())
+	roles, err := dCtx.Access().GetRoles(c.Request.Context())
+	if err != nil {
+		writeJSON(c, http.StatusInternalServerError, beegodt.CodeServerError, err.Error(), nil)
+		return
+	}
+	permissions, err := dCtx.Access().GetPermissions(c.Request.Context())
+	if err != nil {
+		writeJSON(c, http.StatusInternalServerError, beegodt.CodeServerError, err.Error(), nil)
+		return
+	}
 
 	writeJSON(c, http.StatusOK, beegodt.CodeSuccess, "ok", map[string]interface{}{
 		"loginId":     loginID,

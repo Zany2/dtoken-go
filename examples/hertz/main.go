@@ -80,8 +80,14 @@ func handleLogin(ctx context.Context, c *hertzapp.RequestContext) {
 	}
 
 	// Seed demo authorization data 初始化示例权限数据
-	_ = hertzdt.AddRoles(ctx, req.Username, []string{"admin"})
-	_ = hertzdt.AddPermissions(ctx, req.Username, []string{"article:read"})
+	if err = hertzdt.AddRoles(ctx, req.Username, []string{"admin"}); err != nil {
+		writeJSON(c, http.StatusInternalServerError, hertzdt.CodeServerError, err.Error(), nil)
+		return
+	}
+	if err = hertzdt.AddPermissions(ctx, req.Username, []string{"article:read"}); err != nil {
+		writeJSON(c, http.StatusInternalServerError, hertzdt.CodeServerError, err.Error(), nil)
+		return
+	}
 
 	writeJSON(c, http.StatusOK, hertzdt.CodeSuccess, "ok", map[string]interface{}{"token": token})
 }
@@ -100,8 +106,16 @@ func handleMe(ctx context.Context, c *hertzapp.RequestContext) {
 		return
 	}
 
-	roles, _ := dCtx.Access().GetRoles(ctx)
-	permissions, _ := dCtx.Access().GetPermissions(ctx)
+	roles, err := dCtx.Access().GetRoles(ctx)
+	if err != nil {
+		writeJSON(c, http.StatusInternalServerError, hertzdt.CodeServerError, err.Error(), nil)
+		return
+	}
+	permissions, err := dCtx.Access().GetPermissions(ctx)
+	if err != nil {
+		writeJSON(c, http.StatusInternalServerError, hertzdt.CodeServerError, err.Error(), nil)
+		return
+	}
 
 	writeJSON(c, http.StatusOK, hertzdt.CodeSuccess, "ok", map[string]interface{}{
 		"loginId":     loginID,

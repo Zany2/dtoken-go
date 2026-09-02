@@ -537,6 +537,143 @@ func TestWaitReleasesAllConcurrentWaiters(t *testing.T) {
 	}
 }
 
+// TestEventDataStringAndListenerFunc verifies payload formatting and function listener behavior. TestEventDataStringAndListenerFunc 验证事件载荷格式化和函数监听器行为。
+func TestEventDataStringAndListenerFunc(t *testing.T) {
+	var nilData *EventData
+	if got := nilData.String(); got != "Event<nil>" {
+		t.Fatalf("nil EventData.String() = %q, want Event<nil>", got)
+	}
+
+	data := &EventData{
+		Event:     EventLogin,
+		AuthType:  "member",
+		LoginID:   "user-1",
+		Device:    "web",
+		DeviceID:  "browser-1",
+		Timestamp: 123,
+	}
+	want := "Event{type=login,AuthType=member, loginID=user-1, device=web, deviceId=browser-1, timestamp=123}"
+	if got := data.String(); got != want {
+		t.Fatalf("EventData.String() = %q, want %q", got, want)
+	}
+
+	ListenerFunc(nil).OnEvent(nil)
+	called := false
+	ListenerFunc(func(got *EventData) {
+		called = got == data
+	}).OnEvent(data)
+	if !called {
+		t.Fatal("ListenerFunc did not invoke its callback with the event data")
+	}
+}
+
+// TestManagerRegistrationAndCleanupAPIs verifies registration metadata and cleanup operations. TestManagerRegistrationAndCleanupAPIs 验证注册元数据及清理操作。
+func TestManagerRegistrationAndCleanupAPIs(t *testing.T) {
+	manager := NewManager()
+	if manager.HasListeners(EventLogin) {
+		t.Fatal("empty manager reports login listeners")
+	}
+
+	firstID := manager.RegisterFuncWithConfig(EventLogin, func(*EventData) {}, ListenerConfig{Async: false, ID: "first"})
+	secondID := manager.RegisterFuncWithConfig(EventLogin, func(*EventData) {}, ListenerConfig{Async: false, ID: "second"})
+	otherID := manager.Register(EventLogout, ListenerFunc(func(*EventData) {}))
+	if firstID != "first" || secondID != "second" || otherID == "" {
+		t.Fatalf("registered IDs = %q, %q, %q", firstID, secondID, otherID)
+	}
+	if !manager.HasListeners(EventLogin) || manager.Count() != 3 || manager.CountForEvent(EventLogin) != 2 {
+		t.Fatalf("listener counts = total %d, login %d", manager.Count(), manager.CountForEvent(EventLogin))
+	}
+	if got := manager.GetListenerIDs(EventLogin); !reflect.DeepEqual(got, []string{"first", "second"}) {
+		t.Fatalf("GetListenerIDs(login) = %v, want [first second]", got)
+	}
+
+	events := manager.GetAllEvents()
+	seen := make(map[Event]bool, len(events))
+	for _, event := range events {
+		seen[event] = true
+	}
+	if !seen[EventLogin] || !seen[EventLogout] || len(seen) != 2 {
+		t.Fatalf("GetAllEvents() = %v, want login and logout", events)
+	}
+
+	if manager.Unregister("missing") {
+		t.Fatal("Unregister(missing) = true, want false")
+	}
+	if !manager.Unregister(firstID) || manager.Unregister(firstID) {
+		t.Fatal("Unregister did not remove exactly one listener")
+	}
+	if got := manager.GetListenerIDs(EventLogin); !reflect.DeepEqual(got, []string{"second"}) {
+		t.Fatalf("GetListenerIDs(login) after unregister = %v, want [second]", got)
+	}
+
+	manager.ClearEvent(EventLogin)
+	if manager.HasListeners(EventLogin) || manager.Count() != 1 {
+		t.Fatalf("ClearEvent(login) left listeners: total=%d, hasLogin=%v", manager.Count(), manager.HasListeners(EventLogin))
+	}
+	manager.Clear()
+	if manager.Count() != 0 || len(manager.GetAllEvents()) != 0 || manager.HasListeners(EventLogout) {
+		t.Fatalf("Clear() did not remove all listeners")
+	}
+}
+
+// TestManagerStatsCopyAndReset verifies statistics toggling, defensive copies, and reset behavior. TestManagerStatsCopyAndReset 验证统计开关、防御性副本和重置行为。
+func TestManagerStatsCopyAndReset(t *testing.T) {
+	manager := NewManager()
+	manager.EnableStats(true)
+	manager.TriggerSync(&EventData{Event: EventLogin})
+
+	stats := manager.GetStats()
+	if stats.TotalTriggered != 1 || stats.EventCounts[EventLogin] != 1 || stats.LastTriggered[EventLogin].IsZero() {
+		t.Fatalf("stats = %+v, want one login trigger with timestamp", stats)
+	}
+	stats.EventCounts[EventLogin] = 99
+	delete(stats.LastTriggered, EventLogin)
+	if got := manager.GetStats(); got.EventCounts[EventLogin] != 1 || got.LastTriggered[EventLogin].IsZero() {
+		t.Fatalf("GetStats returned internal map references: %+v", got)
+	}
+
+	manager.ResetStats()
+	stats = manager.GetStats()
+	if stats.TotalTriggered != 0 || len(stats.EventCounts) != 0 || len(stats.LastTriggered) != 0 {
+		t.Fatalf("stats after ResetStats() = %+v, want empty stats", stats)
+	}
+
+	manager.EnableStats(false)
+	manager.TriggerSync(&EventData{Event: EventLogin})
+	if got := manager.GetStats(); got.TotalTriggered != 0 || len(got.EventCounts) != 0 {
+		t.Fatalf("stats collected while disabled: %+v", got)
+	}
+}
+
+// TestManagerClearFiltersAndDirectTrigger verifies filters can be cleared and Trigger tracks default asynchronous listeners. TestManagerClearFiltersAndDirectTrigger 验证过滤器可清除且 Trigger 会跟踪默认异步监听器。
+func TestManagerClearFiltersAndDirectTrigger(t *testing.T) {
+	manager := NewManager()
+	blocked := true
+	manager.AddFilter(func(*EventData) bool { return !blocked })
+	called := make(chan struct{}, 1)
+	manager.Register(EventLogin, ListenerFunc(func(*EventData) {
+		called <- struct{}{}
+	}))
+
+	manager.Trigger(&EventData{Event: EventLogin})
+	manager.Wait()
+	select {
+	case <-called:
+		t.Fatal("listener ran while filter rejected the event")
+	default:
+	}
+
+	manager.ClearFilters()
+	blocked = false
+	manager.Trigger(&EventData{Event: EventLogin})
+	manager.Wait()
+	select {
+	case <-called:
+	case <-time.After(time.Second):
+		t.Fatal("listener did not run after filters were cleared")
+	}
+}
+
 type listenerEventObservation struct {
 	data       *EventData
 	loginID    string

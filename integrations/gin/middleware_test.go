@@ -3,9 +3,12 @@ package gin
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/Zany2/dtoken-go/core/manager"
+	"github.com/Zany2/dtoken-go/dtoken"
 	"github.com/gin-gonic/gin"
 )
 
@@ -128,5 +131,84 @@ func TestFailFuncOption(t *testing.T) {
 	options.FailFunc(nil, wantErr)
 	if !errors.Is(gotErr, wantErr) {
 		t.Fatalf("gotErr = %v, want %v", gotErr, wantErr)
+	}
+}
+
+// TestRegisterContextMiddlewareStopsAfterManagerFailure verifies manager resolution failures abort Gin chains. TestRegisterContextMiddlewareStopsAfterManagerFailure 验证 Manager 解析失败时 Gin 链路会中止。
+func TestRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+
+	router := gin.New()
+	downstreamCalled := false
+	router.Use(RegisterDTokenContextMiddleware(context.Background(), WithAuthType("missing-gin-manager")))
+	router.GET("/protected", func(c *gin.Context) {
+		downstreamCalled = true
+		c.Status(http.StatusNoContent)
+	})
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/protected", nil))
+	if downstreamCalled {
+		t.Fatal("downstream handler ran after manager resolution failure")
+	}
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", recorder.Code)
+	}
+}
+
+// TestAuthMiddlewareSuccessAndFailure verifies authenticated and rejected requests. TestAuthMiddlewareSuccessAndFailure 验证认证成功与失败请求。
+func TestAuthMiddlewareSuccessAndFailure(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+
+	ctx := context.Background()
+	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	token, err := mgr.Login(ctx, "gin-middleware-user")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+
+	router := gin.New()
+	downstreamCalled := false
+	failureCalled := false
+	router.Use(AuthMiddleware(ctx, WithManager(mgr), WithFailFunc(func(c *gin.Context, _ error) {
+		failureCalled = true
+		c.Status(http.StatusUnauthorized)
+	})))
+	router.GET("/protected", func(c *gin.Context) {
+		downstreamCalled = true
+		c.Status(http.StatusNoContent)
+	})
+
+	successRecorder := httptest.NewRecorder()
+	successReq := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	successReq.Header.Set(mgr.GetConfig().TokenName, token)
+	router.ServeHTTP(successRecorder, successReq)
+	if successRecorder.Code != http.StatusNoContent || !downstreamCalled || failureCalled {
+		t.Fatalf("success status=%d downstream=%v failure=%v", successRecorder.Code, downstreamCalled, failureCalled)
+	}
+
+	downstreamCalled = false
+	failureCalled = false
+	failureRecorder := httptest.NewRecorder()
+	router.ServeHTTP(failureRecorder, httptest.NewRequest(http.MethodGet, "/protected", nil))
+	if failureRecorder.Code != http.StatusUnauthorized || downstreamCalled || !failureCalled {
+		t.Fatalf("failure status=%d downstream=%v failure=%v", failureRecorder.Code, downstreamCalled, failureCalled)
+	}
+}
+
+// TestGetDTokenContextNilIsSafe verifies nil context lookup does not panic. TestGetDTokenContextNilIsSafe 验证空上下文查询不会 panic。
+func TestGetDTokenContextNilIsSafe(t *testing.T) {
+	if value, ok := GetDTokenContext(nil); value != nil || ok {
+		t.Fatalf("GetDTokenContext(nil) = %v, %v, want nil,false", value, ok)
+	}
+	if _, err := GetTokenValueByContext(nil); !errors.Is(err, ErrNotLogin) {
+		t.Fatalf("GetTokenValueByContext(nil) error = %v, want ErrNotLogin", err)
 	}
 }

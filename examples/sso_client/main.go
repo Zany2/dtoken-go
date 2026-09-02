@@ -2,9 +2,10 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log"
-	"math/rand"
 	"net/http"
 	"sync"
 	"time"
@@ -85,7 +86,15 @@ func callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	sessionID := newLocalSession(result.LoginID)
+	if result == nil || result.LoginID == "" {
+		http.Error(w, "sso response missing loginId", http.StatusBadGateway)
+		return
+	}
+	sessionID, err := newLocalSession(result.LoginID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     localCookie,
 		Value:    sessionID,
@@ -121,6 +130,9 @@ func logoutCallback(_ *http.Request, callback sso.LogoutCallback) error {
 
 // localLoginID resolves the SSO login ID from a local session cookie. localLoginID 根据本地会话 Cookie 解析 SSO 登录 ID。
 func localLoginID(r *http.Request) (string, bool) {
+	if r == nil {
+		return "", false
+	}
 	cookie, err := r.Cookie(localCookie)
 	if err != nil || cookie.Value == "" {
 		return "", false
@@ -132,12 +144,19 @@ func localLoginID(r *http.Request) (string, bool) {
 }
 
 // newLocalSession creates a local session for an SSO login ID. newLocalSession 为 SSO 登录 ID 创建本地会话。
-func newLocalSession(loginID string) string {
-	sessionID := fmt.Sprintf("%d-%d", time.Now().UnixNano(), rand.Int63())
+func newLocalSession(loginID string) (string, error) {
+	if loginID == "" {
+		return "", fmt.Errorf("login id is empty")
+	}
+	var randomBytes [32]byte
+	if _, err := rand.Read(randomBytes[:]); err != nil {
+		return "", err
+	}
+	sessionID := hex.EncodeToString(randomBytes[:])
 	localSessions.mu.Lock()
 	defer localSessions.mu.Unlock()
 	localSessions.values[sessionID] = loginID
-	return sessionID
+	return sessionID, nil
 }
 
 // deleteLocalSession removes one local session. deleteLocalSession 删除一个本地会话。

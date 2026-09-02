@@ -43,11 +43,10 @@ func (f *FiberContext) GetQuery(key string) string {
 
 // GetQueryAll implements adapter.RequestContext GetQueryAll 实现 adapter.RequestContext 接口。
 func (f *FiberContext) GetQueryAll() map[string][]string {
-	values := f.c.Queries()
-	result := make(map[string][]string, len(values))
-	for key, value := range values {
-		result[key] = []string{value}
-	}
+	result := make(map[string][]string)
+	f.c.Context().QueryArgs().VisitAll(func(key, value []byte) {
+		result[string(key)] = append(result[string(key)], string(value))
+	})
 	return result
 }
 

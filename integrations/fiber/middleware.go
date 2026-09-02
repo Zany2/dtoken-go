@@ -438,6 +438,10 @@ func runBeforeAuthHandler(ctx context.Context, c *gofiber.Ctx, options *AuthOpti
 
 // GetDTokenContext gets cached DToken context from Fiber request GetDTokenContext 从 Fiber 请求中获取缓存的 DToken 上下文。
 func GetDTokenContext(c *gofiber.Ctx) (*corecontext.DTokenContext, bool) {
+	if c == nil {
+		return nil, false
+	}
+
 	value := c.Locals(DTokenCtxKey)
 	if value == nil {
 		return nil, false

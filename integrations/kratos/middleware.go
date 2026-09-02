@@ -460,12 +460,19 @@ func runBeforeAuthHandler(ctx context.Context, req any, options *AuthOptions, au
 
 // GetDTokenContext gets cached DToken context GetDTokenContext 获取缓存的 DToken 上下文
 func GetDTokenContext(ctx context.Context) (*corecontext.DTokenContext, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+
 	value := ctx.Value(DTokenCtxKey)
 	if value == nil {
 		return nil, false
 	}
 
 	dCtx, ok := value.(*corecontext.DTokenContext)
+	if !ok || dCtx == nil {
+		return nil, false
+	}
 	return dCtx, ok
 }
 
@@ -512,6 +519,10 @@ func IntrospectTokenByCtx(ctx context.Context, authType ...string) (*manager.Tok
 
 // getDTokenContext gets or creates dtoken context getDTokenContext 获取或创建 DToken 上下文
 func getDTokenContext(ctx context.Context, mgr *manager.Manager) (*corecontext.DTokenContext, context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	if dCtx, ok := GetDTokenContext(ctx); ok {
 		if dCtx.GetManager() == mgr {
 			return dCtx, ctx

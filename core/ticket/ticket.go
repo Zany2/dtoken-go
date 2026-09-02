@@ -161,7 +161,7 @@ func (m *Manager) CreateWithTimeout(ctx context.Context, opts CreateOptions, tim
 		Scopes:     append([]string(nil), opts.Scopes...),
 		Extra:      cloneMap(opts.Extra),
 		CreateTime: now,
-		ExpiresIn:  int64(timeout.Seconds()),
+		ExpiresIn:  durationSeconds(timeout),
 		Status:     StatusValid,
 	}
 	if err = m.save(ctx, ticket, timeout); err != nil {
@@ -223,7 +223,9 @@ func (m *Manager) Consume(ctx context.Context, ticketValue string, opts ...Valid
 	}
 	ticket.Status = StatusConsumed
 	if ttl := remainingDuration(ticket); ttl > 0 {
-		_ = m.save(ctx, ticket, ttl)
+		if err = m.save(ctx, ticket, ttl); err != nil {
+			return nil, err
+		}
 	}
 	return &ConsumeResult{Ticket: ticket}, nil
 }
@@ -363,7 +365,7 @@ func (m *Manager) checkAlive(ticket *Ticket) error {
 	default:
 		return ErrInvalidTicket
 	}
-	if ticket.ExpiresIn > 0 && time.Now().Unix() > ticket.CreateTime+ticket.ExpiresIn {
+	if ticket.ExpiresIn > 0 && time.Now().Unix() >= ticket.CreateTime+ticket.ExpiresIn {
 		return ErrTicketExpired
 	}
 	return nil
@@ -408,6 +410,18 @@ func remainingDuration(ticket *Ticket) time.Duration {
 		return 0
 	}
 	return ttl
+}
+
+// durationSeconds rounds a positive duration up to whole seconds. durationSeconds 将正时长向上取整为秒。
+func durationSeconds(duration time.Duration) int64 {
+	seconds := duration / time.Second
+	if duration%time.Second != 0 {
+		seconds++
+	}
+	if seconds <= 0 {
+		return 1
+	}
+	return int64(seconds)
 }
 
 // generateRandomValue creates a cryptographically secure hexadecimal value. generateRandomValue 生成密码学安全的十六进制随机值。

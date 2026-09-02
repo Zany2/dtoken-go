@@ -24,7 +24,7 @@ type Annotation struct {
 func GetHandler(failFunc FailFunc, annotations ...*Annotation) middleware.Middleware {
 	return func(next middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req any) (any, error) {
-			if len(annotations) > 0 && annotations[0].Ignore {
+			if len(annotations) > 0 && annotations[0] != nil && annotations[0].Ignore {
 				return next(ctx, req)
 			}
 

@@ -97,8 +97,12 @@ func handleLogin(ctx context.Context, httpCtx khttp.Context) error {
 	}
 
 	// Seed demo authorization data 初始化示例权限数据
-	_ = kratosdt.AddRoles(ctx, req.Username, []string{"admin"})
-	_ = kratosdt.AddPermissions(ctx, req.Username, []string{"article:read"})
+	if err = kratosdt.AddRoles(ctx, req.Username, []string{"admin"}); err != nil {
+		return writeJSON(httpCtx, http.StatusInternalServerError, kratosdt.CodeServerError, err.Error(), nil)
+	}
+	if err = kratosdt.AddPermissions(ctx, req.Username, []string{"article:read"}); err != nil {
+		return writeJSON(httpCtx, http.StatusInternalServerError, kratosdt.CodeServerError, err.Error(), nil)
+	}
 
 	return writeJSON(httpCtx, http.StatusOK, kratosdt.CodeSuccess, "ok", map[string]interface{}{"token": token})
 }
@@ -115,8 +119,14 @@ func handleMe(ctx context.Context, httpCtx khttp.Context) error {
 		return writeJSON(httpCtx, http.StatusUnauthorized, kratosdt.CodeNotLogin, err.Error(), nil)
 	}
 
-	roles, _ := dCtx.Access().GetRoles(ctx)
-	permissions, _ := dCtx.Access().GetPermissions(ctx)
+	roles, err := dCtx.Access().GetRoles(ctx)
+	if err != nil {
+		return writeJSON(httpCtx, http.StatusInternalServerError, kratosdt.CodeServerError, err.Error(), nil)
+	}
+	permissions, err := dCtx.Access().GetPermissions(ctx)
+	if err != nil {
+		return writeJSON(httpCtx, http.StatusInternalServerError, kratosdt.CodeServerError, err.Error(), nil)
+	}
 
 	return writeJSON(httpCtx, http.StatusOK, kratosdt.CodeSuccess, "ok", map[string]interface{}{
 		"loginId":     loginID,

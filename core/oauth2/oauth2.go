@@ -261,7 +261,7 @@ func (s *OAuth2Server) GenerateAuthorizationCodeWithPKCE(ctx context.Context, cl
 		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
 		CreateTime:          time.Now().Unix(),
-		ExpiresIn:           int64(s.codeExpiration.Seconds()),
+		ExpiresIn:           durationSeconds(s.codeExpiration),
 		Used:                false,
 	}
 
@@ -638,6 +638,9 @@ func (s *OAuth2Server) saveClient(ctx context.Context, client *Client) error {
 
 // deleteClient deletes OAuth2 client through shared storage. deleteClient 通过共享存储删除 OAuth2 客户端。
 func (s *OAuth2Server) deleteClient(ctx context.Context, clientID string) error {
+	if clientID == "" {
+		return derror.ErrClientOrClientIDEmpty
+	}
 	if err := s.storage.Delete(ctx, s.getClientKey(clientID)); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
@@ -646,6 +649,9 @@ func (s *OAuth2Server) deleteClient(ctx context.Context, clientID string) error 
 
 // getClient gets OAuth2 client through shared storage. getClient 通过共享存储获取 OAuth2 客户端。
 func (s *OAuth2Server) getClient(ctx context.Context, clientID string) (*Client, error) {
+	if clientID == "" {
+		return nil, derror.ErrClientOrClientIDEmpty
+	}
 	data, err := s.storage.Get(ctx, s.getClientKey(clientID))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
@@ -779,7 +785,7 @@ func (s *OAuth2Server) generateAccessToken(ctx context.Context, userID, clientID
 	token := &AccessToken{
 		Token:        accessToken,
 		TokenType:    TokenTypeBearer,
-		ExpiresIn:    int64(s.tokenExpiration.Seconds()),
+		ExpiresIn:    durationSeconds(s.tokenExpiration),
 		RefreshToken: refreshToken,
 		Scopes:       append([]string(nil), scopes...),
 		UserID:       userID,
@@ -804,4 +810,16 @@ func (s *OAuth2Server) generateAccessToken(ctx context.Context, userID, clientID
 	}
 
 	return token, nil
+}
+
+// durationSeconds rounds a positive duration up to whole seconds. durationSeconds 将正时长向上取整为秒。
+func durationSeconds(duration time.Duration) int64 {
+	seconds := duration / time.Second
+	if duration%time.Second != 0 {
+		seconds++
+	}
+	if seconds <= 0 {
+		return 1
+	}
+	return int64(seconds)
 }

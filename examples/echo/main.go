@@ -76,8 +76,12 @@ func handleLogin(c echo4.Context) error {
 	}
 
 	// Seed demo authorization data 初始化示例权限数据
-	_ = echodt.AddRoles(c.Request().Context(), req.Username, []string{"admin"})
-	_ = echodt.AddPermissions(c.Request().Context(), req.Username, []string{"article:read"})
+	if err = echodt.AddRoles(c.Request().Context(), req.Username, []string{"admin"}); err != nil {
+		return writeJSON(c, http.StatusInternalServerError, echodt.CodeServerError, err.Error(), nil)
+	}
+	if err = echodt.AddPermissions(c.Request().Context(), req.Username, []string{"article:read"}); err != nil {
+		return writeJSON(c, http.StatusInternalServerError, echodt.CodeServerError, err.Error(), nil)
+	}
 
 	return writeJSON(c, http.StatusOK, echodt.CodeSuccess, "ok", echo4.Map{"token": token})
 }
@@ -94,8 +98,14 @@ func handleMe(c echo4.Context) error {
 		return writeJSON(c, http.StatusUnauthorized, echodt.CodeNotLogin, err.Error(), nil)
 	}
 
-	roles, _ := dCtx.Access().GetRoles(c.Request().Context())
-	permissions, _ := dCtx.Access().GetPermissions(c.Request().Context())
+	roles, err := dCtx.Access().GetRoles(c.Request().Context())
+	if err != nil {
+		return writeJSON(c, http.StatusInternalServerError, echodt.CodeServerError, err.Error(), nil)
+	}
+	permissions, err := dCtx.Access().GetPermissions(c.Request().Context())
+	if err != nil {
+		return writeJSON(c, http.StatusInternalServerError, echodt.CodeServerError, err.Error(), nil)
+	}
 
 	return writeJSON(c, http.StatusOK, echodt.CodeSuccess, "ok", echo4.Map{
 		"loginId":     loginID,

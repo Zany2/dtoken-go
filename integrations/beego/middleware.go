@@ -449,8 +449,15 @@ func dispatchFail(c *beegocontext.Context, options *AuthOptions, err error) {
 
 // GetDTokenContext gets cached DToken context GetDTokenContext 获取缓存的 DToken 上下文
 func GetDTokenContext(c *beegocontext.Context) (*DContext.DTokenContext, bool) {
+	if c == nil || c.Input == nil {
+		return nil, false
+	}
+
 	v := c.Input.GetData(DTokenCtxKey)
 	ctx, ok := v.(*DContext.DTokenContext)
+	if !ok || ctx == nil {
+		return nil, false
+	}
 	return ctx, ok
 }
 
@@ -458,7 +465,7 @@ func GetDTokenContext(c *beegocontext.Context) (*DContext.DTokenContext, bool) {
 func getDContext(c *beegocontext.Context, mgr *manager.Manager) *DContext.DTokenContext {
 	if v := c.Input.GetData(DTokenCtxKey); v != nil {
 		if dCtx, ok := v.(*DContext.DTokenContext); ok {
-			if dCtx.GetManager() == mgr {
+			if dCtx != nil && dCtx.GetManager() == mgr {
 				return dCtx
 			}
 		}

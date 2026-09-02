@@ -60,6 +60,9 @@ type DTokenError struct {
 
 // Error returns error string Error 返回错误字符串。
 func (e *DTokenError) Error() string {
+	if e == nil {
+		return "<nil>"
+	}
 	if e.Err != nil {
 		return fmt.Sprintf("[%d] %s: %v", e.Code, e.Message, e.Err)
 	}
@@ -68,6 +71,9 @@ func (e *DTokenError) Error() string {
 
 // Unwrap returns wrapped error Unwrap 返回包装的错误。
 func (e *DTokenError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
 	return e.Err
 }
 

@@ -48,7 +48,9 @@ func main() {
 	auth.GET("/articles", permissionMiddleware(ctx, "article:read"), handleArticles)
 	auth.POST("/logout", handleLogout)
 
-	_ = r.Run(":8080")
+	if err := r.Run(":8080"); err != nil {
+		panic(err)
+	}
 }
 
 // initDToken initializes DToken with bundled memory storage initDToken 使用内置内存存储初始化 DToken
@@ -85,8 +87,14 @@ func handleLogin(c *gin.Context) {
 	}
 
 	// Seed demo authorization data 初始化示例权限数据
-	_ = dtoken.AddRoles(c.Request.Context(), req.Username, []string{"admin"})
-	_ = dtoken.AddPermissions(c.Request.Context(), req.Username, []string{"article:read"})
+	if err = dtoken.AddRoles(c.Request.Context(), req.Username, []string{"admin"}); err != nil {
+		writeJSON(c, http.StatusInternalServerError, 500, err.Error(), nil)
+		return
+	}
+	if err = dtoken.AddPermissions(c.Request.Context(), req.Username, []string{"article:read"}); err != nil {
+		writeJSON(c, http.StatusInternalServerError, 500, err.Error(), nil)
+		return
+	}
 
 	writeJSON(c, http.StatusOK, 0, "ok", gin.H{
 		"token":       token,
@@ -103,8 +111,16 @@ func handleMe(c *gin.Context) {
 		return
 	}
 
-	roles, _ := dtoken.GetRoles(c.Request.Context(), loginID)
-	permissions, _ := dtoken.GetPermissions(c.Request.Context(), loginID)
+	roles, err := dtoken.GetRoles(c.Request.Context(), loginID)
+	if err != nil {
+		writeJSON(c, http.StatusInternalServerError, 500, err.Error(), nil)
+		return
+	}
+	permissions, err := dtoken.GetPermissions(c.Request.Context(), loginID)
+	if err != nil {
+		writeJSON(c, http.StatusInternalServerError, 500, err.Error(), nil)
+		return
+	}
 
 	writeJSON(c, http.StatusOK, 0, "ok", gin.H{
 		"loginId":     loginID,

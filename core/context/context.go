@@ -139,15 +139,19 @@ func extractBearerToken(auth string) string {
 	if auth == "" {
 		return ""
 	}
-	if strings.EqualFold(auth, strings.TrimSpace(bearerPrefix)) {
+	parts := strings.Fields(auth)
+	if len(parts) == 0 {
 		return ""
 	}
-	if len(auth) > len(bearerPrefix) && strings.EqualFold(auth[:len(bearerPrefix)], bearerPrefix) {
-		return strings.TrimSpace(auth[len(bearerPrefix):])
+	if strings.EqualFold(parts[0], strings.TrimSpace(bearerPrefix)) {
+		if len(parts) != 2 {
+			return ""
+		}
+		return parts[1]
 	}
-	// Reject values containing spaces (likely non-Bearer schemes like Basic, Digest) 含空格的非 Bearer 格式视为其他认证方案，返回空
-	if strings.ContainsRune(auth, ' ') {
+	// Reject values containing whitespace (likely non-Bearer schemes like Basic, Digest) 含空白的非 Bearer 格式视为其他认证方案，返回空
+	if len(parts) != 1 {
 		return ""
 	}
-	return auth
+	return parts[0]
 }

@@ -51,7 +51,9 @@ func main() {
 	auth.GET("/articles", gindt.PermissionMiddleware(ctx, []string{"article:read"}), handleArticles)
 	auth.POST("/logout", handleLogout)
 
-	_ = r.Run(":8080")
+	if err := r.Run(":8080"); err != nil {
+		panic(err)
+	}
 }
 
 // initDToken initializes integration manager initDToken 初始化集成管理器
@@ -88,8 +90,14 @@ func handleLogin(c *gin.Context) {
 	}
 
 	// Seed demo authorization data 初始化示例权限数据
-	_ = gindt.AddRoles(c.Request.Context(), req.Username, []string{"admin"})
-	_ = gindt.AddPermissions(c.Request.Context(), req.Username, []string{"article:read"})
+	if err = gindt.AddRoles(c.Request.Context(), req.Username, []string{"admin"}); err != nil {
+		writeJSON(c, http.StatusInternalServerError, gindt.CodeServerError, err.Error(), nil)
+		return
+	}
+	if err = gindt.AddPermissions(c.Request.Context(), req.Username, []string{"article:read"}); err != nil {
+		writeJSON(c, http.StatusInternalServerError, gindt.CodeServerError, err.Error(), nil)
+		return
+	}
 
 	writeJSON(c, http.StatusOK, gindt.CodeSuccess, "ok", pair)
 }
@@ -125,8 +133,16 @@ func handleMe(c *gin.Context) {
 		return
 	}
 
-	roles, _ := dCtx.Access().GetRoles(c.Request.Context())
-	permissions, _ := dCtx.Access().GetPermissions(c.Request.Context())
+	roles, err := dCtx.Access().GetRoles(c.Request.Context())
+	if err != nil {
+		writeJSON(c, http.StatusInternalServerError, gindt.CodeServerError, err.Error(), nil)
+		return
+	}
+	permissions, err := dCtx.Access().GetPermissions(c.Request.Context())
+	if err != nil {
+		writeJSON(c, http.StatusInternalServerError, gindt.CodeServerError, err.Error(), nil)
+		return
+	}
 
 	writeJSON(c, http.StatusOK, gindt.CodeSuccess, "ok", gin.H{
 		"loginId":     loginID,

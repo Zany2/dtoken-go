@@ -208,7 +208,7 @@ func (m *Manager) CreateWithTimeout(ctx context.Context, opts CreateOptions, tim
 			Extra:      cloneMap(opts.Extra),
 			CreateTime: now,
 			UpdateTime: now,
-			ExpiresIn:  int64(timeout.Seconds()),
+			ExpiresIn:  durationSeconds(timeout),
 			Status:     StatusPending,
 		}
 		if shortKey.LoginID != "" {
@@ -327,7 +327,9 @@ func (m *Manager) Consume(ctx context.Context, key string, opts ...ValidateOptio
 	shortKey.Status = StatusConsumed
 	shortKey.UpdateTime = time.Now().Unix()
 	if ttl := remainingDuration(shortKey); ttl > 0 {
-		_ = m.save(ctx, shortKey, ttl)
+		if err = m.save(ctx, shortKey, ttl); err != nil {
+			return nil, err
+		}
 	}
 	return &ConsumeResult{ShortKey: shortKey}, nil
 }
@@ -488,7 +490,7 @@ func (m *Manager) checkUsable(shortKey *ShortKey) error {
 	default:
 		return ErrInvalidShortKey
 	}
-	if shortKey.ExpiresIn > 0 && time.Now().Unix() > shortKey.CreateTime+shortKey.ExpiresIn {
+	if shortKey.ExpiresIn > 0 && time.Now().Unix() >= shortKey.CreateTime+shortKey.ExpiresIn {
 		return ErrShortKeyExpired
 	}
 	return nil
@@ -533,6 +535,18 @@ func remainingDuration(shortKey *ShortKey) time.Duration {
 		return 0
 	}
 	return ttl
+}
+
+// durationSeconds rounds a positive duration up to whole seconds. durationSeconds 将正时长向上取整为秒。
+func durationSeconds(duration time.Duration) int64 {
+	seconds := duration / time.Second
+	if duration%time.Second != 0 {
+		seconds++
+	}
+	if seconds <= 0 {
+		return 1
+	}
+	return int64(seconds)
 }
 
 // generateKey creates a cryptographically secure short key. generateKey 生成密码学安全的短 Key。

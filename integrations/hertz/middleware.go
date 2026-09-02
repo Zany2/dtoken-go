@@ -471,20 +471,24 @@ func runBeforeAuthHandler(c context.Context, ctx *hertzapp.RequestContext, optio
 
 // GetDTokenContext gets cached DToken context GetDTokenContext 获取缓存的 DToken 上下文
 func GetDTokenContext(ctx *hertzapp.RequestContext) (*corecontext.DTokenContext, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+
 	value, exists := ctx.Get(DTokenCtxKey)
 	if !exists {
 		return nil, false
 	}
 
 	dCtx, ok := value.(*corecontext.DTokenContext)
-	return dCtx, ok
+	return dCtx, ok && dCtx != nil
 }
 
 // getDTokenContext gets or creates dtoken context getDTokenContext 获取或创建 DToken 上下文
 func getDTokenContext(ctx *hertzapp.RequestContext, mgr *manager.Manager) *corecontext.DTokenContext {
 	if value, exists := ctx.Get(DTokenCtxKey); exists {
 		if dCtx, ok := value.(*corecontext.DTokenContext); ok {
-			if dCtx.GetManager() == mgr {
+			if dCtx != nil && dCtx.GetManager() == mgr {
 				return dCtx
 			}
 		}

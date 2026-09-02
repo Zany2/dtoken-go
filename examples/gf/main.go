@@ -83,8 +83,14 @@ func handleLogin(r *ghttp.Request) {
 	}
 
 	// Seed demo authorization data 初始化示例权限数据
-	_ = gfdt.AddRoles(r.Context(), username, []string{"admin"})
-	_ = gfdt.AddPermissions(r.Context(), username, []string{"article:read"})
+	if err = gfdt.AddRoles(r.Context(), username, []string{"admin"}); err != nil {
+		writeJSON(r, http.StatusInternalServerError, gfdt.CodeServerError, err.Error(), nil)
+		return
+	}
+	if err = gfdt.AddPermissions(r.Context(), username, []string{"article:read"}); err != nil {
+		writeJSON(r, http.StatusInternalServerError, gfdt.CodeServerError, err.Error(), nil)
+		return
+	}
 
 	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", pair)
 }
@@ -120,8 +126,16 @@ func handleMe(r *ghttp.Request) {
 		return
 	}
 
-	roles, _ := dCtx.Access().GetRoles(r.Context())
-	permissions, _ := dCtx.Access().GetPermissions(r.Context())
+	roles, err := dCtx.Access().GetRoles(r.Context())
+	if err != nil {
+		writeJSON(r, http.StatusInternalServerError, gfdt.CodeServerError, err.Error(), nil)
+		return
+	}
+	permissions, err := dCtx.Access().GetPermissions(r.Context())
+	if err != nil {
+		writeJSON(r, http.StatusInternalServerError, gfdt.CodeServerError, err.Error(), nil)
+		return
+	}
 
 	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", g.Map{
 		"loginId":     loginID,
