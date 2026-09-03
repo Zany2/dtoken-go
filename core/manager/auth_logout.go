@@ -18,22 +18,46 @@ func (m *Manager) Logout(ctx context.Context, tokenValue string) error {
 		return derror.ErrInvalidToken
 	}
 
-	// Load session by token 根据 Token 加载会话。
+	// Build the terminal removal strategy once for normal and disabled-token paths. 为正常路径和封禁 Token 路径复用终端移除策略。
+	removeToken := func(sess *Session) []TerminalInfo {
+		if info, ok := sess.removeTerminalByToken(tokenValue); ok {
+			return []TerminalInfo{info}
+		}
+		return nil
+	}
+
+	// Keep the regular validation path so inactive token states retain their existing semantics. 保留常规校验路径，确保非活跃 Token 状态维持既有语义。
 	sess, err := m.GetSessionByToken(ctx, tokenValue)
+	if err == nil {
+		return m.logoutTerminals(ctx, sess.LoginID, removeToken)
+	}
+	if isTokenInactiveError(err) {
+		return nil
+	}
+	if !errors.Is(err, derror.ErrAccountDisabled) && !errors.Is(err, derror.ErrDeviceDisabled) {
+		return err
+	}
+
+	// Reload token metadata without applying reversible disable rules. 不应用可逆封禁规则，重新读取 Token 元数据。
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
 	if err != nil {
-		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
+		// Treat a concurrent token state change as idempotent success. 并发发生 Token 状态变化时按幂等成功处理。
 		if isTokenInactiveError(err) {
 			return nil
 		}
 		return err
 	}
-
-	// Remove the matched terminal 移除命中的终端。
-	return m.logoutTerminals(ctx, sess.LoginID, func(sess *Session) []TerminalInfo {
-		if info, ok := sess.removeTerminalByToken(tokenValue); ok {
-			return []TerminalInfo{info}
-		}
+	if tokenInfo.LoginID == "" {
 		return nil
+	}
+
+	// Remove the matched terminal, or clean the detached token when account disable already removed its session. 移除命中的终端；账号封禁已删除 Session 时清理脱离会话的 Token。
+	return m.logoutTerminals(ctx, tokenInfo.LoginID, removeToken, TerminalInfo{
+		Token:      tokenValue,
+		LoginID:    tokenInfo.LoginID,
+		Device:     tokenInfo.Device,
+		DeviceID:   tokenInfo.DeviceID,
+		CreateTime: tokenInfo.CreateTime,
 	})
 }
 
@@ -332,6 +356,7 @@ func (m *Manager) logoutTerminals(
 	ctx context.Context,
 	loginID string,
 	removalFunc func(*Session) []TerminalInfo,
+	detachedTerminals ...TerminalInfo,
 ) error {
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(loginID)
@@ -342,20 +367,29 @@ func (m *Manager) logoutTerminals(
 	// Load session 加载会话。
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
-		// Ignore missing session 忽略不存在的会话。
-		if errors.Is(err, derror.ErrSessionNotFound) {
-			return nil
+		// Keep processing detached tokens when the account session is already gone. 账号 Session 已不存在时继续处理脱离会话的 Token。
+		if !errors.Is(err, derror.ErrSessionNotFound) {
+			return err
 		}
-		return err
+		sess = nil
 	}
 
-	// Treat nil session as no-op 空会话视为无操作。
-	if sess == nil {
-		return nil // session 不存在，登出无害
+	// Apply terminal removal strategy when the account session still exists. 账号 Session 仍存在时执行终端移除策略。
+	var removed []TerminalInfo
+	sessionChanged := false
+	if sess != nil {
+		removed = removalFunc(sess)
+		sessionChanged = len(removed) > 0
 	}
 
-	// Apply terminal removal strategy 执行终端移除策略。
-	removed := removalFunc(sess)
+	// Fall back to detached token metadata when no terminal can be removed. 无法移除终端时回退到脱离会话的 Token 元数据。
+	if len(removed) == 0 {
+		for _, info := range detachedTerminals {
+			if info.Token != "" {
+				removed = append(removed, info)
+			}
+		}
+	}
 
 	// Return when nothing removed 没有移除项时直接返回。
 	if len(removed) == 0 {
@@ -382,16 +416,19 @@ func (m *Manager) logoutTerminals(
 
 	destroySession := false
 
-	// Delete session when no terminals remain 如果 session 中没有剩余终端，删除整个 session
-	if len(sess.TerminalInfos) == 0 {
-		if err = m.storage.Delete(ctx, m.getSessionKey(loginID)); err != nil {
-			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-		}
-		destroySession = true
-	} else {
-		// Save updated session otherwise 否则保存更新后的 session
-		if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
-			return err
+	// Persist the account session only when the removal strategy changed it. 仅在移除策略修改账号 Session 时持久化。
+	if sessionChanged {
+		// Delete session when no terminals remain 如果 session 中没有剩余终端，删除整个 session
+		if len(sess.TerminalInfos) == 0 {
+			if err = m.storage.Delete(ctx, m.getSessionKey(loginID)); err != nil {
+				return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+			}
+			destroySession = true
+		} else {
+			// Save updated session otherwise 否则保存更新后的 session
+			if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
+				return err
+			}
 		}
 	}
 

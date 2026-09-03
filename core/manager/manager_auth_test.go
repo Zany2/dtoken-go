@@ -81,6 +81,65 @@ func TestManagerLoginLifecycle(t *testing.T) {
 	}
 }
 
+// TestManagerLogoutBypassesDisableState verifies reversible disable rules cannot block token cleanup. TestManagerLogoutBypassesDisableState 验证可逆封禁规则不会阻止 Token 清理。
+func TestManagerLogoutBypassesDisableState(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("account disable with detached session", func(t *testing.T) {
+		mgr := newTestManager(t, nil)
+		storage := requireManagerTestStorage(t, mgr)
+
+		token, err := mgr.Login(ctx, "logout-disabled-account", "web", "browser")
+		if err != nil {
+			t.Fatalf("Login() error = %v", err)
+		}
+		if err = mgr.Disable(ctx, "logout-disabled-account", time.Minute, "risk"); err != nil {
+			t.Fatalf("Disable() error = %v", err)
+		}
+		if !storage.Exists(ctx, mgr.getTokenKey(token)) {
+			t.Fatal("disabled account token was removed before Logout()")
+		}
+
+		if err = mgr.Logout(ctx, token); err != nil {
+			t.Fatalf("Logout(disabled account) error = %v", err)
+		}
+		if storage.Exists(ctx, mgr.getTokenKey(token)) {
+			t.Fatal("token still exists after Logout(disabled account)")
+		}
+		if !mgr.IsDisable(ctx, "logout-disabled-account") {
+			t.Fatal("Logout() removed the account disable marker")
+		}
+	})
+
+	t.Run("device disable with refresh token", func(t *testing.T) {
+		mgr := newTestManager(t, nil)
+
+		pair, err := mgr.LoginWithRefreshToken(ctx, "logout-disabled-device", "web", "browser")
+		if err != nil {
+			t.Fatalf("LoginWithRefreshToken() error = %v", err)
+		}
+		if err = mgr.DisableDeviceAndDeviceID(ctx, "logout-disabled-device", "web", "browser", time.Minute, "risk"); err != nil {
+			t.Fatalf("DisableDeviceAndDeviceID() error = %v", err)
+		}
+		if err = mgr.CheckLogin(ctx, pair.AccessToken); !errors.Is(err, derror.ErrDeviceDisabled) {
+			t.Fatalf("CheckLogin(disabled device) error = %v, want ErrDeviceDisabled", err)
+		}
+
+		if err = mgr.Logout(ctx, pair.AccessToken); err != nil {
+			t.Fatalf("Logout(disabled device) error = %v", err)
+		}
+		if err = mgr.CheckLogin(ctx, pair.AccessToken); !errors.Is(err, derror.ErrInvalidToken) {
+			t.Fatalf("CheckLogin(after Logout) error = %v, want ErrInvalidToken", err)
+		}
+		if ttl, ttlErr := mgr.GetRefreshTokenTTL(ctx, pair.RefreshToken); ttlErr != nil || ttl != -2 {
+			t.Fatalf("GetRefreshTokenTTL(after Logout) = %d, %v, want -2, nil", ttl, ttlErr)
+		}
+		if !mgr.IsDisableDeviceAndDeviceID(ctx, "logout-disabled-device", "web", "browser") {
+			t.Fatal("Logout() removed the device disable marker")
+		}
+	})
+}
+
 // TestManagerKickoutAndReplacePreserveTokenState verifies state markers keep exact failure causes. TestManagerKickoutAndReplacePreserveTokenState 验证状态标记保留精确失败原因。
 func TestManagerKickoutAndReplacePreserveTokenState(t *testing.T) {
 	ctx := context.Background()
