@@ -69,6 +69,19 @@ func TestManagerExplicitTokenBypassesSharing(t *testing.T) {
 	}
 }
 
+// TestManagerNilCreatedSessionReturnsError verifies an invalid custom session strategy cannot panic the login flow. TestManagerNilCreatedSessionReturnsError 验证无效的自定义 Session 策略不会导致登录流程 panic。
+func TestManagerNilCreatedSessionReturnsError(t *testing.T) {
+	mgr := newTestManagerWithStrategy(t, &Strategy{
+		CreateSession: func(string, string, int64) *Session {
+			return nil
+		},
+	})
+
+	if _, err := mgr.Login(context.Background(), "nil-session-strategy"); !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("Login() error = %v, want ErrInvalidParam", err)
+	}
+}
+
 // TestManagerGeneratorFailureLeavesExistingSessionUntouched verifies generator errors happen before destructive concurrency work. TestManagerGeneratorFailureLeavesExistingSessionUntouched 验证生成器失败发生在并发淘汰之前，旧会话保持不变。
 func TestManagerGeneratorFailureLeavesExistingSessionUntouched(t *testing.T) {
 	ctx := context.Background()
@@ -275,7 +288,7 @@ func TestManagerRenewFailureDoesNotEmitSuccessEvent(t *testing.T) {
 	baseStorage := mgr.storage
 	mgr.storage = &managerRenewFailingStorage{Storage: baseStorage, failKey: mgr.getRenewKey(token)}
 
-	mgr.renewFunc(ctx, token, "renew-event-failure")
+	mgr.renewFunc(ctx, token, "renew-event-failure", false)
 	if renewEvents != 0 {
 		t.Fatalf("renew events = %d, want 0 after storage failure", renewEvents)
 	}

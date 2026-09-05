@@ -347,6 +347,9 @@ func (s *OAuth2Server) getAuthorizationCode(ctx context.Context, code string) (*
 	if err = s.serializer.Decode(rawData, &authCode); err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
+	if authCode.Code != code || authCode.ClientID == "" || authCode.UserID == "" {
+		return nil, derror.ErrInvalidAuthCode
+	}
 	return &authCode, nil
 }
 
@@ -477,6 +480,9 @@ func (s *OAuth2Server) RefreshAccessToken(ctx context.Context, clientID, refresh
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
+	if accessTokenInfo.RefreshToken != refreshToken || accessTokenInfo.Token == "" || accessTokenInfo.UserID == "" || accessTokenInfo.ClientID == "" {
+		return nil, derror.ErrInvalidRefreshToken
+	}
 
 	if accessTokenInfo.ClientID != clientID {
 		return nil, derror.ErrClientMismatch
@@ -531,10 +537,8 @@ func (s *OAuth2Server) deleteTokenPair(ctx context.Context, token *AccessToken) 
 
 // ValidateAccessToken Validates access token 验证访问令牌
 func (s *OAuth2Server) ValidateAccessToken(ctx context.Context, accessToken string) bool {
-	if accessToken == "" {
-		return false
-	}
-	return s.storage.Exists(ctx, s.getTokenKey(accessToken))
+	_, err := s.ValidateAccessTokenAndGetInfo(ctx, accessToken)
+	return err == nil
 }
 
 // ValidateAccessTokenAndGetInfo Validates access token and get info 验证访问令牌并获取信息
@@ -562,34 +566,18 @@ func (s *OAuth2Server) ValidateAccessTokenAndGetInfo(ctx context.Context, access
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
+	if accessTokenInfo.Token != accessToken || accessTokenInfo.UserID == "" || accessTokenInfo.ClientID == "" {
+		return nil, derror.ErrInvalidAccessToken
+	}
 
 	return &accessTokenInfo, nil
 }
 
 // RevokeToken Revokes access token and its refresh token 撤销访问令牌及其刷新令牌
 func (s *OAuth2Server) RevokeToken(ctx context.Context, accessToken string) error {
-	if accessToken == "" {
-		return derror.ErrInvalidAccessToken
-	}
-
-	key := s.getTokenKey(accessToken)
-	data, err := s.storage.Get(ctx, key)
+	accessTokenInfo, err := s.ValidateAccessTokenAndGetInfo(ctx, accessToken)
 	if err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-	}
-	if data == nil {
-		return derror.ErrInvalidAccessToken
-	}
-
-	rawData, err := utils.ToBytes(data)
-	if err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
-	}
-
-	var accessTokenInfo AccessToken
-	err = s.serializer.Decode(rawData, &accessTokenInfo)
-	if err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+		return err
 	}
 
 	if accessTokenInfo.RefreshToken != "" {
@@ -597,7 +585,7 @@ func (s *OAuth2Server) RevokeToken(ctx context.Context, accessToken string) erro
 			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
 	}
-	if err = s.storage.Delete(ctx, key); err != nil {
+	if err = s.storage.Delete(ctx, s.getTokenKey(accessToken)); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
@@ -668,6 +656,9 @@ func (s *OAuth2Server) getClient(ctx context.Context, clientID string) (*Client,
 	var client Client
 	if err = s.serializer.Decode(rawData, &client); err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+	}
+	if client.ClientID != clientID {
+		return nil, derror.ErrClientNotFound
 	}
 	return &client, nil
 }

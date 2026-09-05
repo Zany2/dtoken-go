@@ -168,11 +168,9 @@ func (m *Manager) ValidateOAuth2AccessToken(ctx context.Context, accessToken str
 	if m.oauth2Manager == nil {
 		return false
 	}
-	ok := m.oauth2Manager.ValidateAccessToken(ctx, accessToken)
-	m.triggerEvent(listener.EventOAuth2TokenValidate, "", "", "", accessToken, map[string]any{
-		listener.ExtraKeyAction: listener.ActionValidate,
-		listener.ExtraKeyResult: ok,
-	})
+	token, err := m.oauth2Manager.ValidateAccessTokenAndGetInfo(ctx, accessToken)
+	ok := err == nil
+	m.triggerOAuth2TokenValidateEvent(accessToken, token, ok)
 	return ok
 }
 
@@ -182,9 +180,7 @@ func (m *Manager) ValidateOAuth2AccessTokenAndGetInfo(ctx context.Context, acces
 		return nil, derror.ErrModuleNotEnabled
 	}
 	token, err := m.oauth2Manager.ValidateAccessTokenAndGetInfo(ctx, accessToken)
-	if token != nil {
-		m.triggerOAuth2TokenEvent(listener.EventOAuth2TokenValidate, token, listener.ActionValidate, "")
-	}
+	m.triggerOAuth2TokenValidateEvent(accessToken, token, err == nil)
 	return token, err
 }
 
@@ -215,6 +211,26 @@ func (m *Manager) triggerOAuth2CodeEvent(code *oauth2.AuthorizationCode) {
 		listener.ExtraKeyScopes:   code.Scopes,
 		listener.ExtraKeyTTL:      code.ExpiresIn,
 	})
+}
+
+// triggerOAuth2TokenValidateEvent emits a complete validation result. triggerOAuth2TokenValidateEvent 触发完整的 OAuth2 令牌校验结果事件。
+func (m *Manager) triggerOAuth2TokenValidateEvent(accessToken string, token *oauth2.AccessToken, result bool) {
+	extra := map[string]any{
+		listener.ExtraKeyAction: listener.ActionValidate,
+		listener.ExtraKeyResult: result,
+	}
+	loginID := ""
+	if token != nil {
+		loginID = token.UserID
+		extra[listener.ExtraKeyClientID] = token.ClientID
+		extra[listener.ExtraKeyUserID] = token.UserID
+		extra[listener.ExtraKeyScopes] = token.Scopes
+		extra[listener.ExtraKeyTokenType] = token.TokenType
+		extra[listener.ExtraKeyTTL] = token.ExpiresIn
+		extra[listener.ExtraKeyRefreshToken] = token.RefreshToken
+		extra[listener.ExtraKeyGrantType] = ""
+	}
+	m.triggerEvent(listener.EventOAuth2TokenValidate, loginID, "", "", accessToken, extra)
 }
 
 // triggerOAuth2TokenEvent emits OAuth2 token lifecycle events. triggerOAuth2TokenEvent 触发 OAuth2 令牌生命周期事件。

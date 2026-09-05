@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
@@ -49,7 +48,6 @@ type NonceManager struct {
 	authType  string          // authType stores auth type authType 存储认证体系类型
 	keyPrefix string          // keyPrefix stores key prefix keyPrefix 存储可配置前缀
 	ttl       time.Duration   // ttl stores nonce ttl ttl 存储 Nonce 有效期
-	mu        sync.RWMutex    // mu guards concurrent access mu 保护并发读写
 	storage   adapter.Storage // storage stores storage adapter storage 存储存储适配器
 }
 
@@ -141,17 +139,14 @@ func (nm *NonceManager) Verify(ctx context.Context, nonce string) bool {
 
 // VerifyAndConsume verifies nonce with error VerifyAndConsume 验证并消费 nonce 且在无效时返回错误。
 // In distributed deployments, replay protection relies entirely on AtomicStorage.GetAndDelete being truly atomic (e.g. Redis GETDEL).
-// The local mutex only serializes access within a single process and has no effect across multiple instances.
-// 分布式部署下，防重放能力完全依赖 AtomicStorage.GetAndDelete 的原子性（如 Redis GETDEL），本地互斥锁仅保护单进程并发，对多实例场景无效。
+// No process-local fallback is used because it cannot protect multiple instances.
+// 分布式部署下，防重放能力完全依赖 AtomicStorage.GetAndDelete 的原子性（如 Redis GETDEL），不会使用无法保护多实例的进程内回退方案。
 func (nm *NonceManager) VerifyAndConsume(ctx context.Context, nonce string) error {
 	if nonce == "" {
 		return derror.ErrInvalidNonce
 	}
 
 	key := nm.getNonceKey(nonce)
-
-	nm.mu.Lock()
-	defer nm.mu.Unlock()
 
 	atomicStorage, ok := nm.storage.(adapter.AtomicStorage)
 	if !ok {
@@ -176,9 +171,6 @@ func (nm *NonceManager) IsValid(ctx context.Context, nonce string) bool {
 	}
 
 	key := nm.getNonceKey(nonce)
-
-	nm.mu.RLock()
-	defer nm.mu.RUnlock()
 
 	return nm.storage.Exists(ctx, key)
 }

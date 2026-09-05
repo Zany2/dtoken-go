@@ -73,6 +73,14 @@ func (m *Manager) Disable(ctx context.Context, loginID string, duration time.Dur
 		// Clean token metadata asynchronously 异步清理 Token 附属元数据。
 		if len(tokens) > 0 {
 			m.submitAsync("disable clean token metadata", func() {
+				// Serialize cleanup with untie and a possible re-login. 与解封及重新登录串行化清理操作。
+				unlock := m.lockLoginWrite(loginID)
+				defer unlock()
+
+				// Do not clean after untie, because a caller may have reused an explicit token. 解封后不再清理，避免调用方重用显式 Token 时误删新会话元数据。
+				if !m.isDisable(context.Background(), loginID) {
+					return
+				}
 				if cleanErr := m.cleanTokenMetadata(context.Background(), tokens); cleanErr != nil {
 					m.logger.Errorf("manager.Disable: failed to clean token metadata, loginID=%s, error=%v", loginID, cleanErr)
 				}
@@ -105,10 +113,22 @@ func (m *Manager) Untie(ctx context.Context, loginID string) error {
 		return derror.ErrIDIsEmpty
 	}
 
+	// Serialize account disable and untie operations. 串行化账号封禁与解封操作。
+	unlock := m.lockLoginWrite(loginID)
+	defer func() { unlock() }()
+
 	// Delete account disable marker 删除账号封禁标记。
-	if err := m.storage.Delete(ctx, m.getDisableKey(loginID)); err != nil {
+	changed, err := m.deleteWithLegacyKey(ctx, m.getDisableKey(loginID), m.getDisableKey(loginID))
+	if err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
+	if !changed {
+		return nil
+	}
+
+	// Release the account lock before dispatching lifecycle events. 触发生命周期事件前释放账号锁。
+	unlock()
+	unlock = func() {}
 
 	// Trigger untie event 触发解禁事件
 	m.triggerEvent(listener.EventUntie, loginID, "", "", "", nil)
@@ -217,6 +237,10 @@ func (m *Manager) DisableServiceLevel(ctx context.Context, loginID, service stri
 		return derror.ErrInvalidParam
 	}
 
+	// Serialize service disable writes with login and untie operations. 与登录及解封操作串行化服务封禁写入。
+	unlock := m.lockLoginWrite(loginID)
+	defer func() { unlock() }()
+
 	// Build service disable info 构建服务封禁信息。
 	info := ServiceDisableInfo{
 		Service:     service,
@@ -233,6 +257,10 @@ func (m *Manager) DisableServiceLevel(ctx context.Context, loginID, service stri
 	if err := m.saveToStorage(ctx, m.getDisableServiceKey(loginID, service), info, duration); err != nil {
 		return err
 	}
+
+	// Release the account lock before dispatching lifecycle events. 触发生命周期事件前释放账号锁。
+	unlock()
+	unlock = func() {}
 
 	// Trigger service disable event 触发服务封禁事件。
 	m.triggerEvent(listener.EventDisableService, loginID, "", "", "", map[string]any{
@@ -260,10 +288,22 @@ func (m *Manager) UntieService(ctx context.Context, loginID, service string) err
 		return derror.ErrInvalidParam
 	}
 
+	// Serialize service untie writes with login and disable operations. 与登录及封禁操作串行化服务解封写入。
+	unlock := m.lockLoginWrite(loginID)
+	defer func() { unlock() }()
+
 	// Delete service disable marker 删除服务封禁标记。
-	if err := m.deleteWithLegacyKey(ctx, m.getDisableServiceKey(loginID, service), m.getLegacyDisableServiceKey(loginID, service)); err != nil {
+	changed, err := m.deleteWithLegacyKey(ctx, m.getDisableServiceKey(loginID, service), m.getLegacyDisableServiceKey(loginID, service))
+	if err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
+	if !changed {
+		return nil
+	}
+
+	// Release the account lock before dispatching lifecycle events. 触发生命周期事件前释放账号锁。
+	unlock()
+	unlock = func() {}
 
 	// Trigger service untie event 触发服务解封事件。
 	m.triggerEvent(listener.EventUntieService, loginID, "", "", "", map[string]any{
@@ -464,6 +504,10 @@ func (m *Manager) DisableDevice(ctx context.Context, loginID, device string, dur
 		return derror.ErrInvalidParam
 	}
 
+	// Serialize device disable writes with login and untie operations. 与登录及解封操作串行化设备封禁写入。
+	unlock := m.lockLoginWrite(loginID)
+	defer func() { unlock() }()
+
 	// Build device disable info 构建设备封禁信息。
 	info := DeviceDisableInfo{
 		Device:      device,
@@ -479,6 +523,10 @@ func (m *Manager) DisableDevice(ctx context.Context, loginID, device string, dur
 	if err := m.saveToStorage(ctx, m.getDisableDeviceKey(loginID, device), info, duration); err != nil {
 		return err
 	}
+
+	// Release the account lock before dispatching lifecycle events. 触发生命周期事件前释放账号锁。
+	unlock()
+	unlock = func() {}
 
 	// Trigger device disable event 触发设备封禁事件。
 	m.triggerEvent(listener.EventDisableDevice, loginID, device, "", "", map[string]any{
@@ -510,6 +558,10 @@ func (m *Manager) DisableDeviceAndDeviceID(ctx context.Context, loginID, device,
 		return derror.ErrInvalidParam
 	}
 
+	// Serialize concrete device disable writes with login and untie operations. 与登录及解封操作串行化具体设备封禁写入。
+	unlock := m.lockLoginWrite(loginID)
+	defer func() { unlock() }()
+
 	// Build concrete device disable info 构建具体设备封禁信息。
 	info := DeviceDisableInfo{
 		Device:      device,
@@ -526,6 +578,10 @@ func (m *Manager) DisableDeviceAndDeviceID(ctx context.Context, loginID, device,
 	if err := m.saveToStorage(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID), info, duration); err != nil {
 		return err
 	}
+
+	// Release the account lock before dispatching lifecycle events. 触发生命周期事件前释放账号锁。
+	unlock()
+	unlock = func() {}
 
 	// Trigger device disable event 触发设备封禁事件。
 	m.triggerEvent(listener.EventDisableDevice, loginID, device, deviceID, "", map[string]any{
@@ -551,10 +607,22 @@ func (m *Manager) UntieDevice(ctx context.Context, loginID, device string) error
 		return derror.ErrInvalidParam
 	}
 
+	// Serialize device untie writes with login and disable operations. 与登录及封禁操作串行化设备解封写入。
+	unlock := m.lockLoginWrite(loginID)
+	defer func() { unlock() }()
+
 	// Delete device disable marker 删除设备封禁标记。
-	if err := m.deleteWithLegacyKey(ctx, m.getDisableDeviceKey(loginID, device), m.getLegacyDisableDeviceKey(loginID, device)); err != nil {
+	changed, err := m.deleteWithLegacyKey(ctx, m.getDisableDeviceKey(loginID, device), m.getLegacyDisableDeviceKey(loginID, device))
+	if err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
+	if !changed {
+		return nil
+	}
+
+	// Release the account lock before dispatching lifecycle events. 触发生命周期事件前释放账号锁。
+	unlock()
+	unlock = func() {}
 
 	// Trigger device untie event 触发设备解封事件。
 	m.triggerEvent(listener.EventUntieDevice, loginID, device, "", "", nil)
@@ -578,10 +646,22 @@ func (m *Manager) UntieDeviceAndDeviceID(ctx context.Context, loginID, device, d
 		return derror.ErrInvalidParam
 	}
 
+	// Serialize concrete device untie writes with login and disable operations. 与登录及封禁操作串行化具体设备解封写入。
+	unlock := m.lockLoginWrite(loginID)
+	defer func() { unlock() }()
+
 	// Delete concrete device disable marker 删除具体设备封禁标记。
-	if err := m.deleteWithLegacyKey(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID), m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID)); err != nil {
+	changed, err := m.deleteWithLegacyKey(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID), m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID))
+	if err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
+	if !changed {
+		return nil
+	}
+
+	// Release the account lock before dispatching lifecycle events. 触发生命周期事件前释放账号锁。
+	unlock()
+	unlock = func() {}
 
 	// Trigger device untie event 触发设备解封事件。
 	m.triggerEvent(listener.EventUntieDevice, loginID, device, deviceID, "", nil)

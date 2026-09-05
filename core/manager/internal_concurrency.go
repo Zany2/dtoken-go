@@ -4,9 +4,10 @@ package manager
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
-	"time"
 )
 
 // handleConcurrency handles login concurrency strategy. handleConcurrency 处理登录并发策略。
@@ -95,9 +96,10 @@ func (m *Manager) handleConcurrency(
 			if err != nil {
 				return result, err
 			}
-			if removed {
-				addTerminalLifecycleEvents(&result, []TerminalInfo{terminal}, tokenStateFromLogoutMode(policy.overflowLogoutMode))
+			if !removed {
+				return result, derror.ErrLoginLimitExceeded
 			}
+			addTerminalLifecycleEvents(&result, []TerminalInfo{terminal}, tokenStateFromLogoutMode(policy.overflowLogoutMode))
 			removedOverflow = true
 		}
 		if removedOverflow {
@@ -112,9 +114,10 @@ func (m *Manager) handleConcurrency(
 			if err != nil {
 				return result, err
 			}
-			if removed {
-				addTerminalLifecycleEvents(&result, []TerminalInfo{terminal}, tokenStateFromLogoutMode(policy.overflowLogoutMode))
+			if !removed {
+				return result, derror.ErrLoginLimitExceeded
 			}
+			addTerminalLifecycleEvents(&result, []TerminalInfo{terminal}, tokenStateFromLogoutMode(policy.overflowLogoutMode))
 			removedOverflow = true
 		}
 		if removedOverflow {
@@ -154,7 +157,7 @@ func tokenStateFromLogoutMode(mode config.LogoutMode) TokenState {
 // getTokenAndShare retrieves and shares a token within one device dimension. getTokenAndShare 在同一设备维度内获取并共享 token。
 func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, deviceID string) (string, error) {
 	// Return when no terminals exist 没有终端时直接返回。
-	if len(sess.TerminalInfos) == 0 {
+	if sess == nil || len(sess.TerminalInfos) == 0 {
 		return "", nil
 	}
 
@@ -181,19 +184,30 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 	var terminalInfo TerminalInfo
 	var tokenInfo *TokenInfo
 	for i := len(candidates) - 1; i >= 0; i-- {
-		candidateInfo, err := m.getTokenInfo(ctx, candidates[i].Token)
+		candidate := candidates[i]
+		candidateInfo, err := m.getTokenInfo(ctx, candidate.Token)
 		if err != nil {
 			if isTokenInactiveError(err) {
 				continue
 			}
 			return "", err
 		}
-		alive, err := m.checkTerminalTokenAliveWithContext(ctx, candidates[i].Token, candidateInfo, sess)
+
+		// Require the session terminal and token mapping to describe the same lifecycle. 要求 Session 终端与 Token 映射描述同一生命周期。
+		if candidate.LoginID != sess.LoginID ||
+			candidateInfo.LoginID != sess.LoginID ||
+			candidate.Device != candidateInfo.Device ||
+			candidate.DeviceID != candidateInfo.DeviceID ||
+			candidate.CreateTime != candidateInfo.CreateTime {
+			continue
+		}
+
+		alive, err := m.checkTerminalTokenAliveWithContext(ctx, candidate.Token, candidateInfo, sess)
 		if err != nil {
 			return "", err
 		}
 		if alive {
-			terminalInfo = candidates[i]
+			terminalInfo = candidate
 			tokenInfo = candidateInfo
 			break
 		}
@@ -205,29 +219,13 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 	// Resolve reused token expiration 解析复用 Token 过期时间。
 	expiration := m.resolveTokenExpiration(tokenInfo)
 
-	// Preserve original timeout 保留原始过期秒数。
-	tokenTimeout := tokenInfo.Timeout
-
 	// Renew session without shortening existing TTL 续期 session，避免缩短已有 TTL
-	if err := m.saveSessionWithMinTTL(ctx, m.getSessionKey(terminalInfo.LoginID), *sess, expiration); err != nil {
+	if err := m.saveSessionWithMinTTL(ctx, m.getSessionKey(tokenInfo.LoginID), *sess, expiration); err != nil {
 		return "", err
 	}
 
-	// Renew token by original timeout 按原始有效期续期 Token
-	// Rebuild token info 重建 Token 信息。
-	updatedTokenInfo := TokenInfo{
-		AuthType:      m.config.AuthType,
-		LoginID:       terminalInfo.LoginID,
-		Device:        terminalInfo.Device,
-		DeviceID:      terminalInfo.DeviceID,
-		CreateTime:    terminalInfo.CreateTime,
-		Timeout:       tokenTimeout,
-		ActiveTimeout: tokenInfo.ActiveTimeout,
-		Extra:         tokenInfo.Extra,
-	}
-
-	// Persist reused token info 持久化复用 Token 信息。
-	if err := m.saveToStorage(ctx, m.getTokenKey(terminalInfo.Token), updatedTokenInfo, expiration); err != nil {
+	// Renew the original token mapping without rebuilding identity from session metadata. 续期原 Token 映射，不使用 Session 元数据重建身份。
+	if err := m.saveToStorage(ctx, m.getTokenKey(terminalInfo.Token), *tokenInfo, expiration); err != nil {
 		return "", err
 	}
 

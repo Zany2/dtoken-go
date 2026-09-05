@@ -202,12 +202,44 @@ func (m *Manager) existsWithLegacyKey(ctx context.Context, key, legacyKey string
 	return m.storage.Exists(ctx, key) || (legacyKey != key && m.storage.Exists(ctx, legacyKey))
 }
 
-// deleteWithLegacyKey removes current and legacy keys together. deleteWithLegacyKey 同时删除当前键和旧键。
-func (m *Manager) deleteWithLegacyKey(ctx context.Context, key, legacyKey string) error {
-	if legacyKey == key {
-		return m.storage.Delete(ctx, key)
+// deleteWithLegacyKey removes current and legacy keys and reports whether either existed. deleteWithLegacyKey 删除当前键和旧键，并报告是否存在实际删除。
+func (m *Manager) deleteWithLegacyKey(ctx context.Context, key, legacyKey string) (bool, error) {
+	keys := []string{key}
+	if legacyKey != key {
+		keys = append(keys, legacyKey)
 	}
-	return m.storage.Delete(ctx, key, legacyKey)
+
+	// Prefer atomic read-delete when the storage supports it. 存储支持时优先使用原子读取删除。
+	if atomicStorage, ok := m.storage.(adapter.AtomicStorage); ok {
+		deleted := false
+		for _, storageKey := range keys {
+			value, err := atomicStorage.GetAndDelete(ctx, storageKey)
+			if err != nil {
+				return false, err
+			}
+			deleted = deleted || value != nil
+		}
+		return deleted, nil
+	}
+
+	// Discover existing keys before the ordinary-storage fallback delete. 普通存储回退删除前先确定实际存在的键。
+	existingKeys := make([]string, 0, len(keys))
+	for _, storageKey := range keys {
+		value, err := m.storage.Get(ctx, storageKey)
+		if err != nil {
+			return false, err
+		}
+		if value != nil {
+			existingKeys = append(existingKeys, storageKey)
+		}
+	}
+	if len(existingKeys) == 0 {
+		return false, nil
+	}
+	if err := m.storage.Delete(ctx, existingKeys...); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // searchKeys searches storage keys by pattern with pagination. searchKeys 根据模式搜索存储键并分页。

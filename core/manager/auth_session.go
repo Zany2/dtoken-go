@@ -4,9 +4,10 @@ package manager
 import (
 	"context"
 	"errors"
+	"strings"
+
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
-	"strings"
 )
 
 // GetSession retrieves session information for a login ID. GetSession 获取指定登录 ID 的会话信息。
@@ -325,8 +326,9 @@ func (m *Manager) GetTokenValueByLoginID(ctx context.Context, loginID string, de
 	}
 
 	// Walk backward so the newest alive token wins. 反向遍历以返回最新仍有效的 token。
+	cache := &terminalAliveCheckCache{}
 	for i := len(terminals) - 1; i >= 0; i-- {
-		alive, err := m.checkTerminalTokenAliveWithContext(ctx, terminals[i].Token, nil, sess)
+		alive, err := m.checkTerminalTokenAliveWithCache(ctx, terminals[i].Token, nil, sess, cache)
 		if err != nil {
 			return "", err
 		}
@@ -457,8 +459,9 @@ func (m *Manager) filterTokens(ctx context.Context, terminals []TerminalInfo, ch
 	// Check each token by full alive rules 按完整存活规则检查每个 token
 	// Filter alive tokens 过滤存活 Token。
 	tokens := make([]string, 0, len(terminals))
+	cache := &terminalAliveCheckCache{}
 	for _, ti := range terminals {
-		alive, err := m.checkTerminalTokenAliveWithContext(ctx, ti.Token, nil, sess)
+		alive, err := m.checkTerminalTokenAliveWithCache(ctx, ti.Token, nil, sess, cache)
 		if err != nil {
 			return nil, err
 		}
@@ -480,8 +483,9 @@ func (m *Manager) countAliveTokens(ctx context.Context, terminals []TerminalInfo
 
 	// Count alive terminals 统计存活终端。
 	count := 0
+	cache := &terminalAliveCheckCache{}
 	for _, ti := range terminals {
-		alive, err := m.checkTerminalTokenAliveWithContext(ctx, ti.Token, nil, sess)
+		alive, err := m.checkTerminalTokenAliveWithCache(ctx, ti.Token, nil, sess, cache)
 		if err != nil {
 			return 0, err
 		}

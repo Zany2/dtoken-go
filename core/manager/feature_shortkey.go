@@ -55,10 +55,15 @@ func (m *Manager) ValidateShortKey(ctx context.Context, key string, opts ...shor
 		return nil, derror.ErrModuleNotEnabled
 	}
 	value, err := m.shortKeyManager.Validate(ctx, key, opts...)
-	if value != nil {
-		m.triggerShortKeyEvent(listener.EventShortKeyValidate, value, listener.ActionValidate)
+	if err != nil {
+		m.triggerEvent(listener.EventShortKeyValidate, "", "", "", key, map[string]any{
+			listener.ExtraKeyAction: listener.ActionValidate,
+			listener.ExtraKeyResult: false,
+		})
+		return value, err
 	}
-	return value, err
+	m.triggerShortKeyEvent(listener.EventShortKeyValidate, value, listener.ActionValidate)
+	return value, nil
 }
 
 // ConsumeShortKey validates and consumes a short key. ConsumeShortKey 校验并消费短 Key。
@@ -114,7 +119,7 @@ func (m *Manager) triggerShortKeyEvent(event listener.Event, value *shortkey.Sho
 	if value == nil {
 		return
 	}
-	m.triggerEvent(event, value.LoginID, value.Device, value.DeviceID, value.Key, map[string]any{
+	extra := map[string]any{
 		listener.ExtraKeyAction:    action,
 		listener.ExtraKeyScene:     value.Scene,
 		listener.ExtraKeySourceApp: value.SourceApp,
@@ -122,7 +127,11 @@ func (m *Manager) triggerShortKeyEvent(event listener.Event, value *shortkey.Sho
 		listener.ExtraKeyScopes:    value.Scopes,
 		listener.ExtraKeyStatus:    value.Status,
 		listener.ExtraKeyTTL:       remainingShortKeyTTLSeconds(value),
-	})
+	}
+	if event == listener.EventShortKeyValidate {
+		extra[listener.ExtraKeyResult] = true
+	}
+	m.triggerEvent(event, value.LoginID, value.Device, value.DeviceID, value.Key, extra)
 }
 
 // remainingShortKeyTTLSeconds calculates remaining short key seconds for event data. remainingShortKeyTTLSeconds 计算事件数据中的短 Key 剩余秒数。

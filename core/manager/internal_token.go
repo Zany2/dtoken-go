@@ -5,12 +5,27 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/utils"
-	"time"
 )
+
+// terminalDisableStateKey identifies one device or concrete-device disable scope. terminalDisableStateKey 标识一个设备或具体设备封禁作用域。
+type terminalDisableStateKey struct {
+	loginID  string // loginID stores the account identifier. loginID 存储账号标识。
+	device   string // device stores the device type. device 存储设备类型。
+	deviceID string // deviceID stores the concrete device identifier. deviceID 存储具体设备标识。
+}
+
+// terminalAliveCheckCache reuses disable checks within one aggregate query. terminalAliveCheckCache 在一次聚合查询中复用封禁检查结果。
+type terminalAliveCheckCache struct {
+	accountStates map[string]error                  // accountStates caches account disable results. accountStates 缓存账号封禁结果。
+	deviceStates  map[terminalDisableStateKey]error // deviceStates caches device disable results. deviceStates 缓存设备封禁结果。
+}
 
 // tokenStateError maps stored token state to public errors. tokenStateError 将已存储 token 状态映射为公开错误。
 func tokenStateError(state TokenState) error {
@@ -132,9 +147,11 @@ func (m *Manager) ensureTerminalTokenAlive(ctx context.Context, tokenValue strin
 
 // hasActiveTerminal reports whether any terminal is still alive. hasActiveTerminal 判断是否存在仍有效的终端。
 func (m *Manager) hasActiveTerminal(ctx context.Context, terminals []TerminalInfo, sess *Session) (bool, error) {
+	cache := &terminalAliveCheckCache{}
+
 	// Check each terminal 逐个检查终端。
 	for _, terminal := range terminals {
-		alive, err := m.checkTerminalTokenAliveWithContext(ctx, terminal.Token, nil, sess)
+		alive, err := m.checkTerminalTokenAliveWithCache(ctx, terminal.Token, nil, sess, cache)
 		if err != nil {
 			return false, err
 		}
@@ -164,6 +181,21 @@ func (m *Manager) checkTerminalTokenAlive(ctx context.Context, tokenValue string
 
 // checkTerminalTokenAliveWithContext checks token validity with optional loaded data. checkTerminalTokenAliveWithContext 使用可选已加载数据检查 Token 是否有效。
 func (m *Manager) checkTerminalTokenAliveWithContext(ctx context.Context, tokenValue string, tokenInfo *TokenInfo, sess *Session) (bool, error) {
+	return m.checkTerminalTokenAliveWithCache(ctx, tokenValue, tokenInfo, sess, nil)
+}
+
+// checkTerminalTokenStructurallyAliveWithContext checks token validity without applying reversible disable rules. checkTerminalTokenStructurallyAliveWithContext 检查 Token 结构性有效性，但不应用可逆封禁规则。
+func (m *Manager) checkTerminalTokenStructurallyAliveWithContext(ctx context.Context, tokenValue string, tokenInfo *TokenInfo, sess *Session) (bool, error) {
+	return m.checkTerminalTokenAliveWithOptions(ctx, tokenValue, tokenInfo, sess, nil, false)
+}
+
+// checkTerminalTokenAliveWithCache checks token validity and reuses disable-state lookups. checkTerminalTokenAliveWithCache 检查 Token 有效性并复用封禁状态查询。
+func (m *Manager) checkTerminalTokenAliveWithCache(ctx context.Context, tokenValue string, tokenInfo *TokenInfo, sess *Session, cache *terminalAliveCheckCache) (bool, error) {
+	return m.checkTerminalTokenAliveWithOptions(ctx, tokenValue, tokenInfo, sess, cache, true)
+}
+
+// checkTerminalTokenAliveWithOptions checks token validity with configurable disable-state enforcement. checkTerminalTokenAliveWithOptions 按可配置的封禁状态规则检查 Token 有效性。
+func (m *Manager) checkTerminalTokenAliveWithOptions(ctx context.Context, tokenValue string, tokenInfo *TokenInfo, sess *Session, cache *terminalAliveCheckCache, checkDisableState bool) (bool, error) {
 	var err error
 
 	// Load token info when caller has not provided it 调用方未提供时加载 Token 信息。
@@ -187,12 +219,14 @@ func (m *Manager) checkTerminalTokenAliveWithContext(ctx context.Context, tokenV
 		return false, nil
 	}
 
-	// Reject disabled account or device 拒绝已封禁账号或设备。
-	if err := m.checkLoginDisableState(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID); err != nil {
-		if errors.Is(err, derror.ErrAccountDisabled) || errors.Is(err, derror.ErrDeviceDisabled) {
-			return false, nil
+	// Reject disabled account or device for ordinary alive checks. 普通存活检查拒绝已封禁账号或设备。
+	if checkDisableState {
+		if err := m.checkLoginDisableStateCached(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID, cache); err != nil {
+			if errors.Is(err, derror.ErrAccountDisabled) || errors.Is(err, derror.ErrDeviceDisabled) {
+				return false, nil
+			}
+			return false, err
 		}
-		return false, err
 	}
 
 	// Reject foreign token when caller provided a session. 传入会话时拒绝不属于该会话的 Token。
@@ -236,4 +270,57 @@ func (m *Manager) checkTerminalTokenAliveWithContext(ctx context.Context, tokenV
 
 	// Compare active timeout 比较活跃超时。
 	return time.Now().Unix()-timeStamp <= activeTimeout, nil
+}
+
+// checkLoginDisableStateCached checks disable state with an optional aggregate-query cache. checkLoginDisableStateCached 使用可选的聚合查询缓存检查封禁状态。
+func (m *Manager) checkLoginDisableStateCached(ctx context.Context, loginID, device, deviceID string, cache *terminalAliveCheckCache) error {
+	if cache == nil {
+		return m.checkLoginDisableState(ctx, loginID, device, deviceID)
+	}
+
+	// Check one account marker at most once during the aggregate query. 一次聚合查询中最多检查一次账号封禁标记。
+	if cache.accountStates == nil {
+		cache.accountStates = make(map[string]error)
+	}
+	accountErr, checked := cache.accountStates[loginID]
+	if !checked {
+		accountErr = m.CheckDisable(ctx, loginID)
+		cache.accountStates[loginID] = accountErr
+	}
+	if accountErr != nil {
+		return accountErr
+	}
+
+	// Check each normalized device-type scope at most once. 每个规范化的设备类型作用域最多检查一次。
+	device = strings.TrimSpace(device)
+	deviceID = strings.TrimSpace(deviceID)
+	if device == "" {
+		return nil
+	}
+	if cache.deviceStates == nil {
+		cache.deviceStates = make(map[terminalDisableStateKey]error)
+	}
+	deviceKey := terminalDisableStateKey{loginID: loginID, device: device}
+	deviceErr, checked := cache.deviceStates[deviceKey]
+	if !checked {
+		deviceErr = m.CheckDisableDevice(ctx, loginID, device)
+		cache.deviceStates[deviceKey] = deviceErr
+	}
+	if deviceErr != nil || deviceID == "" {
+		return deviceErr
+	}
+
+	// Check each concrete device scope at most once after its device type passes. 设备类型检查通过后，每个具体设备作用域最多检查一次。
+	deviceIDKey := terminalDisableStateKey{loginID: loginID, device: device, deviceID: deviceID}
+	deviceIDErr, checked := cache.deviceStates[deviceIDKey]
+	if !checked {
+		_, deviceIDErr = m.GetDisableDeviceAndDeviceIDInfo(ctx, loginID, device, deviceID)
+		if deviceIDErr == nil {
+			deviceIDErr = derror.ErrDeviceDisabled
+		} else if errors.Is(deviceIDErr, derror.ErrDeviceNotDisabled) {
+			deviceIDErr = nil
+		}
+		cache.deviceStates[deviceIDKey] = deviceIDErr
+	}
+	return deviceIDErr
 }

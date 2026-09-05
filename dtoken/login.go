@@ -74,7 +74,7 @@ func IntrospectToken(ctx context.Context, tokenValue string, authType ...string)
 	return mgr.IntrospectToken(ctx, tokenValue)
 }
 
-// LoginByToken renews login state from an existing token. LoginByToken 基于已有 token 续期登录态。
+// LoginByToken validates an existing token and schedules asynchronous renewal. LoginByToken 校验已有 Token 并调度异步续期。
 func LoginByToken(ctx context.Context, tokenValue string, authType ...string) error {
 	mgr, err := GetManager(authType...)
 	if err != nil {

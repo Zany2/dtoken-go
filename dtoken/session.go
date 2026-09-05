@@ -151,6 +151,33 @@ func DeleteSessionValue(ctx context.Context, loginID, key string, authType ...st
 	return mgr.DeleteSessionValue(ctx, loginID, key)
 }
 
+// SetSessionValueByToken sets session data after validating a token. SetSessionValueByToken 校验 Token 后设置会话扩展数据。
+func SetSessionValueByToken(ctx context.Context, token, key string, value any, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.SetSessionValueByToken(ctx, token, key, value)
+}
+
+// GetSessionValueByToken gets session data after validating a token. GetSessionValueByToken 校验 Token 后获取会话扩展数据。
+func GetSessionValueByToken(ctx context.Context, token, key string, authType ...string) (any, bool, error) {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return nil, false, err
+	}
+	return mgr.GetSessionValueByToken(ctx, token, key)
+}
+
+// DeleteSessionValueByToken deletes session data after validating a token. DeleteSessionValueByToken 校验 Token 后删除会话扩展数据。
+func DeleteSessionValueByToken(ctx context.Context, token, key string, authType ...string) error {
+	mgr, err := GetManager(authType...)
+	if err != nil {
+		return err
+	}
+	return mgr.DeleteSessionValueByToken(ctx, token, key)
+}
+
 // GetTokenValueByLoginID returns the latest token for a login ID. GetTokenValueByLoginID 获取账号最新的 Token。
 func GetTokenValueByLoginID(ctx context.Context, loginID string, authType ...string) (string, error) {
 	mgr, err := GetManager(authType...)

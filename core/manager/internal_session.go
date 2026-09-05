@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/core/utils"
 	"time"
+
+	"github.com/Zany2/dtoken-go/core/derror"
+	"github.com/Zany2/dtoken-go/core/listener"
+	"github.com/Zany2/dtoken-go/core/utils"
 )
 
 // getSession retrieves session information. getSession 获取会话信息。
@@ -36,6 +38,10 @@ func (m *Manager) getSession(ctx context.Context, loginID string) (*Session, err
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
+
+	// Treat the manager namespace and requested storage key as canonical identity. 以 Manager 命名空间和请求的存储键作为 Session 身份真值。
+	sess.AuthType = m.config.AuthType
+	sess.LoginID = loginID
 
 	// Return session 返回会话。
 	return &sess, nil
@@ -77,6 +83,9 @@ func (m *Manager) getTokenInfo(ctx context.Context, tokenValue string) (*TokenIn
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
 
+	// Treat the token key namespace as the canonical auth type. 以 Token 存储键命名空间作为认证类型真值。
+	tokenInfo.AuthType = m.config.AuthType
+
 	// Return token info 返回 Token 信息。
 	return &tokenInfo, nil
 }
@@ -84,6 +93,37 @@ func (m *Manager) getTokenInfo(ctx context.Context, tokenValue string) (*TokenIn
 // checkLoginAndGetContext validates login state and returns loaded context. checkLoginAndGetContext 校验登录态并返回已加载上下文。
 func (m *Manager) checkLoginAndGetContext(ctx context.Context, tokenValue string) (*Session, *TokenInfo, error) {
 	return m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{allowRenew: true})
+}
+
+// checkLoginAndGetTokenInfo validates login state without loading account session. checkLoginAndGetTokenInfo 校验登录态但不加载账号 Session。
+func (m *Manager) checkLoginAndGetTokenInfo(ctx context.Context, tokenValue string) (*TokenInfo, error) {
+	// Inspect token mapping and the states that directly determine validity. 检查直接决定有效性的 Token 映射及状态。
+	tokenInfo, activeTimeout, activeExpired, err := m.inspectLoginToken(ctx, tokenValue)
+	if err != nil {
+		return nil, err
+	}
+
+	// Require only the session key because account disable intentionally detaches all tokens. 仅确认 Session 键存在，因为账号封禁会主动解绑全部 Token。
+	if !m.storage.Exists(ctx, m.getSessionKey(tokenInfo.LoginID)) {
+		return nil, derror.ErrInvalidToken
+	}
+
+	// Persist active-timeout state only on the exceptional path. 仅在不活跃超时的异常路径落盘状态。
+	if activeExpired {
+		if err = m.processTerminals(ctx, tokenInfo.LoginID, func(sess *Session) []TerminalInfo {
+			if info, ok := sess.removeTerminalByToken(tokenValue); ok {
+				return []TerminalInfo{info}
+			}
+			return nil
+		}, TokenStateActiveTimeout, terminalInfoFromTokenInfo(tokenValue, tokenInfo)); err != nil {
+			return nil, err
+		}
+		return nil, derror.ErrActiveTimeout
+	}
+
+	// Keep renewal and active refresh outside the synchronous validation path. 将续期和活跃刷新移出同步校验路径。
+	m.submitLoginMaintenance(ctx, tokenValue, tokenInfo, activeTimeout)
+	return tokenInfo, nil
 }
 
 // checkLoginAndGetContextNoRenew validates login state without renew side effects. checkLoginAndGetContextNoRenew 校验登录态但不触发续期副作用。
@@ -104,18 +144,9 @@ type checkLoginOptions struct {
 
 // checkLoginAndGetContextWithOptions validates login state with optional side effects. checkLoginAndGetContextWithOptions 按选项校验登录态。
 func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenValue string, opts checkLoginOptions) (*Session, *TokenInfo, error) {
-	// Get tokenInfo 获取 tokenInfo
-	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	// Inspect token mapping before loading the account session. 加载账号 Session 前检查 Token 映射。
+	tokenInfo, activeTimeout, activeExpired, err := m.inspectLoginToken(ctx, tokenValue)
 	if err != nil {
-		return nil, nil, err
-	}
-	if tokenInfo.LoginID == "" {
-		// Reject malformed token metadata before account-scoped checks. 在执行账号范围校验前拒绝缺少主体的畸形 Token。
-		return nil, nil, derror.ErrInvalidToken
-	}
-
-	// Check disable status after token lookup 获取 token 后检查封禁状态。
-	if err := m.checkLoginDisableState(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID); err != nil {
 		return nil, nil, err
 	}
 
@@ -129,108 +160,205 @@ func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenV
 		return nil, nil, err
 	}
 
-	// Validate token attachment 校验 Token 是否属于会话。
-	if sess == nil || !sess.hasTerminalToken(tokenValue) {
+	// Require a valid account session; token mapping remains the login-state source. 要求账号 Session 有效，登录态仍以 Token 映射为准。
+	if sess == nil {
 		return nil, nil, derror.ErrInvalidToken
 	}
 
-	// Check max inactive timeout 检查最大不活跃时长
-	activeTimeout := m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout)
-	if activeTimeout > 0 {
-		// Load active timestamp 加载活跃时间戳。
-		timeStampAny, err := m.storage.Get(ctx, m.getActiveKey(tokenValue))
-		if err != nil {
-			return nil, nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-		}
-
-		// Reject missing active marker 拒绝缺失的活跃标记。
-		if timeStampAny == nil {
-			return nil, nil, derror.ErrInvalidToken
-		}
-
-		// Convert active timestamp 转换活跃时间戳。
-		timeStamp, err := utils.ToInt64(timeStampAny)
-		if err != nil {
-			_ = m.storage.Delete(ctx, m.getActiveKey(tokenValue))
-			return nil, nil, derror.ErrInvalidToken
-		}
-
-		// Handle inactive timeout 处理不活跃超时。
-		if time.Now().Unix()-timeStamp > activeTimeout {
-			if opts.lockHeld {
-				// Mark active timeout without reentering the same login lock. 已持锁时不重复进入同一登录锁。
-				if err = m.markActiveTimeoutLocked(ctx, tokenInfo.LoginID, tokenValue, sess); err != nil {
-					return nil, nil, err
-				}
-				// Return the updated session and token so the caller can publish lifecycle events after unlocking. 返回更新后的会话和 Token，供调用方解锁后发布生命周期事件。
-				return sess, tokenInfo, derror.ErrActiveTimeout
-			} else {
-				// Mark inactive timeout separately so later checks keep the exact cause. 单独标记不活跃超时以保留精确原因。
-				if err = m.processTerminals(ctx, tokenInfo.LoginID, func(sess *Session) []TerminalInfo {
-					if info, ok := sess.removeTerminalByToken(tokenValue); ok {
-						return []TerminalInfo{info}
-					}
-					return nil
-				}, TokenStateActiveTimeout); err != nil {
-					return nil, nil, err
-				}
+	// Handle inactive timeout after the full context has been confirmed. 完整上下文确认后处理不活跃超时。
+	if activeExpired {
+		if opts.lockHeld {
+			// Mark active timeout without reentering the same login lock. 已持锁时不重复进入同一登录锁。
+			if err = m.markActiveTimeoutLocked(ctx, tokenInfo.LoginID, tokenValue, sess); err != nil {
+				return nil, nil, err
 			}
-			return nil, nil, derror.ErrActiveTimeout
+			return sess, tokenInfo, derror.ErrActiveTimeout
 		}
+
+		// Mark inactive timeout separately so later checks keep the exact cause. 单独标记不活跃超时以保留精确原因。
+		if err = m.processTerminals(ctx, tokenInfo.LoginID, func(sess *Session) []TerminalInfo {
+			if info, ok := sess.removeTerminalByToken(tokenValue); ok {
+				return []TerminalInfo{info}
+			}
+			return nil
+		}, TokenStateActiveTimeout, terminalInfoFromTokenInfo(tokenValue, tokenInfo)); err != nil {
+			return nil, nil, err
+		}
+		return nil, nil, derror.ErrActiveTimeout
 	}
 
-	// Renew asynchronously when allowed 允许时异步续。
-	if opts.allowRenew && m.config.AutoRenew && m.config.Timeout > 0 {
-		// Read token TTL 读取 Token TTL。
-		if ttl, err := m.storage.TTL(ctx, m.getTokenKey(tokenValue)); err == nil && ttl > 0 {
-			ttlSeconds := int64(ttl.Seconds())
-
-			// Check renew threshold 检查续期阈值。
-			if ttlSeconds > 0 &&
-				(m.config.RenewMaxRefresh <= 0 || ttlSeconds <= m.config.RenewMaxRefresh) &&
-				(m.config.RenewInterval <= 0 || !m.storage.Exists(ctx, m.getRenewKey(tokenValue))) {
-
-				// Build async renew task 构建异步续期任务。
-				renewFunc := func() {
-					m.renewFunc(context.Background(), tokenValue, tokenInfo.LoginID)
-				}
-
-				// Submit async renew task 提交异步续期任务。
-				m.submitAsync("checkLoginInternal renew", renewFunc)
-			}
-		}
-	}
-
-	// Update active timeout asynchronously when allowed 允许时异步刷新活跃时。
-	if opts.allowRenew && activeTimeout > 0 {
-		// Build async active refresh task 构建异步活跃刷新任务。
-		activeFunc := func() {
-			bg := context.Background()
-			unlock := m.lockLoginWrite(tokenInfo.LoginID)
-			defer func() { unlock() }()
-
-			// Recheck token attachment before writing metadata 写入元数据前重新确认 Token 仍属于会话。
-			latestTokenInfo, err := m.getTokenInfo(bg, tokenValue)
-			if err != nil {
-				return
-			}
-			latestSession, err := m.getSession(bg, latestTokenInfo.LoginID)
-			if err != nil || !latestSession.hasTerminalToken(tokenValue) {
-				return
-			}
-
-			// Refresh active marker 刷新活跃标记。
-			if err := m.storage.Set(bg, m.getActiveKey(tokenValue), time.Now().Unix(), m.resolveTokenExpiration(latestTokenInfo)); err != nil {
-				m.logger.Errorf("manager.checkLoginInternal: failed to set active key, token=%s, error=%v", tokenValue, err)
-			}
-		}
-
-		// Submit async active refresh task 提交异步活跃刷新任务。
-		m.submitAsync("checkLoginInternal active", activeFunc)
+	// Keep optional maintenance outside the synchronous validation path. 将可选维护移出同步校验路径。
+	if opts.allowRenew {
+		m.submitLoginMaintenance(ctx, tokenValue, tokenInfo, activeTimeout)
 	}
 
 	// Return checked context 返回已校验上下文。
 	return sess, tokenInfo, nil
+}
+
+// inspectLoginToken checks only states that directly determine token validity. inspectLoginToken 仅检查直接决定 Token 有效性的状态。
+func (m *Manager) inspectLoginToken(ctx context.Context, tokenValue string) (*TokenInfo, int64, bool, error) {
+	// Load token mapping and preserve its logical-state errors. 加载 Token 映射并保留逻辑状态错误。
+	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	if tokenInfo.LoginID == "" {
+		return nil, 0, false, derror.ErrInvalidToken
+	}
+
+	// Keep reversible disable rules synchronous because they gate the current request. 可解除封禁会限制当前请求，因此保持同步检查。
+	if err = m.checkLoginDisableState(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID); err != nil {
+		return nil, 0, false, err
+	}
+
+	// Skip active marker lookup when inactive timeout is disabled. 未启用不活跃超时时跳过活跃标记查询。
+	activeTimeout := m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout)
+	if activeTimeout <= 0 {
+		return tokenInfo, activeTimeout, false, nil
+	}
+
+	// Load the active marker because it directly determines current validity. 加载直接决定当前有效性的活跃标记。
+	activeValue, err := m.storage.Get(ctx, m.getActiveKey(tokenValue))
+	if err != nil {
+		return nil, 0, false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	if activeValue == nil {
+		return nil, 0, false, derror.ErrInvalidToken
+	}
+
+	activeAt, err := utils.ToInt64(activeValue)
+	if err != nil {
+		_ = m.storage.Delete(ctx, m.getActiveKey(tokenValue))
+		return nil, 0, false, derror.ErrInvalidToken
+	}
+	return tokenInfo, activeTimeout, time.Now().Unix()-activeAt > activeTimeout, nil
+}
+
+// submitLoginMaintenance schedules renewal and active refresh after validation. submitLoginMaintenance 在校验成功后调度续期和活跃刷新。
+func (m *Manager) submitLoginMaintenance(ctx context.Context, tokenValue string, tokenInfo *TokenInfo, activeTimeout int64) {
+	if tokenInfo == nil || tokenValue == "" || tokenInfo.LoginID == "" {
+		return
+	}
+
+	// Skip task coordination when no maintenance feature is enabled. 未启用任何维护功能时跳过任务协调。
+	if !m.config.AutoRenew && activeTimeout <= 0 {
+		return
+	}
+
+	// Record request time instead of worker execution time for active-timeout semantics. 记录请求时间而非工作线程执行时间，以保持活跃超时语义准确。
+	activeAt := int64(0)
+	if activeTimeout > 0 {
+		activeAt = time.Now().Unix()
+	}
+
+	// Reserve one task before storage checks so concurrent requests do not repeat maintenance reads. 存储检查前登记唯一任务，避免并发请求重复执行维护读取。
+	generation, reserved := m.beginLoginMaintenance(tokenValue, activeAt, false)
+	if !reserved {
+		return
+	}
+
+	// Active maintenance already needs a worker; otherwise submit only when timeout renewal is due. 活跃维护本身需要工作线程；否则仅在 Token 超时续期到期时提交。
+	checkRenew := m.config.AutoRenew
+	if activeTimeout <= 0 {
+		checkRenew = checkRenew && m.isAutoRenewDue(ctx, tokenValue)
+	}
+	if !checkRenew && activeTimeout <= 0 {
+		m.finishLoginMaintenance(tokenValue, generation)
+		return
+	}
+
+	loginID := tokenInfo.LoginID
+	createTime := tokenInfo.CreateTime
+	accepted := m.submitAsync("check login maintenance", func() {
+		defer m.finishLoginMaintenance(tokenValue, generation)
+		m.runLoginMaintenance(tokenValue, loginID, createTime, generation, checkRenew, true, activeTimeout > 0)
+	})
+	if !accepted {
+		m.finishLoginMaintenance(tokenValue, generation)
+	}
+}
+
+// runLoginMaintenance renews token timeout and active state using one checked context. runLoginMaintenance 使用一次校验上下文续期 Token 和活跃状态。
+func (m *Manager) runLoginMaintenance(tokenValue, loginID string, createTime int64, generation uint64, renew, recheckRenewDue, refreshActive bool) {
+	// Reject a task invalidated before worker execution. 拒绝在线程执行前已失效的任务。
+	if !m.isLoginMaintenanceCurrent(tokenValue, generation) {
+		return
+	}
+
+	bg := context.Background()
+	unlock := m.lockLoginWrite(loginID)
+	defer func() { unlock() }()
+
+	// Recheck the generation after waiting for account lifecycle writes. 等待账号生命周期写操作后再次校验任务代次。
+	if !m.isLoginMaintenanceCurrent(tokenValue, generation) {
+		return
+	}
+
+	// Reload token identity so a stale task cannot maintain a reused token. 重新加载 Token 身份，避免旧任务维护被复用的 Token。
+	latestTokenInfo, err := m.getTokenInfo(bg, tokenValue)
+	if err != nil || latestTokenInfo.LoginID != loginID || latestTokenInfo.CreateTime != createTime {
+		return
+	}
+	if err = m.checkLoginDisableState(bg, loginID, latestTokenInfo.Device, latestTokenInfo.DeviceID); err != nil {
+		return
+	}
+
+	// Load the account session once for both maintenance operations. 为两类维护操作只加载一次账号 Session。
+	latestSession, err := m.getSession(bg, loginID)
+	if err != nil || latestSession == nil {
+		return
+	}
+
+	// Renew timeout after applying the caller's automatic or forced policy. 按调用方的自动或强制策略续期超时时间。
+	renewed := false
+	if renew {
+		renewed = m.renewTokenAndSessionLocked(bg, tokenValue, latestTokenInfo, latestSession, recheckRenewDue)
+	}
+
+	// Refresh active state only while the latest token lifecycle still enables it. 仅在最新 Token 生命周期仍启用活跃超时时刷新状态。
+	if refreshActive && m.resolveActiveTimeoutFromSeconds(latestTokenInfo.ActiveTimeout) > 0 {
+		// Repeat only when another validation advanced activity during the storage write. 仅当存储写入期间有新校验推进活跃时间时再次写入。
+		for {
+			latestActiveAt, current := m.getLoginMaintenanceActiveAt(tokenValue, generation)
+			if !current || latestActiveAt <= 0 {
+				break
+			}
+			if err = m.storage.Set(bg, m.getActiveKey(tokenValue), latestActiveAt, m.resolveTokenExpiration(latestTokenInfo)); err != nil {
+				m.logger.Errorf("manager.runLoginMaintenance: failed to set active key, token=%s, error=%v", tokenValue, err)
+				break
+			}
+			if m.finishLoginMaintenanceActiveWrite(tokenValue, generation, latestActiveAt) {
+				break
+			}
+		}
+	}
+
+	// Release the account lock before publishing the renewal event. 发布续期事件前释放账号锁。
+	unlock()
+	unlock = func() {}
+	if renewed {
+		m.triggerEvent(listener.EventRenew, loginID, latestTokenInfo.Device, latestTokenInfo.DeviceID, tokenValue, nil)
+	}
+}
+
+// isAutoRenewDue reports whether a token currently meets auto-renew conditions. isAutoRenewDue 判断 Token 当前是否满足自动续期条件。
+func (m *Manager) isAutoRenewDue(ctx context.Context, tokenValue string) bool {
+	if !m.config.AutoRenew || m.config.Timeout <= 0 {
+		return false
+	}
+
+	// Require a positive limited TTL before applying threshold and interval rules. 仅对剩余时间为正的有限期 Token 应用阈值与间隔规则。
+	ttl, err := m.storage.TTL(ctx, m.getTokenKey(tokenValue))
+	if err != nil || ttl <= 0 {
+		return false
+	}
+	ttlSeconds := int64(ttl.Seconds())
+	if ttlSeconds <= 0 || (m.config.RenewMaxRefresh > 0 && ttlSeconds > m.config.RenewMaxRefresh) {
+		return false
+	}
+
+	return m.config.RenewInterval <= 0 || !m.storage.Exists(ctx, m.getRenewKey(tokenValue))
 }
 
 // markActiveTimeoutLocked marks one token inactive while login lock is already held. markActiveTimeoutLocked 在已持有登录锁时标记 Token 不活跃超时。
@@ -238,14 +366,15 @@ func (m *Manager) markActiveTimeoutLocked(ctx context.Context, loginID, tokenVal
 	if sess == nil {
 		return nil
 	}
-	if _, ok := sess.removeTerminalByToken(tokenValue); !ok {
-		return nil
-	}
+	_, attached := sess.removeTerminalByToken(tokenValue)
 	if err := m.setTokenState(ctx, tokenValue, TokenStateActiveTimeout, m.tokenStateExpiration(ctx, tokenValue)); err != nil {
 		return err
 	}
 	if err := m.cleanTokenMetadata(ctx, []string{tokenValue}); err != nil {
 		return err
+	}
+	if !attached {
+		return nil
 	}
 	if len(sess.TerminalInfos) == 0 {
 		if err := m.storage.Delete(ctx, m.getSessionKey(loginID)); err != nil {
@@ -258,8 +387,8 @@ func (m *Manager) markActiveTimeoutLocked(ctx context.Context, loginID, tokenVal
 
 // checkLoginInternal performs the core login validation logic. checkLoginInternal 执行登录状态的核心验证逻辑。
 func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) error {
-	// Validate and discard loaded context 校验并丢弃已加载上下文。
-	_, _, err := m.checkLoginAndGetContext(ctx, tokenValue)
+	// Validate the token mapping without loading account session. 校验 Token 映射但不加载账号 Session。
+	_, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	return err
 }
 
@@ -302,6 +431,14 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (boo
 			continue
 		}
 		if tokenInfo.LoginID != sess.LoginID {
+			hasExpired = true
+			continue
+		}
+		if ti.LoginID != tokenInfo.LoginID ||
+			ti.Device != tokenInfo.Device ||
+			ti.DeviceID != tokenInfo.DeviceID ||
+			ti.CreateTime != tokenInfo.CreateTime {
+			// Detach mismatched terminal metadata without mutating the canonical token mapping. 移除错位终端元数据，但不改写作为身份真值的 Token 映射。
 			hasExpired = true
 			continue
 		}

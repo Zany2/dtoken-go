@@ -22,7 +22,7 @@ func (m *Manager) triggerEvent(event listener.Event, loginID, device, deviceID, 
 		Device:    device,
 		DeviceID:  deviceID,
 		Token:     token,
-		Extra:     extra,
+		Extra:     cloneEventExtra(extra),
 		Timestamp: time.Now().Unix(),
 	}
 
@@ -37,6 +37,29 @@ func (m *Manager) triggerEvent(event listener.Event, loginID, device, deviceID, 
 
 	// Dispatch event synchronously 同步分发事件
 	m.eventManager.Trigger(eventData)
+}
+
+// cloneEventExtra snapshots mutable built-in event payloads before async submission. cloneEventExtra 在异步提交前快照内置的可变事件载荷。
+func cloneEventExtra(extra map[string]any) map[string]any {
+	if extra == nil {
+		return nil
+	}
+
+	cloned := make(map[string]any, len(extra))
+	for key, value := range extra {
+		if values, ok := value.([]string); ok {
+			if values == nil {
+				cloned[key] = []string(nil)
+				continue
+			}
+			copied := make([]string, len(values))
+			copy(copied, values)
+			cloned[key] = copied
+			continue
+		}
+		cloned[key] = value
+	}
+	return cloned
 }
 
 // triggerTerminalLifecycleEvents emits terminal events after account writes are unlocked. triggerTerminalLifecycleEvents 在账号写锁释放后触发终端生命周期事件。

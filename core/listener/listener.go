@@ -31,7 +31,7 @@ func (e *EventData) String() string {
 		e.Event, e.AuthType, e.LoginID, e.Device, e.DeviceID, e.Timestamp)
 }
 
-// cloneEventData copies event fields and the top-level Extra map. cloneEventData 复制事件字段和顶层 Extra 映射。
+// cloneEventData copies event fields, the Extra map, and built-in slice payloads. cloneEventData 复制事件字段、Extra 映射和内置切片载荷。
 func cloneEventData(data *EventData) *EventData {
 	if data == nil {
 		return nil
@@ -41,10 +41,25 @@ func cloneEventData(data *EventData) *EventData {
 	if data.Extra != nil {
 		cloned.Extra = make(map[string]any, len(data.Extra))
 		for key, value := range data.Extra {
-			cloned.Extra[key] = value
+			cloned.Extra[key] = cloneEventExtraValue(value)
 		}
 	}
 	return &cloned
+}
+
+// cloneEventExtraValue copies mutable value types used by built-in event payloads. cloneEventExtraValue 复制内置事件载荷使用的可变值类型。
+func cloneEventExtraValue(value any) any {
+	switch typed := value.(type) {
+	case []string:
+		if typed == nil {
+			return []string(nil)
+		}
+		cloned := make([]string, len(typed))
+		copy(cloned, typed)
+		return cloned
+	default:
+		return value
+	}
 }
 
 // Listener defines event listener interface Listener 定义事件监听器接口。

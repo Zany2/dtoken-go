@@ -112,7 +112,7 @@ func (a *Auth) IntrospectToken(ctx context.Context, token string) (*manager.Toke
 	return mgr.IntrospectToken(ctx, token)
 }
 
-// LoginByToken renews login state by an existing token. LoginByToken 根据已有 Token 续期登录态。
+// LoginByToken validates an existing token and schedules asynchronous renewal. LoginByToken 校验已有 Token 并调度异步续期。
 func (a *Auth) LoginByToken(ctx context.Context, token string) error {
 	mgr, err := a.requireManager()
 	if err != nil {

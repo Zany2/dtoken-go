@@ -16,27 +16,30 @@ import (
 
 // Manager is the core auth facade. Manager 是鉴权核心门面。
 type Manager struct {
-	config          *config.Config             // config stores runtime configuration. config 存储运行时配置。
-	generator       adapter.Generator          // generator creates token values. generator 负责生成 Token 值。
-	storage         adapter.Storage            // storage persists auth data. storage 持久化鉴权数据。
-	serializer      adapter.Codec              // serializer encodes and decodes storage payloads. serializer 编解码存储数据。
-	logger          adapter.Log                // logger writes framework logs. logger 写入框架日志。
-	pool            adapter.Pool               // pool runs asynchronous tasks. pool 执行异步任务。
-	nonceManager    *nonce.NonceManager        // nonceManager handles one-time nonce values. nonceManager 管理一次性 nonce。
-	oauth2Manager   *oauth2.OAuth2Server       // oauth2Manager handles OAuth2 flows. oauth2Manager 处理 OAuth2 流程。
-	ticketManager   *ticket.Manager            // ticketManager handles temporary tickets. ticketManager 管理临时 Ticket。
-	shortKeyManager *shortkey.Manager          // shortKeyManager handles short key credentials. shortKeyManager 管理短 Key 凭证。
-	eventManager    *listener.Manager          // eventManager dispatches auth events. eventManager 分发鉴权事件。
-	loginLocksMu    sync.Mutex                 // loginLocksMu protects the login lock registry. loginLocksMu 保护登录锁注册表。
-	loginLocks      map[string]*loginLockEntry // loginLocks serializes writes per login ID. loginLocks 按登录 ID 串行化写操作。
-	asyncMu         sync.Mutex                 // asyncMu serializes async task admission and shutdown. asyncMu 串行化异步任务接收与关闭。
-	asyncWG         sync.WaitGroup             // asyncWG waits for accepted async tasks. asyncWG 等待已接收的异步任务完成。
-	asyncClosed     bool                       // asyncClosed rejects new async tasks during shutdown. asyncClosed 在关闭期间拒绝新的异步任务。
-	closed          atomic.Bool                // closed reports whether manager shutdown has started. closed 标记 Manager 是否已开始关闭。
-	closeOnce       sync.Once                  // closeOnce releases manager resources once. closeOnce 确保资源只释放一次。
-	ownership       ComponentOwnership         // ownership records which runtime components are manager-owned. ownership 记录由 Manager 持有的运行时组件。
-	accessProvider  AccessProvider             // accessProvider resolves roles and permissions. accessProvider 解析角色和权限。
-	strategy        *Strategy                  // strategy stores replaceable algorithms. strategy 存储可替换算法。
+	config          *config.Config                   // config stores runtime configuration. config 存储运行时配置。
+	generator       adapter.Generator                // generator creates token values. generator 负责生成 Token 值。
+	storage         adapter.Storage                  // storage persists auth data. storage 持久化鉴权数据。
+	serializer      adapter.Codec                    // serializer encodes and decodes storage payloads. serializer 编解码存储数据。
+	logger          adapter.Log                      // logger writes framework logs. logger 写入框架日志。
+	pool            adapter.Pool                     // pool runs asynchronous tasks. pool 执行异步任务。
+	nonceManager    *nonce.NonceManager              // nonceManager handles one-time nonce values. nonceManager 管理一次性 nonce。
+	oauth2Manager   *oauth2.OAuth2Server             // oauth2Manager handles OAuth2 flows. oauth2Manager 处理 OAuth2 流程。
+	ticketManager   *ticket.Manager                  // ticketManager handles temporary tickets. ticketManager 管理临时 Ticket。
+	shortKeyManager *shortkey.Manager                // shortKeyManager handles short key credentials. shortKeyManager 管理短 Key 凭证。
+	eventManager    *listener.Manager                // eventManager dispatches auth events. eventManager 分发鉴权事件。
+	loginLocksMu    sync.Mutex                       // loginLocksMu protects the login lock registry. loginLocksMu 保护登录锁注册表。
+	loginLocks      map[string]*loginLockEntry       // loginLocks serializes writes per login ID. loginLocks 按登录 ID 串行化写操作。
+	maintenanceMu   sync.Mutex                       // maintenanceMu protects in-flight login maintenance tasks. maintenanceMu 保护执行中的登录维护任务。
+	maintenanceSeq  uint64                           // maintenanceSeq identifies token maintenance generations. maintenanceSeq 标识 Token 维护任务代次。
+	maintenance     map[string]loginMaintenanceState // maintenance coalesces login maintenance by token. maintenance 按 Token 合并登录维护任务。
+	asyncMu         sync.Mutex                       // asyncMu serializes async task admission and shutdown. asyncMu 串行化异步任务接收与关闭。
+	asyncWG         sync.WaitGroup                   // asyncWG waits for accepted async tasks. asyncWG 等待已接收的异步任务完成。
+	asyncClosed     bool                             // asyncClosed rejects new async tasks during shutdown. asyncClosed 在关闭期间拒绝新的异步任务。
+	closed          atomic.Bool                      // closed reports whether manager shutdown has started. closed 标记 Manager 是否已开始关闭。
+	closeOnce       sync.Once                        // closeOnce releases manager resources once. closeOnce 确保资源只释放一次。
+	ownership       ComponentOwnership               // ownership records which runtime components are manager-owned. ownership 记录由 Manager 持有的运行时组件。
+	accessProvider  AccessProvider                   // accessProvider resolves roles and permissions. accessProvider 解析角色和权限。
+	strategy        *Strategy                        // strategy stores replaceable algorithms. strategy 存储可替换算法。
 }
 
 // TokenInfo defines token info. TokenInfo 定义 Token 信息。

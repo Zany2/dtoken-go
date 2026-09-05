@@ -37,7 +37,7 @@ type LoginOptions struct {
 	// IsConcurrent overrides concurrent login switch IsConcurrent 覆盖并发登录开关。
 	IsConcurrent *bool `json:"isConcurrent,omitempty"`
 
-	// IsShare overrides shared token switch IsShare 覆盖共享 token 开关。
+	// IsShare overrides shared token reuse. Reuse is skipped when Token, Timeout, ActiveTimeout, Extra, or TerminalExtra is set. IsShare 控制共享 Token 复用；设置 Token、Timeout、ActiveTimeout、Extra 或 TerminalExtra 时跳过复用。
 	IsShare *bool `json:"isShare,omitempty"`
 
 	// MaxLoginCount overrides max login count MaxLoginCount 覆盖最大登录数。

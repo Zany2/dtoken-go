@@ -203,7 +203,7 @@ func (m *Manager) Consume(ctx context.Context, ticketValue string, opts ...Valid
 	if value == nil {
 		return nil, ErrInvalidTicket
 	}
-	ticket, err := m.decode(value)
+	ticket, err := m.decode(value, ticketValue)
 	if err != nil {
 		return nil, err
 	}
@@ -333,11 +333,11 @@ func (m *Manager) get(ctx context.Context, ticketValue string) (*Ticket, error) 
 	if data == nil {
 		return nil, ErrInvalidTicket
 	}
-	return m.decode(data)
+	return m.decode(data, ticketValue)
 }
 
-// decode converts a stored value into ticket metadata. decode 将存储值转换为 Ticket 元数据。
-func (m *Manager) decode(value any) (*Ticket, error) {
+// decode converts a stored value and verifies its storage identity. decode 转换存储值并校验其存储身份。
+func (m *Manager) decode(value any, ticketValue string) (*Ticket, error) {
 	rawData, err := toBytes(value)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
@@ -345,6 +345,9 @@ func (m *Manager) decode(value any) (*Ticket, error) {
 	var ticket Ticket
 	if err = m.serializer.Decode(rawData, &ticket); err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+	}
+	if ticket.Ticket != ticketValue || ticket.AuthType != m.authType {
+		return nil, ErrInvalidTicket
 	}
 	return &ticket, nil
 }

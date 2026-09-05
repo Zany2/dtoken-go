@@ -31,6 +31,8 @@ mgr, err := dtoken.NewBuilder().
 
 `IsShare(true)` allows repeated login to reuse an existing token when concurrent login is enabled.
 
+When a login sets `Token`, `Timeout`, `ActiveTimeout`, `Extra`, or `TerminalExtra`, it creates an independent token so those per-login options cannot be ignored by reusing an old token.
+
 Reuse depends on the device dimension:
 
 - account-level login without device information can reuse the account token

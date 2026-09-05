@@ -172,6 +172,7 @@ func TestTriggerAsyncWaitTracksDispatchAndSnapshotsInput(t *testing.T) {
 	listenerStarted := make(chan struct{})
 	listenerRelease := make(chan struct{})
 	observed := make(chan listenerEventObservation, 1)
+	observedPermissions := make(chan string, 1)
 	waitDone := make(chan struct{})
 	var releaseOnce sync.Once
 	releaseListener := func() {
@@ -185,13 +186,15 @@ func TestTriggerAsyncWaitTracksDispatchAndSnapshotsInput(t *testing.T) {
 		close(listenerStarted)
 		<-listenerRelease
 		observed <- observeListenerEvent(data, "state")
+		observedPermissions <- data.Extra["permissions"].([]string)[0]
 	}, ListenerConfig{Async: false})
 
 	input := &EventData{
 		Event:   EventLogin,
 		LoginID: "original-login-id",
 		Extra: map[string]any{
-			"state": "original-state",
+			"state":       "original-state",
+			"permissions": []string{"read"},
 		},
 	}
 	manager.TriggerAsync(input)
@@ -199,6 +202,7 @@ func TestTriggerAsyncWaitTracksDispatchAndSnapshotsInput(t *testing.T) {
 
 	input.LoginID = "caller-mutated-login-id"
 	input.Extra["state"] = "caller-mutated-state"
+	input.Extra["permissions"].([]string)[0] = "caller-mutated-permission"
 	go func() {
 		manager.Wait()
 		close(waitDone)
@@ -211,6 +215,9 @@ func TestTriggerAsyncWaitTracksDispatchAndSnapshotsInput(t *testing.T) {
 	got := <-observed
 	if got.loginID != "original-login-id" || got.extraValue != "original-state" {
 		t.Fatalf("listener observed loginID/extra = %q/%v, want original-login-id/original-state", got.loginID, got.extraValue)
+	}
+	if permission := <-observedPermissions; permission != "read" {
+		t.Fatalf("listener observed permission = %q, want read", permission)
 	}
 	if got.timestamp == 0 {
 		t.Fatal("listener timestamp = 0, want trigger timestamp")
@@ -240,29 +247,33 @@ func TestAsyncListenerCanReenterTriggerSync(t *testing.T) {
 	manager.Wait()
 }
 
-// TestListenersReceiveIndependentEventData verifies each listener receives isolated event fields and top-level Extra data. TestListenersReceiveIndependentEventData 验证每个监听器收到独立的事件字段和顶层 Extra 数据。
+// TestListenersReceiveIndependentEventData verifies each listener receives isolated event fields and built-in Extra payloads. TestListenersReceiveIndependentEventData 验证每个监听器收到独立的事件字段和内置 Extra 载荷。
 func TestListenersReceiveIndependentEventData(t *testing.T) {
 	manager := NewManager()
 	firstMutated := make(chan struct{})
 	firstObserved := make(chan listenerEventObservation, 1)
 	secondObserved := make(chan listenerEventObservation, 1)
+	secondPermission := make(chan string, 1)
 
 	manager.RegisterFuncWithConfig(EventLogin, func(data *EventData) {
 		data.LoginID = "first-mutated-login-id"
 		data.Extra["state"] = "first-mutated-state"
+		data.Extra["permissions"].([]string)[0] = "first-mutated-permission"
 		firstObserved <- observeListenerEvent(data, "state")
 		close(firstMutated)
 	}, ListenerConfig{Async: true, Priority: 10})
 	manager.RegisterFuncWithConfig(EventLogin, func(data *EventData) {
 		<-firstMutated
 		secondObserved <- observeListenerEvent(data, "state")
+		secondPermission <- data.Extra["permissions"].([]string)[0]
 	}, ListenerConfig{Async: true, Priority: 1})
 
 	input := &EventData{
 		Event:   EventLogin,
 		LoginID: "original-login-id",
 		Extra: map[string]any{
-			"state": "original-state",
+			"state":       "original-state",
+			"permissions": []string{"read"},
 		},
 	}
 	manager.TriggerSync(input)
@@ -278,8 +289,14 @@ func TestListenersReceiveIndependentEventData(t *testing.T) {
 	if second.loginID != "original-login-id" || second.extraValue != "original-state" {
 		t.Fatalf("second listener observation = %q/%v, want original values", second.loginID, second.extraValue)
 	}
+	if permission := <-secondPermission; permission != "read" {
+		t.Fatalf("second listener permission = %q, want read", permission)
+	}
 	if input.LoginID != "original-login-id" || input.Extra["state"] != "original-state" {
 		t.Fatalf("caller input was mutated: loginID/extra = %q/%v", input.LoginID, input.Extra["state"])
+	}
+	if permission := input.Extra["permissions"].([]string)[0]; permission != "read" {
+		t.Fatalf("caller input permission = %q, want read", permission)
 	}
 }
 

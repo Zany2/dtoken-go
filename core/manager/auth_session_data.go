@@ -82,3 +82,97 @@ func (m *Manager) DeleteSessionValue(ctx context.Context, loginID, key string) e
 	delete(sess.Data, key)
 	return m.saveToStorage(ctx, m.getSessionKey(loginID), *sess)
 }
+
+// SetSessionValueByToken sets session data after validating a token. SetSessionValueByToken 校验 Token 后设置会话扩展数据。
+func (m *Manager) SetSessionValueByToken(ctx context.Context, tokenValue, key string, value any) error {
+	// Validate and normalize token data key. 校验并规范化 Token 与会话数据键。
+	if tokenValue == "" {
+		return derror.ErrInvalidToken
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return derror.ErrInvalidParam
+	}
+
+	// Resolve the account before locking its session. 先解析账号，再锁定账号 Session。
+	_, tokenInfo, err := m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
+	if err != nil {
+		return err
+	}
+	unlock := m.lockLoginWrite(tokenInfo.LoginID)
+	defer unlock()
+
+	// Revalidate under the lock to prevent writes after logout. 锁内重新校验，避免登出后继续写入。
+	sess, checkedInfo, err := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue)
+	if err != nil {
+		return err
+	}
+	if checkedInfo.LoginID != tokenInfo.LoginID {
+		return derror.ErrInvalidToken
+	}
+	if sess.Data == nil {
+		sess.Data = make(map[string]any)
+	}
+	sess.Data[key] = value
+	return m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess)
+}
+
+// GetSessionValueByToken gets session data after validating a token. GetSessionValueByToken 校验 Token 后获取会话扩展数据。
+func (m *Manager) GetSessionValueByToken(ctx context.Context, tokenValue, key string) (any, bool, error) {
+	// Validate and normalize token data key. 校验并规范化 Token 与会话数据键。
+	if tokenValue == "" {
+		return nil, false, derror.ErrInvalidToken
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, false, derror.ErrInvalidParam
+	}
+
+	// Use the session loaded by full token validation. 使用完整 Token 校验加载的 Session。
+	sess, _, err := m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
+	if err != nil {
+		return nil, false, err
+	}
+	if sess.Data == nil {
+		return nil, false, nil
+	}
+	value, ok := sess.Data[key]
+	return value, ok, nil
+}
+
+// DeleteSessionValueByToken deletes session data after validating a token. DeleteSessionValueByToken 校验 Token 后删除会话扩展数据。
+func (m *Manager) DeleteSessionValueByToken(ctx context.Context, tokenValue, key string) error {
+	// Validate and normalize token data key. 校验并规范化 Token 与会话数据键。
+	if tokenValue == "" {
+		return derror.ErrInvalidToken
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return derror.ErrInvalidParam
+	}
+
+	// Resolve the account before locking its session. 先解析账号，再锁定账号 Session。
+	_, tokenInfo, err := m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
+	if err != nil {
+		return err
+	}
+	unlock := m.lockLoginWrite(tokenInfo.LoginID)
+	defer unlock()
+
+	// Revalidate under the lock to prevent writes after logout. 锁内重新校验，避免登出后继续写入。
+	sess, checkedInfo, err := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue)
+	if err != nil {
+		return err
+	}
+	if checkedInfo.LoginID != tokenInfo.LoginID {
+		return derror.ErrInvalidToken
+	}
+	if sess.Data == nil {
+		return nil
+	}
+	if _, exists := sess.Data[key]; !exists {
+		return nil
+	}
+	delete(sess.Data, key)
+	return m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess)
+}

@@ -51,7 +51,7 @@ func (c *AuthContext) GetLoginID(ctx context.Context) (string, error) {
 	return c.d.currentLoginID(ctx)
 }
 
-// LoginByToken validates and logs in current token LoginByToken 使用当前 Token 登录
+// LoginByToken validates the current token and schedules asynchronous renewal. LoginByToken 校验当前 Token 并调度异步续期。
 func (c *AuthContext) LoginByToken(ctx context.Context) error {
 	token, err := c.d.requireToken()
 	if err != nil {

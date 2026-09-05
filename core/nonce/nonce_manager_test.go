@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -298,6 +299,7 @@ func TestNonceManagerConcurrentVerifyConsumesOnce(t *testing.T) {
 
 type nonceTestStorage struct {
 	*nonceBasicStorage
+	mu sync.Mutex
 }
 
 func newNonceTestStorage() *nonceTestStorage {
@@ -305,6 +307,9 @@ func newNonceTestStorage() *nonceTestStorage {
 }
 
 func (s *nonceTestStorage) GetAndDelete(ctx context.Context, key string) (any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	value, err := s.Get(ctx, key)
 	if err != nil {
 		return nil, err
@@ -314,6 +319,9 @@ func (s *nonceTestStorage) GetAndDelete(ctx context.Context, key string) (any, e
 }
 
 func (s *nonceTestStorage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.Exists(ctx, key) {
 		return false, nil
 	}

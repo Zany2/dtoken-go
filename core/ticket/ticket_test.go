@@ -148,6 +148,42 @@ func TestManagerBoundaries(t *testing.T) {
 	}
 }
 
+// TestManagerRejectsMismatchedStoredIdentity verifies stored payloads cannot escape their credential namespace. TestManagerRejectsMismatchedStoredIdentity 验证存储载荷不能越过其凭证命名空间。
+func TestManagerRejectsMismatchedStoredIdentity(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestTicketManager(time.Minute)
+
+	for _, tt := range []struct {
+		name     string
+		ticket   string
+		authType string
+	}{
+		{name: "ticket value", ticket: "other-ticket", authType: "test"},
+		{name: "auth type", ticket: "requested-ticket", authType: "other"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			stored := &Ticket{
+				Ticket:     tt.ticket,
+				AuthType:   tt.authType,
+				CreateTime: time.Now().Unix(),
+				ExpiresIn:  60,
+				Status:     StatusValid,
+			}
+			encoded, err := mgr.serializer.Encode(stored)
+			if err != nil {
+				t.Fatalf("Encode() error = %v", err)
+			}
+			if err = mgr.storage.Set(ctx, mgr.getTicketKey("requested-ticket"), encoded, time.Minute); err != nil {
+				t.Fatalf("Set() error = %v", err)
+			}
+
+			if _, err = mgr.Validate(ctx, "requested-ticket"); !errors.Is(err, ErrInvalidTicket) {
+				t.Fatalf("Validate(mismatched identity) error = %v, want ErrInvalidTicket", err)
+			}
+		})
+	}
+}
+
 // TestConsumeConstraintMismatchDoesNotConsumeTicket verifies mismatched constraints preserve the ticket. TestConsumeConstraintMismatchDoesNotConsumeTicket 验证约束不匹配时不会消费 Ticket。
 func TestConsumeConstraintMismatchDoesNotConsumeTicket(t *testing.T) {
 	ctx := context.Background()

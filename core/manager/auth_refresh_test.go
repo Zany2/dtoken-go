@@ -4,6 +4,7 @@ package manager
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -70,6 +71,41 @@ func TestManagerRefreshTokenFlow(t *testing.T) {
 	}
 	if err = mgr.CheckLogin(ctx, nextPair.AccessToken); !errors.Is(err, derror.ErrInvalidToken) {
 		t.Fatalf("CheckLogin(revoked access token) error = %v, want ErrInvalidToken", err)
+	}
+}
+
+// TestManagerRevokeRefreshTokenInvalidatesDetachedAccessToken verifies revocation cleans an access mapping even when terminal metadata is stale. TestManagerRevokeRefreshTokenInvalidatesDetachedAccessToken 验证终端元数据过期时撤销刷新令牌仍会清理访问 Token 映射。
+func TestManagerRevokeRefreshTokenInvalidatesDetachedAccessToken(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.Timeout = 60
+		cfg.RefreshTokenTimeout = 120
+		cfg.AutoRenew = false
+	})
+
+	pair, err := mgr.LoginWithRefreshToken(ctx, "refresh-detached-revoke", "web", "browser")
+	if err != nil {
+		t.Fatalf("LoginWithRefreshToken() error = %v", err)
+	}
+	sess, err := mgr.GetSession(ctx, "refresh-detached-revoke")
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if _, ok := sess.removeTerminalByToken(pair.AccessToken); !ok {
+		t.Fatal("removeTerminalByToken() did not find access token")
+	}
+	if err = mgr.saveToStorage(ctx, mgr.getSessionKey("refresh-detached-revoke"), *sess, mgr.getExpiration()); err != nil {
+		t.Fatalf("saveToStorage(session) error = %v", err)
+	}
+
+	if err = mgr.RevokeRefreshToken(ctx, pair.RefreshToken); err != nil {
+		t.Fatalf("RevokeRefreshToken() error = %v", err)
+	}
+	if err = mgr.CheckLogin(ctx, pair.AccessToken); !errors.Is(err, derror.ErrInvalidToken) {
+		t.Fatalf("CheckLogin(detached access token) error = %v, want ErrInvalidToken", err)
+	}
+	if ttl, ttlErr := mgr.GetRefreshTokenTTL(ctx, pair.RefreshToken); ttlErr != nil || ttl != -2 {
+		t.Fatalf("GetRefreshTokenTTL() = %d, %v, want -2, nil", ttl, ttlErr)
 	}
 }
 
@@ -300,8 +336,8 @@ func TestManagerRefreshTokenLoginDoesNotShareAccessToken(t *testing.T) {
 	}
 }
 
-// TestManagerRefreshTokenRequiresAtomicStorage verifies refresh tokens fail closed without atomic storage. TestManagerRefreshTokenRequiresAtomicStorage 验证缺少原子存储时刷新令牌会安全失败。
-func TestManagerRefreshTokenRequiresAtomicStorage(t *testing.T) {
+// TestManagerRefreshTokenSupportsNonAtomicStorage verifies basic storage uses the serialized fallback. TestManagerRefreshTokenSupportsNonAtomicStorage 验证基础存储使用串行化回退逻辑。
+func TestManagerRefreshTokenSupportsNonAtomicStorage(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
 		cfg.Timeout = 60
@@ -310,8 +346,71 @@ func TestManagerRefreshTokenRequiresAtomicStorage(t *testing.T) {
 	baseStorage := requireManagerTestStorage(t, mgr)
 	mgr.storage = nonAtomicManagerStorage{Storage: baseStorage}
 
-	if _, err := mgr.LoginWithRefreshToken(ctx, "refresh-non-atomic", "web"); !errors.Is(err, derror.ErrStorageUnavailable) {
-		t.Fatalf("LoginWithRefreshToken(non-atomic storage) error = %v, want ErrStorageUnavailable", err)
+	pair, err := mgr.LoginWithRefreshToken(ctx, "refresh-non-atomic", "web")
+	if err != nil {
+		t.Fatalf("LoginWithRefreshToken(non-atomic storage) error = %v", err)
+	}
+	nextPair, err := mgr.RefreshToken(ctx, pair.RefreshToken)
+	if err != nil {
+		t.Fatalf("RefreshToken(non-atomic storage) error = %v", err)
+	}
+	if _, err = mgr.RefreshToken(ctx, pair.RefreshToken); !errors.Is(err, derror.ErrInvalidRefreshToken) {
+		t.Fatalf("RefreshToken(replayed non-atomic token) error = %v, want ErrInvalidRefreshToken", err)
+	}
+	if err = mgr.CheckLogin(ctx, pair.AccessToken); !errors.Is(err, derror.ErrInvalidToken) {
+		t.Fatalf("CheckLogin(old access token) error = %v, want ErrInvalidToken", err)
+	}
+	if err = mgr.CheckLogin(ctx, nextPair.AccessToken); err != nil {
+		t.Fatalf("CheckLogin(new access token) error = %v", err)
+	}
+}
+
+// TestManagerConcurrentRefreshTokenFallbackConsumesOnce verifies local replay protection without AtomicStorage. TestManagerConcurrentRefreshTokenFallbackConsumesOnce 验证缺少 AtomicStorage 时的本地并发重放保护。
+func TestManagerConcurrentRefreshTokenFallbackConsumesOnce(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.Timeout = 60
+		cfg.RefreshTokenTimeout = 60
+	})
+	baseStorage := requireManagerTestStorage(t, mgr)
+	mgr.storage = nonAtomicManagerStorage{Storage: baseStorage}
+
+	pair, err := mgr.LoginWithRefreshToken(ctx, "refresh-non-atomic-concurrent", "web")
+	if err != nil {
+		t.Fatalf("LoginWithRefreshToken() error = %v", err)
+	}
+
+	const attempts = 8
+	start := make(chan struct{})
+	results := make(chan error, attempts)
+	var wg sync.WaitGroup
+	wg.Add(attempts)
+	for i := 0; i < attempts; i++ {
+		go func() {
+			defer wg.Done()
+			<-start
+			_, refreshErr := mgr.RefreshToken(ctx, pair.RefreshToken)
+			results <- refreshErr
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	successes := 0
+	invalid := 0
+	for refreshErr := range results {
+		switch {
+		case refreshErr == nil:
+			successes++
+		case errors.Is(refreshErr, derror.ErrInvalidRefreshToken):
+			invalid++
+		default:
+			t.Fatalf("RefreshToken() unexpected error = %v", refreshErr)
+		}
+	}
+	if successes != 1 || invalid != attempts-1 {
+		t.Fatalf("concurrent refresh results: successes=%d invalid=%d, want 1 and %d", successes, invalid, attempts-1)
 	}
 }
 
@@ -449,6 +548,22 @@ func TestManagerIntrospectToken(t *testing.T) {
 	}
 	if info.Extra["scene"] != "introspection" {
 		t.Fatalf("Extra = %+v, want scene=introspection", info.Extra)
+	}
+
+	// Introspection follows token mapping even when terminal metadata is stale. 终端元数据过期时，自省仍以 Token 映射为准。
+	sess, err := mgr.GetSession(ctx, "inspect-user")
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if _, ok := sess.removeTerminalByToken(token); !ok {
+		t.Fatal("removeTerminalByToken() did not find introspection token")
+	}
+	if err = mgr.saveToStorage(ctx, mgr.getSessionKey("inspect-user"), *sess, mgr.getExpiration()); err != nil {
+		t.Fatalf("saveToStorage(session) error = %v", err)
+	}
+	info, err = mgr.IntrospectToken(ctx, token)
+	if err != nil || !info.Active {
+		t.Fatalf("IntrospectToken(detached terminal) = %+v, %v, want active", info, err)
 	}
 
 	if err = mgr.Logout(ctx, token); err != nil {

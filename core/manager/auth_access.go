@@ -142,19 +142,6 @@ func (m *Manager) providerPermissions(ctx context.Context, fallback []string, su
 	return normalizeProviderAccessValues(permissions), nil
 }
 
-// resolvePermissions resolves permissions and fails closed on provider errors. resolvePermissions 解析权限并在提供器出错时安全拒绝。
-func (m *Manager) resolvePermissions(ctx context.Context, fallback []string, subject AccessSubject) []string {
-	// Load permissions safely 安全加载权限。
-	permissions, err := m.loadPermissions(ctx, fallback, subject)
-	if err != nil {
-		m.logger.Errorf("manager.resolvePermissions: failed to resolve permissions, loginID=%s, error=%v", subject.LoginID, err)
-		return []string{}
-	}
-
-	// Return resolved permissions 返回解析后的权限。
-	return permissions
-}
-
 // loadRoles loads roles from provider with fallback. loadRoles 从提供器加载角色并支持回退值。
 func (m *Manager) loadRoles(ctx context.Context, fallback []string, subject AccessSubject) ([]string, error) {
 	// Fill default auth type 填充默认认证类型
@@ -191,19 +178,6 @@ func (m *Manager) providerRoles(ctx context.Context, fallback []string, subject 
 
 	// Return normalized provider roles 返回规范化后的提供器角色。
 	return normalizeProviderAccessValues(roles), nil
-}
-
-// resolveRoles resolves roles and fails closed on provider errors. resolveRoles 解析角色并在提供器出错时安全拒绝。
-func (m *Manager) resolveRoles(ctx context.Context, fallback []string, subject AccessSubject) []string {
-	// Load roles safely 安全加载角色。
-	roles, err := m.loadRoles(ctx, fallback, subject)
-	if err != nil {
-		m.logger.Errorf("manager.resolveRoles: failed to resolve roles, loginID=%s, error=%v", subject.LoginID, err)
-		return []string{}
-	}
-
-	// Return resolved roles 返回解析后的角色。
-	return roles
 }
 
 // normalizeProviderAccessValues normalizes provider values while preserving non-nil empty meaning. normalizeProviderAccessValues 规范化提供器返回值，并保留非 nil 空列表语义。

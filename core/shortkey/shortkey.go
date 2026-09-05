@@ -138,7 +138,7 @@ type Manager struct {
 	maxGenerateRetries int
 	storage            adapter.Storage
 	serializer         adapter.Codec
-	mu                 sync.Mutex // Protects concurrent create operations 保护并发创建操作
+	mu                 sync.Mutex // Protects non-atomic create fallback 保护非原子创建回退流程
 }
 
 // NewDefaultManager creates short key manager with default config. NewDefaultManager 使用默认配置创建短 Key 管理器。
@@ -184,10 +184,6 @@ func (m *Manager) CreateWithTimeout(ctx context.Context, opts CreateOptions, tim
 	if timeout <= 0 {
 		timeout = m.ttl
 	}
-
-	// Lock to prevent concurrent create races 加锁防止并发创建竞态（单进程保护）
-	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	now := time.Now().Unix()
 	for i := 0; i < m.maxGenerateRetries; i++ {
@@ -300,7 +296,7 @@ func (m *Manager) Consume(ctx context.Context, key string, opts ...ValidateOptio
 	if value == nil {
 		return nil, ErrInvalidShortKey
 	}
-	shortKey, err := m.decode(value)
+	shortKey, err := m.decode(value, key)
 	if err != nil {
 		return nil, err
 	}
@@ -437,6 +433,11 @@ func (m *Manager) saveIfAbsent(ctx context.Context, shortKey *ShortKey, timeout 
 		}
 		return ok, nil
 	}
+
+	// Serialize the ordinary Exists/Set fallback within this Manager instance. 在当前 Manager 实例内串行化普通 Exists/Set 回退流程。
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if m.storage.Exists(ctx, key) {
 		return false, nil
 	}
@@ -458,11 +459,11 @@ func (m *Manager) get(ctx context.Context, key string) (*ShortKey, error) {
 	if data == nil {
 		return nil, ErrInvalidShortKey
 	}
-	return m.decode(data)
+	return m.decode(data, key)
 }
 
-// decode converts a stored value into short key metadata. decode 将存储值转换为短 Key 元数据。
-func (m *Manager) decode(value any) (*ShortKey, error) {
+// decode converts a stored value and verifies its storage identity. decode 转换存储值并校验其存储身份。
+func (m *Manager) decode(value any, key string) (*ShortKey, error) {
 	rawData, err := toBytes(value)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
@@ -470,6 +471,9 @@ func (m *Manager) decode(value any) (*ShortKey, error) {
 	var shortKey ShortKey
 	if err = m.serializer.Decode(rawData, &shortKey); err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+	}
+	if shortKey.Key != key || shortKey.AuthType != m.authType {
+		return nil, ErrInvalidShortKey
 	}
 	return &shortKey, nil
 }

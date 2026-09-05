@@ -42,10 +42,15 @@ func (m *Manager) ValidateTicket(ctx context.Context, ticketValue string, opts .
 		return nil, derror.ErrModuleNotEnabled
 	}
 	value, err := m.ticketManager.Validate(ctx, ticketValue, opts...)
-	if value != nil {
-		m.triggerTicketEvent(listener.EventTicketValidate, value, listener.ActionValidate)
+	if err != nil {
+		m.triggerEvent(listener.EventTicketValidate, "", "", "", ticketValue, map[string]any{
+			listener.ExtraKeyAction: listener.ActionValidate,
+			listener.ExtraKeyResult: false,
+		})
+		return value, err
 	}
-	return value, err
+	m.triggerTicketEvent(listener.EventTicketValidate, value, listener.ActionValidate)
+	return value, nil
 }
 
 // ConsumeTicket validates and consumes a ticket. ConsumeTicket 校验并消费 Ticket。
@@ -95,7 +100,7 @@ func (m *Manager) triggerTicketEvent(event listener.Event, value *ticket.Ticket,
 	if value == nil {
 		return
 	}
-	m.triggerEvent(event, value.LoginID, value.Device, value.DeviceID, value.Ticket, map[string]any{
+	extra := map[string]any{
 		listener.ExtraKeyAction:    action,
 		listener.ExtraKeySource:    value.Source,
 		listener.ExtraKeySourceApp: value.SourceApp,
@@ -103,7 +108,11 @@ func (m *Manager) triggerTicketEvent(event listener.Event, value *ticket.Ticket,
 		listener.ExtraKeyScopes:    value.Scopes,
 		listener.ExtraKeyStatus:    value.Status,
 		listener.ExtraKeyTTL:       remainingTicketTTLSeconds(value),
-	})
+	}
+	if event == listener.EventTicketValidate {
+		extra[listener.ExtraKeyResult] = true
+	}
+	m.triggerEvent(event, value.LoginID, value.Device, value.DeviceID, value.Ticket, extra)
 }
 
 // remainingTicketTTLSeconds calculates remaining ticket seconds for event data. remainingTicketTTLSeconds 计算事件数据中的 Ticket 剩余秒数。

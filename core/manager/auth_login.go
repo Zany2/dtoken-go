@@ -90,18 +90,40 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 	var policy loginPolicy
 	if sess != nil && !internal.skipConcurrencyControl {
 		policy = m.resolveLoginPolicy(opts)
-		if !explicitToken && policy.isConcurrent && policy.isShare {
+
+		// Keep per-login token and terminal metadata independent instead of silently ignoring overrides on a shared token. 存在单次 Token 或终端元数据时保持独立登录，避免共享 Token 静默忽略覆盖项。
+		canShare := !explicitToken &&
+			opts.Timeout == 0 &&
+			opts.ActiveTimeout == 0 &&
+			opts.Extra == nil &&
+			opts.TerminalExtra == nil
+		if canShare && policy.isConcurrent && policy.isShare {
 			sharedToken, shareErr := m.getTokenAndShare(ctx, sess, device, deviceID)
 			if shareErr != nil {
 				return "", shareErr
 			}
 			if sharedToken != "" {
-				unlock()
-				unlock = func() {}
-				m.triggerEvent(listener.EventLogin, opts.LoginID, device, deviceID, sharedToken, map[string]any{
-					listener.ExtraKeyShared: true,
-				})
-				return sharedToken, nil
+				// Clean inactive terminals before the shared fast path returns. 共享快速路径返回前清理失效终端。
+				destroyedByClean, activeTimeoutTerminals, cleanErr := m.cleanExpiredTerminals(ctx, sess)
+				for _, terminal := range activeTimeoutTerminals {
+					concurrencyEvents = append(concurrencyEvents, terminalLifecycleEvent{terminal: terminal, state: TokenStateActiveTimeout})
+				}
+				if cleanErr != nil {
+					return "", cleanErr
+				}
+
+				// A valid shared token normally keeps the session alive; fall back to a fresh login if concurrent storage changes removed it. 有效共享 Token 通常会保留 Session；并发存储变更导致其消失时回退为新登录。
+				if !destroyedByClean {
+					unlock()
+					unlock = func() {}
+					m.triggerTerminalLifecycleEvents(opts.LoginID, concurrencyEvents)
+					concurrencyEvents = nil
+					m.triggerEvent(listener.EventLogin, opts.LoginID, device, deviceID, sharedToken, map[string]any{
+						listener.ExtraKeyShared: true,
+					})
+					return sharedToken, nil
+				}
+				sess = nil
 			}
 		}
 	}
@@ -168,6 +190,9 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 	if createdSession {
 		// Initialize new session 初始化新会话。
 		sess = m.strategy.normalize().CreateSession(m.config.AuthType, opts.LoginID, createTime)
+		if sess == nil {
+			return "", fmt.Errorf("%w: session strategy returned nil", derror.ErrInvalidParam)
+		}
 	}
 
 	// Increase history terminal count 递增历史终端计数
@@ -211,6 +236,20 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 
 	// Persist token data after session save. Session 保存后持久化 Token 数据。
 	if err = m.persistLoginToken(ctx, token, tokenInfo, expiration); err != nil {
+		// Remove the terminal appended by this login when token persistence fails. Token 持久化失败时移除本次登录追加的终端。
+		if _, removed := sess.removeLatestTerminalByToken(token); removed {
+			var rollbackErr error
+			if createdSession {
+				// Delete a newly created session instead of leaving an empty account session. 新建 Session 回滚时直接删除，避免留下空账号会话。
+				rollbackErr = m.storage.Delete(ctx, m.getSessionKey(opts.LoginID))
+			} else {
+				// Restore the existing session while preserving account-level state. 已有 Session 回滚时保留账号级状态。
+				rollbackErr = m.saveToStorage(ctx, m.getSessionKey(opts.LoginID), *sess)
+			}
+			if rollbackErr != nil {
+				return "", fmt.Errorf("%w (session rollback failed: %v)", err, rollbackErr)
+			}
+		}
 		return "", err
 	}
 
@@ -251,25 +290,55 @@ func (m *Manager) persistLoginToken(
 		return fmt.Errorf("%w: token already exists", derror.ErrInvalidParam)
 	}
 
+	// Invalidate maintenance from an expired earlier lifecycle that reused the same token value. 使复用同一 Token 值的旧生命周期维护任务失效。
+	m.cancelLoginMaintenance(token)
+
 	// Initialize token metadata 初始化 token 元数据。
 	if m.config.RenewInterval > 0 {
 		// Initialize renew marker 初始化续期标记。
 		if err = m.storage.Set(ctx, m.getRenewKey(token), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {
-			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+			persistErr := fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+			if rollbackErr := m.rollbackPersistedLoginToken(ctx, token); rollbackErr != nil {
+				return fmt.Errorf("%w (token rollback failed: %v)", persistErr, rollbackErr)
+			}
+			return persistErr
 		}
 	}
 
 	if m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout) > 0 {
 		// Initialize active marker 初始化活跃标记。
 		if err = m.storage.Set(ctx, m.getActiveKey(token), time.Now().Unix(), expiration); err != nil {
-			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+			persistErr := fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+			if rollbackErr := m.rollbackPersistedLoginToken(ctx, token); rollbackErr != nil {
+				return fmt.Errorf("%w (token rollback failed: %v)", persistErr, rollbackErr)
+			}
+			return persistErr
 		}
 	}
 
 	return nil
 }
 
-// LoginByToken performs login renewal based on an existing token. LoginByToken 根据 Token 续期登录。
+// rollbackPersistedLoginToken removes a partially persisted token and metadata. rollbackPersistedLoginToken 删除部分持久化的 Token 及其元数据。
+func (m *Manager) rollbackPersistedLoginToken(ctx context.Context, token string) error {
+	// Delete the primary token mapping first. 先删除 Token 主映射。
+	var rollbackErr error
+	if err := m.storage.Delete(ctx, m.getTokenKey(token)); err != nil {
+		rollbackErr = fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+
+	// Delete renew, active, and refresh-token metadata. 删除续期、活跃及刷新令牌元数据。
+	if err := m.cleanTokenMetadata(ctx, []string{token}); err != nil {
+		if rollbackErr != nil {
+			return errors.Join(rollbackErr, err)
+		}
+		rollbackErr = err
+	}
+
+	return rollbackErr
+}
+
+// LoginByToken validates an existing token and schedules asynchronous renewal. LoginByToken 校验已有 Token 并调度异步续期。
 func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 	// Validate token value 校验 Token 值。
 	if tokenValue == "" {
@@ -305,80 +374,31 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 	if tokenInfo == nil {
 		return derror.ErrInvalidToken
 	}
-
-	// Renew token and session asynchronously 异步续期 Token 和 Session
-	renewFunc := func() {
-		// Use background context for async renewal 异步续期使用后台上下文。
-		bg := context.Background()
-
-		// Lock account writes in async task 异步任务中锁定账号写操作。
-		unlock := m.lockLoginWrite(tokenInfo.LoginID)
-
-		// Release async lock on exit 异步任务退出时释放锁。
-		defer func() { unlock() }()
-
-		// Reload token under lock 锁内重新读取 Token，避免续期已失效 Token
-		latestTokenInfo, err := m.getTokenInfo(bg, tokenValue)
-		if err != nil {
-			m.logger.Errorf("manager.LoginByToken: token is no longer valid, token=%s, error=%v", tokenValue, err)
-			return
-		}
-
-		// Validate token is still attached to session 确认 Token 仍属于当前会话。
-		latestSession, err := m.getSession(bg, latestTokenInfo.LoginID)
-		if err != nil {
-			m.logger.Errorf("manager.LoginByToken: failed to reload session, loginID=%s, error=%v", latestTokenInfo.LoginID, err)
-			return
-		}
-		if !latestSession.hasTerminalToken(tokenValue) {
-			m.logger.Errorf("manager.LoginByToken: token not found in session, token=%s", tokenValue)
-			return
-		}
-
-		// Resolve token expiration 解析 Token 过期时长。
-		expiration := m.resolveTokenExpiration(latestTokenInfo)
-
-		// Build session key 构建会话键。
-		sessionKey := m.getSessionKey(latestTokenInfo.LoginID)
-
-		// Renew session without shortening existing TTL 续期 session，避免缩短已有 TTL
-		if err := m.saveSessionWithMinTTL(bg, sessionKey, *latestSession, expiration); err != nil {
-			m.logger.Errorf("manager.LoginByToken: failed to save session, loginID=%s, error=%v", latestTokenInfo.LoginID, err)
-			return
-		}
-
-		// Renew token 续期 Token
-		if err := m.expireTokenIfLimited(bg, tokenValue, expiration); err != nil {
-			m.logger.Errorf("manager.LoginByToken: failed to expire token, token=%s, error=%v", tokenValue, err)
-			return
-		}
-
-		// Update metadata 更新 metadata
-		if m.config.RenewInterval > 0 {
-			// Refresh renew marker 刷新续期标记。
-			if err := m.storage.Set(bg, m.getRenewKey(tokenValue), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {
-				m.logger.Errorf("manager.LoginByToken: failed to set renew key, token=%s, error=%v", tokenValue, err)
-				return
-			}
-		}
-		if m.resolveActiveTimeoutFromSeconds(latestTokenInfo.ActiveTimeout) > 0 {
-			// Refresh active marker 刷新活跃标记。
-			if err := m.storage.Set(bg, m.getActiveKey(tokenValue), time.Now().Unix(), expiration); err != nil {
-				m.logger.Errorf("manager.LoginByToken: failed to set active key, token=%s, error=%v", tokenValue, err)
-				return
-			}
-		}
-
-		// Release lock before event 触发事件前释放锁。
-		unlock()
-		unlock = func() {}
-
-		// Trigger renew event 触发续期事件
-		m.triggerEvent(listener.EventRenew, latestTokenInfo.LoginID, latestTokenInfo.Device, latestTokenInfo.DeviceID, tokenValue, nil)
+	loginID := tokenInfo.LoginID
+	activeTimeout := m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout)
+	activeAt := int64(0)
+	if activeTimeout > 0 {
+		activeAt = time.Now().Unix()
 	}
 
-	// Submit async renewal 提交异步续期。
-	m.submitAsync("LoginByToken", renewFunc)
+	// Atomically replace queued automatic maintenance with one forced renewal for this checked lifecycle. 用本次已校验生命周期的强制续期原子替换排队中的自动维护。
+	generation, reserved := m.beginLoginMaintenance(tokenValue, activeAt, true)
+
+	// Release the account lock before submitting because a pool may execute tasks inline. 提交前释放账号锁，因为协程池可能内联执行任务。
+	unlock()
+	unlock = func() {}
+	if !reserved {
+		return nil
+	}
+
+	createTime := tokenInfo.CreateTime
+	accepted := m.submitAsync("LoginByToken", func() {
+		defer m.finishLoginMaintenance(tokenValue, generation)
+		m.runLoginMaintenance(tokenValue, loginID, createTime, generation, true, false, activeTimeout > 0)
+	})
+	if !accepted {
+		m.finishLoginMaintenance(tokenValue, generation)
+	}
 
 	return nil
 }
@@ -397,8 +417,8 @@ func (m *Manager) CheckLogin(ctx context.Context, tokenValue string) error {
 
 // GetLoginID retrieves the login ID from a token. GetLoginID 根据 Token 获取登录 ID。
 func (m *Manager) GetLoginID(ctx context.Context, tokenValue string) (string, error) {
-	// Get checked token 获取已校验 Token
-	_, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	// Validate token without loading account session. 校验 Token 但不加载账号 Session。
+	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return "", err
 	}
@@ -415,8 +435,8 @@ func (m *Manager) GetTokenInfo(ctx context.Context, tokenValue string) (*TokenIn
 
 // GetDevice retrieves the device type for a token. GetDevice 获取 Token 的设备类型。
 func (m *Manager) GetDevice(ctx context.Context, tokenValue string) (string, error) {
-	// Validate token and load info 校验 Token 并加载信息。
-	_, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	// Validate token without loading account session. 校验 Token 但不加载账号 Session。
+	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return "", err
 	}
@@ -427,8 +447,8 @@ func (m *Manager) GetDevice(ctx context.Context, tokenValue string) (string, err
 
 // GetDeviceID retrieves the device ID for a token. GetDeviceID 获取 Token 的设备 ID。
 func (m *Manager) GetDeviceID(ctx context.Context, tokenValue string) (string, error) {
-	// Validate token and load info 校验 Token 并加载信息。
-	_, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	// Validate token without loading account session. 校验 Token 但不加载账号 Session。
+	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return "", err
 	}
@@ -439,8 +459,8 @@ func (m *Manager) GetDeviceID(ctx context.Context, tokenValue string) (string, e
 
 // GetDeviceAndDeviceID retrieves the device type and device ID for a token. GetDeviceAndDeviceID 获取 Token 的设备类型和设备 ID。
 func (m *Manager) GetDeviceAndDeviceID(ctx context.Context, tokenValue string) (string, string, error) {
-	// Validate token and load info once 单次校验 Token 并加载信息。
-	_, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	// Validate token once without loading account session. 单次校验 Token 但不加载账号 Session。
+	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return "", "", err
 	}
@@ -451,8 +471,8 @@ func (m *Manager) GetDeviceAndDeviceID(ctx context.Context, tokenValue string) (
 
 // GetTokenCreateTime retrieves the creation time for a token. GetTokenCreateTime 获取 Token 的创建时间戳。
 func (m *Manager) GetTokenCreateTime(ctx context.Context, tokenValue string) (int64, error) {
-	// Validate token and load info 校验 Token 并加载信息。
-	_, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	// Validate token without loading account session. 校验 Token 但不加载账号 Session。
+	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return 0, err
 	}
@@ -584,69 +604,72 @@ func (m *Manager) RenewTimeout(ctx context.Context, tokenValue string, timeout t
 
 	// Trigger renew event 触发续期事件
 	m.triggerEvent(listener.EventRenew, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID, tokenValue, map[string]any{
-		"timeout": timeout.Seconds(),
+		"timeout": expiration.Seconds(),
 	})
 
 	return nil
 }
 
-// renewFunc performs token renewal. renewFunc 续期函数。
-func (m *Manager) renewFunc(ctx context.Context, tokenValue, loginID string) {
-	// Validate empty parameters 参数为空校验
+// renewFunc renews a checked token while optionally rechecking auto-renew eligibility. renewFunc 续期已校验 Token，并可复核自动续期条件。
+func (m *Manager) renewFunc(ctx context.Context, tokenValue, loginID string, recheckDue bool) {
 	if tokenValue == "" || loginID == "" {
 		return
 	}
 
-	// Lock account writes 锁定账号写操作。
+	// Serialize renewal with account lifecycle writes. 将续期与账号生命周期写操作串行化。
 	unlock := m.lockLoginWrite(loginID)
-
-	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
-	// Recheck token attachment before renewal 续期前重新确认 Token 仍属于会话。
+	// Reload token identity and session under the account lock. 在账号锁内重新加载 Token 身份与 Session。
 	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
-	if err != nil {
-		m.logger.Errorf("manager.renewFunc: token is no longer valid, token=%s, error=%v", tokenValue, err)
+	if err != nil || tokenInfo.LoginID != loginID {
 		return
 	}
 	sess, err := m.getSession(ctx, loginID)
-	if err != nil {
-		m.logger.Errorf("manager.renewFunc: failed to get session, loginID=%s, error=%v", loginID, err)
+	if err != nil || sess == nil {
+		return
+	}
+	if !m.renewTokenAndSessionLocked(ctx, tokenValue, tokenInfo, sess, recheckDue) {
 		return
 	}
 
-	// Validate token attachment 校验 Token 是否属于会话。
-	if !sess.hasTerminalToken(tokenValue) {
-		m.logger.Errorf("manager.renewFunc: token not found in session, token=%s", tokenValue)
-		return
+	// Publish the event without holding the account lock. 不持有账号锁发布续期事件。
+	unlock()
+	unlock = func() {}
+	m.triggerEvent(listener.EventRenew, loginID, tokenInfo.Device, tokenInfo.DeviceID, tokenValue, nil)
+}
+
+// renewTokenAndSessionLocked renews one checked token while the account lock is held. renewTokenAndSessionLocked 在持有账号锁时续期已校验 Token。
+func (m *Manager) renewTokenAndSessionLocked(ctx context.Context, tokenValue string, tokenInfo *TokenInfo, sess *Session, recheckDue bool) bool {
+	if tokenInfo == nil || sess == nil {
+		return false
 	}
 
-	// Renew token with its original timeout 使用 Token 原始有效期续。
+	// Collapse queued checks after an earlier task has already renewed the token. 前序任务已完成续期时合并后续排队检查。
+	if recheckDue && !m.isAutoRenewDue(ctx, tokenValue) {
+		return false
+	}
+
+	// Renew token with its original timeout. 使用 Token 原始有效期续期。
 	expiration := m.resolveTokenExpiration(tokenInfo)
 	if err := m.expireTokenIfLimited(ctx, tokenValue, expiration); err != nil {
-		m.logger.Errorf("manager.renewFunc: failed to expire token, token=%s, error=%v", tokenValue, err)
-		return
+		m.logger.Errorf("manager.renewTokenAndSessionLocked: failed to expire token, token=%s, error=%v", tokenValue, err)
+		return false
 	}
 
-	// Renew session without shortening existing TTL 续期 Session，避免缩短已有 TTL
-	if err := m.saveSessionWithMinTTL(ctx, m.getSessionKey(loginID), *sess, expiration); err != nil {
-		m.logger.Errorf("manager.renewFunc: failed to save session, loginID=%s, error=%v", loginID, err)
-		return
+	// Renew session without shortening existing TTL. 续期 Session，避免缩短已有 TTL。
+	if err := m.saveSessionWithMinTTL(ctx, m.getSessionKey(tokenInfo.LoginID), *sess, expiration); err != nil {
+		m.logger.Errorf("manager.renewTokenAndSessionLocked: failed to save session, loginID=%s, error=%v", tokenInfo.LoginID, err)
+		return false
 	}
 
-	// Set renew interval marker 设置最小续期间隔标。
+	// Set the minimum renewal interval marker. 设置最小续期间隔标记。
 	if m.config.RenewInterval > 0 {
-		// Refresh renew marker 刷新续期标记。
 		if err := m.storage.Set(ctx, m.getRenewKey(tokenValue), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {
-			m.logger.Errorf("manager.renewFunc: failed to set renew key, token=%s, error=%v", tokenValue, err)
-			return
+			m.logger.Errorf("manager.renewTokenAndSessionLocked: failed to set renew key, token=%s, error=%v", tokenValue, err)
+			return false
 		}
 	}
 
-	// Release lock before event 触发事件前释放锁。
-	unlock()
-	unlock = func() {}
-
-	// Trigger renew event 触发续期事件
-	m.triggerEvent(listener.EventRenew, loginID, tokenInfo.Device, tokenInfo.DeviceID, tokenValue, nil)
+	return true
 }

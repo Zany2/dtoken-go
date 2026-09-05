@@ -416,12 +416,6 @@ func TestManagerAccessProviderFunctionContracts(t *testing.T) {
 	if _, err = mgr.loadRoles(ctx, fallback, AccessSubject{}); !errors.Is(err, providerErr) {
 		t.Fatalf("loadRoles(error) = %v, want provider error", err)
 	}
-	if got := mgr.resolvePermissions(ctx, fallback, AccessSubject{}); got == nil || len(got) != 0 {
-		t.Fatalf("resolvePermissions(error) = %#v, want non-nil empty", got)
-	}
-	if got := mgr.resolveRoles(ctx, fallback, AccessSubject{}); got == nil || len(got) != 0 {
-		t.Fatalf("resolveRoles(error) = %#v, want non-nil empty", got)
-	}
 }
 
 // TestManagerIntrospectionFullContract verifies active introspection payloads and non-active errors. TestManagerIntrospectionFullContract 验证活跃自省载荷及非活跃错误。

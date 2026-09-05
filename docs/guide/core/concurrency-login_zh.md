@@ -31,6 +31,8 @@ mgr, err := dtoken.NewBuilder().
 
 `IsShare(true)` 表示在允许并发登录时，重复登录可以复用已有 Token。
 
+当单次登录设置了 `Token`、`Timeout`、`ActiveTimeout`、`Extra` 或 `TerminalExtra` 时，本次登录会创建独立 Token，确保这些选项不会因复用旧 Token 而被忽略。
+
 复用是否发生取决于设备维度：
 
 - 账号维度下，没有设备信息时更容易复用账号已有 Token

@@ -33,50 +33,28 @@ func (m *Manager) IntrospectToken(ctx context.Context, tokenValue string) (*Toke
 		return result, nil
 	}
 
-	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	// Reuse the canonical login-state validation so detached terminal records do not cause false inactive results. 复用统一登录态校验，避免终端记录脱离时误判为非活跃。
+	sess, tokenInfo, err := m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
 	if err != nil {
-		if isTokenInactiveError(err) {
+		if isTokenInactiveError(err) || errors.Is(err, derror.ErrSessionNotFound) {
+			result.Error = err.Error()
+			return result, nil
+		}
+		if errors.Is(err, derror.ErrAccountDisabled) || errors.Is(err, derror.ErrDeviceDisabled) {
 			result.Error = err.Error()
 			return result, nil
 		}
 		return nil, err
 	}
-	if tokenInfo.LoginID == "" {
-		// Treat malformed token metadata as an inactive token rather than leaking an ID validation error. 将缺少主体的畸形 Token 视为非活跃，避免泄漏 ID 校验错误。
-		result.Error = "invalid_token"
-		return result, nil
-	}
-
-	// Check account and device disable status before session validation. 会话校验前先检查账号与设备封禁状态。
-	if disableErr := m.checkLoginDisableState(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID); disableErr != nil {
-		if errors.Is(disableErr, derror.ErrAccountDisabled) || errors.Is(disableErr, derror.ErrDeviceDisabled) {
-			result.Error = disableErr.Error()
-			return result, nil
-		}
-		return nil, disableErr
-	}
-
-	sess, sessErr := m.getSession(ctx, tokenInfo.LoginID)
-	if sessErr != nil {
-		if errors.Is(sessErr, derror.ErrSessionNotFound) {
-			result.Error = "inactive_token"
-			return result, nil
-		}
-		return nil, sessErr
-	}
-
-	alive, err := m.checkTerminalTokenAliveWithContext(ctx, tokenValue, tokenInfo, sess)
-	if err != nil {
-		return nil, err
-	}
-	if !alive {
-		result.Error = "inactive_token"
-		return result, nil
-	}
 
 	ttl, err := m.GetTokenTTL(ctx, tokenValue)
 	if err != nil {
 		return nil, err
+	}
+	if ttl == -2 {
+		// Treat expiry between validation and TTL lookup as inactive. 校验与 TTL 查询之间发生过期时按非活跃处理。
+		result.Error = "invalid_token"
+		return result, nil
 	}
 
 	subject := AccessSubject{
@@ -104,7 +82,7 @@ func (m *Manager) IntrospectToken(ctx context.Context, tokenValue string) (*Toke
 	}
 
 	result.Active = true
-	result.AuthType = tokenInfo.AuthType
+	result.AuthType = m.config.AuthType
 	result.LoginID = tokenInfo.LoginID
 	result.Device = tokenInfo.Device
 	result.DeviceID = tokenInfo.DeviceID

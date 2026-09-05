@@ -36,8 +36,11 @@ func (m *Manager) AddRoles(ctx context.Context, loginID string, roles []string) 
 		return err
 	}
 
-	// Add roles to session 向会话追加角色。
-	sess.addRoles(roles...)
+	// Skip persistence and events when roles are unchanged. 角色未变化时跳过持久化与事件。
+	added := sess.addRoles(roles...)
+	if len(added) == 0 {
+		return nil
+	}
 
 	// Persist updated session 持久化更新后的会话。
 	if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
@@ -50,7 +53,7 @@ func (m *Manager) AddRoles(ctx context.Context, loginID string, roles []string) 
 
 	// Trigger role change event 触发角色变更事件
 	m.triggerEvent(listener.EventRoleChange, loginID, "", "", "", map[string]any{
-		listener.ExtraKeyRoles:  roles,
+		listener.ExtraKeyRoles:  added,
 		listener.ExtraKeyAction: listener.ActionAdd,
 	})
 	return nil
@@ -88,8 +91,11 @@ func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles 
 		return derror.ErrInvalidToken
 	}
 
-	// Add roles to session 向会话追加角色。
-	sess.addRoles(roles...)
+	// Skip persistence and events when roles are unchanged. 角色未变化时跳过持久化与事件。
+	added := sess.addRoles(roles...)
+	if len(added) == 0 {
+		return nil
+	}
 
 	// Persist updated session 持久化更新后的会话。
 	if err = m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
@@ -102,7 +108,7 @@ func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles 
 
 	// Trigger role change event 触发角色变更事件
 	m.triggerEvent(listener.EventRoleChange, sess.LoginID, tokenInfo.Device, tokenInfo.DeviceID, tokenValue, map[string]any{
-		listener.ExtraKeyRoles:  roles,
+		listener.ExtraKeyRoles:  added,
 		listener.ExtraKeyAction: listener.ActionAdd,
 	})
 	return nil
@@ -135,8 +141,11 @@ func (m *Manager) RemoveRoles(ctx context.Context, loginID string, roles []strin
 		return err
 	}
 
-	// Remove roles from session 从会话移除角色。
-	sess.removeRoles(roles...)
+	// Skip persistence and events when roles are unchanged. 角色未变化时跳过持久化与事件。
+	removed := sess.removeRoles(roles...)
+	if len(removed) == 0 {
+		return nil
+	}
 
 	// Persist updated session 持久化更新后的会话。
 	if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
@@ -149,7 +158,7 @@ func (m *Manager) RemoveRoles(ctx context.Context, loginID string, roles []strin
 
 	// Trigger role change event 触发角色变更事件
 	m.triggerEvent(listener.EventRoleChange, loginID, "", "", "", map[string]any{
-		listener.ExtraKeyRoles:  roles,
+		listener.ExtraKeyRoles:  removed,
 		listener.ExtraKeyAction: listener.ActionRemove,
 	})
 	return nil
@@ -187,8 +196,11 @@ func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, rol
 		return derror.ErrInvalidToken
 	}
 
-	// Remove roles from session 从会话移除角色。
-	sess.removeRoles(roles...)
+	// Skip persistence and events when roles are unchanged. 角色未变化时跳过持久化与事件。
+	removed := sess.removeRoles(roles...)
+	if len(removed) == 0 {
+		return nil
+	}
 
 	// Persist updated session 持久化更新后的会话。
 	if err = m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
@@ -201,7 +213,7 @@ func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, rol
 
 	// Trigger role change event 触发角色变更事件
 	m.triggerEvent(listener.EventRoleChange, sess.LoginID, tokenInfo.Device, tokenInfo.DeviceID, tokenValue, map[string]any{
-		listener.ExtraKeyRoles:  roles,
+		listener.ExtraKeyRoles:  removed,
 		listener.ExtraKeyAction: listener.ActionRemove,
 	})
 	return nil
@@ -278,13 +290,17 @@ func (m *Manager) HasRoleByToken(ctx context.Context, tokenValue string, role st
 	// Build access subject 构建访问主体
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
-	// Resolve roles by token 根据 Token 解析角色
-	roles := m.resolveRoles(ctx, sess.Roles, AccessSubject{
+	// Load roles by token 根据 Token 加载角色
+	roles, err := m.loadRoles(ctx, sess.Roles, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
 		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
+	if err != nil {
+		m.logger.Errorf("manager.HasRoleByToken: failed to load roles, loginID=%s, error=%v", sess.LoginID, err)
+		return false
+	}
 
 	// Calculate role result 计算角色结果
 	hasRole := m.hasRoleInList(roles, role)
@@ -337,13 +353,17 @@ func (m *Manager) HasRolesAndByToken(ctx context.Context, tokenValue string, rol
 	// Build access subject 构建访问主体
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
-	// Resolve roles by token 根据 Token 解析角色
-	roleList := m.resolveRoles(ctx, sess.Roles, AccessSubject{
+	// Load roles by token 根据 Token 加载角色
+	roleList, err := m.loadRoles(ctx, sess.Roles, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
 		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
+	if err != nil {
+		m.logger.Errorf("manager.HasRolesAndByToken: failed to load roles, loginID=%s, error=%v", sess.LoginID, err)
+		return false
+	}
 
 	// Calculate AND result 计算 AND 结果
 	hasAll := m.hasAllRoles(roleList, roles)
@@ -397,13 +417,17 @@ func (m *Manager) HasRolesOrByToken(ctx context.Context, tokenValue string, role
 	// Build access subject 构建访问主体
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
-	// Resolve roles by token 根据 Token 解析角色
-	roleList := m.resolveRoles(ctx, sess.Roles, AccessSubject{
+	// Load roles by token 根据 Token 加载角色
+	roleList, err := m.loadRoles(ctx, sess.Roles, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
 		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
+	if err != nil {
+		m.logger.Errorf("manager.HasRolesOrByToken: failed to load roles, loginID=%s, error=%v", sess.LoginID, err)
+		return false
+	}
 
 	// Calculate OR result 计算 OR 结果
 	hasAny := m.hasAnyRole(roleList, roles)
@@ -629,9 +653,11 @@ func (m *Manager) CheckRoleOrByToken(ctx context.Context, tokenValue string, rol
 
 // hasRoleInList checks whether role exists hasRoleInList 检查角色是否存在。
 func (m *Manager) hasRoleInList(roles []string, role string) bool {
+	matcher := m.strategy.normalize().RoleMatcher
+
 	// Check each role 逐个检查角色。
 	for _, r := range roles {
-		if m.strategy.normalize().RoleMatcher(r, role) {
+		if matcher(r, role) {
 			return true
 		}
 	}

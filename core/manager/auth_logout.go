@@ -5,10 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/listener"
-	"strings"
 )
 
 // Logout logs out a user by token. Logout 根据 Token 登出用户。
@@ -27,9 +28,9 @@ func (m *Manager) Logout(ctx context.Context, tokenValue string) error {
 	}
 
 	// Keep the regular validation path so inactive token states retain their existing semantics. 保留常规校验路径，确保非活跃 Token 状态维持既有语义。
-	sess, err := m.GetSessionByToken(ctx, tokenValue)
+	sess, checkedTokenInfo, err := m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
 	if err == nil {
-		return m.logoutTerminals(ctx, sess.LoginID, removeToken)
+		return m.logoutTerminals(ctx, sess.LoginID, removeToken, terminalInfoFromTokenInfo(tokenValue, checkedTokenInfo))
 	}
 	if isTokenInactiveError(err) {
 		return nil
@@ -52,13 +53,7 @@ func (m *Manager) Logout(ctx context.Context, tokenValue string) error {
 	}
 
 	// Remove the matched terminal, or clean the detached token when account disable already removed its session. 移除命中的终端；账号封禁已删除 Session 时清理脱离会话的 Token。
-	return m.logoutTerminals(ctx, tokenInfo.LoginID, removeToken, TerminalInfo{
-		Token:      tokenValue,
-		LoginID:    tokenInfo.LoginID,
-		Device:     tokenInfo.Device,
-		DeviceID:   tokenInfo.DeviceID,
-		CreateTime: tokenInfo.CreateTime,
-	})
+	return m.logoutTerminals(ctx, tokenInfo.LoginID, removeToken, terminalInfoFromTokenInfo(tokenValue, tokenInfo))
 }
 
 // LogoutByDevice logs out all terminals of a specific device type. LogoutByDevice 根据设备类型登出所有该设备的终端。
@@ -123,8 +118,8 @@ func (m *Manager) Kickout(ctx context.Context, tokenValue string) error {
 		return derror.ErrInvalidToken
 	}
 
-	// Load session by token 根据 Token 加载会话。
-	sess, err := m.GetSessionByToken(ctx, tokenValue)
+	// Validate token and retain metadata for detached-terminal fallback. 校验 Token，并保留元数据用于终端记录缺失时回退。
+	sess, tokenInfo, err := m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
 	if err != nil {
 		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
 		if isTokenInactiveError(err) {
@@ -139,7 +134,7 @@ func (m *Manager) Kickout(ctx context.Context, tokenValue string) error {
 			return []TerminalInfo{info}
 		}
 		return nil
-	}, TokenStateKickOut)
+	}, TokenStateKickOut, terminalInfoFromTokenInfo(tokenValue, tokenInfo))
 }
 
 // KickoutByDevice kicks out all terminals of a specific device type. KickoutByDevice 根据设备类型踢人下线（踢掉该设备类型的所有终端）。
@@ -204,8 +199,8 @@ func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
 		return derror.ErrInvalidToken
 	}
 
-	// Load session by token 根据 Token 加载会话。
-	sess, err := m.GetSessionByToken(ctx, tokenValue)
+	// Validate token and retain metadata for detached-terminal fallback. 校验 Token，并保留元数据用于终端记录缺失时回退。
+	sess, tokenInfo, err := m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
 	if err != nil {
 		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
 		if isTokenInactiveError(err) {
@@ -220,7 +215,7 @@ func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
 			return []TerminalInfo{info}
 		}
 		return nil
-	}, TokenStateReplaced)
+	}, TokenStateReplaced, terminalInfoFromTokenInfo(tokenValue, tokenInfo))
 }
 
 // ReplaceByDevice replaces all terminals of a specific device type. ReplaceByDevice 根据设备类型顶人下线（顶掉该设备类型的所有终端）。
@@ -334,9 +329,9 @@ func (m *Manager) removeTerminalInfosAndTokens(ctx context.Context, sess *Sessio
 		return false, nil, err
 	}
 
-	// Delete session when no terminals remain 如果 session 中没有剩余终端，删除整个 session
+	// Preserve the account session during replacement so the incoming login keeps account-level data. 顶替登录时保留账号 Session，使新登录继续持有账号级数据。
 	destroyedSession := false
-	if len(sess.TerminalInfos) == 0 {
+	if len(sess.TerminalInfos) == 0 && mode != config.LogoutModeReplaced {
 		if err := m.storage.Delete(ctx, m.getSessionKey(sess.LoginID)); err != nil {
 			return false, nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
@@ -384,10 +379,9 @@ func (m *Manager) logoutTerminals(
 
 	// Fall back to detached token metadata when no terminal can be removed. 无法移除终端时回退到脱离会话的 Token 元数据。
 	if len(removed) == 0 {
-		for _, info := range detachedTerminals {
-			if info.Token != "" {
-				removed = append(removed, info)
-			}
+		removed, err = m.resolveDetachedTerminals(ctx, loginID, detachedTerminals)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -462,6 +456,8 @@ func (m *Manager) cleanTokenMetadata(ctx context.Context, tokens []string) error
 		if token == "" {
 			continue
 		}
+		// Invalidate queued maintenance before removing token lifecycle metadata. 删除 Token 生命周期元数据前使排队中的维护任务失效。
+		m.cancelLoginMaintenance(token)
 		keys = append(keys, m.getRenewKey(token), m.getActiveKey(token))
 	}
 
@@ -488,6 +484,43 @@ func (m *Manager) cleanTokenMetadata(ctx context.Context, tokens []string) error
 // TerminalRemovalFunc defines how to remove terminals from a session. TerminalRemovalFunc 定义如何从 Session 中移除终端。
 type TerminalRemovalFunc func(sess *Session) []TerminalInfo
 
+// terminalInfoFromTokenInfo builds terminal metadata when the account session has no matching terminal. terminalInfoFromTokenInfo 在账号 Session 缺少对应终端时根据 TokenInfo 构建终端元数据。
+func terminalInfoFromTokenInfo(tokenValue string, tokenInfo *TokenInfo) TerminalInfo {
+	if tokenInfo == nil {
+		return TerminalInfo{Token: tokenValue}
+	}
+	return TerminalInfo{
+		Token:      tokenValue,
+		LoginID:    tokenInfo.LoginID,
+		Device:     tokenInfo.Device,
+		DeviceID:   tokenInfo.DeviceID,
+		CreateTime: tokenInfo.CreateTime,
+	}
+}
+
+// resolveDetachedTerminals rechecks detached token mappings under the account lock. resolveDetachedTerminals 在账号锁内重新确认脱离终端列表的 Token 映射。
+func (m *Manager) resolveDetachedTerminals(ctx context.Context, loginID string, terminals []TerminalInfo) ([]TerminalInfo, error) {
+	resolved := make([]TerminalInfo, 0, len(terminals))
+	for _, terminal := range terminals {
+		if terminal.Token == "" {
+			continue
+		}
+
+		tokenInfo, err := m.getTokenInfo(ctx, terminal.Token)
+		if err != nil {
+			if isTokenInactiveError(err) {
+				continue
+			}
+			return nil, err
+		}
+		if tokenInfo.LoginID != loginID {
+			continue
+		}
+		resolved = append(resolved, terminalInfoFromTokenInfo(terminal.Token, tokenInfo))
+	}
+	return resolved, nil
+}
+
 // cloneSessionForAliveCheck copies session slices used by alive checks. cloneSessionForAliveCheck 拷贝存活校验依赖的会话切片。
 func cloneSessionForAliveCheck(sess *Session) Session {
 	if sess == nil {
@@ -506,6 +539,7 @@ func (m *Manager) processTerminals(
 	loginID string,
 	removalFunc TerminalRemovalFunc,
 	state TokenState,
+	detachedTerminals ...TerminalInfo,
 ) error {
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(loginID)
@@ -516,28 +550,47 @@ func (m *Manager) processTerminals(
 	// Load session 加载 Session
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
-		// Ignore missing session 忽略不存在的会话。
-		if errors.Is(err, derror.ErrSessionNotFound) {
-			return nil
+		// Keep processing an explicitly supplied token when the account session disappeared concurrently. 账号 Session 并发消失时继续处理显式传入的 Token。
+		if !errors.Is(err, derror.ErrSessionNotFound) {
+			return err
 		}
-		return err
+		sess = nil
 	}
 
-	// Keep original session for alive checks before terminals are removed. 保留移除前的原始会话用于存活校验。
-	originalSession := cloneSessionForAliveCheck(sess)
+	// Apply the removal strategy only when the account session still exists. 仅在账号 Session 仍存在时执行终端移除策略。
+	var originalSession *Session
+	var removedTerminals []TerminalInfo
+	sessionChanged := false
+	if sess != nil {
+		cloned := cloneSessionForAliveCheck(sess)
+		originalSession = &cloned
+		removedTerminals = removalFunc(sess)
+		sessionChanged = len(removedTerminals) > 0
+	}
 
-	// Apply removal strategy 执行移除策略
-	removedTerminals := removalFunc(sess)
+	// Recheck the token mapping when no terminal record can be removed. 无法移除终端记录时重新确认 Token 映射。
+	usedDetachedFallback := false
+	if len(removedTerminals) == 0 {
+		removedTerminals, err = m.resolveDetachedTerminals(ctx, loginID, detachedTerminals)
+		if err != nil {
+			return err
+		}
+		usedDetachedFallback = len(removedTerminals) > 0
+	}
 
 	// Clean each removed token 对每个被移除的 token 执行清理
+	transitionedTerminals := make([]TerminalInfo, 0, len(removedTerminals))
 	for _, info := range removedTerminals {
 		// Read removed token 读取被移除 Token。
 		token := info.Token
 
-		// Active-timeout processing must persist its exact cause; other terminal states only apply to alive tokens. 不活跃超时必须保留精确原因；其他终端状态仅作用于仍有效 Token。
-		shouldSetState := state == TokenStateActiveTimeout
+		// Invalidate queued maintenance before changing the token lifecycle. 修改 Token 生命周期前使排队维护任务失效。
+		m.cancelLoginMaintenance(token)
+
+		// Active-timeout processing must persist its exact cause; other states apply to structurally alive tokens even while temporarily disabled. 不活跃超时必须保留精确原因；其他状态作用于结构性有效的 Token，即使其正处于临时封禁状态。
+		shouldSetState := state == TokenStateActiveTimeout || usedDetachedFallback
 		if !shouldSetState {
-			alive, aliveErr := m.checkTerminalTokenAliveWithContext(ctx, token, nil, &originalSession)
+			alive, aliveErr := m.checkTerminalTokenStructurallyAliveWithContext(ctx, token, nil, originalSession)
 			if aliveErr != nil {
 				return aliveErr
 			}
@@ -548,6 +601,7 @@ func (m *Manager) processTerminals(
 			if err = m.setTokenState(ctx, token, state, m.tokenStateExpiration(ctx, token)); err != nil {
 				return err
 			}
+			transitionedTerminals = append(transitionedTerminals, info)
 		}
 
 		// Delete renew key 删除续期 key
@@ -570,7 +624,7 @@ func (m *Manager) processTerminals(
 	destroySession := false
 
 	// Update session when terminals are removed 存在移除项时更新 Session
-	if len(removedTerminals) > 0 {
+	if sessionChanged {
 		// Delete session when no terminals remain 如果 session 中没有剩余终端，删除整个 session
 		if len(sess.TerminalInfos) == 0 {
 			if err = m.storage.Delete(ctx, m.getSessionKey(loginID)); err != nil {
@@ -607,8 +661,8 @@ func (m *Manager) processTerminals(
 	}
 
 	if event != "" {
-		// Trigger event for each removed terminal 为每个被移除终端触发事件。
-		for _, info := range removedTerminals {
+		// Trigger events only for tokens that entered the requested state. 仅为实际进入目标状态的 Token 触发事件。
+		for _, info := range transitionedTerminals {
 			m.triggerEvent(event, loginID, info.Device, info.DeviceID, info.Token, nil)
 		}
 	}

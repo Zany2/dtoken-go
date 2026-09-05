@@ -170,6 +170,43 @@ func TestManagerBoundaries(t *testing.T) {
 	}
 }
 
+// TestManagerRejectsMismatchedStoredIdentity verifies stored payloads cannot escape their credential namespace. TestManagerRejectsMismatchedStoredIdentity 验证存储载荷不能越过其凭证命名空间。
+func TestManagerRejectsMismatchedStoredIdentity(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestShortKeyManager(time.Minute)
+
+	for _, tt := range []struct {
+		name     string
+		key      string
+		authType string
+	}{
+		{name: "key value", key: "other-key", authType: "test"},
+		{name: "auth type", key: "requested-key", authType: "other"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			stored := &ShortKey{
+				Key:        tt.key,
+				AuthType:   tt.authType,
+				CreateTime: time.Now().Unix(),
+				UpdateTime: time.Now().Unix(),
+				ExpiresIn:  60,
+				Status:     StatusConfirmed,
+			}
+			encoded, err := mgr.serializer.Encode(stored)
+			if err != nil {
+				t.Fatalf("Encode() error = %v", err)
+			}
+			if err = mgr.storage.Set(ctx, mgr.getKey("requested-key"), encoded, time.Minute); err != nil {
+				t.Fatalf("Set() error = %v", err)
+			}
+
+			if _, err = mgr.Validate(ctx, "requested-key"); !errors.Is(err, ErrInvalidShortKey) {
+				t.Fatalf("Validate(mismatched identity) error = %v, want ErrInvalidShortKey", err)
+			}
+		})
+	}
+}
+
 // TestConsumeConstraintMismatchDoesNotConsumeShortKey verifies mismatched constraints preserve the short key. TestConsumeConstraintMismatchDoesNotConsumeShortKey 验证约束不匹配时不会消费短 Key。
 func TestConsumeConstraintMismatchDoesNotConsumeShortKey(t *testing.T) {
 	ctx := context.Background()

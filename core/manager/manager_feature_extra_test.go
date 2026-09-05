@@ -337,6 +337,37 @@ func TestManagerSessionDataBoundaries(t *testing.T) {
 	}
 }
 
+// TestManagerSessionDataByToken validates token-based session data access and logout protection. TestManagerSessionDataByToken 验证基于 Token 的会话数据访问及登出保护。
+func TestManagerSessionDataByToken(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.AutoRenew = false
+	})
+
+	token, err := mgr.Login(ctx, "session-token-user", "web")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if err = mgr.SetSessionValueByToken(ctx, token, " theme ", "dark"); err != nil {
+		t.Fatalf("SetSessionValueByToken() error = %v", err)
+	}
+	if value, ok, err := mgr.GetSessionValueByToken(ctx, token, "theme"); err != nil || !ok || value != "dark" {
+		t.Fatalf("GetSessionValueByToken() = %#v/%v, %v", value, ok, err)
+	}
+	if err = mgr.DeleteSessionValueByToken(ctx, token, "theme"); err != nil {
+		t.Fatalf("DeleteSessionValueByToken() error = %v", err)
+	}
+	if _, ok, err := mgr.GetSessionValueByToken(ctx, token, "theme"); err != nil || ok {
+		t.Fatalf("GetSessionValueByToken(after delete) = ok:%v, err:%v", ok, err)
+	}
+	if err = mgr.Logout(ctx, token); err != nil {
+		t.Fatalf("Logout() error = %v", err)
+	}
+	if err = mgr.SetSessionValueByToken(ctx, token, "theme", "light"); !errors.Is(err, derror.ErrInvalidToken) {
+		t.Fatalf("SetSessionValueByToken(after logout) error = %v, want ErrInvalidToken", err)
+	}
+}
+
 func newTestManagerWithOAuth2(t *testing.T) *Manager {
 	t.Helper()
 
