@@ -244,6 +244,15 @@ func (m *Manager) GetTerminalListByLoginID(ctx context.Context, loginID string, 
 		return nil, derror.ErrIDIsEmpty
 	}
 
+	// Validate the optional filter before reading session state. 读取会话状态前校验可选过滤条件。
+	var targetDevice string
+	if len(device) > 0 {
+		targetDevice = strings.TrimSpace(device[0])
+		if targetDevice == "" {
+			return nil, derror.ErrInvalidParam
+		}
+	}
+
 	// Load session 加载会话。
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
@@ -261,10 +270,6 @@ func (m *Manager) GetTerminalListByLoginID(ctx context.Context, loginID string, 
 
 	// Filter by optional device 按可选设备过滤。
 	if len(device) > 0 {
-		targetDevice := strings.TrimSpace(device[0])
-		if targetDevice == "" {
-			return nil, derror.ErrInvalidParam
-		}
 		return sess.getTerminalsByDevice(targetDevice), nil
 	}
 
@@ -305,6 +310,15 @@ func (m *Manager) GetTokenValueByLoginID(ctx context.Context, loginID string, de
 		return "", derror.ErrIDIsEmpty
 	}
 
+	// Validate the optional filter before reading session state. 读取会话状态前校验可选过滤条件。
+	var targetDevice string
+	if len(device) > 0 {
+		targetDevice = strings.TrimSpace(device[0])
+		if targetDevice == "" {
+			return "", derror.ErrInvalidParam
+		}
+	}
+
 	// Load session 加载会话。
 	sess, err := m.getSession(ctx, loginID)
 	if err != nil {
@@ -318,10 +332,6 @@ func (m *Manager) GetTokenValueByLoginID(ctx context.Context, loginID string, de
 	// Select target terminals 选择目标终端。
 	terminals := sess.TerminalInfos
 	if len(device) > 0 {
-		targetDevice := strings.TrimSpace(device[0])
-		if targetDevice == "" {
-			return "", derror.ErrInvalidParam
-		}
 		terminals = sess.getTerminalsByDevice(targetDevice)
 	}
 
@@ -342,25 +352,29 @@ func (m *Manager) GetTokenValueByLoginID(ctx context.Context, loginID string, de
 
 // SearchTokenValue searches token values by keyword with pagination. SearchTokenValue 按关键词分页搜索 Token 值，size 为 -1 时返回全部。
 func (m *Manager) SearchTokenValue(ctx context.Context, keyword string, start, size int) ([]string, error) {
-	// Build token search pattern 构建 Token 搜索模式。
+	// Treat both the namespace and keyword as literals in the scan pattern. 扫描模式中的命名空间和关键词均按字面量处理。
 	prefix := m.config.KeyPrefix + m.config.AuthType + config.TokenKeyPrefix
-	pattern := prefix + "*" + escapeSearchKeyword(keyword) + "*"
+	pattern := escapeSearchKeyword(prefix) + "*" + escapeSearchKeyword(keyword) + "*"
 	return m.searchValues(ctx, pattern, prefix, start, size)
 }
 
 // SearchSessionId searches session IDs by keyword with pagination. SearchSessionId 按关键词分页搜索 Session ID，size 为 -1 时返回全部。
 func (m *Manager) SearchSessionId(ctx context.Context, keyword string, start, size int) ([]string, error) {
-	// Build session search pattern 构建 Session 搜索模式。
+	// Treat both the namespace and keyword as literals in the scan pattern. 扫描模式中的命名空间和关键词均按字面量处理。
 	prefix := m.config.KeyPrefix + m.config.AuthType + SessionKeyPrefix
-	pattern := prefix + "*" + escapeSearchKeyword(keyword) + "*"
+	pattern := escapeSearchKeyword(prefix) + "*" + escapeSearchKeyword(keyword) + "*"
 	return m.searchValues(ctx, pattern, prefix, start, size)
 }
 
-// escapeSearchKeyword escapes wildcard characters in a search keyword. escapeSearchKeyword 转义搜索关键词中的通配符字符。
+// escapeSearchKeyword escapes literal text embedded in a storage scan pattern. escapeSearchKeyword 转义嵌入存储扫描模式的字面量文本。
 func escapeSearchKeyword(keyword string) string {
 	keyword = strings.ReplaceAll(keyword, "\\", "\\\\")
 	keyword = strings.ReplaceAll(keyword, "*", "\\*")
 	keyword = strings.ReplaceAll(keyword, "?", "\\?")
+
+	// Redis also recognizes character classes in scan patterns. Redis 扫描模式还支持字符集合。
+	keyword = strings.ReplaceAll(keyword, "[", "\\[")
+	keyword = strings.ReplaceAll(keyword, "]", "\\]")
 	return keyword
 }
 

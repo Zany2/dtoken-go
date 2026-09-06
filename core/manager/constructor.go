@@ -121,6 +121,7 @@ func NewManager(
 }
 
 // CloseManager rejects new async work, waits for accepted tasks, and releases manager-owned resources. CloseManager 拒绝新的异步任务，等待已接收任务完成，并释放 Manager 自有资源。
+// Stop request producers first and call from outside manager tasks and listeners to avoid waiting on the caller itself. 先停止业务请求生产方，并在 Manager 任务及监听器之外调用，避免等待调用者自身。
 func (m *Manager) CloseManager() {
 	if m == nil {
 		return

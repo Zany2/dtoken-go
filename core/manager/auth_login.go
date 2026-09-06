@@ -3,6 +3,7 @@ package manager
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"github.com/Zany2/dtoken-go/core/adapter"
@@ -13,7 +14,16 @@ import (
 )
 
 // Login performs user login and returns a token. Login 执行用户登录并返回 token。
+// Device arguments are optional and limited to device type followed by device ID. 设备参数可省略，最多依次提供设备类型和设备 ID。
 func (m *Manager) Login(ctx context.Context, loginID string, deviceAndDeviceID ...string) (string, error) {
+	// Preserve empty-account error precedence before validating device arguments. 校验设备参数前保留空账号错误的优先级。
+	if loginID == "" {
+		return "", derror.ErrIDIsEmpty
+	}
+	if len(deviceAndDeviceID) > 2 {
+		return "", derror.ErrInvalidParam
+	}
+
 	// Delegate to default timeout login 委托默认过期时间登录。
 	device, deviceID := m.getDeviceAndDeviceID(deviceAndDeviceID...)
 
@@ -25,7 +35,16 @@ func (m *Manager) Login(ctx context.Context, loginID string, deviceAndDeviceID .
 }
 
 // LoginWithTimeout performs user login with a custom token timeout and returns a token. LoginWithTimeout 执行用户登录并返回 token，使用指定的过期时间，0 或负数则使用全局配置。
+// Device arguments are optional and limited to device type followed by device ID. 设备参数可省略，最多依次提供设备类型和设备 ID。
 func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, deviceAndDeviceID ...string) (string, error) {
+	// Preserve empty-account error precedence before validating device arguments. 校验设备参数前保留空账号错误的优先级。
+	if loginID == "" {
+		return "", derror.ErrIDIsEmpty
+	}
+	if len(deviceAndDeviceID) > 2 {
+		return "", derror.ErrInvalidParam
+	}
+
 	device, deviceID := m.getDeviceAndDeviceID(deviceAndDeviceID...)
 
 	return m.LoginWithOptions(ctx, LoginOptions{
@@ -235,7 +254,7 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 	}
 
 	// Persist token data after session save. Session 保存后持久化 Token 数据。
-	if err = m.persistLoginToken(ctx, token, tokenInfo, expiration); err != nil {
+	if err = m.persistLoginToken(ctx, token, tokenInfo, expiration, internal.accessID); err != nil {
 		// Remove the terminal appended by this login when token persistence fails. Token 持久化失败时移除本次登录追加的终端。
 		if _, removed := sess.removeLatestTerminalByToken(token); removed {
 			var rollbackErr error
@@ -280,9 +299,14 @@ func (m *Manager) persistLoginToken(
 	token string,
 	tokenInfo TokenInfo,
 	expiration time.Duration,
+	accessID string,
 ) error {
-	// Save token info 保存 token info
-	saved, err := m.saveToStorageIfAbsent(ctx, m.getTokenKey(token), tokenInfo, expiration)
+	// Bind each fresh login independently of token text and second-resolution timestamps. 每次新登录独立绑定，不依赖 Token 文本和秒级时间戳。
+	if accessID == "" {
+		accessID = rand.Text()
+	}
+	record := tokenRecord{TokenInfo: tokenInfo, AccessID: accessID}
+	saved, err := m.saveToStorageIfAbsent(ctx, m.getTokenKey(token), record, expiration)
 	if err != nil {
 		return err
 	}
@@ -541,7 +565,7 @@ func (m *Manager) RenewTimeout(ctx context.Context, tokenValue string, timeout t
 	defer func() { unlock() }()
 
 	// Reload token after acquiring lock 加锁后重新读取 token，避免并发续期失效 token
-	tokenInfo, err = m.getTokenInfo(ctx, tokenValue)
+	record, err := m.getTokenRecord(ctx, tokenValue)
 	if err != nil {
 		return err
 	}
@@ -570,8 +594,9 @@ func (m *Manager) RenewTimeout(ctx context.Context, tokenValue string, timeout t
 	// Record timeout seconds 记录过期秒数。
 	tokenInfo.Timeout = m.timeoutToSeconds(expiration)
 
-	// Persist token with the new timeout 保存 Token 并记录新的有效期
-	if err = m.saveToStorage(ctx, m.getTokenKey(tokenValue), *tokenInfo, expiration); err != nil {
+	// Preserve lifecycle identity while updating the timeout. 更新有效期时保留生命周期标识。
+	record.TokenInfo = *tokenInfo
+	if err = m.saveToStorage(ctx, m.getTokenKey(tokenValue), *record, expiration); err != nil {
 		return err
 	}
 

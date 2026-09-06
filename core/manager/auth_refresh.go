@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
@@ -53,8 +54,24 @@ type RefreshTokenInfo struct {
 	Extra       map[string]any `json:"extra,omitempty"` // Extra stores token extension data. Extra 存储令牌扩展数据。
 }
 
+// refreshTokenRecord extends persisted metadata without changing the public refresh info shape. refreshTokenRecord 扩展持久化元数据，但不改变公开刷新信息结构。
+type refreshTokenRecord struct {
+	RefreshTokenInfo `msgpack:",inline"` // RefreshTokenInfo keeps existing fields flat for compatible codecs. RefreshTokenInfo 保持已有字段平铺，以兼容现有编解码格式。
+	TerminalExtra    map[string]any      `json:"terminalExtra,omitempty" msgpack:",omitempty"` // TerminalExtra survives access-token and session expiration. TerminalExtra 在访问令牌及 Session 过期后仍可保留。
+	AccessID         string              `json:"accessId,omitempty" msgpack:",omitempty"`      // AccessID binds cleanup to the original access lifecycle. AccessID 将清理绑定到原访问生命周期。
+}
+
 // LoginWithRefreshToken logs in and returns access and refresh tokens. LoginWithRefreshToken 登录并返回访问令牌和刷新令牌。
+// Device arguments are optional and limited to device type followed by device ID. 设备参数可省略，最多依次提供设备类型和设备 ID。
 func (m *Manager) LoginWithRefreshToken(ctx context.Context, loginID string, deviceAndDeviceID ...string) (*RefreshTokenPair, error) {
+	// Preserve empty-account error precedence before validating device arguments. 校验设备参数前保留空账号错误的优先级。
+	if loginID == "" {
+		return nil, derror.ErrIDIsEmpty
+	}
+	if len(deviceAndDeviceID) > 2 {
+		return nil, derror.ErrInvalidParam
+	}
+
 	device, deviceID := m.getDeviceAndDeviceID(deviceAndDeviceID...)
 	return m.LoginWithRefreshTokenOptions(ctx, RefreshTokenOptions{
 		LoginOptions: LoginOptions{
@@ -82,6 +99,11 @@ func (m *Manager) loginWithRefreshTokenOptions(ctx context.Context, opts Refresh
 
 // loginWithRefreshTokenOptionsInternal logs in and issues a refresh token with internal login controls. loginWithRefreshTokenOptionsInternal 使用内部登录控制参数登录并签发刷新令牌。
 func (m *Manager) loginWithRefreshTokenOptionsInternal(ctx context.Context, opts RefreshTokenOptions, internal loginInternalOptions) (*RefreshTokenPair, error) {
+	// Choose the original identity before login callbacks can replace the token mapping. 登录回调可能替换 Token 映射，因此提前确定原始身份。
+	if internal.accessID == "" {
+		internal.accessID = rand.Text()
+	}
+
 	// Disable sharing so refresh-token login always owns a dedicated access token. 禁用共享，确保刷新令牌登录独占新的访问 Token。
 	isShare := false
 	opts.LoginOptions.IsShare = &isShare
@@ -90,16 +112,19 @@ func (m *Manager) loginWithRefreshTokenOptionsInternal(ctx context.Context, opts
 		return nil, err
 	}
 
-	// Remove stale refresh mapping before issuing the new pair. 签发新令牌对前清理旧的刷新令牌映射。
-	if err = m.cleanRefreshTokenByAccessToken(ctx, accessToken); err != nil {
-		_ = m.Logout(ctx, accessToken)
-		return nil, err
+	// Preserve caller identity rather than adopting whatever currently occupies the token key. 保留调用方的原始身份，不接管当前占据 Token 键的其他登录。
+	expected := refreshTokenRecord{
+		RefreshTokenInfo: RefreshTokenInfo{
+			LoginID: opts.LoginID, AccessToken: accessToken,
+			Device: strings.TrimSpace(opts.Device), DeviceID: strings.TrimSpace(opts.DeviceID),
+		},
+		AccessID: internal.accessID,
 	}
 
 	// Keep token-pair creation all-or-nothing for callers. 对调用方保持令牌对创建的整体一致性。
-	pair, err := m.issueRefreshToken(ctx, accessToken, opts.RefreshTimeout)
+	pair, err := m.issueRefreshToken(ctx, &expected, opts.RefreshTimeout, opts.TerminalExtra)
 	if err != nil {
-		_ = m.Logout(ctx, accessToken)
+		_ = m.removeRefreshAccessToken(ctx, &expected)
 		return nil, err
 	}
 	return pair, nil
@@ -144,12 +169,13 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 	}
 	if consumedInfo.LoginID != info.LoginID ||
 		consumedInfo.AccessToken != info.AccessToken ||
+		consumedInfo.AccessID != info.AccessID ||
 		consumedInfo.CreateTime != info.CreateTime {
 		return nil, derror.ErrInvalidRefreshToken
 	}
 	info = consumedInfo
-	if err = m.storage.Delete(ctx, m.getTokenRefreshKey(info.AccessToken)); err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	if err = m.removeRefreshTokenReverseLookup(ctx, info.AccessToken, refreshToken); err != nil {
+		return nil, err
 	}
 
 	// Release the account lock before the replacement login acquires it. 替换登录再次获取账号锁前先释放当前锁。
@@ -157,6 +183,7 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 	unlock = func() {}
 
 	// Create the replacement pair without applying normal concurrency eviction again. 创建替换令牌对时跳过常规并发顶替处理。
+	replacementAccessID := rand.Text()
 	pair, err := m.loginWithRefreshTokenOptionsInternal(ctx, RefreshTokenOptions{
 		LoginOptions: LoginOptions{
 			LoginID:       info.LoginID,
@@ -165,15 +192,16 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 			Timeout:       secondsToDuration(info.AccessTTL),
 			ActiveTimeout: secondsToDuration(info.ActiveTTL),
 			Extra:         info.Extra,
+			TerminalExtra: info.TerminalExtra,
 		},
 		RefreshTimeout: secondsToDuration(info.ExpiresIn),
-	}, loginInternalOptions{skipConcurrencyControl: true})
+	}, loginInternalOptions{skipConcurrencyControl: true, accessID: replacementAccessID})
 	if err != nil {
 		return nil, err
 	}
 
 	// Retire old access token after the replacement pair is available. 新令牌对可用后再下线旧访问 Token。
-	if err = m.logoutRotatedAccessToken(ctx, info, pair); err != nil {
+	if err = m.logoutRotatedAccessToken(ctx, info, pair, replacementAccessID); err != nil {
 		return nil, err
 	}
 	m.triggerRefreshTokenEvent(listener.EventRefreshTokenRotate, pair, listener.ActionRotate)
@@ -220,18 +248,16 @@ func (m *Manager) RevokeRefreshToken(ctx context.Context, refreshToken string) e
 		return err
 	}
 
-	// Delete the reverse lookup while the account operation remains serialized. 在账号操作保持串行时删除反向索引。
-	if info.AccessToken != "" {
-		if err = m.storage.Delete(ctx, m.getTokenRefreshKey(info.AccessToken)); err != nil {
-			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-		}
+	// Delete only the reverse lookup still owned by the consumed refresh token. 仅删除仍属于已消费刷新令牌的反向索引。
+	if err = m.removeRefreshTokenReverseLookup(ctx, info.AccessToken, refreshToken); err != nil {
+		return err
 	}
 
 	// Release before access-token cleanup re-enters the same account lock. 清理访问 Token 再次进入账号锁前先释放。
 	unlock()
 	unlock = func() {}
 	if info.AccessToken != "" {
-		// Remove the related access terminal even when access token already expired. 即使访问 Token 已过期，也移除关联访问终端。
+		// Remove only an access lifecycle that can still be identified. 仅移除仍能确认身份的访问生命周期。
 		if err = m.removeRefreshAccessToken(ctx, info); err != nil {
 			return err
 		}
@@ -257,10 +283,35 @@ func (m *Manager) GetRefreshTokenTTL(ctx context.Context, refreshToken string) (
 }
 
 // issueRefreshToken creates a refresh token for an existing access token. issueRefreshToken 为已有访问令牌创建刷新令牌。
-func (m *Manager) issueRefreshToken(ctx context.Context, accessToken string, refreshTimeout time.Duration) (*RefreshTokenPair, error) {
+func (m *Manager) issueRefreshToken(ctx context.Context, expected *refreshTokenRecord, refreshTimeout time.Duration, terminalExtra map[string]any) (*RefreshTokenPair, error) {
+	// Serialize binding checks and issuance with account lifecycle writes. 将绑定校验、签发与账号生命周期写入串行化。
+	unlock := m.lockLoginWrite(expected.LoginID)
+	defer unlock()
+	accessToken := expected.AccessToken
+
 	// Load access token metadata used to bind the refresh token. 加载用于绑定刷新令牌的访问 Token 元数据。
-	tokenInfo, err := m.getTokenInfo(ctx, accessToken)
+	tokenInfo, err := m.getTokenRecord(ctx, accessToken)
 	if err != nil {
+		return nil, err
+	}
+	if tokenInfo.LoginID != expected.LoginID || expected.AccessID == "" || tokenInfo.AccessID != expected.AccessID {
+		return nil, derror.ErrInvalidToken
+	}
+
+	// Callbacks may have removed the session or disabled the original login. 回调可能已移除 Session 或封禁原登录。
+	if err = m.checkLoginDisableState(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID); err != nil {
+		return nil, err
+	}
+	alive, err := m.checkTerminalTokenStructurallyAliveWithContext(ctx, accessToken, &tokenInfo.TokenInfo, nil)
+	if err != nil {
+		return nil, err
+	}
+	if !alive {
+		return nil, derror.ErrInvalidToken
+	}
+
+	// Only a verified original login may remove its stale reverse mapping. 只有确认原登录身份后才能清理其陈旧反向映射。
+	if err = m.cleanRefreshTokenByAccessToken(ctx, accessToken); err != nil {
 		return nil, err
 	}
 
@@ -290,7 +341,10 @@ func (m *Manager) issueRefreshToken(ctx context.Context, accessToken string, ref
 		ActiveTTL:   tokenInfo.ActiveTimeout,
 		Extra:       tokenInfo.Extra,
 	}
-	saved, err := m.saveToStorageIfAbsent(ctx, m.getRefreshTokenKey(refreshToken), info, expiration)
+
+	// Persist terminal data with the refresh lifetime instead of relying on the shorter-lived session. 按刷新令牌生命周期保存终端数据，不依赖有效期较短的 Session。
+	record := refreshTokenRecord{RefreshTokenInfo: info, TerminalExtra: terminalExtra, AccessID: tokenInfo.AccessID}
+	saved, err := m.saveToStorageIfAbsent(ctx, m.getRefreshTokenKey(refreshToken), record, expiration)
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +353,7 @@ func (m *Manager) issueRefreshToken(ctx context.Context, accessToken string, ref
 	}
 
 	// Store reverse lookup no longer than either side. 反向索引有效期不超过访问令牌或刷新令牌任一侧。
-	reverseExpiration := m.resolveTokenExpiration(tokenInfo)
+	reverseExpiration := m.resolveTokenExpiration(&tokenInfo.TokenInfo)
 	if expiration > 0 && (reverseExpiration <= 0 || reverseExpiration > expiration) {
 		reverseExpiration = expiration
 	}
@@ -326,7 +380,7 @@ func (m *Manager) issueRefreshToken(ctx context.Context, accessToken string, ref
 }
 
 // getRefreshTokenInfo loads refresh token metadata. getRefreshTokenInfo 加载刷新令牌元数据。
-func (m *Manager) getRefreshTokenInfo(ctx context.Context, refreshToken string) (*RefreshTokenInfo, error) {
+func (m *Manager) getRefreshTokenInfo(ctx context.Context, refreshToken string) (*refreshTokenRecord, error) {
 	if refreshToken == "" {
 		return nil, derror.ErrInvalidRefreshToken
 	}
@@ -341,7 +395,7 @@ func (m *Manager) getRefreshTokenInfo(ctx context.Context, refreshToken string) 
 }
 
 // consumeRefreshToken removes and returns refresh metadata once. consumeRefreshToken 一次性删除并返回刷新令牌元数据。
-func (m *Manager) consumeRefreshToken(ctx context.Context, refreshToken string) (*RefreshTokenInfo, error) {
+func (m *Manager) consumeRefreshToken(ctx context.Context, refreshToken string) (*refreshTokenRecord, error) {
 	if refreshToken == "" {
 		return nil, derror.ErrInvalidRefreshToken
 	}
@@ -374,12 +428,14 @@ func (m *Manager) consumeRefreshToken(ctx context.Context, refreshToken string) 
 }
 
 // decodeRefreshTokenInfo decodes stored refresh metadata. decodeRefreshTokenInfo 解码存储中的刷新令牌元数据。
-func (m *Manager) decodeRefreshTokenInfo(data any) (*RefreshTokenInfo, error) {
+func (m *Manager) decodeRefreshTokenInfo(data any) (*refreshTokenRecord, error) {
 	rawData, err := utils.ToBytes(data)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
 	}
-	var info RefreshTokenInfo
+
+	// Legacy records decode without terminal data or lifecycle identity. 旧记录解码后可缺少终端数据和生命周期标识。
+	var info refreshTokenRecord
 	if err = m.serializer.Decode(rawData, &info); err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
@@ -419,8 +475,32 @@ func (m *Manager) cleanRefreshTokenByAccessToken(ctx context.Context, accessToke
 	return nil
 }
 
+// removeRefreshTokenReverseLookup deletes a matching reverse binding while the caller holds the account lock. removeRefreshTokenReverseLookup 在调用方持有账号锁时删除匹配的反向绑定。
+func (m *Manager) removeRefreshTokenReverseLookup(ctx context.Context, accessToken, refreshToken string) error {
+	if accessToken == "" {
+		return nil
+	}
+	key := m.getTokenRefreshKey(accessToken)
+	data, err := m.storage.Get(ctx, key)
+	if err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	if data == nil {
+		return nil
+	}
+	value, err := utils.ToBytes(data)
+	if err != nil || string(value) != refreshToken {
+		// Unverifiable or newer bindings do not belong to this cleanup. 无法确认或较新的绑定不属于本次清理。
+		return nil
+	}
+	if err = m.storage.Delete(ctx, key); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	return nil
+}
+
 // removeRefreshAccessToken removes the access terminal bound to refresh metadata. removeRefreshAccessToken 移除刷新元数据绑定的访问终端。
-func (m *Manager) removeRefreshAccessToken(ctx context.Context, info *RefreshTokenInfo) error {
+func (m *Manager) removeRefreshAccessToken(ctx context.Context, info *refreshTokenRecord) error {
 	if info == nil || info.LoginID == "" || info.AccessToken == "" {
 		return nil
 	}
@@ -432,7 +512,24 @@ func (m *Manager) removeRefreshAccessToken(ctx context.Context, info *RefreshTok
 		Device:   info.Device,
 		DeviceID: info.DeviceID,
 	}
-	return m.logoutTerminals(ctx, info.LoginID, func(sess *Session) []TerminalInfo {
+	return m.logoutTerminalsIf(ctx, info.LoginID, func() (bool, error) {
+		current, err := m.getTokenRecord(ctx, info.AccessToken)
+		if err != nil {
+			if isTokenInactiveError(err) {
+				return false, nil
+			}
+			return false, err
+		}
+		if current.LoginID != info.LoginID || current.AccessID != info.AccessID {
+			return false, nil
+		}
+
+		// Legacy-to-legacy matching is best effort; new-format logins never match missing identities. 旧记录之间尽力匹配；缺失标识时绝不匹配新格式登录。
+		if info.AccessID == "" {
+			return current.Device == info.Device && current.DeviceID == info.DeviceID && current.CreateTime <= info.CreateTime, nil
+		}
+		return true, nil
+	}, func(sess *Session) []TerminalInfo {
 		if terminal, ok := sess.removeTerminalByToken(info.AccessToken); ok {
 			return []TerminalInfo{terminal}
 		}
@@ -441,14 +538,20 @@ func (m *Manager) removeRefreshAccessToken(ctx context.Context, info *RefreshTok
 }
 
 // logoutRotatedAccessToken logs out old access token after rotation. logoutRotatedAccessToken 在轮换后登出旧访问令牌。
-func (m *Manager) logoutRotatedAccessToken(ctx context.Context, oldInfo *RefreshTokenInfo, pair *RefreshTokenPair) error {
+func (m *Manager) logoutRotatedAccessToken(ctx context.Context, oldInfo *refreshTokenRecord, pair *RefreshTokenPair, replacementAccessID string) error {
 	if oldInfo == nil || oldInfo.AccessToken == "" {
 		return nil
 	}
 	if err := m.removeRefreshAccessToken(ctx, oldInfo); err != nil {
 		if pair != nil {
-			_ = m.cleanRefreshTokenByAccessToken(ctx, pair.AccessToken)
-			_ = m.Logout(ctx, pair.AccessToken)
+			// Failure cleanup owns only the replacement lifecycle, not a later login using its token text. 失败清理仅拥有替代生命周期，不拥有后续复用其 Token 文本的登录。
+			_ = m.removeRefreshAccessToken(ctx, &refreshTokenRecord{
+				RefreshTokenInfo: RefreshTokenInfo{
+					LoginID: pair.LoginID, AccessToken: pair.AccessToken,
+					Device: pair.Device, DeviceID: pair.DeviceID,
+				},
+				AccessID: replacementAccessID,
+			})
 		}
 		return err
 	}

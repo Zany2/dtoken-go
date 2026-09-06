@@ -49,6 +49,21 @@ func (m *Manager) getSession(ctx context.Context, loginID string) (*Session, err
 
 // getTokenInfo retrieves token information. getTokenInfo 获取 Token 信息。
 func (m *Manager) getTokenInfo(ctx context.Context, tokenValue string) (*TokenInfo, error) {
+	record, err := m.getTokenRecord(ctx, tokenValue)
+	if err != nil {
+		return nil, err
+	}
+	return &record.TokenInfo, nil
+}
+
+// tokenRecord preserves login identity without extending the public token metadata. tokenRecord 保留登录身份，但不扩展公开 Token 元数据。
+type tokenRecord struct {
+	TokenInfo `msgpack:",inline"` // TokenInfo keeps existing storage fields flat. TokenInfo 保持已有存储字段平铺。
+	AccessID  string              `json:"accessId,omitempty" msgpack:",omitempty"` // AccessID distinguishes lifecycles that reuse a token value. AccessID 区分复用同一 Token 值的生命周期。
+}
+
+// getTokenRecord loads token metadata together with its optional lifecycle identity. getTokenRecord 加载 Token 元数据及可选的生命周期标识。
+func (m *Manager) getTokenRecord(ctx context.Context, tokenValue string) (*tokenRecord, error) {
 	// Validate token value 校验 Token 值。
 	if tokenValue == "" {
 		return nil, derror.ErrInvalidToken
@@ -77,7 +92,7 @@ func (m *Manager) getTokenInfo(ctx context.Context, tokenValue string) (*TokenIn
 	}
 
 	// Decode token info 解码 Token 信息。
-	var tokenInfo TokenInfo
+	var tokenInfo tokenRecord
 	err = m.serializer.Decode(tokenInfoBytes, &tokenInfo)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
@@ -169,8 +184,13 @@ func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenV
 	if activeExpired {
 		if opts.lockHeld {
 			// Mark active timeout without reentering the same login lock. 已持锁时不重复进入同一登录锁。
+			attached := sess.hasTerminalToken(tokenValue)
 			if err = m.markActiveTimeoutLocked(ctx, tokenInfo.LoginID, tokenValue, sess); err != nil {
 				return nil, nil, err
+			}
+			// Only a changed session participates in timeout lifecycle events. 只有实际变更的 Session 才参与超时生命周期事件。
+			if !attached {
+				return nil, tokenInfo, derror.ErrActiveTimeout
 			}
 			return sess, tokenInfo, derror.ErrActiveTimeout
 		}
@@ -237,13 +257,20 @@ func (m *Manager) inspectLoginToken(ctx context.Context, tokenValue string) (*To
 
 // submitLoginMaintenance schedules renewal and active refresh after validation. submitLoginMaintenance 在校验成功后调度续期和活跃刷新。
 func (m *Manager) submitLoginMaintenance(ctx context.Context, tokenValue string, tokenInfo *TokenInfo, activeTimeout int64) {
+	if submit := m.prepareLoginMaintenance(ctx, tokenValue, tokenInfo, activeTimeout); submit != nil {
+		submit()
+	}
+}
+
+// prepareLoginMaintenance reserves maintenance now and returns submission for use after unlocking. prepareLoginMaintenance 立即预留维护任务，返回供解锁后调用的提交函数。
+func (m *Manager) prepareLoginMaintenance(ctx context.Context, tokenValue string, tokenInfo *TokenInfo, activeTimeout int64) func() {
 	if tokenInfo == nil || tokenValue == "" || tokenInfo.LoginID == "" {
-		return
+		return nil
 	}
 
 	// Skip task coordination when no maintenance feature is enabled. 未启用任何维护功能时跳过任务协调。
 	if !m.config.AutoRenew && activeTimeout <= 0 {
-		return
+		return nil
 	}
 
 	// Record request time instead of worker execution time for active-timeout semantics. 记录请求时间而非工作线程执行时间，以保持活跃超时语义准确。
@@ -255,7 +282,7 @@ func (m *Manager) submitLoginMaintenance(ctx context.Context, tokenValue string,
 	// Reserve one task before storage checks so concurrent requests do not repeat maintenance reads. 存储检查前登记唯一任务，避免并发请求重复执行维护读取。
 	generation, reserved := m.beginLoginMaintenance(tokenValue, activeAt, false)
 	if !reserved {
-		return
+		return nil
 	}
 
 	// Active maintenance already needs a worker; otherwise submit only when timeout renewal is due. 活跃维护本身需要工作线程；否则仅在 Token 超时续期到期时提交。
@@ -265,17 +292,19 @@ func (m *Manager) submitLoginMaintenance(ctx context.Context, tokenValue string,
 	}
 	if !checkRenew && activeTimeout <= 0 {
 		m.finishLoginMaintenance(tokenValue, generation)
-		return
+		return nil
 	}
 
 	loginID := tokenInfo.LoginID
 	createTime := tokenInfo.CreateTime
-	accepted := m.submitAsync("check login maintenance", func() {
-		defer m.finishLoginMaintenance(tokenValue, generation)
-		m.runLoginMaintenance(tokenValue, loginID, createTime, generation, checkRenew, true, activeTimeout > 0)
-	})
-	if !accepted {
-		m.finishLoginMaintenance(tokenValue, generation)
+	return func() {
+		accepted := m.submitAsync("check login maintenance", func() {
+			defer m.finishLoginMaintenance(tokenValue, generation)
+			m.runLoginMaintenance(tokenValue, loginID, createTime, generation, checkRenew, true, activeTimeout > 0)
+		})
+		if !accepted {
+			m.finishLoginMaintenance(tokenValue, generation)
+		}
 	}
 }
 

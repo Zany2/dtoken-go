@@ -3,6 +3,7 @@ package manager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/Zany2/dtoken-go/core/derror"
@@ -79,17 +80,32 @@ func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, 
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(lockedLoginID)
 
-	// Release lock on function exit 函数退出时释放锁。
-	defer func() { unlock() }()
+	// Submit prepared maintenance only after releasing the account lock, including no-op writes. 包括无效写入在内，均在释放账号锁后提交已准备的维护任务。
+	var submitMaintenance func()
+	defer func() {
+		unlock()
+		if submitMaintenance != nil {
+			submitMaintenance()
+		}
+	}()
 
-	// Revalidate under lock and reuse loaded session 锁内重新校验并复用已加载会话。
-	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	// Revalidate without reentering the lock or submitting an inline worker. 重新校验时不重复加锁，也不提交内联任务。
+	sess, tokenInfo, err := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue)
 	if err != nil {
+		if errors.Is(err, derror.ErrActiveTimeout) && tokenInfo != nil {
+			unlock()
+			unlock = func() {}
+			if sess != nil && len(sess.TerminalInfos) == 0 {
+				m.triggerEvent(listener.EventDestroySession, tokenInfo.LoginID, "", "", "", nil)
+			}
+			m.triggerEvent(listener.EventActiveTimeout, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID, tokenValue, nil)
+		}
 		return err
 	}
 	if tokenInfo.LoginID != lockedLoginID {
 		return derror.ErrInvalidToken
 	}
+	submitMaintenance = m.prepareLoginMaintenance(ctx, tokenValue, tokenInfo, m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout))
 
 	// Skip persistence and events when permissions are unchanged. 权限未变化时跳过持久化与事件。
 	added := sess.addPermissions(permissions...)
@@ -184,17 +200,32 @@ func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue strin
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(lockedLoginID)
 
-	// Release lock on function exit 函数退出时释放锁。
-	defer func() { unlock() }()
+	// Submit prepared maintenance only after releasing the account lock, including no-op writes. 包括无效写入在内，均在释放账号锁后提交已准备的维护任务。
+	var submitMaintenance func()
+	defer func() {
+		unlock()
+		if submitMaintenance != nil {
+			submitMaintenance()
+		}
+	}()
 
-	// Revalidate under lock and reuse loaded session 锁内重新校验并复用已加载会话。
-	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	// Revalidate without reentering the lock or submitting an inline worker. 重新校验时不重复加锁，也不提交内联任务。
+	sess, tokenInfo, err := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue)
 	if err != nil {
+		if errors.Is(err, derror.ErrActiveTimeout) && tokenInfo != nil {
+			unlock()
+			unlock = func() {}
+			if sess != nil && len(sess.TerminalInfos) == 0 {
+				m.triggerEvent(listener.EventDestroySession, tokenInfo.LoginID, "", "", "", nil)
+			}
+			m.triggerEvent(listener.EventActiveTimeout, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID, tokenValue, nil)
+		}
 		return err
 	}
 	if tokenInfo.LoginID != lockedLoginID {
 		return derror.ErrInvalidToken
 	}
+	submitMaintenance = m.prepareLoginMaintenance(ctx, tokenValue, tokenInfo, m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout))
 
 	// Skip persistence and events when permissions are unchanged. 权限未变化时跳过持久化与事件。
 	removed := sess.removePermissions(permissions...)

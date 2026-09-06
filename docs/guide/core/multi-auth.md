@@ -57,6 +57,8 @@ adminToken, _ := dtoken.Login(ctx, "admin-1", "", "", "admin")
 
 Managers own and close Storage, Logger, and Pool components configured through a Builder by default. `ComponentOwnership` is a complete policy: every field must be set explicitly because omitted boolean fields are `false`. For shared components, set the corresponding field to `false`; the caller then closes that shared component once during application shutdown. A caller-owned Pool must remain running until all managers that use it have closed, because each manager waits for its accepted asynchronous tasks during shutdown.
 
+Call `CloseManager()` from the application's external shutdown flow after stopping new business requests and waiting for in-flight synchronous calls. Do not call it synchronously inside a manager task or event listener: shutdown waits for accepted tasks and listeners, which can include the caller itself. A callback that needs shutdown should signal the application lifecycle controller and return. Business calls after shutdown are not supported; `CloseManager` is not a request-draining barrier.
+
 `BuildAndSetManager` can also override and register `AuthType` during construction:
 
 ```go

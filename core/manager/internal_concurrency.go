@@ -183,15 +183,17 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 	// Scan candidates from newest to oldest 从新到旧扫描候选终端。
 	var terminalInfo TerminalInfo
 	var tokenInfo *TokenInfo
+	var record *tokenRecord
 	for i := len(candidates) - 1; i >= 0; i-- {
 		candidate := candidates[i]
-		candidateInfo, err := m.getTokenInfo(ctx, candidate.Token)
+		candidateRecord, err := m.getTokenRecord(ctx, candidate.Token)
 		if err != nil {
 			if isTokenInactiveError(err) {
 				continue
 			}
 			return "", err
 		}
+		candidateInfo := &candidateRecord.TokenInfo
 
 		// Require the session terminal and token mapping to describe the same lifecycle. 要求 Session 终端与 Token 映射描述同一生命周期。
 		if candidate.LoginID != sess.LoginID ||
@@ -209,6 +211,7 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 		if alive {
 			terminalInfo = candidate
 			tokenInfo = candidateInfo
+			record = candidateRecord
 			break
 		}
 	}
@@ -225,7 +228,7 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 	}
 
 	// Renew the original token mapping without rebuilding identity from session metadata. 续期原 Token 映射，不使用 Session 元数据重建身份。
-	if err := m.saveToStorage(ctx, m.getTokenKey(terminalInfo.Token), *tokenInfo, expiration); err != nil {
+	if err := m.saveToStorage(ctx, m.getTokenKey(terminalInfo.Token), *record, expiration); err != nil {
 		return "", err
 	}
 

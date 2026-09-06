@@ -94,7 +94,8 @@ type loginPolicy struct {
 
 // loginInternalOptions carries manager-only login controls. loginInternalOptions 承载 manager 内部登录控制参数。
 type loginInternalOptions struct {
-	skipConcurrencyControl bool // skipConcurrencyControl skips login concurrency handling. skipConcurrencyControl 跳过登录并发策略处理。
+	skipConcurrencyControl bool   // skipConcurrencyControl skips login concurrency handling. skipConcurrencyControl 跳过登录并发策略处理。
+	accessID               string // accessID binds follow-up work to this fresh login before callbacks run. accessID 在回调执行前将后续操作绑定到本次新登录。
 }
 
 // concurrencyResult describes the outcome of concurrency handling. concurrencyResult 描述并发策略处理结果。

@@ -78,10 +78,16 @@ func (m *Manager) LogoutByDevice(ctx context.Context, loginID string, device str
 }
 
 // LogoutByDeviceAndDeviceID logs out a user by device type and device ID. LogoutByDeviceAndDeviceID 根据设备类型和设备ID登出用户。
+// Exactly two device arguments are required. 必须提供设备类型和设备 ID 两个参数。
 func (m *Manager) LogoutByDeviceAndDeviceID(ctx context.Context, loginID string, deviceAndDeviceID ...string) error {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
+	}
+
+	// Reject ambiguous device arguments before any terminal mutation. 修改终端前拒绝含糊的设备参数。
+	if len(deviceAndDeviceID) != 2 {
+		return derror.ErrInvalidParam
 	}
 
 	// Parse device fields 解析设备字段。
@@ -159,10 +165,16 @@ func (m *Manager) KickoutByDevice(ctx context.Context, loginID string, device st
 }
 
 // KickoutByDeviceAndDeviceID kicks out a user by device type and device ID. KickoutByDeviceAndDeviceID 根据设备类型和设备ID踢人下线。
+// Exactly two device arguments are required. 必须提供设备类型和设备 ID 两个参数。
 func (m *Manager) KickoutByDeviceAndDeviceID(ctx context.Context, loginID string, deviceAndDeviceID ...string) error {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
+	}
+
+	// Reject ambiguous device arguments before any terminal mutation. 修改终端前拒绝含糊的设备参数。
+	if len(deviceAndDeviceID) != 2 {
+		return derror.ErrInvalidParam
 	}
 
 	// Parse device fields 解析设备字段。
@@ -240,10 +252,16 @@ func (m *Manager) ReplaceByDevice(ctx context.Context, loginID string, device st
 }
 
 // ReplaceByDeviceAndDeviceID replaces a user session by device type and device ID. ReplaceByDeviceAndDeviceID 根据设备类型和设备ID顶人下线。
+// Exactly two device arguments are required. 必须提供设备类型和设备 ID 两个参数。
 func (m *Manager) ReplaceByDeviceAndDeviceID(ctx context.Context, loginID string, deviceAndDeviceID ...string) error {
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
+	}
+
+	// Reject ambiguous device arguments before any terminal mutation. 修改终端前拒绝含糊的设备参数。
+	if len(deviceAndDeviceID) != 2 {
+		return derror.ErrInvalidParam
 	}
 
 	// Parse device fields 解析设备字段。
@@ -353,11 +371,30 @@ func (m *Manager) logoutTerminals(
 	removalFunc func(*Session) []TerminalInfo,
 	detachedTerminals ...TerminalInfo,
 ) error {
+	return m.logoutTerminalsIf(ctx, loginID, nil, removalFunc, detachedTerminals...)
+}
+
+// logoutTerminalsIf checks an optional binding under the same account lock as cleanup. logoutTerminalsIf 在与清理相同的账号锁内检查可选绑定。
+func (m *Manager) logoutTerminalsIf(
+	ctx context.Context,
+	loginID string,
+	checkBinding func() (bool, error),
+	removalFunc func(*Session) []TerminalInfo,
+	detachedTerminals ...TerminalInfo,
+) error {
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(loginID)
 
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
+
+	// Reject stale ownership before either session removal or detached-token fallback. 移除 Session 终端或回退清理脱离终端的 Token 前拒绝陈旧归属。
+	if checkBinding != nil {
+		matched, err := checkBinding()
+		if err != nil || !matched {
+			return err
+		}
+	}
 
 	// Load session 加载会话。
 	sess, err := m.getSession(ctx, loginID)

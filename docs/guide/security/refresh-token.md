@@ -27,6 +27,8 @@ fmt.Println(pair.RefreshExpiresIn)
 
 `AccessToken` is used to access protected APIs. `RefreshToken` is stored by the client and used only to request a fresh token pair.
 
+Login callbacks run before refresh issuance. Issuance rechecks the original login identity and active session under the account lock. If a callback logs out and reuses the access-token value for another login, the outer call fails instead of attaching a refresh token to that replacement. Failure cleanup is also restricted to the original lifecycle; it does not undo a later login.
+
 ## Login With Options
 
 Use `LoginWithRefreshTokenOptions(...)` when a single login needs custom timeout, device, extra data, or concurrency behavior.
@@ -57,10 +59,19 @@ Refresh is a rotation operation:
 
 1. validates the refresh token
 2. rejects disabled accounts or disabled devices
-3. revokes the old access token and old refresh token
-4. issues a fresh access token and refresh token
+3. consumes the old refresh token once and removes only its own reverse lookup
+4. issues a fresh access token and refresh token without repeating normal concurrency eviction
+5. retires the old access token only if it still belongs to the original login lifecycle
+
+If replacement issuance fails, the old refresh token has already been consumed, but the old access token is not proactively logged out.
 
 The refresh token is independent from the old access token TTL. If the access token has expired but the refresh token is still valid, refresh can still succeed.
+
+Rotation preserves the login-time `Extra` (token data) and `TerminalExtra` (terminal data) separately, including when the old access token and Session have expired. Terminal data is stored as an optional field in the internal refresh record; existing public types and storage keys are unchanged. Older records without this field remain usable, but rotate without terminal extension data.
+
+New logins have a random lifecycle identity in the internal access record, also saved with the refresh record. Renewal and shared login preserve it. Reusing the same access-token text, even within one second, creates a different identity: rotating or revoking an old refresh token must not remove the new login, its metadata, or its refresh binding. Cleanup rechecks this identity under the account lock; if the access record is already absent or inactive, it skips access-side cleanup. Expired terminal entries remain subject to normal session expiration or pruning.
+
+Legacy pairs without lifecycle identities remain readable and refreshable. Access cleanup between two legacy records uses account, device, and creation-time checks on a best-effort basis; it cannot reliably distinguish token reuse that already happened before this upgrade. A legacy refresh record never matches a new-format access record. All writers sharing the storage should be upgraded: an older writer may drop the identity when rewriting token metadata. This does not introduce distributed transactions or require CAS support from custom storage.
 
 ## Revoke Flow
 
@@ -68,7 +79,7 @@ The refresh token is independent from the old access token TTL. If the access to
 err := dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
 ```
 
-Revoking a refresh token also logs out the related access token.
+Revoking a refresh token also logs out its original access token when the lifecycle binding still matches. A later login that reuses the same token value is left untouched.
 
 ## TTL
 

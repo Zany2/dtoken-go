@@ -27,6 +27,8 @@ fmt.Println(pair.RefreshExpiresIn)
 
 `AccessToken` 用于访问受保护接口。`RefreshToken` 由客户端保存，只用于换取新的令牌对。
 
+登录回调先于刷新令牌签发执行。签发会在账号锁内重新检查原登录身份和有效会话。如果回调中登出并复用同值 access token 创建了其他登录，外层调用会失败，不会为替代登录绑定刷新令牌。失败清理也仅作用于原生命周期，不会撤销后续登录。
+
 ## 使用选项登录
 
 如果单次登录需要设置自定义有效期、设备、扩展数据或并发登录策略，可以使用 `LoginWithRefreshTokenOptions(...)`。
@@ -57,10 +59,19 @@ if err != nil {
 
 1. 校验 refresh token
 2. 拒绝已封禁账号或已封禁设备
-3. 撤销旧 access token 和旧 refresh token
-4. 签发新的 access token 和 refresh token
+3. 一次性消费旧 refresh token，仅移除属于它的反向索引
+4. 签发新的 access token 和 refresh token，不重复执行常规并发顶替
+5. 确认旧 access token 仍属于原登录生命周期后，再将其下线
+
+如果新令牌对签发失败，旧 refresh token 已被消费，但不会主动登出旧 access token。
 
 Refresh token 不依赖旧 access token 的 TTL。只要 refresh token 仍有效，即使 access token 已过期，也可以刷新成功。
+
+轮换会分别保留登录时的 `Extra`（Token 扩展数据）和 `TerminalExtra`（终端扩展数据），即使旧 access token 和 Session 已过期也不受影响。终端数据作为可选字段保存在内部刷新记录中，现有公开类型和存储键不变。旧记录缺少该字段时仍可刷新，但不会携带终端扩展数据。
+
+新登录会在内部访问记录中生成随机生命周期标识，并将其保存到刷新记录；续期和共享登录保留原标识。即使在同一秒内复用相同的 access token 文本，新登录也有不同标识：轮换或撤销旧 refresh token 不会删除新登录、其附属元数据或刷新绑定。清理在账号锁内重新核对标识；访问记录已不存在或已失效时，跳过访问侧清理。过期终端条目仍由正常 Session 过期或终端清理处理。
+
+没有生命周期标识的旧令牌对仍可读取和刷新。两个旧记录之间的访问清理按账号、设备和创建时间尽力匹配，无法可靠识别升级前已经发生的同值 Token 复用；旧刷新记录绝不匹配新格式访问记录。共享存储的写入节点应统一升级，旧版本重写 Token 元数据可能丢失标识。本机制不引入分布式事务，也不要求自定义存储提供 CAS 能力。
 
 ## 撤销流程
 
@@ -68,7 +79,7 @@ Refresh token 不依赖旧 access token 的 TTL。只要 refresh token 仍有效
 err := dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
 ```
 
-撤销 refresh token 时，会同时登出它关联的 access token。
+撤销 refresh token 时，只有生命周期绑定仍匹配，才会同时登出原 access token；后续复用同一 Token 值的新登录不受影响。
 
 ## 有效期
 

@@ -57,6 +57,8 @@ adminToken, _ := dtoken.Login(ctx, "admin-1", "", "", "admin")
 
 Manager 默认持有并关闭通过 Builder 配置的 Storage、Logger 和 Pool。`ComponentOwnership` 是完整的所有权策略，所有字段都应显式设置，因为未填写的布尔字段值为 `false`。共享组件时，将对应字段设为 `false`；共享组件随后由调用方在应用退出时统一关闭。由调用方持有的 Pool 必须保持运行，直到使用它的全部 Manager 都已关闭，因为每个 Manager 在关闭时都会等待自己已接收的异步任务。
 
+应先停止接收新业务请求、等待执行中的同步调用结束，再由应用外部关闭流程调用 `CloseManager()`。不要在 Manager 任务或事件监听器内部同步调用它：关闭过程会等待已接收的任务和监听器，可能包含调用者自身。回调需要发起关闭时，应通知应用生命周期控制方后返回。关闭后不再支持业务调用；`CloseManager` 不负责排空业务请求。
+
 也可以使用 `BuildAndSetManager` 在构建时覆盖并注册 `AuthType`：
 
 ```go
