@@ -61,7 +61,9 @@ func WithShortKeyManager(shortKeyManager *shortkey.Manager) Option {
 func WithStrategy(strategy *Strategy) Option {
 	return func(m *Manager) {
 		if strategy != nil {
-			m.strategy = strategy.normalize()
+			// Snapshot caller-owned hooks before filling defaults. 补齐默认值前快照调用方持有的策略钩子。
+			strategySnapshot := *strategy
+			m.strategy = strategySnapshot.normalize()
 		}
 	}
 }

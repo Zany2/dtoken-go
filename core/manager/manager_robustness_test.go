@@ -175,6 +175,113 @@ func TestManagerCompositeDisableKeysAreInjective(t *testing.T) {
 	}
 }
 
+// TestManagerLegacyCompositeDisableKeyCollisionsAreIsolated verifies legacy key collisions cannot affect another disable identity. TestManagerLegacyCompositeDisableKeyCollisionsAreIsolated 验证旧复合键碰撞不会影响其他封禁身份。
+func TestManagerLegacyCompositeDisableKeyCollisionsAreIsolated(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("service", func(t *testing.T) {
+		mgr := newTestManager(t, nil)
+		ownerKey := mgr.getLegacyDisableServiceKey("user", "one:billing")
+		requestKey := mgr.getLegacyDisableServiceKey("user:one", "billing")
+		if ownerKey != requestKey {
+			t.Fatalf("legacy collision setup keys differ: %q != %q", ownerKey, requestKey)
+		}
+		if err := mgr.saveToStorage(ctx, ownerKey, ServiceDisableInfo{Service: "one:billing", Level: 2}, time.Minute); err != nil {
+			t.Fatalf("save legacy service marker error = %v", err)
+		}
+
+		if mgr.IsDisableService(ctx, "user:one", "billing") {
+			t.Fatal("IsDisableService(colliding identity) = true, want false")
+		}
+		if err := mgr.CheckDisableService(ctx, "user:one", "billing"); err != nil {
+			t.Fatalf("CheckDisableService(colliding identity) error = %v, want nil", err)
+		}
+		if _, err := mgr.GetDisableServiceInfo(ctx, "user:one", "billing"); !errors.Is(err, derror.ErrServiceNotDisabled) {
+			t.Fatalf("GetDisableServiceInfo(colliding identity) error = %v, want ErrServiceNotDisabled", err)
+		}
+		if ttl, err := mgr.GetDisableServiceTTL(ctx, "user:one", "billing"); err != nil || ttl != -2 {
+			t.Fatalf("GetDisableServiceTTL(colliding identity) = %d, %v, want -2, nil", ttl, err)
+		}
+		if err := mgr.UntieService(ctx, "user:one", "billing"); err != nil {
+			t.Fatalf("UntieService(colliding identity) error = %v", err)
+		}
+		if !mgr.storage.Exists(ctx, ownerKey) {
+			t.Fatal("UntieService(colliding identity) deleted owner marker")
+		}
+		if info, err := mgr.GetDisableServiceInfo(ctx, "user", "one:billing"); err != nil || info.Service != "one:billing" {
+			t.Fatalf("GetDisableServiceInfo(owner identity) = %+v, %v, want owner marker", info, err)
+		}
+	})
+
+	t.Run("device type", func(t *testing.T) {
+		mgr := newTestManager(t, nil)
+		ownerKey := mgr.getLegacyDisableDeviceKey("user", "one:web")
+		requestKey := mgr.getLegacyDisableDeviceKey("user:one", "web")
+		if ownerKey != requestKey {
+			t.Fatalf("legacy collision setup keys differ: %q != %q", ownerKey, requestKey)
+		}
+		if err := mgr.saveToStorage(ctx, ownerKey, DeviceDisableInfo{Device: "one:web"}, time.Minute); err != nil {
+			t.Fatalf("save legacy device marker error = %v", err)
+		}
+
+		if mgr.IsDisableDevice(ctx, "user:one", "web") {
+			t.Fatal("IsDisableDevice(colliding identity) = true, want false")
+		}
+		if err := mgr.CheckDisableDevice(ctx, "user:one", "web"); err != nil {
+			t.Fatalf("CheckDisableDevice(colliding identity) error = %v, want nil", err)
+		}
+		if _, err := mgr.GetDisableDeviceInfo(ctx, "user:one", "web"); !errors.Is(err, derror.ErrDeviceNotDisabled) {
+			t.Fatalf("GetDisableDeviceInfo(colliding identity) error = %v, want ErrDeviceNotDisabled", err)
+		}
+		if ttl, err := mgr.GetDisableDeviceTTL(ctx, "user:one", "web"); err != nil || ttl != -2 {
+			t.Fatalf("GetDisableDeviceTTL(colliding identity) = %d, %v, want -2, nil", ttl, err)
+		}
+		if err := mgr.UntieDevice(ctx, "user:one", "web"); err != nil {
+			t.Fatalf("UntieDevice(colliding identity) error = %v", err)
+		}
+		if !mgr.storage.Exists(ctx, ownerKey) {
+			t.Fatal("UntieDevice(colliding identity) deleted owner marker")
+		}
+		if info, err := mgr.GetDisableDeviceInfo(ctx, "user", "one:web"); err != nil || info.Device != "one:web" {
+			t.Fatalf("GetDisableDeviceInfo(owner identity) = %+v, %v, want owner marker", info, err)
+		}
+	})
+
+	t.Run("concrete device", func(t *testing.T) {
+		mgr := newTestManager(t, nil)
+		ownerKey := mgr.getLegacyDisableDeviceAndDeviceIDKey("user", "web", "phone:one")
+		requestKey := mgr.getLegacyDisableDeviceAndDeviceIDKey("user", "web:phone", "one")
+		if ownerKey != requestKey {
+			t.Fatalf("legacy collision setup keys differ: %q != %q", ownerKey, requestKey)
+		}
+		if err := mgr.saveToStorage(ctx, ownerKey, DeviceDisableInfo{Device: "web", DeviceID: "phone:one"}, time.Minute); err != nil {
+			t.Fatalf("save legacy concrete device marker error = %v", err)
+		}
+
+		if mgr.IsDisableDeviceAndDeviceID(ctx, "user", "web:phone", "one") {
+			t.Fatal("IsDisableDeviceAndDeviceID(colliding identity) = true, want false")
+		}
+		if err := mgr.CheckDisableDeviceAndDeviceID(ctx, "user", "web:phone", "one"); err != nil {
+			t.Fatalf("CheckDisableDeviceAndDeviceID(colliding identity) error = %v, want nil", err)
+		}
+		if _, err := mgr.GetDisableDeviceAndDeviceIDInfo(ctx, "user", "web:phone", "one"); !errors.Is(err, derror.ErrDeviceNotDisabled) {
+			t.Fatalf("GetDisableDeviceAndDeviceIDInfo(colliding identity) error = %v, want ErrDeviceNotDisabled", err)
+		}
+		if ttl, err := mgr.GetDisableDeviceAndDeviceIDTTL(ctx, "user", "web:phone", "one"); err != nil || ttl != -2 {
+			t.Fatalf("GetDisableDeviceAndDeviceIDTTL(colliding identity) = %d, %v, want -2, nil", ttl, err)
+		}
+		if err := mgr.UntieDeviceAndDeviceID(ctx, "user", "web:phone", "one"); err != nil {
+			t.Fatalf("UntieDeviceAndDeviceID(colliding identity) error = %v", err)
+		}
+		if !mgr.storage.Exists(ctx, ownerKey) {
+			t.Fatal("UntieDeviceAndDeviceID(colliding identity) deleted owner marker")
+		}
+		if info, err := mgr.GetDisableDeviceAndDeviceIDInfo(ctx, "user", "web", "phone:one"); err != nil || info.DeviceID != "phone:one" {
+			t.Fatalf("GetDisableDeviceAndDeviceIDInfo(owner identity) = %+v, %v, want owner marker", info, err)
+		}
+	})
+}
+
 // TestManagerSearchPaginationSortsUnorderedScanners verifies pagination is stable for unordered storage scanners. TestManagerSearchPaginationSortsUnorderedScanners 验证无序扫描存储的分页结果稳定。
 func TestManagerSearchPaginationSortsUnorderedScanners(t *testing.T) {
 	ctx := context.Background()

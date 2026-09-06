@@ -4,12 +4,13 @@ package manager
 import (
 	"context"
 	"fmt"
-	"github.com/Zany2/dtoken-go/core/adapter"
-	"github.com/Zany2/dtoken-go/core/config"
-	"github.com/Zany2/dtoken-go/core/derror"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Zany2/dtoken-go/core/adapter"
+	"github.com/Zany2/dtoken-go/core/config"
+	"github.com/Zany2/dtoken-go/core/derror"
 )
 
 // getExpiration calculates token expiration duration from configuration. getExpiration 从配置中计算 Token 过期时长。
@@ -179,29 +180,6 @@ func (m *Manager) saveToStorageIfAbsent(
 	return true, nil
 }
 
-// getWithLegacyKey reads the current key and falls back to a legacy key during migrations. getWithLegacyKey 读取当前键，迁移期间找不到时回退旧键。
-func (m *Manager) getWithLegacyKey(ctx context.Context, key, legacyKey string) (any, error) {
-	value, err := m.storage.Get(ctx, key)
-	if err != nil || value != nil || legacyKey == key {
-		return value, err
-	}
-	return m.storage.Get(ctx, legacyKey)
-}
-
-// ttlWithLegacyKey reads TTL and falls back to a legacy key when the current key is absent. ttlWithLegacyKey 读取 TTL，当前键不存在时回退旧键。
-func (m *Manager) ttlWithLegacyKey(ctx context.Context, key, legacyKey string) (time.Duration, error) {
-	ttl, err := m.storage.TTL(ctx, key)
-	if err != nil || ttl != adapter.TTLNotFound || legacyKey == key {
-		return ttl, err
-	}
-	return m.storage.TTL(ctx, legacyKey)
-}
-
-// existsWithLegacyKey checks current and legacy keys. existsWithLegacyKey 同时检查当前键和旧键。
-func (m *Manager) existsWithLegacyKey(ctx context.Context, key, legacyKey string) bool {
-	return m.storage.Exists(ctx, key) || (legacyKey != key && m.storage.Exists(ctx, legacyKey))
-}
-
 // deleteWithLegacyKey removes current and legacy keys and reports whether either existed. deleteWithLegacyKey 删除当前键和旧键，并报告是否存在实际删除。
 func (m *Manager) deleteWithLegacyKey(ctx context.Context, key, legacyKey string) (bool, error) {
 	keys := []string{key}
@@ -244,6 +222,11 @@ func (m *Manager) deleteWithLegacyKey(ctx context.Context, key, legacyKey string
 
 // searchKeys searches storage keys by pattern with pagination. searchKeys 根据模式搜索存储键并分页。
 func (m *Manager) searchKeys(ctx context.Context, pattern string, start, size int) ([]string, error) {
+	// Reject negative sizes other than the documented all-results sentinel. 拒绝除全量查询哨兵值以外的负数分页大小。
+	if size < -1 {
+		return nil, derror.ErrInvalidParam
+	}
+
 	// Require scanner storage capability 要求存储支持扫描能力。
 	scanner, ok := m.storage.(adapter.ScannerStorage)
 	if !ok {

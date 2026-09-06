@@ -5,12 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Zany2/dtoken-go/core/adapter"
+	"strings"
+	"time"
+
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/listener"
 	"github.com/Zany2/dtoken-go/core/utils"
-	"strings"
-	"time"
 )
 
 // Disable disables an account for a specified duration, where zero means permanent. Disable 按指定时长封禁账号，时长为零表示永久封禁。
@@ -188,23 +188,8 @@ func (m *Manager) GetDisableTTL(ctx context.Context, loginID string) (int64, err
 		return 0, derror.ErrIDIsEmpty
 	}
 
-	// Load disable TTL 加载封禁剩余时间。
-	ttl, err := m.storage.TTL(ctx, m.getDisableKey(loginID))
-	if err != nil {
-		return 0, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-	}
-
-	// Explain TTL semantics 存储适配器返回 time.Duration 类型，按哨兵值和正数 TTL 语义转换为秒
-	switch {
-	case ttl == adapter.TTLNotFound:
-		return -2, nil // 未封。
-	case ttl == adapter.TTLNoExpire:
-		return -1, nil // 永久封禁
-	case ttl > 0:
-		return int64(ttl.Seconds()), nil
-	default:
-		return 0, nil
-	}
+	// Load and normalize disable TTL 加载并归一化封禁剩余时间。
+	return m.getDisableTTL(ctx, m.getDisableKey(loginID))
 }
 
 // DisableService disables a specific service for an account. DisableService 封禁账号的指定服务。
@@ -292,13 +277,22 @@ func (m *Manager) UntieService(ctx context.Context, loginID, service string) err
 	unlock := m.lockLoginWrite(loginID)
 	defer func() { unlock() }()
 
-	// Delete service disable marker 删除服务封禁标记。
-	changed, err := m.deleteWithLegacyKey(ctx, m.getDisableServiceKey(loginID, service), m.getLegacyDisableServiceKey(loginID, service))
+	// Resolve only markers whose embedded service matches the requested identity. 仅解析内嵌服务与请求身份一致的封禁标记。
+	records, err := m.loadServiceDisableRecords(ctx, loginID, service)
 	if err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		return err
 	}
-	if !changed {
+	if len(records) == 0 {
 		return nil
+	}
+
+	// Delete all matching current and legacy markers without touching colliding legacy records. 删除所有匹配的新旧标记，但不触碰发生碰撞的旧记录。
+	keys := make([]string, len(records))
+	for i := range records {
+		keys[i] = records[i].key
+	}
+	if err = m.storage.Delete(ctx, keys...); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
 	// Release the account lock before dispatching lifecycle events. 触发生命周期事件前释放账号锁。
@@ -323,8 +317,19 @@ func (m *Manager) IsDisableService(ctx context.Context, loginID, service string)
 		return false
 	}
 
-	// Check service disable marker 检查服务封禁标记。
-	return m.existsWithLegacyKey(ctx, m.getDisableServiceKey(loginID, service), m.getLegacyDisableServiceKey(loginID, service))
+	// Trust the collision-safe current key on the common path. 常规路径直接信任无碰撞的新键。
+	currentKey := m.getDisableServiceKey(loginID, service)
+	legacyKey := m.getLegacyDisableServiceKey(loginID, service)
+	if m.storage.Exists(ctx, currentKey) {
+		return true
+	}
+	if currentKey == legacyKey {
+		return false
+	}
+
+	// Decode the legacy marker before accepting its identity. 接受旧标记前先解码核对身份。
+	records, err := m.loadServiceDisableRecords(ctx, loginID, service)
+	return err == nil && len(records) > 0
 }
 
 // IsDisableServiceLevel checks if a specific service is disabled at or above the given level. IsDisableServiceLevel 检查账号的指定服务是否达到指定封禁等级。
@@ -423,31 +428,70 @@ func (m *Manager) GetDisableServiceInfo(ctx context.Context, loginID, service st
 		return nil, derror.ErrInvalidParam
 	}
 
-	// Load service disable data 加载服务封禁数据。
-	data, err := m.getWithLegacyKey(ctx, m.getDisableServiceKey(loginID, service), m.getLegacyDisableServiceKey(loginID, service))
+	// Load identity-matched service disable data. 加载身份匹配的服务封禁数据。
+	records, err := m.loadServiceDisableRecords(ctx, loginID, service)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		return nil, err
 	}
-
-	// Return explicit not-disabled error 返回明确的未封禁错误。
-	if data == nil {
+	if len(records) == 0 {
 		return nil, derror.ErrServiceNotDisabled
 	}
-
-	// Convert storage value 转换存储值。
-	bytesData, err := utils.ToBytes(data)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
-	}
-
-	// Decode service disable info 解码服务封禁信息。
-	var info ServiceDisableInfo
-	if err = m.serializer.Decode(bytesData, &info); err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
-	}
-
-	// Return service disable info 返回服务封禁信息。
+	info := records[0].info
 	return &info, nil
+}
+
+// serviceDisableRecord binds decoded service state to its storage key. serviceDisableRecord 将解码后的服务封禁状态绑定到存储键。
+type serviceDisableRecord struct {
+	key  string
+	info ServiceDisableInfo
+}
+
+// uniqueStorageKeys removes empty and duplicate storage keys while preserving order. uniqueStorageKeys 按原顺序移除空存储键和重复存储键。
+func uniqueStorageKeys(keys ...string) []string {
+	unique := make([]string, 0, len(keys))
+	seen := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		unique = append(unique, key)
+	}
+	return unique
+}
+
+// loadServiceDisableRecords loads the current record and identity-matched legacy records. loadServiceDisableRecords 加载当前记录以及身份匹配的旧封禁记录。
+func (m *Manager) loadServiceDisableRecords(ctx context.Context, loginID, service string) ([]serviceDisableRecord, error) {
+	currentKey := m.getDisableServiceKey(loginID, service)
+	keys := uniqueStorageKeys(currentKey, m.getLegacyDisableServiceKey(loginID, service))
+	records := make([]serviceDisableRecord, 0, len(keys))
+	for _, key := range keys {
+		data, err := m.storage.Get(ctx, key)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
+		if data == nil {
+			continue
+		}
+
+		bytesData, err := utils.ToBytes(data)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
+		}
+
+		var info ServiceDisableInfo
+		if err = m.serializer.Decode(bytesData, &info); err != nil {
+			return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+		}
+		if key != currentKey && info.Service != service {
+			continue
+		}
+		records = append(records, serviceDisableRecord{key: key, info: info})
+	}
+	return records, nil
 }
 
 // GetDisableServiceTTL retrieves the remaining disable time for a specific service in seconds. GetDisableServiceTTL 获取账号指定服务的剩余封禁时间（秒）。
@@ -465,23 +509,35 @@ func (m *Manager) GetDisableServiceTTL(ctx context.Context, loginID, service str
 		return 0, derror.ErrInvalidParam
 	}
 
-	// Load service disable TTL 加载服务封禁剩余时间。
-	ttl, err := m.ttlWithLegacyKey(ctx, m.getDisableServiceKey(loginID, service), m.getLegacyDisableServiceKey(loginID, service))
+	// Read the collision-safe current key without decoding its payload. 无需解码载荷即可读取无碰撞新键的 TTL。
+	currentKey := m.getDisableServiceKey(loginID, service)
+	legacyKey := m.getLegacyDisableServiceKey(loginID, service)
+	ttl, err := m.getDisableTTL(ctx, currentKey)
+	if err != nil {
+		return 0, err
+	}
+	if ttl != -2 || currentKey == legacyKey {
+		return ttl, nil
+	}
+
+	// Resolve an identity-matched legacy key before reading its TTL. 读取旧键 TTL 前先核对其身份。
+	records, err := m.loadServiceDisableRecords(ctx, loginID, service)
+	if err != nil {
+		return 0, err
+	}
+	if len(records) == 0 {
+		return -2, nil
+	}
+	return m.getDisableTTL(ctx, records[0].key)
+}
+
+// getDisableTTL loads and normalizes a disable marker TTL. getDisableTTL 加载并归一化封禁标记的剩余时间。
+func (m *Manager) getDisableTTL(ctx context.Context, key string) (int64, error) {
+	ttl, err := m.storage.TTL(ctx, key)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
-
-	// Convert TTL sentinel values 转换 TTL 哨兵值。
-	switch {
-	case ttl == adapter.TTLNotFound:
-		return -2, nil
-	case ttl == adapter.TTLNoExpire:
-		return -1, nil
-	case ttl > 0:
-		return int64(ttl.Seconds()), nil
-	default:
-		return 0, nil
-	}
+	return normalizeTTLSeconds(ttl), nil
 }
 
 // DisableDevice disables a device type for an account. DisableDevice 封禁账号的指定设备类型。
@@ -611,13 +667,28 @@ func (m *Manager) UntieDevice(ctx context.Context, loginID, device string) error
 	unlock := m.lockLoginWrite(loginID)
 	defer func() { unlock() }()
 
-	// Delete device disable marker 删除设备封禁标记。
-	changed, err := m.deleteWithLegacyKey(ctx, m.getDisableDeviceKey(loginID, device), m.getLegacyDisableDeviceKey(loginID, device))
+	// Resolve only markers whose embedded device identity matches the request. 仅解析内嵌设备身份与请求一致的封禁标记。
+	records, err := m.loadDeviceDisableRecords(
+		ctx,
+		m.getDisableDeviceKey(loginID, device),
+		m.getLegacyDisableDeviceKey(loginID, device),
+		device,
+		"",
+	)
 	if err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		return err
 	}
-	if !changed {
+	if len(records) == 0 {
 		return nil
+	}
+
+	// Delete all matching current and legacy markers without touching colliding legacy records. 删除所有匹配的新旧标记，但不触碰发生碰撞的旧记录。
+	keys := make([]string, len(records))
+	for i := range records {
+		keys[i] = records[i].key
+	}
+	if err = m.storage.Delete(ctx, keys...); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
 	// Release the account lock before dispatching lifecycle events. 触发生命周期事件前释放账号锁。
@@ -650,13 +721,28 @@ func (m *Manager) UntieDeviceAndDeviceID(ctx context.Context, loginID, device, d
 	unlock := m.lockLoginWrite(loginID)
 	defer func() { unlock() }()
 
-	// Delete concrete device disable marker 删除具体设备封禁标记。
-	changed, err := m.deleteWithLegacyKey(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID), m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID))
+	// Resolve only markers whose embedded device identity matches the request. 仅解析内嵌设备身份与请求一致的封禁标记。
+	records, err := m.loadDeviceDisableRecords(
+		ctx,
+		m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID),
+		m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID),
+		device,
+		deviceID,
+	)
 	if err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		return err
 	}
-	if !changed {
+	if len(records) == 0 {
 		return nil
+	}
+
+	// Delete all matching current and legacy markers without touching colliding legacy records. 删除所有匹配的新旧标记，但不触碰发生碰撞的旧记录。
+	keys := make([]string, len(records))
+	for i := range records {
+		keys[i] = records[i].key
+	}
+	if err = m.storage.Delete(ctx, keys...); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
 	// Release the account lock before dispatching lifecycle events. 触发生命周期事件前释放账号锁。
@@ -679,8 +765,25 @@ func (m *Manager) IsDisableDevice(ctx context.Context, loginID, device string) b
 		return false
 	}
 
-	// Check device disable marker 检查设备封禁标记。
-	return m.existsWithLegacyKey(ctx, m.getDisableDeviceKey(loginID, device), m.getLegacyDisableDeviceKey(loginID, device))
+	// Trust the collision-safe current key on the common path. 常规路径直接信任无碰撞的新键。
+	currentKey := m.getDisableDeviceKey(loginID, device)
+	legacyKey := m.getLegacyDisableDeviceKey(loginID, device)
+	if m.storage.Exists(ctx, currentKey) {
+		return true
+	}
+	if currentKey == legacyKey {
+		return false
+	}
+
+	// Decode the legacy marker before accepting its identity. 接受旧标记前先解码核对身份。
+	records, err := m.loadDeviceDisableRecords(
+		ctx,
+		currentKey,
+		legacyKey,
+		device,
+		"",
+	)
+	return err == nil && len(records) > 0
 }
 
 // IsDisableDeviceAndDeviceID checks concrete device disable state. IsDisableDeviceAndDeviceID 检查具体设备封禁状态。
@@ -739,19 +842,55 @@ func (m *Manager) CheckDisableDeviceAndDeviceID(ctx context.Context, loginID, de
 	}
 
 	// Check device type disable first 先检查设备类型封禁。
-	if _, err := m.getDisableDeviceInfoWithLegacy(ctx, m.getDisableDeviceKey(loginID, device), m.getLegacyDisableDeviceKey(loginID, device)); err == nil {
+	if _, err := m.GetDisableDeviceInfo(ctx, loginID, device); err == nil {
 		return derror.ErrDeviceDisabled
 	} else if !errors.Is(err, derror.ErrDeviceNotDisabled) {
 		return err
 	}
 
 	// Check concrete device disable 再检查具体设备封禁。
-	if _, err := m.getDisableDeviceInfoWithLegacy(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID), m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID)); err == nil {
+	if _, err := m.GetDisableDeviceAndDeviceIDInfo(ctx, loginID, device, deviceID); err == nil {
 		return derror.ErrDeviceDisabled
 	} else if !errors.Is(err, derror.ErrDeviceNotDisabled) {
 		return err
 	}
 	return nil
+}
+
+// deviceDisableRecord binds decoded device state to its storage key. deviceDisableRecord 将解码后的设备封禁状态绑定到存储键。
+type deviceDisableRecord struct {
+	key  string
+	info DeviceDisableInfo
+}
+
+// loadDeviceDisableRecords loads the current record and identity-matched legacy records. loadDeviceDisableRecords 加载当前记录以及身份匹配的旧封禁记录。
+func (m *Manager) loadDeviceDisableRecords(ctx context.Context, key, legacyKey, device, deviceID string) ([]deviceDisableRecord, error) {
+	keys := uniqueStorageKeys(key, legacyKey)
+	records := make([]deviceDisableRecord, 0, len(keys))
+	for _, storageKey := range keys {
+		data, err := m.storage.Get(ctx, storageKey)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
+		if data == nil {
+			continue
+		}
+
+		bytesData, err := utils.ToBytes(data)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
+		}
+
+		var info DeviceDisableInfo
+		if err = m.serializer.Decode(bytesData, &info); err != nil {
+			return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+		}
+		if storageKey != key && (info.Device != device || info.DeviceID != deviceID) {
+			continue
+		}
+		records = append(records, deviceDisableRecord{key: storageKey, info: info})
+	}
+	return records, nil
 }
 
 // GetDisableDeviceInfo returns device type disable information. GetDisableDeviceInfo 获取设备类型封禁信息。
@@ -769,8 +908,22 @@ func (m *Manager) GetDisableDeviceInfo(ctx context.Context, loginID, device stri
 		return nil, derror.ErrInvalidParam
 	}
 
-	// Load device disable info 加载设备封禁信息。
-	return m.getDisableDeviceInfoWithLegacy(ctx, m.getDisableDeviceKey(loginID, device), m.getLegacyDisableDeviceKey(loginID, device))
+	// Load identity-matched device disable info 加载身份匹配的设备封禁信息。
+	records, err := m.loadDeviceDisableRecords(
+		ctx,
+		m.getDisableDeviceKey(loginID, device),
+		m.getLegacyDisableDeviceKey(loginID, device),
+		device,
+		"",
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(records) == 0 {
+		return nil, derror.ErrDeviceNotDisabled
+	}
+	info := records[0].info
+	return &info, nil
 }
 
 // GetDisableDeviceAndDeviceIDInfo returns concrete device disable information. GetDisableDeviceAndDeviceIDInfo 获取具体设备封禁信息。
@@ -789,8 +942,22 @@ func (m *Manager) GetDisableDeviceAndDeviceIDInfo(ctx context.Context, loginID, 
 		return nil, derror.ErrInvalidParam
 	}
 
-	// Load concrete device disable info 加载具体设备封禁信息。
-	return m.getDisableDeviceInfoWithLegacy(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID), m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID))
+	// Load identity-matched concrete device disable info 加载身份匹配的具体设备封禁信息。
+	records, err := m.loadDeviceDisableRecords(
+		ctx,
+		m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID),
+		m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID),
+		device,
+		deviceID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(records) == 0 {
+		return nil, derror.ErrDeviceNotDisabled
+	}
+	info := records[0].info
+	return &info, nil
 }
 
 // GetDisableDeviceTTL returns device type disable TTL in seconds. GetDisableDeviceTTL 获取设备类型封禁剩余秒数。
@@ -808,8 +975,32 @@ func (m *Manager) GetDisableDeviceTTL(ctx context.Context, loginID, device strin
 		return 0, derror.ErrInvalidParam
 	}
 
-	// Load device disable TTL 加载设备封禁剩余时间。
-	return m.getDisableDeviceTTLWithLegacy(ctx, m.getDisableDeviceKey(loginID, device), m.getLegacyDisableDeviceKey(loginID, device))
+	// Read the collision-safe current key without decoding its payload. 无需解码载荷即可读取无碰撞新键的 TTL。
+	currentKey := m.getDisableDeviceKey(loginID, device)
+	legacyKey := m.getLegacyDisableDeviceKey(loginID, device)
+	ttl, err := m.getDisableTTL(ctx, currentKey)
+	if err != nil {
+		return 0, err
+	}
+	if ttl != -2 || currentKey == legacyKey {
+		return ttl, nil
+	}
+
+	// Resolve an identity-matched legacy key before reading its TTL. 读取旧键 TTL 前先核对其身份。
+	records, err := m.loadDeviceDisableRecords(
+		ctx,
+		currentKey,
+		legacyKey,
+		device,
+		"",
+	)
+	if err != nil {
+		return 0, err
+	}
+	if len(records) == 0 {
+		return -2, nil
+	}
+	return m.getDisableTTL(ctx, records[0].key)
 }
 
 // GetDisableDeviceAndDeviceIDTTL returns concrete device disable TTL in seconds. GetDisableDeviceAndDeviceIDTTL 获取具体设备封禁剩余秒数。
@@ -828,68 +1019,32 @@ func (m *Manager) GetDisableDeviceAndDeviceIDTTL(ctx context.Context, loginID, d
 		return 0, derror.ErrInvalidParam
 	}
 
-	// Load concrete device disable TTL 加载具体设备封禁剩余时间。
-	return m.getDisableDeviceTTLWithLegacy(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID), m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID))
-}
-
-// getDisableDeviceInfo loads device disable info by key. getDisableDeviceInfo 按键加载设备封禁信息。
-func (m *Manager) getDisableDeviceInfo(ctx context.Context, key string) (*DeviceDisableInfo, error) {
-	return m.getDisableDeviceInfoWithLegacy(ctx, key, key)
-}
-
-// getDisableDeviceInfoWithLegacy loads device info with migration fallback. getDisableDeviceInfoWithLegacy 加载设备封禁信息并兼容旧键。
-func (m *Manager) getDisableDeviceInfoWithLegacy(ctx context.Context, key, legacyKey string) (*DeviceDisableInfo, error) {
-	// Load device disable data 加载设备封禁数据。
-	data, err := m.getWithLegacyKey(ctx, key, legacyKey)
+	// Read the collision-safe current key without decoding its payload. 无需解码载荷即可读取无碰撞新键的 TTL。
+	currentKey := m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID)
+	legacyKey := m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID)
+	ttl, err := m.getDisableTTL(ctx, currentKey)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		return 0, err
+	}
+	if ttl != -2 || currentKey == legacyKey {
+		return ttl, nil
 	}
 
-	// Return explicit not-disabled error 返回明确的未封禁错误。
-	if data == nil {
-		return nil, derror.ErrDeviceNotDisabled
-	}
-
-	// Convert storage value 转换存储值。
-	bytesData, err := utils.ToBytes(data)
+	// Resolve an identity-matched legacy key before reading its TTL. 读取旧键 TTL 前先核对其身份。
+	records, err := m.loadDeviceDisableRecords(
+		ctx,
+		currentKey,
+		legacyKey,
+		device,
+		deviceID,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
+		return 0, err
 	}
-
-	// Decode device disable info 解码设备封禁信息。
-	var info DeviceDisableInfo
-	if err = m.serializer.Decode(bytesData, &info); err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
-	}
-
-	// Return device disable info 返回设备封禁信息。
-	return &info, nil
-}
-
-// getDisableDeviceTTL loads device disable TTL by key. getDisableDeviceTTL 按键获取设备封禁剩余时间。
-func (m *Manager) getDisableDeviceTTL(ctx context.Context, key string) (int64, error) {
-	return m.getDisableDeviceTTLWithLegacy(ctx, key, key)
-}
-
-// getDisableDeviceTTLWithLegacy loads device TTL with migration fallback. getDisableDeviceTTLWithLegacy 加载设备封禁 TTL 并兼容旧键。
-func (m *Manager) getDisableDeviceTTLWithLegacy(ctx context.Context, key, legacyKey string) (int64, error) {
-	// Load disable TTL 加载封禁剩余时间。
-	ttl, err := m.ttlWithLegacyKey(ctx, key, legacyKey)
-	if err != nil {
-		return 0, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-	}
-
-	// Convert TTL sentinel values 转换 TTL 哨兵值。
-	switch {
-	case ttl == adapter.TTLNotFound:
+	if len(records) == 0 {
 		return -2, nil
-	case ttl == adapter.TTLNoExpire:
-		return -1, nil
-	case ttl > 0:
-		return int64(ttl.Seconds()), nil
-	default:
-		return 0, nil
 	}
+	return m.getDisableTTL(ctx, records[0].key)
 }
 
 // CheckDisable validates account disable state. CheckDisable 校验账号封禁状态。
@@ -949,10 +1104,30 @@ func (m *Manager) isDisableDeviceMatch(ctx context.Context, loginID, device, dev
 	}
 
 	// Match device type disable 匹配设备类型封禁。
-	if m.existsWithLegacyKey(ctx, m.getDisableDeviceKey(loginID, device), m.getLegacyDisableDeviceKey(loginID, device)) {
+	if m.IsDisableDevice(ctx, loginID, device) {
 		return true
 	}
 
 	// Match concrete device disable 匹配具体设备封禁。
-	return deviceID != "" && m.existsWithLegacyKey(ctx, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID), m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID))
+	if deviceID == "" {
+		return false
+	}
+	currentKey := m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID)
+	legacyKey := m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID)
+	if m.storage.Exists(ctx, currentKey) {
+		return true
+	}
+	if currentKey == legacyKey {
+		return false
+	}
+
+	// Decode the legacy marker before accepting its identity. 接受旧标记前先解码核对身份。
+	concreteRecords, err := m.loadDeviceDisableRecords(
+		ctx,
+		currentKey,
+		legacyKey,
+		device,
+		deviceID,
+	)
+	return err == nil && len(concreteRecords) > 0
 }

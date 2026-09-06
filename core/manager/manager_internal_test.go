@@ -376,6 +376,9 @@ func TestManagerStorageHelpers(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(keys, []string{"search/a", "search/b", "search/c"}) {
 		t.Fatalf("searchKeys(all) = %v, %v, want all keys, nil", keys, err)
 	}
+	if _, err = manager.searchKeys(ctx, "search/*", 0, -2); !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("searchKeys(invalid size) error = %v, want ErrInvalidParam", err)
+	}
 	keys, err = manager.searchKeys(ctx, "search/*", 99, 2)
 	if err != nil || len(keys) != 0 {
 		t.Fatalf("searchKeys(out of range) = %v, %v, want empty, nil", keys, err)

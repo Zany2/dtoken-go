@@ -709,6 +709,31 @@ func TestManagerStrategy(t *testing.T) {
 	}
 }
 
+// TestManagerStrategyOptionSnapshotsInput verifies strategy options do not mutate or retain caller-owned configuration. TestManagerStrategyOptionSnapshotsInput 验证策略选项不会修改或继续持有调用方配置。
+func TestManagerStrategyOptionSnapshotsInput(t *testing.T) {
+	customRoleMatcher := func(pattern, role string) bool {
+		return strings.EqualFold(pattern, role)
+	}
+	strategy := &Strategy{RoleMatcher: customRoleMatcher}
+	mgr := newTestManagerWithStrategy(t, strategy)
+
+	if strategy.PermissionMatcher != nil || strategy.CreateSession != nil {
+		t.Fatal("WithStrategy() mutated missing hooks on caller strategy")
+	}
+	strategy.RoleMatcher = func(string, string) bool { return false }
+
+	managerStrategy := mgr.GetStrategy()
+	if managerStrategy == strategy {
+		t.Fatal("GetStrategy() retained caller strategy pointer")
+	}
+	if !managerStrategy.RoleMatcher("Admin", "admin") {
+		t.Fatal("manager strategy changed after caller strategy mutation")
+	}
+	if managerStrategy.PermissionMatcher == nil || managerStrategy.CreateSession == nil {
+		t.Fatal("manager strategy defaults were not completed")
+	}
+}
+
 // TestManagerPermissionShortcutMatrix verifies permission shortcut methods across logic combinations. TestManagerPermissionShortcutMatrix 验证权限快捷方法的逻辑组合矩阵。
 func TestManagerPermissionShortcutMatrix(t *testing.T) {
 	ctx := context.Background()
