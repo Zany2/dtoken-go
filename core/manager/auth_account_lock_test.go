@@ -180,7 +180,7 @@ func TestManagerTokenWritesRejectLifecycleSwap(t *testing.T) {
 					mgr.storage = storage
 
 					// The request still holds the old read snapshot, but all persisted data now belongs to the replacement lifecycle. 请求仍持有旧读取快照，但持久化数据已属于替代生命周期。
-					err := operation.run(mgr, ctx, token)
+					err = operation.run(mgr, ctx, token)
 					if !swapped {
 						t.Fatalf("lifecycle replacement did not complete: %v", err)
 					}
