@@ -136,6 +136,9 @@ func addTerminalLifecycleEvents(result *concurrencyResult, terminals []TerminalI
 		return
 	}
 	for _, terminal := range terminals {
+		if terminal.Token == "" {
+			continue
+		}
 		result.terminalEvents = append(result.terminalEvents, terminalLifecycleEvent{terminal: terminal, state: state})
 	}
 }
@@ -196,11 +199,7 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 		candidateInfo := &candidateRecord.TokenInfo
 
 		// Require the session terminal and token mapping to describe the same lifecycle. 要求 Session 终端与 Token 映射描述同一生命周期。
-		if candidate.LoginID != sess.LoginID ||
-			candidateInfo.LoginID != sess.LoginID ||
-			candidate.Device != candidateInfo.Device ||
-			candidate.DeviceID != candidateInfo.DeviceID ||
-			candidate.CreateTime != candidateInfo.CreateTime {
+		if !terminalMatchesTokenRecord(sess.LoginID, candidate, candidateRecord) {
 			continue
 		}
 

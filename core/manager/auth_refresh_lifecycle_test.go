@@ -273,7 +273,7 @@ func TestManagerRefreshRotationCanReuseExpiredAccessValue(t *testing.T) {
 // TestTokenRecordJSONCompatibility verifies lifecycle identity does not change public token fields. TestTokenRecordJSONCompatibility 验证生命周期标识不改变公开 Token 字段。
 func TestTokenRecordJSONCompatibility(t *testing.T) {
 	legacy := TokenInfo{AuthType: "user", LoginID: "token-record", CreateTime: 123, Timeout: 60}
-	encoded, err := json.Marshal(tokenRecord{TokenInfo: legacy, AccessID: "unique-login"})
+	encoded, err := json.Marshal(tokenRecord{TokenInfo: legacy, AccessID: "unique-login", TerminalIndex: 7})
 	if err != nil {
 		t.Fatalf("encode token record error = %v", err)
 	}
@@ -286,7 +286,7 @@ func TestTokenRecordJSONCompatibility(t *testing.T) {
 		t.Fatalf("encode legacy token error = %v", err)
 	}
 	var decoded tokenRecord
-	if err = json.Unmarshal(legacyBytes, &decoded); err != nil || decoded.AccessID != "" || !reflect.DeepEqual(decoded.TokenInfo, legacy) {
+	if err = json.Unmarshal(legacyBytes, &decoded); err != nil || decoded.AccessID != "" || decoded.TerminalIndex != 0 || !reflect.DeepEqual(decoded.TokenInfo, legacy) {
 		t.Fatalf("legacy token decode = %+v, %v", decoded, err)
 	}
 }

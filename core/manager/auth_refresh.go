@@ -505,13 +505,8 @@ func (m *Manager) removeRefreshAccessToken(ctx context.Context, info *refreshTok
 		return nil
 	}
 
-	// Build detached terminal metadata so cleanup still invalidates the access token when the session list is stale. 构建脱离会话的终端元数据，确保 Session 终端列表过期时仍能使访问 Token 失效。
-	detached := TerminalInfo{
-		Token:    info.AccessToken,
-		LoginID:  info.LoginID,
-		Device:   info.Device,
-		DeviceID: info.DeviceID,
-	}
+	// Capture the verified access record for exact terminal removal after the binding check. 绑定校验后保留已确认的访问记录，用于精确移除终端。
+	var expected *tokenRecord
 	return m.logoutTerminalsIf(ctx, info.LoginID, func() (bool, error) {
 		current, err := m.getTokenRecord(ctx, info.AccessToken)
 		if err != nil {
@@ -526,15 +521,15 @@ func (m *Manager) removeRefreshAccessToken(ctx context.Context, info *refreshTok
 
 		// Legacy-to-legacy matching is best effort; new-format logins never match missing identities. 旧记录之间尽力匹配；缺失标识时绝不匹配新格式登录。
 		if info.AccessID == "" {
-			return current.Device == info.Device && current.DeviceID == info.DeviceID && current.CreateTime <= info.CreateTime, nil
+			if current.Device != info.Device || current.DeviceID != info.DeviceID || current.CreateTime > info.CreateTime {
+				return false, nil
+			}
 		}
+		expected = current
 		return true, nil
 	}, func(sess *Session) []TerminalInfo {
-		if terminal, ok := sess.removeTerminalByToken(info.AccessToken); ok {
-			return []TerminalInfo{terminal}
-		}
-		return nil
-	}, detached)
+		return terminalRemovalForTokenRecord(info.AccessToken, expected)(sess)
+	}, TerminalInfo{Token: info.AccessToken, LoginID: info.LoginID, Device: info.Device, DeviceID: info.DeviceID})
 }
 
 // logoutRotatedAccessToken logs out old access token after rotation. logoutRotatedAccessToken 在轮换后登出旧访问令牌。

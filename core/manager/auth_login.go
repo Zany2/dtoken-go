@@ -218,7 +218,7 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 	sess.HistoryTerminalCount++
 
 	// Append terminal info 添加终端信息
-	sess.TerminalInfos = append(sess.TerminalInfos, TerminalInfo{
+	terminalInfo := TerminalInfo{
 		Token:      token,
 		LoginID:    opts.LoginID,
 		Device:     device,
@@ -226,7 +226,8 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 		CreateTime: createTime,
 		Extra:      opts.TerminalExtra,
 		Index:      sess.HistoryTerminalCount, // 设置历史登录顺序索引
-	})
+	}
+	sess.TerminalInfos = append(sess.TerminalInfos, terminalInfo)
 
 	// Calculate expiration duration 计算过期时长
 	expiration := m.getExpiration()
@@ -254,7 +255,7 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 	}
 
 	// Persist token data after session save. Session 保存后持久化 Token 数据。
-	if err = m.persistLoginToken(ctx, token, tokenInfo, expiration, internal.accessID); err != nil {
+	if err = m.persistLoginToken(ctx, token, tokenInfo, expiration, internal.accessID, terminalInfo.Index); err != nil {
 		// Remove the terminal appended by this login when token persistence fails. Token 持久化失败时移除本次登录追加的终端。
 		if _, removed := sess.removeLatestTerminalByToken(token); removed {
 			var rollbackErr error
@@ -300,12 +301,13 @@ func (m *Manager) persistLoginToken(
 	tokenInfo TokenInfo,
 	expiration time.Duration,
 	accessID string,
+	terminalIndex int64,
 ) error {
 	// Bind each fresh login independently of token text and second-resolution timestamps. 每次新登录独立绑定，不依赖 Token 文本和秒级时间戳。
 	if accessID == "" {
 		accessID = rand.Text()
 	}
-	record := tokenRecord{TokenInfo: tokenInfo, AccessID: accessID}
+	record := tokenRecord{TokenInfo: tokenInfo, AccessID: accessID, TerminalIndex: terminalIndex}
 	saved, err := m.saveToStorageIfAbsent(ctx, m.getTokenKey(token), record, expiration)
 	if err != nil {
 		return err
@@ -369,20 +371,20 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 		return derror.ErrInvalidToken
 	}
 
-	// Load token info 加载 Token 信息。
-	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	// Capture the token lifecycle before choosing its account lock. 选择账号锁前捕获 Token 生命周期。
+	expectedRecord, err := m.getTokenRecord(ctx, tokenValue)
 	if err != nil {
 		return err
 	}
 
 	// Lock account writes 锁定账号写操作。
-	unlock := m.lockLoginWrite(tokenInfo.LoginID)
+	unlock := m.lockLoginWrite(expectedRecord.LoginID)
 
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
 	// Validate login state without scheduling renew side effects. 校验登录态但不触发续期副作用。
-	checkedSession, checkedTokenInfo, checkErr := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue)
+	checkedSession, checkedTokenInfo, checkErr := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue, expectedRecord)
 	if checkErr != nil {
 		if errors.Is(checkErr, derror.ErrActiveTimeout) && checkedTokenInfo != nil {
 			unlock()
@@ -394,7 +396,7 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 		}
 		return checkErr
 	}
-	tokenInfo = checkedTokenInfo
+	tokenInfo := checkedTokenInfo
 	if tokenInfo == nil {
 		return derror.ErrInvalidToken
 	}
@@ -552,26 +554,20 @@ func (m *Manager) RenewTimeout(ctx context.Context, tokenValue string, timeout t
 		return derror.ErrInvalidToken
 	}
 
-	// Load token info 加载 Token 信息。
-	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	// Capture the token lifecycle before choosing its account lock. 选择账号锁前捕获 Token 生命周期。
+	expectedRecord, err := m.getTokenRecord(ctx, tokenValue)
 	if err != nil {
 		return err
 	}
 
 	// Lock account writes 锁定账号写操作。
-	unlock := m.lockLoginWrite(tokenInfo.LoginID)
+	unlock := m.lockLoginWrite(expectedRecord.LoginID)
 
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
-	// Reload token after acquiring lock 加锁后重新读取 token，避免并发续期失效 token
-	record, err := m.getTokenRecord(ctx, tokenValue)
-	if err != nil {
-		return err
-	}
-
 	// Validate login state without scheduling renew side effects. 校验登录态但不触发续期副作用。
-	sess, checkedTokenInfo, checkErr := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue)
+	sess, checkedTokenInfo, checkErr := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue, expectedRecord)
 	if checkErr != nil {
 		if errors.Is(checkErr, derror.ErrActiveTimeout) && checkedTokenInfo != nil {
 			unlock()
@@ -583,7 +579,16 @@ func (m *Manager) RenewTimeout(ctx context.Context, tokenValue string, timeout t
 		}
 		return checkErr
 	}
-	tokenInfo = checkedTokenInfo
+	tokenInfo := checkedTokenInfo
+
+	// Reload the matched record so renewal preserves current private lifecycle fields. 重新加载已匹配记录，使续期保留当前私有生命周期字段。
+	record, err := m.getTokenRecord(ctx, tokenValue)
+	if err != nil {
+		return err
+	}
+	if !tokenRecordsMatchLifecycle(expectedRecord, record) {
+		return derror.ErrInvalidToken
+	}
 
 	// Resolve renewal expiration with login-compatible default semantics. 按登录兼容语义解析续期时长。
 	expiration := timeout

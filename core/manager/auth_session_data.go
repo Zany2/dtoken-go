@@ -96,16 +96,21 @@ func (m *Manager) SetSessionValueByToken(ctx context.Context, tokenValue, key st
 		return derror.ErrInvalidParam
 	}
 
-	// Resolve the account before locking its session. 先解析账号，再锁定账号 Session。
-	_, tokenInfo, err := m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
+	// Capture the token lifecycle before locking its account session. 锁定账号 Session 前捕获 Token 生命周期。
+	expectedRecord, err := m.getTokenRecord(ctx, tokenValue)
 	if err != nil {
 		return err
 	}
-	unlock := m.lockLoginWrite(tokenInfo.LoginID)
+
+	// Preserve the existing full pre-lock validation without allowing a replacement lifecycle to be cleaned. 保留原有锁前完整校验，同时避免清理替代生命周期。
+	if _, _, err = m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{expectedRecord: expectedRecord}); err != nil {
+		return err
+	}
+	unlock := m.lockLoginWrite(expectedRecord.LoginID)
 	defer func() { unlock() }()
 
 	// Revalidate under the lock to prevent writes after logout. 锁内重新校验，避免登出后继续写入。
-	sess, checkedInfo, err := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue)
+	sess, checkedInfo, err := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue, expectedRecord)
 	if err != nil {
 		// Publish a timeout discovered during locked revalidation only after unlocking. 锁内复核发现超时时，仅在解锁后发布事件。
 		if errors.Is(err, derror.ErrActiveTimeout) && checkedInfo != nil {
@@ -117,9 +122,6 @@ func (m *Manager) SetSessionValueByToken(ctx context.Context, tokenValue, key st
 			m.triggerEvent(listener.EventActiveTimeout, checkedInfo.LoginID, checkedInfo.Device, checkedInfo.DeviceID, tokenValue, nil)
 		}
 		return err
-	}
-	if checkedInfo.LoginID != tokenInfo.LoginID {
-		return derror.ErrInvalidToken
 	}
 	if sess.Data == nil {
 		sess.Data = make(map[string]any)
@@ -162,16 +164,21 @@ func (m *Manager) DeleteSessionValueByToken(ctx context.Context, tokenValue, key
 		return derror.ErrInvalidParam
 	}
 
-	// Resolve the account before locking its session. 先解析账号，再锁定账号 Session。
-	_, tokenInfo, err := m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
+	// Capture the token lifecycle before locking its account session. 锁定账号 Session 前捕获 Token 生命周期。
+	expectedRecord, err := m.getTokenRecord(ctx, tokenValue)
 	if err != nil {
 		return err
 	}
-	unlock := m.lockLoginWrite(tokenInfo.LoginID)
+
+	// Preserve the existing full pre-lock validation without allowing a replacement lifecycle to be cleaned. 保留原有锁前完整校验，同时避免清理替代生命周期。
+	if _, _, err = m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{expectedRecord: expectedRecord}); err != nil {
+		return err
+	}
+	unlock := m.lockLoginWrite(expectedRecord.LoginID)
 	defer func() { unlock() }()
 
 	// Revalidate under the lock to prevent writes after logout. 锁内重新校验，避免登出后继续写入。
-	sess, checkedInfo, err := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue)
+	sess, checkedInfo, err := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue, expectedRecord)
 	if err != nil {
 		// Publish a timeout discovered during locked revalidation only after unlocking. 锁内复核发现超时时，仅在解锁后发布事件。
 		if errors.Is(err, derror.ErrActiveTimeout) && checkedInfo != nil {
@@ -183,9 +190,6 @@ func (m *Manager) DeleteSessionValueByToken(ctx context.Context, tokenValue, key
 			m.triggerEvent(listener.EventActiveTimeout, checkedInfo.LoginID, checkedInfo.Device, checkedInfo.DeviceID, tokenValue, nil)
 		}
 		return err
-	}
-	if checkedInfo.LoginID != tokenInfo.LoginID {
-		return derror.ErrInvalidToken
 	}
 	if sess.Data == nil {
 		return nil

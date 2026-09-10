@@ -70,15 +70,14 @@ func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles 
 		return nil
 	}
 
-	// Load token info to choose account lock 读取 Token 信息以选择账号。
-	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	// Capture the token lifecycle before choosing its account lock. 选择账号锁前捕获 Token 生命周期。
+	expectedRecord, err := m.getTokenRecord(ctx, tokenValue)
 	if err != nil {
 		return err
 	}
-	lockedLoginID := tokenInfo.LoginID
 
 	// Lock account writes 锁定账号写操作。
-	unlock := m.lockLoginWrite(lockedLoginID)
+	unlock := m.lockLoginWrite(expectedRecord.LoginID)
 
 	// Submit prepared maintenance only after releasing the account lock, including no-op writes. 包括无效写入在内，均在释放账号锁后提交已准备的维护任务。
 	var submitMaintenance func()
@@ -90,7 +89,7 @@ func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles 
 	}()
 
 	// Revalidate without reentering the lock or submitting an inline worker. 重新校验时不重复加锁，也不提交内联任务。
-	sess, tokenInfo, err := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue)
+	sess, tokenInfo, err := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue, expectedRecord)
 	if err != nil {
 		if errors.Is(err, derror.ErrActiveTimeout) && tokenInfo != nil {
 			unlock()
@@ -101,9 +100,6 @@ func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles 
 			m.triggerEvent(listener.EventActiveTimeout, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID, tokenValue, nil)
 		}
 		return err
-	}
-	if tokenInfo.LoginID != lockedLoginID {
-		return derror.ErrInvalidToken
 	}
 	submitMaintenance = m.prepareLoginMaintenance(ctx, tokenValue, tokenInfo, m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout))
 
@@ -190,15 +186,14 @@ func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, rol
 		return nil
 	}
 
-	// Load token info to choose account lock 读取 Token 信息以选择账号。
-	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
+	// Capture the token lifecycle before choosing its account lock. 选择账号锁前捕获 Token 生命周期。
+	expectedRecord, err := m.getTokenRecord(ctx, tokenValue)
 	if err != nil {
 		return err
 	}
-	lockedLoginID := tokenInfo.LoginID
 
 	// Lock account writes 锁定账号写操作。
-	unlock := m.lockLoginWrite(lockedLoginID)
+	unlock := m.lockLoginWrite(expectedRecord.LoginID)
 
 	// Submit prepared maintenance only after releasing the account lock, including no-op writes. 包括无效写入在内，均在释放账号锁后提交已准备的维护任务。
 	var submitMaintenance func()
@@ -210,7 +205,7 @@ func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, rol
 	}()
 
 	// Revalidate without reentering the lock or submitting an inline worker. 重新校验时不重复加锁，也不提交内联任务。
-	sess, tokenInfo, err := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue)
+	sess, tokenInfo, err := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue, expectedRecord)
 	if err != nil {
 		if errors.Is(err, derror.ErrActiveTimeout) && tokenInfo != nil {
 			unlock()
@@ -221,9 +216,6 @@ func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, rol
 			m.triggerEvent(listener.EventActiveTimeout, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID, tokenValue, nil)
 		}
 		return err
-	}
-	if tokenInfo.LoginID != lockedLoginID {
-		return derror.ErrInvalidToken
 	}
 	submitMaintenance = m.prepareLoginMaintenance(ctx, tokenValue, tokenInfo, m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout))
 

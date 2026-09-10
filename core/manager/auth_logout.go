@@ -19,18 +19,21 @@ func (m *Manager) Logout(ctx context.Context, tokenValue string) error {
 		return derror.ErrInvalidToken
 	}
 
-	// Build the terminal removal strategy once for normal and disabled-token paths. 为正常路径和封禁 Token 路径复用终端移除策略。
-	removeToken := func(sess *Session) []TerminalInfo {
-		if info, ok := sess.removeTerminalByToken(tokenValue); ok {
-			return []TerminalInfo{info}
+	// Capture the original lifecycle before validation so a reused token cannot be logged out later. 校验前捕获原生命周期，避免后续误登出已复用的 Token。
+	expected, err := m.getTokenRecord(ctx, tokenValue)
+	if err != nil {
+		if isTokenInactiveError(err) {
+			return nil
 		}
-		return nil
+		return err
 	}
+	checkBinding := tokenRecordBindingCheck(m, ctx, tokenValue, expected)
+	removeToken := terminalRemovalForTokenRecord(tokenValue, expected)
 
 	// Keep the regular validation path so inactive token states retain their existing semantics. 保留常规校验路径，确保非活跃 Token 状态维持既有语义。
-	sess, checkedTokenInfo, err := m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
+	_, _, err = m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
 	if err == nil {
-		return m.logoutTerminals(ctx, sess.LoginID, removeToken, terminalInfoFromTokenInfo(tokenValue, checkedTokenInfo))
+		return m.logoutTerminalsIf(ctx, expected.LoginID, checkBinding, removeToken, terminalInfoFromTokenRecord(tokenValue, expected))
 	}
 	if isTokenInactiveError(err) {
 		return nil
@@ -39,21 +42,12 @@ func (m *Manager) Logout(ctx context.Context, tokenValue string) error {
 		return err
 	}
 
-	// Reload token metadata without applying reversible disable rules. 不应用可逆封禁规则，重新读取 Token 元数据。
-	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
-	if err != nil {
-		// Treat a concurrent token state change as idempotent success. 并发发生 Token 状态变化时按幂等成功处理。
-		if isTokenInactiveError(err) {
-			return nil
-		}
-		return err
-	}
-	if tokenInfo.LoginID == "" {
+	if expected.LoginID == "" {
 		return nil
 	}
 
 	// Remove the matched terminal, or clean the detached token when account disable already removed its session. 移除命中的终端；账号封禁已删除 Session 时清理脱离会话的 Token。
-	return m.logoutTerminals(ctx, tokenInfo.LoginID, removeToken, terminalInfoFromTokenInfo(tokenValue, tokenInfo))
+	return m.logoutTerminalsIf(ctx, expected.LoginID, checkBinding, removeToken, terminalInfoFromTokenRecord(tokenValue, expected))
 }
 
 // LogoutByDevice logs out all terminals of a specific device type. LogoutByDevice 根据设备类型登出所有该设备的终端。
@@ -124,8 +118,17 @@ func (m *Manager) Kickout(ctx context.Context, tokenValue string) error {
 		return derror.ErrInvalidToken
 	}
 
+	// Capture the original lifecycle before validation and account-lock acquisition. 校验及获取账号锁前捕获原生命周期。
+	expected, err := m.getTokenRecord(ctx, tokenValue)
+	if err != nil {
+		if isTokenInactiveError(err) {
+			return nil
+		}
+		return err
+	}
+
 	// Validate token and retain metadata for detached-terminal fallback. 校验 Token，并保留元数据用于终端记录缺失时回退。
-	sess, tokenInfo, err := m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
+	_, _, err = m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
 	if err != nil {
 		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
 		if isTokenInactiveError(err) {
@@ -135,12 +138,8 @@ func (m *Manager) Kickout(ctx context.Context, tokenValue string) error {
 	}
 
 	// Mark matched terminal as kicked out 将命中终端标记为踢下线。
-	return m.processTerminals(ctx, sess.LoginID, func(sess *Session) []TerminalInfo {
-		if info, ok := sess.removeTerminalByToken(tokenValue); ok {
-			return []TerminalInfo{info}
-		}
-		return nil
-	}, TokenStateKickOut, terminalInfoFromTokenInfo(tokenValue, tokenInfo))
+	return m.processTerminalsIf(ctx, expected.LoginID, tokenRecordBindingCheck(m, ctx, tokenValue, expected),
+		terminalRemovalForTokenRecord(tokenValue, expected), TokenStateKickOut, terminalInfoFromTokenRecord(tokenValue, expected))
 }
 
 // KickoutByDevice kicks out all terminals of a specific device type. KickoutByDevice 根据设备类型踢人下线（踢掉该设备类型的所有终端）。
@@ -211,8 +210,17 @@ func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
 		return derror.ErrInvalidToken
 	}
 
+	// Capture the original lifecycle before validation and account-lock acquisition. 校验及获取账号锁前捕获原生命周期。
+	expected, err := m.getTokenRecord(ctx, tokenValue)
+	if err != nil {
+		if isTokenInactiveError(err) {
+			return nil
+		}
+		return err
+	}
+
 	// Validate token and retain metadata for detached-terminal fallback. 校验 Token，并保留元数据用于终端记录缺失时回退。
-	sess, tokenInfo, err := m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
+	_, _, err = m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
 	if err != nil {
 		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
 		if isTokenInactiveError(err) {
@@ -222,12 +230,8 @@ func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
 	}
 
 	// Mark matched terminal as replaced 将命中终端标记为顶下线。
-	return m.processTerminals(ctx, sess.LoginID, func(sess *Session) []TerminalInfo {
-		if info, ok := sess.removeTerminalByToken(tokenValue); ok {
-			return []TerminalInfo{info}
-		}
-		return nil
-	}, TokenStateReplaced, terminalInfoFromTokenInfo(tokenValue, tokenInfo))
+	return m.processTerminalsIf(ctx, expected.LoginID, tokenRecordBindingCheck(m, ctx, tokenValue, expected),
+		terminalRemovalForTokenRecord(tokenValue, expected), TokenStateReplaced, terminalInfoFromTokenRecord(tokenValue, expected))
 }
 
 // ReplaceByDevice replaces all terminals of a specific device type. ReplaceByDevice 根据设备类型顶人下线（顶掉该设备类型的所有终端）。
@@ -296,19 +300,29 @@ func (m *Manager) removeOldestTerminalInfoAndToken(ctx context.Context, sess *Se
 	// Remove oldest terminal 移除最旧终端。
 	terminalInfo, ok := sess.removeOldestTerminal(device...)
 	if ok {
-		// Apply overflow mode 应用超限处理模式
-		if err := m.applyLogoutModeToToken(ctx, terminalInfo.Token, mode); err != nil {
+		// Skip a token value that now belongs to another lifecycle while still retiring the stale terminal. Token 值已属于其他生命周期时仅移除陈旧终端。
+		cleanupAllowed, err := m.terminalTokenCleanupAllowed(ctx, sess.LoginID, terminalInfo)
+		if err != nil {
 			return TerminalInfo{}, false, err
 		}
+		if cleanupAllowed {
+			// Apply overflow mode 应用超限处理模式
+			if err = m.applyLogoutModeToToken(ctx, terminalInfo.Token, mode); err != nil {
+				return TerminalInfo{}, false, err
+			}
 
-		// Clean metadata 清理 metadata
-		if err := m.cleanTokenMetadata(ctx, []string{terminalInfo.Token}); err != nil {
-			return TerminalInfo{}, false, err
+			// Clean metadata 清理 metadata
+			if err = m.cleanTokenMetadata(ctx, []string{terminalInfo.Token}); err != nil {
+				return TerminalInfo{}, false, err
+			}
 		}
 
 		// Save session data 保存会话数据
 		if err := m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
 			return TerminalInfo{}, false, err
+		}
+		if !cleanupAllowed {
+			return TerminalInfo{}, true, nil
 		}
 		return terminalInfo, true, nil
 	}
@@ -330,17 +344,26 @@ func (m *Manager) removeTerminalInfosAndTokens(ctx context.Context, sess *Sessio
 		return false, nil, nil
 	}
 
-	// Apply mode to all removed tokens 按模式处理所有被移除 Token
+	// Apply mode only to terminal entries that still own their token lifecycle. 仅处理仍属于对应 Token 生命周期的终端条目。
+	processedTerminals := make([]TerminalInfo, 0, len(terminalInfos))
 	for _, terminalInfo := range terminalInfos {
-		if err := m.applyLogoutModeToToken(ctx, terminalInfo.Token, mode); err != nil {
+		cleanupAllowed, err := m.terminalTokenCleanupAllowed(ctx, sess.LoginID, terminalInfo)
+		if err != nil {
 			return false, nil, err
 		}
+		if !cleanupAllowed {
+			continue
+		}
+		if err = m.applyLogoutModeToToken(ctx, terminalInfo.Token, mode); err != nil {
+			return false, nil, err
+		}
+		processedTerminals = append(processedTerminals, terminalInfo)
 	}
 
 	// Clean token metadata 清理附属 metadata
 	// Collect removed tokens 收集被移除 Token。
-	tokens := make([]string, len(terminalInfos))
-	for i, info := range terminalInfos {
+	tokens := make([]string, len(processedTerminals))
+	for i, info := range processedTerminals {
 		tokens[i] = info.Token
 	}
 	if err := m.cleanTokenMetadata(ctx, tokens); err != nil {
@@ -361,7 +384,7 @@ func (m *Manager) removeTerminalInfosAndTokens(ctx context.Context, sess *Sessio
 		}
 	}
 
-	return destroyedSession, terminalInfos, nil
+	return destroyedSession, processedTerminals, nil
 }
 
 // logoutTerminals performs common logout logic. logoutTerminals 通用登出逻辑：移除终。+ 删除 token + 清理 metadata。
@@ -407,11 +430,23 @@ func (m *Manager) logoutTerminalsIf(
 	}
 
 	// Apply terminal removal strategy when the account session still exists. 账号 Session 仍存在时执行终端移除策略。
-	var removed []TerminalInfo
+	var removedCandidates []TerminalInfo
 	sessionChanged := false
 	if sess != nil {
-		removed = removalFunc(sess)
-		sessionChanged = len(removed) > 0
+		removedCandidates = removalFunc(sess)
+		sessionChanged = len(removedCandidates) > 0
+	}
+
+	// Exclude stale entries whose token value now represents another active lifecycle. 排除 Token 值已代表其他活跃生命周期的陈旧条目。
+	removed := make([]TerminalInfo, 0, len(removedCandidates))
+	for _, terminal := range removedCandidates {
+		cleanupAllowed, checkErr := m.terminalTokenCleanupAllowed(ctx, loginID, terminal)
+		if checkErr != nil {
+			return checkErr
+		}
+		if cleanupAllowed {
+			removed = append(removed, terminal)
+		}
 	}
 
 	// Fall back to detached token metadata when no terminal can be removed. 无法移除终端时回退到脱离会话的 Token 元数据。
@@ -422,8 +457,8 @@ func (m *Manager) logoutTerminalsIf(
 		}
 	}
 
-	// Return when nothing removed 没有移除项时直接返回。
-	if len(removed) == 0 {
+	// Return only when neither token cleanup nor stale-session cleanup is needed. 无需清理 Token 或陈旧 Session 时才直接返回。
+	if len(removed) == 0 && !sessionChanged {
 		return nil
 	}
 
@@ -521,17 +556,34 @@ func (m *Manager) cleanTokenMetadata(ctx context.Context, tokens []string) error
 // TerminalRemovalFunc defines how to remove terminals from a session. TerminalRemovalFunc 定义如何从 Session 中移除终端。
 type TerminalRemovalFunc func(sess *Session) []TerminalInfo
 
-// terminalInfoFromTokenInfo builds terminal metadata when the account session has no matching terminal. terminalInfoFromTokenInfo 在账号 Session 缺少对应终端时根据 TokenInfo 构建终端元数据。
-func terminalInfoFromTokenInfo(tokenValue string, tokenInfo *TokenInfo) TerminalInfo {
-	if tokenInfo == nil {
+// terminalInfoFromTokenRecord builds terminal metadata when the account session has no matching terminal. terminalInfoFromTokenRecord 在账号 Session 缺少对应终端时根据 Token 记录构建终端元数据。
+func terminalInfoFromTokenRecord(tokenValue string, record *tokenRecord) TerminalInfo {
+	if record == nil {
 		return TerminalInfo{Token: tokenValue}
 	}
 	return TerminalInfo{
 		Token:      tokenValue,
-		LoginID:    tokenInfo.LoginID,
-		Device:     tokenInfo.Device,
-		DeviceID:   tokenInfo.DeviceID,
-		CreateTime: tokenInfo.CreateTime,
+		LoginID:    record.LoginID,
+		Device:     record.Device,
+		DeviceID:   record.DeviceID,
+		CreateTime: record.CreateTime,
+		Index:      record.TerminalIndex,
+	}
+}
+
+// terminalRemovalForTokenRecord removes only the terminal bound to an expected lifecycle. terminalRemovalForTokenRecord 仅移除绑定到预期生命周期的终端。
+func terminalRemovalForTokenRecord(tokenValue string, record *tokenRecord) TerminalRemovalFunc {
+	return func(sess *Session) []TerminalInfo {
+		return sess.removeTerminals(func(terminal TerminalInfo) bool {
+			return terminal.Token == tokenValue && terminalMatchesTokenRecord(sess.LoginID, terminal, record)
+		})
+	}
+}
+
+// tokenRecordBindingCheck creates a lock-held lifecycle recheck. tokenRecordBindingCheck 创建在锁内执行的生命周期复核函数。
+func tokenRecordBindingCheck(m *Manager, ctx context.Context, tokenValue string, expected *tokenRecord) func() (bool, error) {
+	return func() (bool, error) {
+		return m.tokenRecordStillMatches(ctx, tokenValue, expected)
 	}
 }
 
@@ -543,17 +595,20 @@ func (m *Manager) resolveDetachedTerminals(ctx context.Context, loginID string, 
 			continue
 		}
 
-		tokenInfo, err := m.getTokenInfo(ctx, terminal.Token)
+		record, err := m.getTokenRecord(ctx, terminal.Token)
 		if err != nil {
 			if isTokenInactiveError(err) {
 				continue
 			}
 			return nil, err
 		}
-		if tokenInfo.LoginID != loginID {
+		if record.LoginID != loginID {
 			continue
 		}
-		resolved = append(resolved, terminalInfoFromTokenInfo(terminal.Token, tokenInfo))
+		if (terminal.Index > 0 || terminal.CreateTime > 0) && !terminalMatchesTokenRecord(loginID, terminal, record) {
+			continue
+		}
+		resolved = append(resolved, terminalInfoFromTokenRecord(terminal.Token, record))
 	}
 	return resolved, nil
 }
@@ -578,11 +633,31 @@ func (m *Manager) processTerminals(
 	state TokenState,
 	detachedTerminals ...TerminalInfo,
 ) error {
+	return m.processTerminalsIf(ctx, loginID, nil, removalFunc, state, detachedTerminals...)
+}
+
+// processTerminalsIf rechecks an optional lifecycle under the account lock before changing token state. processTerminalsIf 在账号锁内复核可选生命周期后再变更 Token 状态。
+func (m *Manager) processTerminalsIf(
+	ctx context.Context,
+	loginID string,
+	checkBinding func() (bool, error),
+	removalFunc TerminalRemovalFunc,
+	state TokenState,
+	detachedTerminals ...TerminalInfo,
+) error {
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(loginID)
 
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
+
+	// Reject a stale direct request before either session or token lifecycle mutation. Session 或 Token 生命周期变更前拒绝陈旧的直接请求。
+	if checkBinding != nil {
+		matched, err := checkBinding()
+		if err != nil || !matched {
+			return err
+		}
+	}
 
 	// Load session 加载 Session
 	sess, err := m.getSession(ctx, loginID)
@@ -596,13 +671,25 @@ func (m *Manager) processTerminals(
 
 	// Apply the removal strategy only when the account session still exists. 仅在账号 Session 仍存在时执行终端移除策略。
 	var originalSession *Session
-	var removedTerminals []TerminalInfo
+	var removedCandidates []TerminalInfo
 	sessionChanged := false
 	if sess != nil {
 		cloned := cloneSessionForAliveCheck(sess)
 		originalSession = &cloned
-		removedTerminals = removalFunc(sess)
-		sessionChanged = len(removedTerminals) > 0
+		removedCandidates = removalFunc(sess)
+		sessionChanged = len(removedCandidates) > 0
+	}
+
+	// Exclude stale entries whose token value now represents another active lifecycle. 排除 Token 值已代表其他活跃生命周期的陈旧条目。
+	removedTerminals := make([]TerminalInfo, 0, len(removedCandidates))
+	for _, terminal := range removedCandidates {
+		cleanupAllowed, checkErr := m.terminalTokenCleanupAllowed(ctx, loginID, terminal)
+		if checkErr != nil {
+			return checkErr
+		}
+		if cleanupAllowed {
+			removedTerminals = append(removedTerminals, terminal)
+		}
 	}
 
 	// Recheck the token mapping when no terminal record can be removed. 无法移除终端记录时重新确认 Token 映射。
