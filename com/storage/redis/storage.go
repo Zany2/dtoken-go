@@ -63,6 +63,9 @@ func NewStorage(url string) (*Storage, error) {
 	}
 	opTimeout := 3 * time.Second
 
+	// Apply operation deadlines to network reads and writes. 将操作截止时间应用于网络读写。
+	opts.ContextTimeoutEnabled = true
+
 	client := redis.NewClient(opts)
 	pingCtx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
@@ -93,14 +96,15 @@ func NewStorageFromConfig(cfg *Config) (*Storage, error) {
 	defer cancel()
 
 	client := redis.NewClient(&redis.Options{
-		Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
-		Password:     cfg.Password,
-		DB:           cfg.Database,
-		PoolSize:     cfg.PoolSize,
-		DialTimeout:  cfg.DialTimeout,
-		ReadTimeout:  cfg.ReadTimeout,
-		WriteTimeout: cfg.WriteTimeout,
-		PoolTimeout:  cfg.PoolTimeout,
+		Addr:                  fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+		Password:              cfg.Password,
+		DB:                    cfg.Database,
+		PoolSize:              cfg.PoolSize,
+		DialTimeout:           cfg.DialTimeout,
+		ReadTimeout:           cfg.ReadTimeout,
+		WriteTimeout:          cfg.WriteTimeout,
+		PoolTimeout:           cfg.PoolTimeout,
+		ContextTimeoutEnabled: true,
 	})
 
 	if err := client.Ping(pingCtx).Err(); err != nil {
@@ -226,6 +230,7 @@ func (s *Storage) Keys(ctx context.Context, pattern string) ([]string, error) {
 	var (
 		cursor uint64
 		result = make([]string, 0)
+		seen   = make(map[string]struct{})
 	)
 
 	for {
@@ -233,7 +238,14 @@ func (s *Storage) Keys(ctx context.Context, pattern string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, keys...)
+
+		// SCAN may repeat keys across pages; expose each key only once. SCAN 可能跨页重复返回键，对外只保留一次。
+		for _, key := range keys {
+			if _, exists := seen[key]; !exists {
+				seen[key] = struct{}{}
+				result = append(result, key)
+			}
+		}
 		cursor = next
 		if cursor == 0 {
 			break

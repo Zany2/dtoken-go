@@ -21,7 +21,7 @@ const (
 // Storage implements in-memory storage with go-cache 基于 go-cache 的内存存储实现。
 type Storage struct {
 	c  *cache.Cache // c stores the underlying cache instance c 存储底层缓存实例。
-	mu sync.Mutex   // mu protects compound storage operations mu 保护复合存储操作。
+	mu sync.Mutex   // mu serializes all mutations with compound storage operations. mu 将所有修改与复合存储操作串行化。
 }
 
 // Interface assertion keeps storage contract checked at compile time 接口断言在编译期检查存储契约
@@ -43,6 +43,12 @@ func (s *Storage) Set(ctx context.Context, key string, value any, expiration tim
 	if err := s.ensureReady(); err != nil {
 		return err
 	}
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if err := checkContext(ctx); err != nil {
 		return err
 	}
@@ -80,6 +86,9 @@ func (s *Storage) GetAndDelete(ctx context.Context, key string) (any, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
 	val, found := s.c.Get(key)
 	if !found {
 		// Return nil nil when the key is missing 键不存在时返回 nil, nil（这是正常情况，不是错误）
@@ -101,6 +110,9 @@ func (s *Storage) SetIfAbsent(ctx context.Context, key string, value any, expira
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if err := checkContext(ctx); err != nil {
+		return false, err
+	}
 	if _, found := s.c.Get(key); found {
 		return false, nil
 	}
@@ -120,6 +132,12 @@ func (s *Storage) Delete(ctx context.Context, keys ...string) error {
 	if err := s.ensureReady(); err != nil {
 		return err
 	}
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if err := checkContext(ctx); err != nil {
 		return err
 	}
@@ -159,8 +177,7 @@ func (s *Storage) Keys(ctx context.Context, pattern string) ([]string, error) {
 	for k, it := range items {
 		// Check whether the entry is expired 检查是否已过期（Expiration > 0 表示有 TTL）
 		if it.Expiration > 0 && now >= it.Expiration {
-			// Delete expired entry proactively 主动清理（避免后续重复处理）
-			s.c.Delete(k)
+			// A snapshot cannot authorize deleting a concurrently replaced value. 快照不能用于删除可能已被并发替换的值。
 			continue
 		}
 		if matchPattern(k, pattern) {
@@ -181,6 +198,9 @@ func (s *Storage) Expire(ctx context.Context, key string, expiration time.Durati
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
 	val, found := s.c.Get(key)
 	if !found {
 		return derror.ErrKeyNotFound
@@ -224,6 +244,12 @@ func (s *Storage) Clear(ctx context.Context) error {
 	if err := s.ensureReady(); err != nil {
 		return err
 	}
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if err := checkContext(ctx); err != nil {
 		return err
 	}

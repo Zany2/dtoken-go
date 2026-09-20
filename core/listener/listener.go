@@ -339,7 +339,15 @@ func (m *Manager) Unregister(listenerID string) bool {
 	for event, entries := range m.listeners {
 		for i, entry := range entries {
 			if entry.config.ID == listenerID {
-				m.listeners[event] = append(entries[:i], entries[i+1:]...)
+				last := len(entries) - 1
+				copy(entries[i:], entries[i+1:])
+				entries[last] = listenerEntry{}
+				entries = entries[:last]
+				if len(entries) == 0 {
+					delete(m.listeners, event)
+				} else {
+					m.listeners[event] = entries
+				}
 				return true
 			}
 		}

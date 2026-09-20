@@ -276,7 +276,8 @@ func TestMatchPatternBoundaries(t *testing.T) {
 		{key: "abc", pattern: "a?c", want: true},
 		{key: "abc", pattern: "a?d", want: false},
 		{key: "a?c", pattern: `a\?c`, want: true},
-		{key: `a\\`, pattern: `a\\`, want: true},
+		{key: `a\`, pattern: `a\\`, want: true},
+		{key: `a\\`, pattern: `a\\\\`, want: true},
 		{key: "abc", pattern: `abc\`, want: true},
 		{key: "abc", pattern: "", want: false},
 	}

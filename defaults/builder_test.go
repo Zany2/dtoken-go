@@ -10,6 +10,41 @@ import (
 	"github.com/Zany2/dtoken-go/core/config"
 )
 
+// TestJWTLoginRespectsTokenSharing verifies unique JWT issuance does not change Manager token sharing. TestJWTLoginRespectsTokenSharing 验证 JWT 独立签发不会改变 Manager 的 Token 共享策略。
+func TestJWTLoginRespectsTokenSharing(t *testing.T) {
+	for _, shared := range []bool{false, true} {
+		name := "independent"
+		if shared {
+			name = "shared"
+		}
+		t.Run(name, func(t *testing.T) {
+			mgr, err := NewBuilder().
+				IsPrintBanner(false).
+				AutoRenew(false).
+				AsyncEvent(false).
+				IsShare(shared).
+				JwtSecret("jwt-sharing-test-secret").
+				Build()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(mgr.CloseManager)
+			ctx := context.Background()
+			first, err := mgr.Login(ctx, "jwt-user", "web", "browser")
+			if err != nil {
+				t.Fatal(err)
+			}
+			second, err := mgr.Login(ctx, "jwt-user", "web", "browser")
+			if err != nil {
+				t.Fatalf("repeated JWT login failed: %v", err)
+			}
+			if (first == second) != shared {
+				t.Fatalf("token reuse = %v, want %v", first == second, shared)
+			}
+		})
+	}
+}
+
 // TestDefaultFactoriesCreateUsableComponents verifies every bundled factory returns a usable component. TestDefaultFactoriesCreateUsableComponents 验证每个内置工厂都能创建可用组件。
 func TestDefaultFactoriesCreateUsableComponents(t *testing.T) {
 	ctx := context.Background()

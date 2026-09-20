@@ -314,7 +314,7 @@ func (s *OAuth2Server) ExchangeCodeForTokenWithPKCE(ctx context.Context, code, c
 		return nil, derror.ErrRedirectURIMismatch
 	}
 
-	if time.Now().Unix() > authCode.CreateTime+authCode.ExpiresIn {
+	if time.Now().Unix() >= authCode.CreateTime+authCode.ExpiresIn {
 		return nil, derror.ErrAuthCodeExpired
 	}
 	if err = verifyCodeChallenge(authCode.CodeChallenge, authCode.CodeChallengeMethod, codeVerifier); err != nil {
@@ -339,6 +339,11 @@ func (s *OAuth2Server) getAuthorizationCode(ctx context.Context, code string) (*
 	if data == nil {
 		return nil, derror.ErrInvalidAuthCode
 	}
+	return s.decodeAuthorizationCode(data, code)
+}
+
+// decodeAuthorizationCode verifies the identity of a stored authorization code. decodeAuthorizationCode 校验已存储授权码的身份。
+func (s *OAuth2Server) decodeAuthorizationCode(data any, code string) (*AuthorizationCode, error) {
 	rawData, err := utils.ToBytes(data)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
@@ -362,6 +367,31 @@ func (s *OAuth2Server) markAuthorizationCodeUsed(ctx context.Context, authCode *
 	if ttl <= 0 {
 		return derror.ErrAuthCodeExpired
 	}
+
+	// Claim the current record when atomic storage is available; ordinary storage retains the sequential fallback. 原子存储下领取当前记录，普通存储保留顺序处理回退。
+	if atomicStorage, ok := s.storage.(adapter.AtomicStorage); ok {
+		data, err := atomicStorage.GetAndDelete(ctx, s.getCodeKey(authCode.Code))
+		if err != nil {
+			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
+		if data == nil {
+			return derror.ErrInvalidAuthCode
+		}
+		claimed, err := s.decodeAuthorizationCode(data, authCode.Code)
+		if err != nil {
+			return err
+		}
+		if claimed.Used {
+			// Keep the used marker so later requests retain the replay error. 保留已使用记录，使后续请求仍可识别重复兑换。
+			if remaining := remainingAuthCodeDuration(claimed); remaining > 0 {
+				if err = s.storage.Set(ctx, s.getCodeKey(claimed.Code), data, remaining); err != nil {
+					return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+				}
+			}
+			return derror.ErrAuthCodeUsed
+		}
+	}
+
 	authCode.Used = true
 	encoded, err := s.serializer.Encode(authCode)
 	if err != nil {
@@ -378,11 +408,11 @@ func remainingAuthCodeDuration(authCode *AuthorizationCode) time.Duration {
 	if authCode == nil || authCode.ExpiresIn <= 0 {
 		return 0
 	}
-	remainingSeconds := authCode.CreateTime + authCode.ExpiresIn - time.Now().Unix()
-	if remainingSeconds <= 0 {
+	ttl := time.Until(time.Unix(authCode.CreateTime+authCode.ExpiresIn, 0))
+	if ttl <= 0 {
 		return 0
 	}
-	return time.Duration(remainingSeconds) * time.Second
+	return ttl
 }
 
 // ClientCredentialsToken Gets access token using client credentials grant 使用客户端凭证模式获取访问令牌

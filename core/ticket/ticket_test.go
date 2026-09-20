@@ -133,6 +133,7 @@ func TestManagerBoundaries(t *testing.T) {
 
 	expired := &Ticket{
 		Ticket:     "expired-ticket",
+		AuthType:   mgr.authType,
 		CreateTime: time.Now().Add(-2 * time.Second).Unix(),
 		ExpiresIn:  1,
 		Status:     StatusValid,
@@ -251,6 +252,7 @@ func TestTicketExpirationBoundaryAndDurationRounding(t *testing.T) {
 	mgr := newTestTicketManager(time.Minute)
 	expired := &Ticket{
 		Ticket:     "expired-boundary",
+		AuthType:   mgr.authType,
 		CreateTime: time.Now().Unix() - 1,
 		ExpiresIn:  1,
 		Status:     StatusValid,

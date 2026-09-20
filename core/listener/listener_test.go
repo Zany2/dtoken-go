@@ -616,11 +616,26 @@ func TestManagerRegistrationAndCleanupAPIs(t *testing.T) {
 	if manager.Unregister("missing") {
 		t.Fatal("Unregister(missing) = true, want false")
 	}
-	if !manager.Unregister(firstID) || manager.Unregister(firstID) {
+	loginEntries := manager.listeners[EventLogin]
+	if !manager.Unregister(secondID) || manager.Unregister(secondID) {
 		t.Fatal("Unregister did not remove exactly one listener")
 	}
-	if got := manager.GetListenerIDs(EventLogin); !reflect.DeepEqual(got, []string{"second"}) {
-		t.Fatalf("GetListenerIDs(login) after unregister = %v, want [second]", got)
+	if got := manager.GetListenerIDs(EventLogin); !reflect.DeepEqual(got, []string{"first"}) {
+		t.Fatalf("GetListenerIDs(login) after unregister = %v, want [first]", got)
+	}
+	if loginEntries[1].listener != nil || loginEntries[1].config != (ListenerConfig{}) {
+		t.Fatal("Unregister retained the removed listener in the slice tail")
+	}
+	if !manager.Unregister(firstID) {
+		t.Fatal("Unregister did not remove the last login listener")
+	}
+	if manager.HasListeners(EventLogin) || manager.CountForEvent(EventLogin) != 0 {
+		t.Fatal("last listener removal left login listeners registered")
+	}
+	for _, event := range manager.GetAllEvents() {
+		if event == EventLogin {
+			t.Fatal("GetAllEvents retained an event after its last listener was removed")
+		}
 	}
 
 	manager.ClearEvent(EventLogin)

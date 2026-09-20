@@ -154,6 +154,7 @@ func TestManagerBoundaries(t *testing.T) {
 
 	expired := &ShortKey{
 		Key:        "expired-key",
+		AuthType:   mgr.authType,
 		CreateTime: time.Now().Add(-2 * time.Second).Unix(),
 		UpdateTime: time.Now().Add(-2 * time.Second).Unix(),
 		ExpiresIn:  1,
@@ -298,6 +299,7 @@ func TestShortKeyExpirationBoundaryAndDurationRounding(t *testing.T) {
 	mgr := newTestShortKeyManager(time.Minute)
 	expired := &ShortKey{
 		Key:        "expired-boundary",
+		AuthType:   mgr.authType,
 		CreateTime: time.Now().Unix() - 1,
 		ExpiresIn:  1,
 		Status:     StatusConfirmed,

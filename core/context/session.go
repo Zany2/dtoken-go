@@ -27,11 +27,11 @@ func (c *SessionContext) GetByToken(ctx context.Context) (*manager.Session, erro
 
 // SetValue sets one session data value SetValue 设置一项 Session 扩展数据
 func (c *SessionContext) SetValue(ctx context.Context, key string, value any) error {
-	loginID, err := c.d.currentLoginID(ctx)
+	token, err := c.d.requireToken()
 	if err != nil {
 		return err
 	}
-	return c.d.manager.SetSessionValue(ctx, loginID, key, value)
+	return c.d.manager.SetSessionValueByToken(ctx, token, key, value)
 }
 
 // GetValue gets one session data value GetValue 获取一项 Session 扩展数据
@@ -45,9 +45,9 @@ func (c *SessionContext) GetValue(ctx context.Context, key string) (any, bool, e
 
 // DeleteValue deletes one session data value DeleteValue 删除一项 Session 扩展数据
 func (c *SessionContext) DeleteValue(ctx context.Context, key string) error {
-	loginID, err := c.d.currentLoginID(ctx)
+	token, err := c.d.requireToken()
 	if err != nil {
 		return err
 	}
-	return c.d.manager.DeleteSessionValue(ctx, loginID, key)
+	return c.d.manager.DeleteSessionValueByToken(ctx, token, key)
 }

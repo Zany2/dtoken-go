@@ -255,6 +255,40 @@ func TestValidateNumericBoundaryMatrix(t *testing.T) {
 	}
 }
 
+// TestValidateDurationUpperBoundMatrix verifies duration-like seconds cannot overflow time.Duration. TestValidateDurationUpperBoundMatrix 验证时长秒数不会溢出 time.Duration。
+func TestValidateDurationUpperBoundMatrix(t *testing.T) {
+	fields := []struct {
+		name string
+		set  func(cfg *Config, value int64)
+	}{
+		{name: "Timeout", set: func(cfg *Config, value int64) { cfg.Timeout = value }},
+		{name: "RefreshTokenTimeout", set: func(cfg *Config, value int64) { cfg.RefreshTokenTimeout = value }},
+		{name: "RenewMaxRefresh", set: func(cfg *Config, value int64) { cfg.RenewMaxRefresh = value }},
+		{name: "RenewInterval", set: func(cfg *Config, value int64) { cfg.RenewInterval = value }},
+		{name: "ActiveTimeout", set: func(cfg *Config, value int64) { cfg.ActiveTimeout = value }},
+	}
+
+	for _, field := range fields {
+		t.Run(field.name+"/max", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.AutoRenew = false
+			field.set(cfg, maxDurationSeconds)
+			if err := cfg.Validate(); err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+		})
+
+		t.Run(field.name+"/overflow", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.AutoRenew = false
+			field.set(cfg, maxDurationSeconds+1)
+			if err := cfg.Validate(); err == nil {
+				t.Fatal("Validate() error = nil, want duration overflow error")
+			}
+		})
+	}
+}
+
 // TestValidateAutoRenewRelationMatrix verifies auto-renew timing relations. TestValidateAutoRenewRelationMatrix 验证自动续期时间关系组合。
 func TestValidateAutoRenewRelationMatrix(t *testing.T) {
 	tests := []struct {
@@ -366,9 +400,15 @@ func TestValidateNameAndNamespaceBoundaryMatrix(t *testing.T) {
 		{name: "token name max length", mutate: func(cfg *Config) { cfg.TokenName = strings.Repeat("a", 64) }},
 		{name: "auth type max length with separator", mutate: func(cfg *Config) { cfg.AuthType = strings.Repeat("a", 63) }},
 		{name: "key prefix max length with separator", mutate: func(cfg *Config) { cfg.KeyPrefix = strings.Repeat("a", 63) }},
+		{name: "unicode token name max character length", mutate: func(cfg *Config) { cfg.TokenName = strings.Repeat("令", 64) }},
+		{name: "unicode auth type max character length", mutate: func(cfg *Config) { cfg.AuthType = strings.Repeat("认", 63) }},
+		{name: "unicode key prefix max character length", mutate: func(cfg *Config) { cfg.KeyPrefix = strings.Repeat("键", 63) }},
 		{name: "token name too long", mutate: func(cfg *Config) { cfg.TokenName = strings.Repeat("a", 65) }, wantErr: true},
 		{name: "auth type too long after normalization", mutate: func(cfg *Config) { cfg.AuthType = strings.Repeat("a", 64) }, wantErr: true},
 		{name: "key prefix too long after normalization", mutate: func(cfg *Config) { cfg.KeyPrefix = strings.Repeat("a", 64) }, wantErr: true},
+		{name: "unicode token name too long", mutate: func(cfg *Config) { cfg.TokenName = strings.Repeat("令", 65) }, wantErr: true},
+		{name: "unicode auth type too long after normalization", mutate: func(cfg *Config) { cfg.AuthType = strings.Repeat("认", 64) }, wantErr: true},
+		{name: "unicode key prefix too long after normalization", mutate: func(cfg *Config) { cfg.KeyPrefix = strings.Repeat("键", 64) }, wantErr: true},
 		{name: "token name whitespace", mutate: func(cfg *Config) { cfg.TokenName = "dt token" }, wantErr: true},
 		{name: "auth type whitespace", mutate: func(cfg *Config) { cfg.AuthType = "auth type" }, wantErr: true},
 		{name: "key prefix whitespace", mutate: func(cfg *Config) { cfg.KeyPrefix = "key prefix" }, wantErr: true},

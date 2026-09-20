@@ -2,6 +2,10 @@
 package msgpack
 
 import (
+	"bytes"
+	"fmt"
+	"reflect"
+
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -17,9 +21,26 @@ func (s *MsgPackSerializer) Encode(v any) ([]byte, error) {
 	return msgpack.Marshal(v)
 }
 
-// Decode deserializes MsgPack into a value 从 MsgPack 解码
+// Decode deserializes exactly one MsgPack value into a non-nil pointer. Decode 将单个完整 MsgPack 值解码到非 nil 指针。
 func (s *MsgPackSerializer) Decode(data []byte, v any) error {
-	return msgpack.Unmarshal(data, v)
+	// Validate before dependency fast paths dereference typed-nil slice or map pointers. 在依赖快速路径解引用 typed-nil 切片或映射指针前校验。
+	target := reflect.ValueOf(v)
+	if target.Kind() != reflect.Ptr || target.IsNil() {
+		return fmt.Errorf("msgpack: decode target must be a non-nil pointer, got %T", v)
+	}
+
+	// A byte reader avoids read-ahead so trailing record data remains observable. 字节读取器避免预读，确保能识别记录的尾随数据。
+	reader := bytes.NewReader(data)
+	decoder := msgpack.GetDecoder()
+	decoder.Reset(reader)
+	defer msgpack.PutDecoder(decoder)
+	if err := decoder.Decode(v); err != nil {
+		return err
+	}
+	if reader.Len() != 0 {
+		return fmt.Errorf("msgpack: unexpected trailing data: %d bytes", reader.Len())
+	}
+	return nil
 }
 
 // Name returns the serializer name 返回序列化器名称

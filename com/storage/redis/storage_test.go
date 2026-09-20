@@ -25,6 +25,9 @@ func TestStorageContract(t *testing.T) {
 		t.Cleanup(func() {
 			_ = storage.Close()
 		})
+		if !storage.GetClient().Options().ContextTimeoutEnabled {
+			t.Fatal("URL constructor did not enable context deadlines for network operations")
+		}
 		return storage
 	})
 }
@@ -39,6 +42,9 @@ func TestNewStorageFromClient(t *testing.T) {
 	}
 	if storage.GetClient() != client {
 		t.Fatal("GetClient() did not return injected client")
+	}
+	if client.Options().ContextTimeoutEnabled {
+		t.Fatal("client injection changed caller-owned timeout options")
 	}
 	if err := storage.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
@@ -146,6 +152,9 @@ func TestNewStorageFromConfigConnects(t *testing.T) {
 			t.Fatalf("Close() error = %v", err)
 		}
 	}()
+	if !storage.GetClient().Options().ContextTimeoutEnabled {
+		t.Fatal("config constructor did not enable context deadlines for network operations")
+	}
 
 	if err := storage.Ping(context.Background()); err != nil {
 		t.Fatalf("Ping() error = %v", err)

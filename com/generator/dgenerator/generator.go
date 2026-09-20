@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"math/big"
 	"time"
 
@@ -114,8 +115,8 @@ func (g *Generator) GetLoginInfoFromJWT(tokenStr string) (loginID, device, devic
 	}
 
 	loginID, ok := claims["loginId"].(string)
-	if !ok {
-		return "", "", "", fmt.Errorf("loginId not found in token claims")
+	if !ok || loginID == "" {
+		return "", "", "", fmt.Errorf("loginId must be a non-empty string in token claims")
 	}
 
 	device, _ = claims["device"].(string)
@@ -143,6 +144,17 @@ func (g *Generator) generateSimple(length int) (string, error) {
 
 // generateJWT creates a JWT token. generateJWT 生成 JWT Token。
 func (g *Generator) generateJWT(loginID, device, deviceID string) (string, error) {
+	// Direct generator use must also reject second-to-duration overflow. 直接使用生成器时也必须拒绝秒数转换为时长的溢出。
+	const maxTimeoutSeconds = math.MaxInt64 / int64(time.Second)
+	if g.timeout > maxTimeoutSeconds {
+		return "", fmt.Errorf("%w: JWT timeout must not exceed %d seconds", derror.ErrInvalidParam, maxTimeoutSeconds)
+	}
+
+	// Distinguish independent issuances even when identity and second-level timestamps match. 即使身份与秒级时间戳相同，也区分独立签发。
+	tokenID, err := g.generateUUID()
+	if err != nil {
+		return "", err
+	}
 	now := time.Now()
 
 	claims := jwt.MapClaims{
@@ -150,6 +162,7 @@ func (g *Generator) generateJWT(loginID, device, deviceID string) (string, error
 		"device":   device,
 		"deviceId": deviceID,
 		"iat":      now.Unix(),
+		"jti":      tokenID,
 	}
 
 	// Add expiration when timeout is configured. 配置超时时间时添加过期时间。

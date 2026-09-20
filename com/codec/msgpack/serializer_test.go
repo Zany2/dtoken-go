@@ -110,7 +110,7 @@ func TestMsgPackSerializer_Decode(t *testing.T) {
 		{
 			name: "malformed data",
 			prepare: func() ([]byte, any) {
-				return []byte{0xFF, 0xFF, 0xFF}, &struct{}{} // 无效 msgpack 数据
+				return []byte{0xc1}, &struct{}{} // Reserved byte is invalid MsgPack 保留字节不是合法 MsgPack。
 			},
 			wantErr: true,
 		},

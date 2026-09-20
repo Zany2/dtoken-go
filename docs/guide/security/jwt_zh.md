@@ -36,6 +36,7 @@
   "loginId": "10001",
   "device": "web",
   "deviceId": "chrome-mac",
+  "jti": "93a9f2b4-a7ea-4f71-a8f1-679f2c20b249",
   "iat": 1710000000,
   "exp": 1710003600
 }
@@ -46,6 +47,7 @@
 - `loginId`
 - `device`
 - `deviceId`
+- `jti`：每次独立签发的随机标识，避免同一秒内生成相同 Token；旧 Token 不含此字段仍可解析
 - `iat`
 - `exp`：只有配置了超时时才会写入
 
@@ -117,7 +119,7 @@ generator := dgenerator.NewGenerator(7200, "your-secret", adapter.TokenStyleJWT)
 token, err := generator.Generate("10001", "web", "chrome-mac")
 claims, err := generator.ParseJWT(token)
 err = generator.ValidateJWT(token)
-loginID, err := generator.GetLoginIDFromJWT(token)
+loginID, device, deviceID, err := generator.GetLoginInfoFromJWT(token)
 ```
 
 ## 配置项
@@ -129,6 +131,8 @@ loginID, err := generator.GetLoginIDFromJWT(token)
 | `JwtSecret(key)` | 一步开启 JWT 并设置密钥 |
 | `Timeout(seconds)` | 控制 `exp` 与服务端存储 TTL |
 | `AutoRenew(true)` | 控制服务端续期逻辑 |
+
+`exp` 在签发时确定。服务端续期不会重写已签名 Token 的 `exp`，因此 `ParseJWT` / `ValidateJWT` 仍按原始声明检查过期时间；需要延长 JWT 声明有效期时，应重新签发 Token。
 
 ## 安全建议
 

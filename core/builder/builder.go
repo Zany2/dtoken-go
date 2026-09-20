@@ -512,7 +512,7 @@ func (b *Builder) Build() (*manager.Manager, error) {
 	// Resolve token generator 解析 Token 生成器
 	if components.Generator == nil {
 		if b.factories.Generator != nil {
-			generator, err := b.factories.Generator(cfg)
+			generator, err := b.factories.Generator(cfg.Clone())
 			if err != nil {
 				cleanup()
 				return nil, fmt.Errorf("build manager failed: create token generator failed: %w", err)
@@ -528,7 +528,7 @@ func (b *Builder) Build() (*manager.Manager, error) {
 	// Resolve storage adapter 解析存储适配器
 	if components.Storage == nil {
 		if b.factories.Storage != nil {
-			storage, err := b.factories.Storage(cfg)
+			storage, err := b.factories.Storage(cfg.Clone())
 			if err != nil {
 				cleanup()
 				return nil, fmt.Errorf("build manager failed: create storage adapter failed: %w", err)
@@ -545,7 +545,7 @@ func (b *Builder) Build() (*manager.Manager, error) {
 	// Resolve codec adapter 解析编解码适配器
 	if components.Codec == nil {
 		if b.factories.Codec != nil {
-			codec, err := b.factories.Codec(cfg)
+			codec, err := b.factories.Codec(cfg.Clone())
 			if err != nil {
 				cleanup()
 				return nil, fmt.Errorf("build manager failed: create codec adapter failed: %w", err)
@@ -562,7 +562,7 @@ func (b *Builder) Build() (*manager.Manager, error) {
 	if cfg.IsLog {
 		if components.Log == nil {
 			if b.factories.Log != nil {
-				logger, err := b.factories.Log(cfg)
+				logger, err := b.factories.Log(cfg.Clone())
 				if err != nil {
 					cleanup()
 					return nil, fmt.Errorf("build manager failed: create log adapter failed: %w", err)
@@ -582,7 +582,7 @@ func (b *Builder) Build() (*manager.Manager, error) {
 
 	// Resolve optional renew pool 解析可选续期任务池
 	if cfg.AutoRenew && components.Pool == nil && b.factories.Pool != nil {
-		pool, err := b.factories.Pool(cfg)
+		pool, err := b.factories.Pool(cfg.Clone())
 		if err != nil {
 			cleanup()
 			return nil, fmt.Errorf("build manager failed: create renew task pool failed: %w", err)

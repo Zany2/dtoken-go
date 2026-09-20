@@ -36,10 +36,13 @@ The current generator writes claims like:
   "loginId": "10001",
   "device": "web",
   "deviceId": "chrome-mac",
+  "jti": "93a9f2b4-a7ea-4f71-a8f1-679f2c20b249",
   "iat": 1710000000,
   "exp": 1710003600
 }
 ```
+
+Each independent issuance includes a random `jti` to distinguish tokens generated within the same second. Older tokens without `jti` remain readable.
 
 ## Basic Usage
 
@@ -109,7 +112,7 @@ generator := dgenerator.NewGenerator(7200, "your-secret", adapter.TokenStyleJWT)
 token, err := generator.Generate("10001", "web", "chrome-mac")
 claims, err := generator.ParseJWT(token)
 err = generator.ValidateJWT(token)
-loginID, err := generator.GetLoginIDFromJWT(token)
+loginID, device, deviceID, err := generator.GetLoginInfoFromJWT(token)
 ```
 
 ## Configuration
@@ -121,6 +124,8 @@ loginID, err := generator.GetLoginIDFromJWT(token)
 | `JwtSecret(key)` | enable JWT and set the secret in one step |
 | `Timeout(seconds)` | controls both `exp` and server-side TTL |
 | `AutoRenew(true)` | controls server-side renew behavior |
+
+`exp` is fixed at issuance. Server-side renewal does not rewrite the signed token, so `ParseJWT` / `ValidateJWT` still check its original expiration claim. Issue a new token when the JWT claim lifetime must be extended.
 
 ## Security Notes
 

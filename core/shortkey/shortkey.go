@@ -434,11 +434,15 @@ func (m *Manager) saveIfAbsent(ctx context.Context, shortKey *ShortKey, timeout 
 		return ok, nil
 	}
 
-	// Serialize the ordinary Exists/Set fallback within this Manager instance. 在当前 Manager 实例内串行化普通 Exists/Set 回退流程。
+	// Serialize the ordinary Get/Set fallback and preserve read errors. 串行化普通 Get/Set 回退流程并保留读取错误。
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.storage.Exists(ctx, key) {
+	existing, err := m.storage.Get(ctx, key)
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	if existing != nil {
 		return false, nil
 	}
 	if err = m.storage.Set(ctx, key, encoded, timeout); err != nil {

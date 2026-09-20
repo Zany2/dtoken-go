@@ -3,11 +3,17 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"strings"
+	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
 )
+
+// maxDurationSeconds is the largest whole-second value safely representable by time.Duration. maxDurationSeconds 是 time.Duration 可安全表示的最大整秒数。
+const maxDurationSeconds = math.MaxInt64 / int64(time.Second)
 
 // Config defines runtime config Config 定义运行时配置
 type Config struct {
@@ -167,8 +173,8 @@ func (c *Config) Validate() error {
 	if hasWhitespace(c.TokenName) {
 		return fmt.Errorf("Config.TokenName must not contain whitespace: %q", c.TokenName)
 	}
-	if len(c.TokenName) > 64 {
-		return fmt.Errorf("Config.TokenName length must not exceed 64 characters: %d", len(c.TokenName))
+	if length := utf8.RuneCountInString(c.TokenName); length > 64 {
+		return fmt.Errorf("Config.TokenName length must not exceed 64 characters: %d", length)
 	}
 
 	if c.AuthType == "" {
@@ -180,8 +186,8 @@ func (c *Config) Validate() error {
 	if !hasNamespaceContent(c.AuthType) {
 		return fmt.Errorf("Config.AuthType must contain non-separator content: %q", c.AuthType)
 	}
-	if len(c.AuthType) > 64 {
-		return fmt.Errorf("Config.AuthType length must not exceed 64 characters: %d", len(c.AuthType))
+	if length := utf8.RuneCountInString(c.AuthType); length > 64 {
+		return fmt.Errorf("Config.AuthType length must not exceed 64 characters: %d", length)
 	}
 	if c.KeyPrefix == "" {
 		return fmt.Errorf("Config.KeyPrefix must not be empty")
@@ -192,8 +198,8 @@ func (c *Config) Validate() error {
 	if !hasNamespaceContent(c.KeyPrefix) {
 		return fmt.Errorf("Config.KeyPrefix must contain non-separator content: %q", c.KeyPrefix)
 	}
-	if len(c.KeyPrefix) > 64 {
-		return fmt.Errorf("Config.KeyPrefix length must not exceed 64 characters: %d", len(c.KeyPrefix))
+	if length := utf8.RuneCountInString(c.KeyPrefix); length > 64 {
+		return fmt.Errorf("Config.KeyPrefix length must not exceed 64 characters: %d", length)
 	}
 
 	// Validate numeric range 验证数值范围
@@ -470,20 +476,26 @@ func (c *Config) SetCookieConfig(cookieConfig *CookieConfig) *Config {
 
 // checkNoLimits validates no limit fields checkNoLimits 验证无限制数值字段
 func (c *Config) checkNoLimits() error {
-	fields := map[string]int64{
-		"Timeout":             c.Timeout,
-		"RefreshTokenTimeout": c.RefreshTokenTimeout,
-		"RenewMaxRefresh":     c.RenewMaxRefresh,
-		"RenewInterval":       c.RenewInterval,
-		"ActiveTimeout":       c.ActiveTimeout,
-		"MaxLoginCount":       c.MaxLoginCount,
+	fields := []struct {
+		name       string
+		value      int64
+		isDuration bool
+	}{
+		{name: "Timeout", value: c.Timeout, isDuration: true},
+		{name: "RefreshTokenTimeout", value: c.RefreshTokenTimeout, isDuration: true},
+		{name: "RenewMaxRefresh", value: c.RenewMaxRefresh, isDuration: true},
+		{name: "RenewInterval", value: c.RenewInterval, isDuration: true},
+		{name: "ActiveTimeout", value: c.ActiveTimeout, isDuration: true},
+		{name: "MaxLoginCount", value: c.MaxLoginCount},
 	}
 
-	for name, value := range fields {
-		if value == -1 || value > 0 {
-			continue
+	for _, field := range fields {
+		if field.value != NoLimit && field.value <= 0 {
+			return fmt.Errorf("Config.%s must be -1 (unlimited) or greater than 0: %d", field.name, field.value)
 		}
-		return fmt.Errorf("Config.%s must be -1 (unlimited) or greater than 0: %d", name, value)
+		if field.isDuration && field.value > maxDurationSeconds {
+			return fmt.Errorf("Config.%s must not exceed %d seconds: %d", field.name, maxDurationSeconds, field.value)
+		}
 	}
 	return nil
 }

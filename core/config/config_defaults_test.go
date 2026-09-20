@@ -117,6 +117,21 @@ func TestValidateReportsInvalidNumericField(t *testing.T) {
 	}
 }
 
+// TestValidateReportsFirstInvalidNumericField verifies numeric validation follows config field order. TestValidateReportsFirstInvalidNumericField 验证数值校验按配置字段顺序返回错误。
+func TestValidateReportsFirstInvalidNumericField(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Timeout = 0
+	cfg.RefreshTokenTimeout = 0
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want numeric validation error")
+	}
+	if !strings.Contains(err.Error(), "Config.Timeout") {
+		t.Fatalf("Validate() error = %q, want first invalid field Timeout", err)
+	}
+}
+
 // TestConfigNamespaceSettersNormalizeImmediately verifies namespace setters normalize before validation. TestConfigNamespaceSettersNormalizeImmediately 验证命名空间 Setter 会立即规范化。
 func TestConfigNamespaceSettersNormalizeImmediately(t *testing.T) {
 	cfg := DefaultConfig().SetAuthType(" admin ").SetKeyPrefix(" dtoken: ")

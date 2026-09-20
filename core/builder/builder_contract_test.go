@@ -67,6 +67,69 @@ func TestBuilderCloneCopiesMutableState(t *testing.T) {
 	}
 }
 
+// TestBuildIsolatesFactoryConfigs verifies factories cannot mutate another factory or the Manager runtime config. TestBuildIsolatesFactoryConfigs 验证工厂无法修改其他工厂或 Manager 的运行时配置。
+func TestBuildIsolatesFactoryConfigs(t *testing.T) {
+	var retained []*config.Config
+	allSawOriginal := true
+	capture := func(cfg *config.Config) {
+		if cfg.AuthType != config.DefaultAuthType || cfg.CookieConfig.Path != config.DefaultCookiePath {
+			allSawOriginal = false
+		}
+		retained = append(retained, cfg)
+		cfg.AuthType = "factory-mutated:"
+		cfg.CookieConfig.Path = "/factory-mutated"
+	}
+
+	b := NewBuilder().
+		IsPrintBanner(false).
+		IsLog(true).
+		SetGeneratorFactory(func(cfg *config.Config) (adapter.Generator, error) {
+			capture(cfg)
+			return &testGenerator{}, nil
+		}).
+		SetStorageFactory(func(cfg *config.Config) (adapter.Storage, error) {
+			capture(cfg)
+			return &testStorage{}, nil
+		}).
+		SetCodecFactory(func(cfg *config.Config) (adapter.Codec, error) {
+			capture(cfg)
+			return &testCodec{}, nil
+		}).
+		SetLogFactory(func(cfg *config.Config) (adapter.Log, error) {
+			capture(cfg)
+			return &testLogger{}, nil
+		}).
+		SetPoolFactory(func(cfg *config.Config) (adapter.Pool, error) {
+			capture(cfg)
+			return &testPool{}, nil
+		})
+
+	mgr, err := b.Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	defer mgr.CloseManager()
+
+	if !allSawOriginal || len(retained) != 5 {
+		t.Fatal("a factory mutation leaked into a later factory config")
+	}
+	for i, factoryConfig := range retained {
+		if factoryConfig == mgr.GetConfig() {
+			t.Fatalf("factory %d retained the Manager runtime config pointer", i)
+		}
+		for j := 0; j < i; j++ {
+			if factoryConfig == retained[j] {
+				t.Fatalf("factories %d and %d received the same config pointer", j, i)
+			}
+		}
+	}
+	retained[0].AuthType = "retained-mutated:"
+	retained[0].CookieConfig.Path = "/retained-mutated"
+	if got := mgr.GetConfig(); got.AuthType != config.DefaultAuthType || got.CookieConfig.Path != config.DefaultCookiePath {
+		t.Fatalf("Manager config changed through retained factory config: %+v", got)
+	}
+}
+
 // TestBuilderCookieConfigCopiesInput verifies CookieConfig copies the caller value. TestBuilderCookieConfigCopiesInput 验证 CookieConfig 会复制调用方传入的值。
 func TestBuilderCookieConfigCopiesInput(t *testing.T) {
 	source := &config.CookieConfig{Domain: "example.com", Path: "/source", SameSite: config.SameSiteLax}
