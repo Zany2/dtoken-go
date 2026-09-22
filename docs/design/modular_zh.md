@@ -84,7 +84,7 @@ github.com/Zany2/dtoken-go/com/storage/redis
 
 - `com/codec/base64`
 - `com/codec/json`
-- `com/codec/jsonv2` - 项目最低版本为 Go 1.25 期间保留占位，升级到 Go 1.27 后计划实现
+- `com/codec/jsonv2` - 基于 Go 1.27 `encoding/json/v2` 的 JSON v2 编解码器（需要启用 `GOEXPERIMENT=jsonv2`）
 - `com/codec/msgpack`
 - `com/generator/dgenerator`
 - `com/log/gf`
@@ -209,7 +209,7 @@ sso/storage/redis/go.mod
 当前仓库使用 `go.work` 将全部模块串联起来。
 
 ```go
-go 1.25.0
+go 1.27.0
 
 use (
     ./com/codec/base64

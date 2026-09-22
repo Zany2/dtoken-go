@@ -53,7 +53,7 @@ mgr, err := defaults.NewBuilder().
 
 Factories are useful when component creation depends on config values such as `AuthType`, `KeyPrefix`, or deployment environment.
 
-`com/codec/jsonv2` reserves the future standard-library JSON v2 adapter. It intentionally exposes no Codec while the project targets Go 1.25 and is planned for implementation after the minimum version reaches Go 1.27. Use JSON, MessagePack, Base64, or a custom `adapter.Codec` for now.
+`com/codec/jsonv2` provides an adapter backed by Go 1.27's standard-library `encoding/json/v2` and requires `GOEXPERIMENT=jsonv2`. Use JSON, MessagePack, Base64, or a custom `adapter.Codec` when JSON v2's experimental behavior is not needed.
 
 ## Storage Recommendations
 

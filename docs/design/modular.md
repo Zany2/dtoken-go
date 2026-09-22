@@ -84,7 +84,7 @@ Besides storage, the current repository also splits out these replaceable compon
 
 - `com/codec/base64`
 - `com/codec/json`
-- `com/codec/jsonv2` - reserved while the project targets Go 1.25; planned for implementation when the minimum reaches Go 1.27
+- `com/codec/jsonv2` - JSON v2 codec backed by Go 1.27 `encoding/json/v2` (requires `GOEXPERIMENT=jsonv2`)
 - `com/codec/msgpack`
 - `com/generator/dgenerator`
 - `com/log/gf`
@@ -209,7 +209,7 @@ sso/storage/redis/go.mod
 The current repository uses `go.work` to connect all modules.
 
 ```go
-go 1.25.0
+go 1.27.0
 
 use (
     ./com/codec/base64
