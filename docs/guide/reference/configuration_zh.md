@@ -103,6 +103,8 @@ dtoken:admin:session:10001
 
 `AuthType`、`KeyPrefix`、`TokenName` 不能包含空白字符，并且长度不能超过 `64` 个字符。
 
+启用 `IsReadHeader` 或 `IsReadCookie` 时，`TokenName` 还必须符合 HTTP token 语法：ASCII 字母、数字，以及 `!#$%&'*+-.^_`、反引号、`|`、`~` 这些标点。仅启用 Query/Body 来源时，仍支持 Unicode 名称。
+
 ## 数值配置约束
 
 时间类配置使用秒数，支持 `-1` 表示不限制：
@@ -198,8 +200,9 @@ mgr, err := defaults.NewBuilder().
 Cookie 配置约束：
 
 - `CookieConfig` 不能为 `nil`，除非没有开启 `IsReadCookie`。
-- `CookiePath` 不能为空，并且必须以 `/` 开头。
-- `CookieMaxAge` 不能小于 `0`。
+- `CookieDomain` 可以为空；非空时必须是合法的 Cookie 域名，不能包含协议或端口，允许以点开头。
+- `CookiePath` 不能为空，必须以 `/` 开头，且不能包含控制字符、分号或非 ASCII 字符。Unicode 路径应使用百分号编码。
+- `CookieMaxAge` 必须在 `0` 到当前平台 `int` 最大值之间（32 位平台为 `2147483647`，64 位平台为 `9223372036854775807`）。
 - `SameSiteNone` 必须搭配 `CookieSecure(true)`。
 
 Cookie 默认属性如下：

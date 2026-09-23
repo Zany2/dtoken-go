@@ -199,6 +199,19 @@ func TestValidateCookieConfigMatrix(t *testing.T) {
 		{name: "path without slash", readCookie: true, cookie: &CookieConfig{Path: "api", SameSite: SameSiteLax}, wantErr: true},
 		{name: "blank path", readCookie: true, cookie: &CookieConfig{Path: "   ", SameSite: SameSiteLax}, wantErr: true},
 		{name: "domain with whitespace", readCookie: true, cookie: &CookieConfig{Domain: "example .com", Path: "/", SameSite: SameSiteLax}, wantErr: true},
+		{name: "domain with scheme", readCookie: true, cookie: &CookieConfig{Domain: "https://example.com", Path: "/"}, wantErr: true},
+		{name: "domain with port", readCookie: true, cookie: &CookieConfig{Domain: "example.com:8080", Path: "/"}, wantErr: true},
+		{name: "domain with empty label", readCookie: true, cookie: &CookieConfig{Domain: "example..com", Path: "/"}, wantErr: true},
+		{name: "valid domain", readCookie: true, cookie: &CookieConfig{Domain: "example.com", Path: "/api"}},
+		{name: "domain with leading dot", readCookie: true, cookie: &CookieConfig{Domain: ".example.com", Path: "/"}},
+		{name: "ipv4 domain", readCookie: true, cookie: &CookieConfig{Domain: "127.0.0.1", Path: "/"}},
+		{name: "path with semicolon", readCookie: true, cookie: &CookieConfig{Path: "/api;v1"}, wantErr: true},
+		{name: "path with newline", readCookie: true, cookie: &CookieConfig{Path: "/api\nv1"}, wantErr: true},
+		{name: "path with null byte", readCookie: true, cookie: &CookieConfig{Path: "/api\x00"}, wantErr: true},
+		{name: "path with delete byte", readCookie: true, cookie: &CookieConfig{Path: "/api\x7f"}, wantErr: true},
+		{name: "unicode path", readCookie: true, cookie: &CookieConfig{Path: "/登录"}, wantErr: true},
+		{name: "escaped unicode path", readCookie: true, cookie: &CookieConfig{Path: "/%E7%99%BB%E5%BD%95"}},
+		{name: "cookie disabled invalid attributes", cookie: &CookieConfig{Path: "/api;v1"}, wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -405,13 +418,21 @@ func TestValidateNameAndNamespaceBoundaryMatrix(t *testing.T) {
 		{name: "token name max length", mutate: func(cfg *Config) { cfg.TokenName = strings.Repeat("a", 64) }},
 		{name: "auth type max length with separator", mutate: func(cfg *Config) { cfg.AuthType = strings.Repeat("a", 63) }},
 		{name: "key prefix max length with separator", mutate: func(cfg *Config) { cfg.KeyPrefix = strings.Repeat("a", 63) }},
-		{name: "unicode token name max character length", mutate: func(cfg *Config) { cfg.TokenName = strings.Repeat("令", 64) }},
+		{name: "unicode query token name max character length", mutate: func(cfg *Config) {
+			cfg.IsReadHeader = false
+			cfg.IsReadQuery = true
+			cfg.TokenName = strings.Repeat("令", 64)
+		}},
 		{name: "unicode auth type max character length", mutate: func(cfg *Config) { cfg.AuthType = strings.Repeat("认", 63) }},
 		{name: "unicode key prefix max character length", mutate: func(cfg *Config) { cfg.KeyPrefix = strings.Repeat("键", 63) }},
 		{name: "token name too long", mutate: func(cfg *Config) { cfg.TokenName = strings.Repeat("a", 65) }, wantErr: true},
 		{name: "auth type too long after normalization", mutate: func(cfg *Config) { cfg.AuthType = strings.Repeat("a", 64) }, wantErr: true},
 		{name: "key prefix too long after normalization", mutate: func(cfg *Config) { cfg.KeyPrefix = strings.Repeat("a", 64) }, wantErr: true},
-		{name: "unicode token name too long", mutate: func(cfg *Config) { cfg.TokenName = strings.Repeat("令", 65) }, wantErr: true},
+		{name: "unicode query token name too long", mutate: func(cfg *Config) {
+			cfg.IsReadHeader = false
+			cfg.IsReadQuery = true
+			cfg.TokenName = strings.Repeat("令", 65)
+		}, wantErr: true},
 		{name: "unicode auth type too long after normalization", mutate: func(cfg *Config) { cfg.AuthType = strings.Repeat("认", 64) }, wantErr: true},
 		{name: "unicode key prefix too long after normalization", mutate: func(cfg *Config) { cfg.KeyPrefix = strings.Repeat("键", 64) }, wantErr: true},
 		{name: "token name whitespace", mutate: func(cfg *Config) { cfg.TokenName = "dt token" }, wantErr: true},

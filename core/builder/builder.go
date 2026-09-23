@@ -3,6 +3,7 @@ package builder
 
 import (
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
@@ -452,7 +453,8 @@ func (b *Builder) JwtSecret(secret string) *Builder {
 	return b
 }
 
-// Clone clones builder with deep copy Clone 深拷贝 Builder
+// Clone copies the config and option slice while sharing injected components, providers, and callback state. Clone 复制配置和选项切片，注入的组件、提供器及回调内部状态仍然共享。
+// Use factories for independent components or WithComponentOwnership for caller-managed shared resources. 独立组件应使用工厂创建，共享资源可通过 WithComponentOwnership 交由调用方管理。
 func (b *Builder) Clone() *Builder {
 	// Copy builder value first 先复制 Builder 顶层值
 	clone := *b
@@ -483,6 +485,11 @@ func (b *Builder) Build() (*manager.Manager, error) {
 		return nil, fmt.Errorf("build manager failed: invalid config: %w", err)
 	}
 
+	// A plain nil provider is optional; an interface containing nil is an invalid injection. 普通 nil 提供器表示未配置，接口内的 nil 则属于无效注入。
+	if b.accessProvider != nil && isNilComponent(b.accessProvider) {
+		return nil, fmt.Errorf("build manager failed: access provider contains nil")
+	}
+
 	// Resolve components per build so later config changes do not reuse stale factory products 每次构建独立装配组件，避免后续配置变化继续复用旧工厂产物
 	components := b.components
 	var createdStorage adapter.Storage
@@ -490,19 +497,19 @@ func (b *Builder) Build() (*manager.Manager, error) {
 	var createdPool adapter.Pool
 	cleanup := func() {
 		// Stop factory-created pools before closing their dependent storage. 先停止工厂创建的协程池，再关闭其依赖的存储。
-		if createdPool != nil {
+		if !isNilComponent(createdPool) {
 			createdPool.Stop()
 			createdPool = nil
 		}
 
 		// Close factory-created storage only; explicit components remain caller-owned on failed builds. 仅关闭工厂创建的存储，构建失败时显式组件仍由调用方持有。
-		if storageCloser, ok := createdStorage.(interface{ Close() error }); ok {
+		if storageCloser, ok := createdStorage.(interface{ Close() error }); ok && !isNilComponent(createdStorage) {
 			_ = storageCloser.Close()
 		}
 		createdStorage = nil
 
 		// Flush and close factory-created loggers when they expose lifecycle control. 工厂创建的日志器支持生命周期控制时先刷新再关闭。
-		if logControl, ok := createdLogger.(adapter.LogControl); ok {
+		if logControl, ok := createdLogger.(adapter.LogControl); ok && !isNilComponent(createdLogger) {
 			logControl.Flush()
 			logControl.Close()
 		}
@@ -519,10 +526,10 @@ func (b *Builder) Build() (*manager.Manager, error) {
 			}
 			components.Generator = generator
 		}
-		if components.Generator == nil {
-			cleanup()
-			return nil, fmt.Errorf("build manager failed: token generator is missing, call SetGenerator or SetGeneratorFactory")
-		}
+	}
+	if isNilComponent(components.Generator) {
+		cleanup()
+		return nil, fmt.Errorf("build manager failed: token generator is missing, call SetGenerator or SetGeneratorFactory")
 	}
 
 	// Resolve storage adapter 解析存储适配器
@@ -536,10 +543,10 @@ func (b *Builder) Build() (*manager.Manager, error) {
 			components.Storage = storage
 			createdStorage = storage
 		}
-		if components.Storage == nil {
-			cleanup()
-			return nil, fmt.Errorf("build manager failed: storage adapter is missing, call SetStorage or SetStorageFactory")
-		}
+	}
+	if isNilComponent(components.Storage) {
+		cleanup()
+		return nil, fmt.Errorf("build manager failed: storage adapter is missing, call SetStorage or SetStorageFactory")
 	}
 
 	// Resolve codec adapter 解析编解码适配器
@@ -552,10 +559,10 @@ func (b *Builder) Build() (*manager.Manager, error) {
 			}
 			components.Codec = codec
 		}
-		if components.Codec == nil {
-			cleanup()
-			return nil, fmt.Errorf("build manager failed: codec adapter is missing, call SetCodec or SetCodecFactory")
-		}
+	}
+	if isNilComponent(components.Codec) {
+		cleanup()
+		return nil, fmt.Errorf("build manager failed: codec adapter is missing, call SetCodec or SetCodecFactory")
 	}
 
 	// Resolve logger adapter 解析日志适配器
@@ -570,10 +577,10 @@ func (b *Builder) Build() (*manager.Manager, error) {
 				components.Log = logger
 				createdLogger = logger
 			}
-			if components.Log == nil {
-				cleanup()
-				return nil, fmt.Errorf("build manager failed: log adapter is missing, call SetLog or SetLogFactory")
-			}
+		}
+		if isNilComponent(components.Log) {
+			cleanup()
+			return nil, fmt.Errorf("build manager failed: log adapter is missing, call SetLog or SetLogFactory")
 		}
 	} else {
 		// Use no-op logger when logging is disabled 日志关闭时使用空日志器
@@ -589,6 +596,10 @@ func (b *Builder) Build() (*manager.Manager, error) {
 		}
 		components.Pool = pool
 		createdPool = pool
+	}
+	if components.Pool != nil && isNilComponent(components.Pool) {
+		cleanup()
+		return nil, fmt.Errorf("build manager failed: renew task pool contains nil")
 	}
 
 	// Print banner when enabled 开启时打印 Banner
@@ -609,6 +620,21 @@ func (b *Builder) Build() (*manager.Manager, error) {
 	)
 
 	return mgr, nil
+}
+
+// isNilComponent detects nil hidden inside adapter interfaces without rejecting value implementations. isNilComponent 识别适配器接口内部的 nil，同时兼容值类型实现。
+func isNilComponent(component any) bool {
+	if component == nil {
+		return true
+	}
+
+	value := reflect.ValueOf(component)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 // MustBuild builds manager and panics on error MustBuild 构建 Manager 并在失败时触发 panic

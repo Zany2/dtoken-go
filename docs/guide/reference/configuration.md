@@ -103,6 +103,8 @@ dtoken:admin:session:10001
 
 `AuthType`, `KeyPrefix`, and `TokenName` must not contain whitespace and must not exceed `64` characters.
 
+When `IsReadHeader` or `IsReadCookie` is enabled, `TokenName` must also follow HTTP token syntax: ASCII letters, digits, and the punctuation `!#$%&'*+-.^_`, backtick, `|`, or `~`. Unicode names remain supported when only Query/Body sources are enabled.
+
 ## Numeric Validation
 
 Time options use seconds and support `-1` as unlimited:
@@ -198,8 +200,9 @@ mgr, err := defaults.NewBuilder().
 Cookie validation rules:
 
 - `CookieConfig` cannot be `nil` when `IsReadCookie` is enabled.
-- `CookiePath` must not be empty and must start with `/`.
-- `CookieMaxAge` cannot be negative.
+- `CookieDomain` may be empty; otherwise it must be a valid cookie domain, without a scheme or port. A leading dot is allowed.
+- `CookiePath` must not be empty, must start with `/`, and cannot contain control characters, semicolons, or non-ASCII characters. Use a percent-encoded path for Unicode characters.
+- `CookieMaxAge` must be between `0` and the current platform's maximum `int` value (`2147483647` on 32-bit platforms, `9223372036854775807` on 64-bit platforms).
 - `SameSiteNone` requires `CookieSecure(true)`.
 
 Default cookie attributes are:

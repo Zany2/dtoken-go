@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"math"
+	"net/http"
 	"strings"
 	"time"
 	"unicode"
@@ -177,6 +178,13 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("Config.TokenName length must not exceed 64 characters: %d", length)
 	}
 
+	// Header and cookie names share HTTP token syntax; query/body-only names remain unrestricted by it. Header 和 Cookie 名称遵循 HTTP token 语法，仅用于 Query/Body 的名称不受该语法限制。
+	if c.IsReadHeader || c.IsReadCookie {
+		if err := (&http.Cookie{Name: c.TokenName}).Valid(); err != nil {
+			return fmt.Errorf("Config.TokenName must be a valid HTTP token when IsReadHeader or IsReadCookie is true: %q", c.TokenName)
+		}
+	}
+
 	if c.AuthType == "" {
 		return fmt.Errorf("Config.AuthType must not be empty")
 	}
@@ -299,6 +307,15 @@ func (c *Config) validateCookieConfig() error {
 	}
 	if cc.MaxAge < 0 {
 		return fmt.Errorf("CookieConfig.MaxAge must not be negative: %d", cc.MaxAge)
+	}
+	if cc.MaxAge > int64(math.MaxInt) {
+		return fmt.Errorf("CookieConfig.MaxAge must not exceed %d seconds on this platform: %d", math.MaxInt, cc.MaxAge)
+	}
+
+	// Reject attributes that net/http would drop or sanitize; use a fixed name for query/body-only configs. 拒绝 net/http 会丢弃或改写的属性，使用固定名称以兼容仅从 Query/Body 读取的配置。
+	cookie := &http.Cookie{Name: DefaultTokenName, Domain: cc.Domain, Path: cc.Path}
+	if err := cookie.Valid(); err != nil {
+		return fmt.Errorf("CookieConfig is invalid: %w", err)
 	}
 
 	switch cc.SameSite {
