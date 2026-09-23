@@ -65,6 +65,74 @@ func TestNewStorageFromConfigRejectsNil(t *testing.T) {
 	}
 }
 
+// TestNewStorageFromConfigRejectsNegativePoolSize verifies invalid pool capacity returns an error instead of panicking. TestNewStorageFromConfigRejectsNegativePoolSize 验证非法连接池容量返回错误而不是触发 panic。
+func TestNewStorageFromConfigRejectsNegativePoolSize(t *testing.T) {
+	storage, err := NewStorageFromConfig(&Config{PoolSize: -1})
+	if err == nil {
+		if storage != nil {
+			_ = storage.Close()
+		}
+		t.Fatal("NewStorageFromConfig(negative pool size) error = nil, want error")
+	}
+	if storage != nil {
+		t.Fatalf("NewStorageFromConfig(negative pool size) storage = %v, want nil", storage)
+	}
+}
+
+// TestConstructorsRejectNegativeDatabase prevents silently selecting the default database for invalid indexes. TestConstructorsRejectNegativeDatabase 防止非法索引静默使用默认数据库。
+func TestConstructorsRejectNegativeDatabase(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		create func() (*Storage, error)
+	}{
+		{"config", func() (*Storage, error) { return NewStorageFromConfig(&Config{Database: -1}) }},
+		{"url path", func() (*Storage, error) { return NewStorage("redis://localhost:6379/-1") }},
+		{"url query", func() (*Storage, error) { return NewStorage("redis://localhost:6379/0?db=-1") }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			storage, err := tt.create()
+			if storage != nil {
+				_ = storage.Close()
+				t.Fatal("invalid database returned a storage instance")
+			}
+			if err == nil || !strings.Contains(err.Error(), "database must not be negative") {
+				t.Fatalf("constructor error = %v, want database validation error", err)
+			}
+		})
+	}
+}
+
+// TestRedisOptionsFromConfig verifies field forwarding and IPv6 address formatting. TestRedisOptionsFromConfig 验证字段传递及 IPv6 地址格式。
+func TestRedisOptionsFromConfig(t *testing.T) {
+	cfg := &Config{
+		Host:         "2001:db8::1",
+		Port:         6380,
+		Password:     "secret",
+		Database:     2,
+		PoolSize:     12,
+		DialTimeout:  time.Second,
+		ReadTimeout:  2 * time.Second,
+		WriteTimeout: 3 * time.Second,
+		PoolTimeout:  4 * time.Second,
+	}
+	opts := redisOptionsFromConfig(cfg)
+
+	if opts.Addr != "[2001:db8::1]:6380" || opts.Password != cfg.Password || opts.DB != cfg.Database || opts.PoolSize != cfg.PoolSize {
+		t.Fatalf("redisOptionsFromConfig() identity fields = %#v", opts)
+	}
+	if opts.DialTimeout != cfg.DialTimeout || opts.ReadTimeout != cfg.ReadTimeout || opts.WriteTimeout != cfg.WriteTimeout || opts.PoolTimeout != cfg.PoolTimeout {
+		t.Fatalf("redisOptionsFromConfig() timeout fields = %#v", opts)
+	}
+	if !opts.ContextTimeoutEnabled {
+		t.Fatal("redisOptionsFromConfig() did not enable context deadlines")
+	}
+
+	cfg.Host = "[2001:db8::1]"
+	if got := redisOptionsFromConfig(cfg).Addr; got != "[2001:db8::1]:6380" {
+		t.Fatalf("redisOptionsFromConfig(bracketed IPv6).Addr = %q", got)
+	}
+}
+
 // TestNewStorageFromConfigReturnsConnectionError verifies failed startup does not return a usable storage. TestNewStorageFromConfigReturnsConnectionError 验证连接失败时不会返回可用存储。
 func TestNewStorageFromConfigReturnsConnectionError(t *testing.T) {
 	storage, err := NewStorageFromConfig(&Config{
@@ -270,6 +338,20 @@ func TestNewStorageRejectsInvalidURL(t *testing.T) {
 	}
 	if storage != nil {
 		t.Fatalf("NewStorage() storage = %v, want nil", storage)
+	}
+}
+
+// TestNewStorageRejectsNegativePoolSize verifies URL options cannot panic during client creation. TestNewStorageRejectsNegativePoolSize 验证 URL 选项不会在创建客户端时触发 panic。
+func TestNewStorageRejectsNegativePoolSize(t *testing.T) {
+	storage, err := NewStorage("redis://localhost:6379/0?pool_size=-1")
+	if err == nil {
+		if storage != nil {
+			_ = storage.Close()
+		}
+		t.Fatal("NewStorage(negative pool size) error = nil, want error")
+	}
+	if storage != nil {
+		t.Fatalf("NewStorage(negative pool size) storage = %v, want nil", storage)
 	}
 }
 

@@ -131,7 +131,11 @@ loginID, device, deviceID, err := generator.GetLoginInfoFromJWT(token)
 
 ### Use a Strong Secret
 
-When `TokenStyleJWT` is enabled, `JwtSecretKey` must not be empty. Use a long, random secret in production.
+When `TokenStyleJWT` is enabled, explicitly configure `JwtSecretKey`. Empty or whitespace-only keys and the public default `dtoken-go` (including surrounding whitespace) are rejected. Use a long, random secret in production. Valid custom keys are used byte-for-byte without trimming whitespace.
+
+The builder rejects these invalid keys during configuration validation. Direct JWT generation, parsing, and validation through `dgenerator` also return parameter errors. Tokens previously signed with the default key no longer pass JWT validation; configure a new key and log in again.
+
+The generator only signs and accepts `HS256`, rejecting `HS384`, `HS512`, and other algorithms. `GetLoginInfoFromJWT` accepts older tokens without `device` or `deviceId` and returns empty strings for missing fields. Present fields must be strings; `null` and other types return errors.
 
 ### Do Not Treat It As Fully Stateless
 

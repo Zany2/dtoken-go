@@ -129,3 +129,32 @@ func TestJSONSerializer_NilAndInvalidTargets(t *testing.T) {
 		t.Fatal("Decode() should reject a nil pointer target")
 	}
 }
+
+// TestJSONSerializerDecodeBoundaries verifies exactly one complete JSON value is required. TestJSONSerializerDecodeBoundaries 验证输入必须恰好包含一个完整 JSON 值。
+func TestJSONSerializerDecodeBoundaries(t *testing.T) {
+	s := NewJSONSerializer()
+	for _, tt := range []struct {
+		name string
+		data string
+	}{
+		{"empty", ""},
+		{"truncated", `{"name":`},
+		{"second value", `{"name":"alice"}{"name":"bob"}`},
+		{"invalid suffix", `{"name":"alice"}!`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var got map[string]string
+			if err := s.Decode([]byte(tt.data), &got); err == nil {
+				t.Fatal("Decode() accepted incomplete or trailing data")
+			}
+		})
+	}
+
+	var got map[string]string
+	if err := s.Decode([]byte(" \n{\"name\":\"alice\"}\t"), &got); err != nil {
+		t.Fatalf("Decode() rejected trailing whitespace: %v", err)
+	}
+	if got["name"] != "alice" {
+		t.Fatalf("Decode() name = %q, want %q", got["name"], "alice")
+	}
+}

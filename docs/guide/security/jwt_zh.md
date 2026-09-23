@@ -138,7 +138,11 @@ loginID, device, deviceID, err := generator.GetLoginInfoFromJWT(token)
 
 ### 使用强密钥
 
-`TokenStyleJWT` 开启时，`JwtSecretKey` 不能为空。建议使用足够长、足够随机的密钥。
+`TokenStyleJWT` 开启时，`JwtSecretKey` 必须显式设置，不能是空字符串、纯空白或公开默认值 `dtoken-go`（包括首尾带空白的默认值）。建议使用足够长、足够随机的密钥。有效自定义密钥按原始字节使用，不会自动裁剪空白。
+
+Builder 会在配置校验阶段拒绝这些无效密钥；直接使用 `dgenerator` 签发、解析或校验 JWT 时也会返回参数错误。此前使用默认密钥签发的 Token 将无法通过 JWT 校验，需要配置新密钥并重新登录。
+
+生成器签发和校验只允许 `HS256`，不接受 `HS384`、`HS512` 或其他算法。`GetLoginInfoFromJWT` 允许旧 Token 缺少 `device`、`deviceId`，此时返回空字符串；字段存在时必须是字符串，`null` 或其他类型会返回错误。
 
 ### 不要误以为它是纯无状态方案
 

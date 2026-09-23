@@ -16,7 +16,7 @@ type LoggerConfig struct {
 	TimeFormat        string        // Timestamp format 时间戳格式
 	Stdout            bool          // Print logs to console 是否输出到控制台
 	StdoutOnly        bool          // Only print to console, skip file output 仅输出到控制台，不写入文件
-	QueueSize         int           // Async write queue size 异步写入队列大小
+	QueueSize         int           // Async queue capacity fixed at construction 异步队列容量，在创建时确定
 	RotateSize        int64         // File size threshold before rotation in bytes 文件大小滚动阈值
 	RotateExpire      time.Duration // Rotation interval by time duration 文件时间滚动间隔
 	RotateBackupLimit int           // Maximum number of rotated backup files 最大备份文件数量

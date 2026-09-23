@@ -7,6 +7,7 @@ package jsonv2
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 // TestJSONV2SerializerName verifies the serializer name. 测试 JSON v2 编解码器名称。
@@ -131,5 +132,58 @@ func TestJSONV2SerializerNilAndInvalidTargets(t *testing.T) {
 	var nilTarget *struct{}
 	if err := serializer.Decode([]byte(`{}`), nilTarget); err == nil {
 		t.Fatal("Decode() should reject a nil pointer target")
+	}
+}
+
+// TestJSONV2SerializerDurationCompatibility verifies durations retain the numeric nanosecond representation. TestJSONV2SerializerDurationCompatibility 验证时长保留纳秒数值表示。
+func TestJSONV2SerializerDurationCompatibility(t *testing.T) {
+	type payload struct {
+		Timeout time.Duration `json:"timeout"`
+	}
+
+	serializer := NewJSONV2Serializer()
+	data, err := serializer.Encode(payload{Timeout: 1500 * time.Millisecond})
+	if err != nil {
+		t.Fatalf("Encode() duration error = %v", err)
+	}
+	if string(data) != `{"timeout":1500000000}` {
+		t.Fatalf("Encode() duration = %q, want %q", data, `{"timeout":1500000000}`)
+	}
+
+	var got payload
+	if err := serializer.Decode(data, &got); err != nil {
+		t.Fatalf("Decode() duration error = %v", err)
+	}
+	if got.Timeout != 1500*time.Millisecond {
+		t.Fatalf("Decode() duration = %v, want %v", got.Timeout, 1500*time.Millisecond)
+	}
+}
+
+// TestJSONV2SerializerDecodeBoundaries verifies exactly one complete JSON value is required. TestJSONV2SerializerDecodeBoundaries 验证输入必须恰好包含一个完整 JSON 值。
+func TestJSONV2SerializerDecodeBoundaries(t *testing.T) {
+	serializer := NewJSONV2Serializer()
+	for _, tt := range []struct {
+		name string
+		data string
+	}{
+		{"empty", ""},
+		{"truncated", `{"name":`},
+		{"second value", `{"name":"alice"}{"name":"bob"}`},
+		{"invalid suffix", `{"name":"alice"}!`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var got map[string]string
+			if err := serializer.Decode([]byte(tt.data), &got); err == nil {
+				t.Fatal("Decode() accepted incomplete or trailing data")
+			}
+		})
+	}
+
+	var got map[string]string
+	if err := serializer.Decode([]byte(" \n{\"name\":\"alice\"}\t"), &got); err != nil {
+		t.Fatalf("Decode() rejected trailing whitespace: %v", err)
+	}
+	if got["name"] != "alice" {
+		t.Fatalf("Decode() name = %q, want %q", got["name"], "alice")
 	}
 }

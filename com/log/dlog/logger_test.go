@@ -192,12 +192,6 @@ func TestLoggerHelpers(t *testing.T) {
 	if levelString(LevelWarn) != "WARN" {
 		t.Fatalf("levelString(LevelWarn) = %q", levelString(LevelWarn))
 	}
-	if normalizeBaseName("APP_{Y}-{m}-{d}.log") != "APP" {
-		t.Fatalf("normalizeBaseName() = %q", normalizeBaseName("APP_{Y}-{m}-{d}.log"))
-	}
-	if secureRandomInt(10) < 0 || secureRandomInt(10) >= 10 {
-		t.Fatal("secureRandomInt() should stay in range")
-	}
 }
 
 // TestLoggerTimeCacheTracksFormat verifies time cache respects format changes TestLoggerTimeCacheTracksFormat 验证时间缓存会感知时间格式变化。

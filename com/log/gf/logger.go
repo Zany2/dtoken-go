@@ -18,6 +18,7 @@ type GFLogger struct {
 var _ adapter.Log = (*GFLogger)(nil)
 
 // NewGFLogger creates a GoFrame logger adapter 创建新的 GoFrame 日志适配器
+// The caller manages the supplied logger's configuration and resources; nil disables output. 调用方管理传入日志器的配置和资源，nil 表示禁用输出。
 func NewGFLogger(ctx context.Context, l *glog.Logger) *GFLogger {
 	if ctx == nil {
 		ctx = context.Background()

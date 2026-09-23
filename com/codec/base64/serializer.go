@@ -21,21 +21,24 @@ func (s *Base64Serializer) Encode(v any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Encode the JSON bytes with Base64 再用 Base64 编码（得到字符串）
-	b64Str := base64.StdEncoding.EncodeToString(jsonBytes)
-	// Return the Base64 string as bytes 返回 []byte(b64Str)
-	return []byte(b64Str), nil
+
+	// Encode directly into the returned byte slice. 直接编码到返回的字节切片中。
+	encoded := make([]byte, base64.StdEncoding.EncodedLen(len(jsonBytes)))
+	base64.StdEncoding.Encode(encoded, jsonBytes)
+	return encoded, nil
 }
 
 // Decode decodes Base64 data and then deserializes JSON 先做 Base64 解码再从 JSON 反序列化
 func (s *Base64Serializer) Decode(data []byte, v any) error {
-	// Treat data as a Base64 string and decode it first 将 data 视为 Base64 字符串，先解码
-	jsonBytes, err := base64.StdEncoding.DecodeString(string(data))
+	// Decode directly from the input bytes. 直接从输入字节解码。
+	jsonBytes := make([]byte, base64.StdEncoding.DecodedLen(len(data)))
+	n, err := base64.StdEncoding.Decode(jsonBytes, data)
 	if err != nil {
 		return err
 	}
+
 	// Deserialize the decoded bytes from JSON 再用 JSON 反序列化
-	return json.Unmarshal(jsonBytes, v)
+	return json.Unmarshal(jsonBytes[:n], v)
 }
 
 // Name returns the serializer name 返回序列化器名称

@@ -46,7 +46,12 @@ func TestValidateTokenStyleAndJWTSecretMatrix(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "jwt with secret", style: adapter.TokenStyleJWT, secret: "secret"},
+		{name: "jwt with padded custom secret", style: adapter.TokenStyleJWT, secret: " custom-secret "},
+		{name: "jwt with empty secret", style: adapter.TokenStyleJWT, secret: "", wantErr: true},
 		{name: "jwt with blank secret", style: adapter.TokenStyleJWT, secret: "   ", wantErr: true},
+		{name: "jwt with default secret", style: adapter.TokenStyleJWT, secret: DefaultJWTSecretKey, wantErr: true},
+		{name: "jwt with padded default secret", style: adapter.TokenStyleJWT, secret: " " + DefaultJWTSecretKey + "\t", wantErr: true},
+		{name: "uuid with default secret", style: adapter.TokenStyleUUID, secret: DefaultJWTSecretKey},
 		{name: "uuid with blank secret", style: adapter.TokenStyleUUID, secret: "   "},
 		{name: "hash with blank secret", style: adapter.TokenStyleHash, secret: "   "},
 		{name: "invalid style", style: adapter.TokenStyle("bad-style"), secret: "secret", wantErr: true},

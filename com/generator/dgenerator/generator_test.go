@@ -215,10 +215,7 @@ func TestGeneratorHashAndTimestampFormats(t *testing.T) {
 
 // TestGeneratorHelpersVerifyFallbacks verifies helper defaults and charset constraints. TestGeneratorHelpersVerifyFallbacks 验证辅助函数默认值和字符集约束。
 func TestGeneratorHelpersVerifyFallbacks(t *testing.T) {
-	g := NewGenerator(60, "", adapter.TokenStyleJWT)
-	if got := g.getJWTSecret(); got != DefaultJWTSecret {
-		t.Fatalf("getJWTSecret() = %q, want %q", got, DefaultJWTSecret)
-	}
+	g := NewDefaultGenerator()
 
 	if token, err := g.generateSimple(0); err != nil || len(token) != DefaultSimpleLength {
 		t.Fatalf("generateSimple(0) = %q, %v, want default length %d", token, err, DefaultSimpleLength)

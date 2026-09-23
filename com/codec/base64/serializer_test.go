@@ -92,3 +92,34 @@ func TestBase64SerializerNilAndInvalidTargets(t *testing.T) {
 		t.Fatal("Decode() should reject a nil pointer target")
 	}
 }
+
+// TestBase64SerializerDecodeBoundaries verifies the decoded payload contains exactly one complete JSON value. TestBase64SerializerDecodeBoundaries 验证解码后的载荷必须恰好包含一个完整 JSON 值。
+func TestBase64SerializerDecodeBoundaries(t *testing.T) {
+	s := NewBase64Serializer()
+	for _, tt := range []struct {
+		name string
+		json string
+	}{
+		{"empty", ""},
+		{"truncated", `{"name":`},
+		{"second value", `{"name":"alice"}{"name":"bob"}`},
+		{"invalid suffix", `{"name":"alice"}!`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			data := []byte(base64.StdEncoding.EncodeToString([]byte(tt.json)))
+			var got map[string]string
+			if err := s.Decode(data, &got); err == nil {
+				t.Fatal("Decode() accepted incomplete or trailing JSON data")
+			}
+		})
+	}
+
+	data := []byte(base64.StdEncoding.EncodeToString([]byte(" \n{\"name\":\"alice\"}\t")))
+	var got map[string]string
+	if err := s.Decode(data, &got); err != nil {
+		t.Fatalf("Decode() rejected trailing JSON whitespace: %v", err)
+	}
+	if got["name"] != "alice" {
+		t.Fatalf("Decode() name = %q, want %q", got["name"], "alice")
+	}
+}

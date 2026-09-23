@@ -75,7 +75,7 @@ const (
 	// DefaultRefreshTokenTimeout stores default refresh token timeout DefaultRefreshTokenTimeout 存储默认刷新令牌超时时间
 	DefaultRefreshTokenTimeout = 2592000
 
-	// DefaultJWTSecretKey stores default jwt secret key DefaultJWTSecretKey 存储默认 JWT 密钥
+	// DefaultJWTSecretKey is a legacy placeholder rejected in JWT mode. DefaultJWTSecretKey 是旧版占位密钥，JWT 模式会拒绝使用。
 	DefaultJWTSecretKey = "dtoken-go"
 
 	// DefaultMaxLoginCount stores default max login count DefaultMaxLoginCount 存储默认最大并发登录数

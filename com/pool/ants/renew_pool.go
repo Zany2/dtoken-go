@@ -4,6 +4,7 @@ package ants
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
@@ -18,6 +19,7 @@ type RenewPoolManager struct {
 	stopCh    chan struct{}    // Stop signal channel 停止信号通道
 	started   bool             // Indicates whether the pool manager is running 是否已启动
 	closeOnce sync.Once        // Ensure Stop only executes once 确保 Stop 只执行一次
+	active    atomic.Int64     // Tasks currently executing, excluding idle workers 当前执行中的任务数，不包含空闲协程
 }
 
 // Interface assertion keeps pool contract checked at compile time 接口断言在编译期检查协程池契约
@@ -75,6 +77,7 @@ func (m *RenewPoolManager) initPool() error {
 }
 
 // Submit submits a renewal task 提交续期任务
+// Task panics are recovered and logged by ants. 任务 panic 由 ants 恢复并记录日志。
 func (m *RenewPoolManager) Submit(task func()) error {
 	if m == nil {
 		return fmt.Errorf("renew pool not started")
@@ -91,10 +94,16 @@ func (m *RenewPoolManager) Submit(task func()) error {
 	if !started || pool == nil {
 		return fmt.Errorf("renew pool not started")
 	}
-	return pool.Submit(task)
+	return pool.Submit(func() {
+		// Count execution only, including cleanup when a task panics. 仅统计执行中的任务，并在任务 panic 时清理计数。
+		m.active.Add(1)
+		defer m.active.Add(-1)
+		task()
+	})
 }
 
-// Stop stops the auto scaling process 停止自动扩缩容
+// Stop rejects new work, stops scaling, and waits up to DefaultStopTimeout for workers. Stop 拒绝新任务、停止扩缩容，并最多等待 DefaultStopTimeout 让协程退出。
+// Tasks still running after the timeout continue until they return. 超时后仍在执行的任务会继续运行直至返回。
 func (m *RenewPoolManager) Stop() {
 	if m == nil {
 		return
@@ -127,11 +136,11 @@ func (m *RenewPoolManager) Stats() (running, capacity int, usage float64) {
 	if m.pool == nil {
 		return
 	}
-	running = m.pool.Running() // Active tasks 当前运行任务数
-	capacity = m.pool.Cap()    // Pool capacity 当前池容量
+	running = int(m.active.Load()) // Active tasks 当前运行任务数
+	capacity = m.pool.Cap()        // Pool capacity 当前池容量
 	if capacity > 0 {
 		usage = float64(running) / float64(capacity) // Usage ratio 当前使用率
-		// Cap usage at 1.0 to handle Running and Cap races 限制使用率最大为 1.0，处理 Running() 和 Cap() 调用之间的竞态条件
+		// Running tasks may temporarily exceed capacity after shrinking. 缩容后执行中的任务数可能暂时超过容量。
 		if usage > 1.0 {
 			usage = 1.0
 		}
@@ -164,8 +173,8 @@ func (m *RenewPoolManager) autoScale() {
 			}
 
 			// Get current pool stats 获取当前运行状态
-			running := m.pool.Running() // Number of active goroutines 当前正在执行的任务数
-			capacity := m.pool.Cap()    // Current pool capacity 当前协程池容量
+			running := int(m.active.Load()) // Exclude cached idle workers 不计入缓存的空闲协程
+			capacity := m.pool.Cap()        // Current pool capacity 当前协程池容量
 
 			// Skip when capacity is 0 to avoid division by zero 容量为 0 时跳过，避免除零
 			if capacity <= 0 {
@@ -178,12 +187,13 @@ func (m *RenewPoolManager) autoScale() {
 			switch {
 			// Expand when usage exceeds the threshold and capacity is below MaxSize 当使用率超过扩容阈值且容量小于最大值时扩容
 			case usage > m.config.ScaleUpRate && capacity < m.config.MaxSize:
-				newCap := int(float64(capacity) * 1.5) // Increase capacity by 1.5x 扩容为当前的 1.5 倍
+				// Clamp before converting to int to avoid overflow on 32-bit platforms. 转换为 int 前限制上界，避免在 32 位平台溢出。
+				newCap := m.config.MaxSize
+				if scaled := float64(capacity) * 1.5; scaled < float64(newCap) {
+					newCap = int(scaled)
+				}
 				if newCap <= capacity {
 					newCap = capacity + 1 // Ensure a scale-up for small capacities 确保小容量场景也能实际扩容
-				}
-				if newCap > m.config.MaxSize { // Cap to maximum size 限制最大值
-					newCap = m.config.MaxSize
 				}
 				m.pool.Tune(newCap) // Apply new pool capacity 调整 ants 池容量
 

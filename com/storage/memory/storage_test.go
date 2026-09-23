@@ -202,6 +202,19 @@ func TestStorageContextCancellation(t *testing.T) {
 	}
 }
 
+// TestStorageKeysChecksContextDuringScan verifies a canceled scan stops while iterating its snapshot. TestStorageKeysChecksContextDuringScan 验证扫描快照期间取消后会及时停止。
+func TestStorageKeysChecksContextDuringScan(t *testing.T) {
+	s := NewStorage()
+	if err := s.Set(context.Background(), "key", "value", 0); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+
+	ctx := &cancelDuringScanContext{}
+	if _, err := s.Keys(ctx, "*"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Keys() error = %v, want %v", err, context.Canceled)
+	}
+}
+
 // TestStorageExpiredEntriesAreRemoved verifies expired entries disappear from all read paths. TestStorageExpiredEntriesAreRemoved 验证过期条目会从所有读取路径消失。
 func TestStorageExpiredEntriesAreRemoved(t *testing.T) {
 	s := NewStorage()
@@ -276,9 +289,17 @@ func TestMatchPatternBoundaries(t *testing.T) {
 		{key: "abc", pattern: "a?c", want: true},
 		{key: "abc", pattern: "a?d", want: false},
 		{key: "a?c", pattern: `a\?c`, want: true},
+		{key: "user:2", pattern: "user:[12]", want: true},
+		{key: "user:3", pattern: "user:[12]", want: false},
+		{key: "user:7", pattern: "user:[0-9]", want: true},
+		{key: "user:a", pattern: "user:[^0-9]", want: true},
+		{key: "user:]", pattern: `user:[\]]`, want: true},
+		{key: "user:a", pattern: "user:[z-a]", want: true},
+		{key: "user:a", pattern: "user:[abc", want: false},
 		{key: `a\`, pattern: `a\\`, want: true},
 		{key: `a\\`, pattern: `a\\\\`, want: true},
-		{key: "abc", pattern: `abc\`, want: true},
+		{key: "abc", pattern: `abc\`, want: false},
+		{key: `abc\`, pattern: `abc\`, want: true},
 		{key: "abc", pattern: "", want: false},
 	}
 
@@ -289,4 +310,20 @@ func TestMatchPatternBoundaries(t *testing.T) {
 			}
 		})
 	}
+}
+
+// cancelDuringScanContext becomes canceled after the initial operation check. cancelDuringScanContext 在操作的首次检查后进入取消状态。
+type cancelDuringScanContext struct {
+	checks int
+}
+
+func (c *cancelDuringScanContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+func (c *cancelDuringScanContext) Done() <-chan struct{}       { return nil }
+func (c *cancelDuringScanContext) Value(any) any               { return nil }
+func (c *cancelDuringScanContext) Err() error {
+	c.checks++
+	if c.checks > 1 {
+		return context.Canceled
+	}
+	return nil
 }

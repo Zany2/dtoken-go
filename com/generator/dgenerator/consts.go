@@ -6,7 +6,7 @@ const (
 	// DefaultTimeout defines the default timeout 默认超时时间，30天，单位：秒。
 	DefaultTimeout = 2592000
 
-	// DefaultJWTSecret defines the default JWT secret 默认 JWT 密钥（生产环境应覆盖）
+	// DefaultJWTSecret is a legacy placeholder rejected by JWT operations. DefaultJWTSecret 是旧版占位密钥，JWT 操作会拒绝使用。
 	DefaultJWTSecret = "dtoken-go"
 
 	// TikTokenLength defines the TikTok style short ID length TikTok 风格短 ID 的长度

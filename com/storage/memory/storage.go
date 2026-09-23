@@ -4,6 +4,8 @@ package memory
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -55,6 +57,9 @@ func (s *Storage) Set(ctx context.Context, key string, value any, expiration tim
 	if expiration <= 0 {
 		s.c.Set(key, value, cache.NoExpiration) // Keep the key without expiration 永不过期
 	} else {
+		if err := checkExpiration(expiration); err != nil {
+			return err
+		}
 		s.c.Set(key, value, expiration)
 	}
 	return nil
@@ -119,6 +124,9 @@ func (s *Storage) SetIfAbsent(ctx context.Context, key string, value any, expira
 	if expiration <= 0 {
 		s.c.Set(key, value, cache.NoExpiration)
 	} else {
+		if err := checkExpiration(expiration); err != nil {
+			return false, err
+		}
 		s.c.Set(key, value, expiration)
 	}
 	return true, nil
@@ -175,6 +183,10 @@ func (s *Storage) Keys(ctx context.Context, pattern string) ([]string, error) {
 	keys := make([]string, 0, len(items))
 
 	for k, it := range items {
+		if err := checkContext(ctx); err != nil {
+			return nil, err
+		}
+
 		// Check whether the entry is expired 检查是否已过期（Expiration > 0 表示有 TTL）
 		if it.Expiration > 0 && now >= it.Expiration {
 			// A snapshot cannot authorize deleting a concurrently replaced value. 快照不能用于删除可能已被并发替换的值。
@@ -210,6 +222,9 @@ func (s *Storage) Expire(ctx context.Context, key string, expiration time.Durati
 		s.c.Delete(key) // Delete the key for immediate expiration 立即过期等于删除
 	} else {
 		// Reset the value with a new TTL 重新设置值 + 新 TTL
+		if err := checkExpiration(expiration); err != nil {
+			return err
+		}
 		s.c.Set(key, val, expiration)
 	}
 
@@ -276,6 +291,14 @@ func (s *Storage) ensureReady() error {
 	return nil
 }
 
+// checkExpiration prevents go-cache's absolute UnixNano deadline from wrapping into a non-expiring value. checkExpiration 防止 go-cache 的绝对 UnixNano 截止时间溢出为永不过期。
+func checkExpiration(expiration time.Duration) error {
+	if time.Now().Add(expiration).After(time.Unix(0, math.MaxInt64)) {
+		return fmt.Errorf("%w: memory storage expiration exceeds the UnixNano range", derror.ErrInvalidParam)
+	}
+	return nil
+}
+
 // checkContext returns context cancellation errors consistently with remote storage. checkContext 返回上下文取消错误以对齐远程存储语义。
 func checkContext(ctx context.Context) error {
 	if ctx == nil {
@@ -284,58 +307,111 @@ func checkContext(ctx context.Context) error {
 	return ctx.Err()
 }
 
-// matchPattern implements Redis style wildcard matching 实现 Redis 风格的通配符匹配（支持 *, ?, \ 转义）
+// matchPattern implements Redis-style byte glob matching. matchPattern 实现 Redis 风格的字节通配符匹配。
 func matchPattern(key, pattern string) bool {
-	return wildcardMatch(key, pattern, 0, 0)
+	memo := make(map[[2]int]bool)
+	visited := make(map[[2]int]bool)
+	return wildcardMatch(key, pattern, 0, 0, memo, visited)
 }
 
-// wildcardMatch performs recursive backtracking matching 递归回溯匹配
-func wildcardMatch(key, pattern string, i, j int) bool {
-	for j < len(pattern) {
-		switch pattern[j] {
-		case '\\':
-			// Escape the next character 转义下一个字符
-			if j+1 >= len(pattern) {
-				return i == len(key) // Match only the end when pattern ends with \ 以 \ 结尾，只匹配到末尾
-			}
-			j++
-			if i >= len(key) || key[i] != pattern[j] {
-				return false
-			}
-			i++
-			j++
+// wildcardMatch performs memoized glob matching. wildcardMatch 使用记忆化方式执行通配符匹配。
+func wildcardMatch(key, pattern string, i, j int, memo, visited map[[2]int]bool) bool {
+	state := [2]int{i, j}
+	if visited[state] {
+		return memo[state]
+	}
+	visited[state] = true
 
-		case '?':
-			if i >= len(key) {
-				return false
-			}
-			i++
-			j++
+	matched := false
+	switch {
+	case j == len(pattern):
+		matched = i == len(key)
 
-		case '*':
-			// Skip consecutive wildcard stars 跳过连续的 *
-			for j < len(pattern) && pattern[j] == '*' {
-				j++
-			}
-			if j == len(pattern) {
-				return true // Match the remaining suffix when * is the last character * 是最后一个字符，匹配剩余所有
-			}
-			// Try matching the remaining pattern from the current position 尝试从当前位置开始匹配剩余 pattern
-			for i <= len(key) {
-				if wildcardMatch(key, pattern, i, j) {
-					return true
-				}
-				i++
-			}
-			return false
-
-		default:
-			if i >= len(key) || key[i] != pattern[j] {
-				return false
-			}
-			i++
+	case pattern[j] == '*':
+		for j < len(pattern) && pattern[j] == '*' {
 			j++
 		}
+		if j == len(pattern) {
+			matched = true
+			break
+		}
+		for next := i; next <= len(key); next++ {
+			if wildcardMatch(key, pattern, next, j, memo, visited) {
+				matched = true
+				break
+			}
+		}
+
+	case i == len(key):
+		matched = false
+
+	case pattern[j] == '?':
+		matched = wildcardMatch(key, pattern, i+1, j+1, memo, visited)
+
+	case pattern[j] == '[':
+		classMatched, next, valid := matchCharacterClass(key[i], pattern, j+1)
+		matched = valid && classMatched && wildcardMatch(key, pattern, i+1, next, memo, visited)
+
+	case pattern[j] == '\\':
+		// A trailing escape is a literal backslash, matching Redis glob behavior. 末尾转义符按反斜杠字面量处理，与 Redis 通配规则一致。
+		literalIndex := j
+		if j+1 < len(pattern) {
+			literalIndex = j + 1
+		}
+		matched = key[i] == pattern[literalIndex] && wildcardMatch(key, pattern, i+1, literalIndex+1, memo, visited)
+
+	default:
+		matched = key[i] == pattern[j] && wildcardMatch(key, pattern, i+1, j+1, memo, visited)
 	}
-	return i == len(key)
+
+	memo[state] = matched
+	return matched
+}
+
+// matchCharacterClass matches Redis-style ranges, negation, and escapes. matchCharacterClass 匹配 Redis 风格的范围、取反与转义。
+func matchCharacterClass(value byte, pattern string, start int) (matched bool, next int, valid bool) {
+	index := start
+	negated := index < len(pattern) && pattern[index] == '^'
+	if negated {
+		index++
+	}
+
+	for index < len(pattern) {
+		if pattern[index] == ']' {
+			if negated {
+				matched = !matched
+			}
+			return matched, index + 1, true
+		}
+
+		current := pattern[index]
+		if current == '\\' && index+1 < len(pattern) {
+			index++
+			current = pattern[index]
+			if current == value {
+				matched = true
+			}
+			index++
+			continue
+		}
+
+		if index+2 < len(pattern) && pattern[index+1] == '-' && pattern[index+2] != ']' {
+			end := pattern[index+2]
+			if current > end {
+				current, end = end, current
+			}
+			if value >= current && value <= end {
+				matched = true
+			}
+			index += 3
+			continue
+		}
+
+		if current == value {
+			matched = true
+		}
+		index++
+	}
+
+	return false, 0, false
 }

@@ -245,8 +245,11 @@ func (c *Config) Validate() error {
 	default:
 		return fmt.Errorf("Config.TokenStyle is invalid: %q", c.TokenStyle)
 	}
-	if c.TokenStyle == adapter.TokenStyleJWT && strings.TrimSpace(c.JwtSecretKey) == "" {
-		return fmt.Errorf("Config.JwtSecretKey must not be empty when Config.TokenStyle is JWT")
+	if c.TokenStyle == adapter.TokenStyleJWT {
+		secret := strings.TrimSpace(c.JwtSecretKey)
+		if secret == "" || secret == DefaultJWTSecretKey {
+			return fmt.Errorf("Config.JwtSecretKey must not be blank or the public default when Config.TokenStyle is JWT")
+		}
 	}
 
 	// Validate time relation 验证时间关系

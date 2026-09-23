@@ -4,6 +4,7 @@
 package jsonv2
 
 import (
+	"encoding/json"
 	jsonv2 "encoding/json/v2"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
@@ -17,12 +18,13 @@ var _ adapter.Codec = (*JSONV2Serializer)(nil)
 
 // Encode serializes a value into JSON v2. 使用 JSON v2 将值编码为 JSON。
 func (s *JSONV2Serializer) Encode(v any) ([]byte, error) {
-	return jsonv2.Marshal(v)
+	// Preserve numeric nanoseconds for duration fields in stored records. 存储记录中的时长字段保留纳秒数值表示。
+	return jsonv2.Marshal(v, json.FormatDurationAsNano(true))
 }
 
 // Decode deserializes JSON v2 into a value. 使用 JSON v2 将数据解码到值中。
 func (s *JSONV2Serializer) Decode(data []byte, v any) error {
-	return jsonv2.Unmarshal(data, v)
+	return jsonv2.Unmarshal(data, v, json.FormatDurationAsNano(true))
 }
 
 // Name returns the serializer name. 返回编解码器名称。
