@@ -39,6 +39,8 @@ func initDToken() {
 
 ## Permission APIs
 
+Token-based permission and role additions/removals validate the full login state even when the list is `nil`, empty, or contains only empty strings. Invalid, disabled, or inactive tokens return the corresponding error. For a valid login, an empty change does not write the session, emit change events, or schedule renewal or activity maintenance.
+
 ### Add Permissions
 
 ```go

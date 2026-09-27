@@ -16,6 +16,10 @@ DToken-Go supports more than account-level banning. It also supports service dis
 
 ## Account Disable
 
+`Disable` destroys the current account session, synchronously retires the terminal credentials listed in it, and removes their linked refresh tokens. Those access tokens report an account-disabled error during the ban and remain invalid after untie or ban expiry. A new login is required. `Untie` only removes the ban; it does not restore the destroyed session.
+
+A duration of `0` means permanent disable; negative durations are invalid. Setting a ban again replaces its duration and reason and removes matching legacy records, preventing an older ban from reappearing after the new one expires. The operation returns an error if a legacy record cannot be decoded or its ownership cannot be determined.
+
 ```go
 ctx := context.Background()
 
@@ -82,6 +86,8 @@ This fits layered risk control:
 ## Device Disable
 
 Device disable can target a device type or a concrete device ID.
+
+Device bans preserve the session and terminal credentials. After untie, credentials remain usable if they have not expired or been revoked. Device-type and concrete-device bans are independent: removing one does not remove the other. Concrete-device `IsDisable` / `CheckDisable` checks both levels, while detail and TTL queries return only the requested level. Service bans also preserve the session. Replacing a service or device ban removes matching legacy records as well.
 
 ```go
 // Disable app access for this account.

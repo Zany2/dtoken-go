@@ -14,6 +14,46 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
+// TestMsgPackManagerDisableOwnership verifies flat disable fields and private ownership survive encoding. TestMsgPackManagerDisableOwnership 验证平铺封禁字段及内部归属经过编码后保持有效。
+func TestMsgPackManagerDisableOwnership(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.DefaultConfig()
+	cfg.AsyncEvent, cfg.AutoRenew = false, false
+	storage := &codecManagerStorage{items: make(map[string]codecManagerEntry)}
+	mgr := manager.NewManager(cfg, &codecManagerGenerator{}, storage, NewMsgPackSerializer(), adapter.NewNopLogger(), nil, nil)
+	t.Cleanup(mgr.CloseManager)
+	if err := mgr.DisableServiceLevel(ctx, "a:b", "pay", 3, time.Minute, "service reason"); err != nil {
+		t.Fatal(err)
+	}
+	info, err := mgr.GetDisableServiceInfo(ctx, "a:b", "pay")
+	if err != nil || info.Level != 3 || info.DisableReason != "service reason" || info.DisableTime <= 0 {
+		t.Fatalf("service metadata = %+v, %v", info, err)
+	}
+	if mgr.IsDisableService(ctx, `a\:b`, "pay") {
+		t.Fatal("MsgPack ownership was lost during legacy lookup")
+	}
+	if err := mgr.UntieService(ctx, `a\:b`, "pay"); err != nil || !mgr.IsDisableService(ctx, "a:b", "pay") {
+		t.Fatalf("foreign service untie affected owner: %v", err)
+	}
+	if err := mgr.DisableDeviceAndDeviceID(ctx, "a:b", "web", "phone", time.Minute, "device reason"); err != nil {
+		t.Fatal(err)
+	}
+	device, err := mgr.GetDisableDeviceAndDeviceIDInfo(ctx, "a:b", "web", "phone")
+	if err != nil || device.DisableReason != "device reason" || device.DisableTime <= 0 {
+		t.Fatalf("device metadata = %+v, %v", device, err)
+	}
+	if err := mgr.UntieDeviceAndDeviceID(ctx, `a\:b`, "web", "phone"); err != nil || !mgr.IsDisableDeviceAndDeviceID(ctx, "a:b", "web", "phone") {
+		t.Fatalf("foreign device untie affected owner: %v", err)
+	}
+	if err := mgr.Disable(ctx, "service:a:b:pay", time.Minute, "account reason"); err != nil {
+		t.Fatal(err)
+	}
+	account, err := mgr.GetDisableInfo(ctx, "service:a:b:pay")
+	if err != nil || account.DisableReason != "account reason" || account.DisableTime <= 0 {
+		t.Fatalf("account metadata = %+v, %v", account, err)
+	}
+}
+
 // TestMsgPackManagerRefreshRecords verifies actual manager records survive codec round trips and legacy decoding. TestMsgPackManagerRefreshRecords 验证实际 Manager 记录经过编解码及旧格式读取后仍可完成刷新。
 func TestMsgPackManagerRefreshRecords(t *testing.T) {
 	ctx := context.Background()

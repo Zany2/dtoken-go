@@ -31,6 +31,16 @@ type Annotation struct {
 // GetHandler gets annotation handler GetHandler 获取注解处理器
 func GetHandler(handler http.HandlerFunc, annotations ...*Annotation) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		chiCtx := prepareRequestContext(w, r)
+		if chiCtx.IsAborted() {
+			return
+		}
+		r = chiCtx.r
+
+		if len(annotations) > 0 && annotations[0] == nil {
+			writeErrorResponse(w, derror.ErrInvalidParam)
+			return
+		}
 		if len(annotations) > 0 && annotations[0].Ignore {
 			if handler != nil {
 				handler(w, r)
@@ -58,8 +68,7 @@ func GetHandler(handler http.HandlerFunc, annotations ...*Annotation) http.Handl
 			return
 		}
 
-		// Get DTokenContext (reuse cached context) 获取 DTokenContext（复用缓存上下文）
-		chiCtx := NewChiContext(w, r).(*ChiContext)
+		// Bind the selected manager to the current request. 将选定的 Manager 绑定到当前请求。
 		dCtx := getDTokenContext(chiCtx, mgr)
 		r = chiCtx.r
 		token := dCtx.GetTokenValue()

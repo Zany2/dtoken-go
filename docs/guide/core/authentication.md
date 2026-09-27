@@ -70,6 +70,8 @@ err := dtoken.LoginByToken(ctx, token)
 
 `LoginByToken()` renews token, session, and activity metadata asynchronously when the token is still valid.
 
+Automatic renewal compares the storage TTL against its threshold without rounding to whole seconds; an unexpired token with less than one second remaining can still renew. Shared login invalidates older queued maintenance so it cannot overwrite newer activity. A limited token that expires before renewal does not emit a successful renewal event.
+
 ## Check Login Status
 
 ```go
@@ -93,6 +95,8 @@ loginID, err := dtoken.GetLoginID(ctx, token)
 ```
 
 ### Get Token Info
+
+`GetTokenInfo` reads stored metadata; success does not prove the token is logged in. It does not check account/device bans, inactivity timeout, or session validity. Use `CheckLogin` or `IntrospectToken` for login validation. Identity queries such as `GetLoginID` validate both the token and the account session.
 
 ```go
 ctx := context.Background()

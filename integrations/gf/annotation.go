@@ -30,6 +30,14 @@ type Annotation struct {
 // GetHandler gets annotation handler GetHandler 获取注解处理器
 func GetHandler(ctx context.Context, handler ghttp.HandlerFunc, failFunc func(r *ghttp.Request, err error), annotations ...*Annotation) ghttp.HandlerFunc {
 	return func(r *ghttp.Request) {
+		if isRequestAborted(r) {
+			return
+		}
+		if len(annotations) > 0 && annotations[0] == nil {
+			dispatchFail(r, &AuthOptions{FailFunc: failFunc}, derror.ErrInvalidParam)
+			return
+		}
+
 		if len(annotations) > 0 && annotations[0].Ignore {
 			if handler != nil {
 				handler(r)
@@ -57,18 +65,14 @@ func GetHandler(ctx context.Context, handler ghttp.HandlerFunc, failFunc func(r 
 		cached, _ := GetDTokenContext(r)
 		mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached)
 		if err != nil {
-			if failFunc != nil {
-				failFunc(r, err)
-			} else {
-				writeErrorResponse(r, err)
-			}
+			dispatchFail(r, &AuthOptions{FailFunc: failFunc}, err)
 			return
 		}
 
 		dCtx := getDContext(r, mgr)
 		token := dCtx.GetTokenValue()
 
-		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		_, err = authcheck.Check(r.Context(), mgr, authcheck.Request{
 			TokenValue:   token,
 			CheckLogin:   true,
 			CheckDisable: ann.CheckDisable,
@@ -78,11 +82,7 @@ func GetHandler(ctx context.Context, handler ghttp.HandlerFunc, failFunc func(r 
 			LoginError:   derror.ErrNotLogin,
 		})
 		if err != nil {
-			if failFunc != nil {
-				failFunc(r, err)
-			} else {
-				writeErrorResponse(r, err)
-			}
+			dispatchFail(r, &AuthOptions{FailFunc: failFunc}, err)
 			return
 		}
 

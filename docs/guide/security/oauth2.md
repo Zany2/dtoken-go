@@ -7,7 +7,7 @@ English | [中文文档](../security/oauth2_zh.md)
 The current project includes a lightweight OAuth2 authorization server implementation under:
 
 - `core/oauth2`
-- `core/manager/manager_oauth2_func.go`
+- `core/manager/feature_oauth2.go`
 - the OAuth2 wrapper functions in `dtoken`
 
 ## Supported Grant Types
@@ -35,6 +35,8 @@ According to the current code:
 - authorization code: `10` minutes
 - access token: `2` hours
 - refresh token: `30` days
+
+Enable the optional module with `dtoken.NewBuilder().EnableOAuth2()` before using the global helpers. Authorization codes persist a precise `ExpiresAt` deadline; older records without it retain `CreateTime + ExpiresIn` validation.
 
 ## Client Model
 
@@ -114,7 +116,7 @@ token, err := dtoken.ExchangeOAuth2CodeForToken(
 
 ### PKCE
 
-Public clients can bind the authorization code to a proof key.
+Clients can bind the authorization code to a proof key. The current implementation still requires a non-empty client secret; PKCE does not replace client authentication.
 
 ```go
 authCode, err := dtoken.GenerateOAuth2AuthorizationCodeWithPKCE(
@@ -138,6 +140,8 @@ token, err := dtoken.ExchangeOAuth2CodeForTokenWithPKCE(
 ```
 
 `codeChallengeMethod` supports `oauth2.CodeChallengeMethodPlain` and `oauth2.CodeChallengeMethodS256`. If a challenge is provided with an empty method, it defaults to `plain`. The unified token entry also accepts `TokenRequest.CodeVerifier` for `authorization_code` requests.
+
+Verifiers and `plain` challenges must contain 43–128 ASCII characters from `A-Z`, `a-z`, `0-9`, `-`, `.`, `_`, and `~`. An S256 challenge must be the 43-character unpadded base64url encoding of the SHA-256 digest. Whitespace in challenges and verifiers is rejected rather than trimmed. Supplying a method without a challenge, or a verifier for a code issued without PKCE, is rejected.
 
 Returned `AccessToken`:
 
@@ -202,11 +206,13 @@ newToken, err := dtoken.RefreshOAuth2AccessToken(
 
 The current implementation:
 
-1. validates the refresh token
-2. validates `clientID` and `clientSecret`
-3. deletes the old access token
-4. deletes the old refresh token
-5. issues a brand new token pair
+1. validates the client credentials, grant type, and refresh-token ownership
+2. checks the requested scopes against the original grant and current client allowlist
+3. creates a new token pair
+4. consumes the old refresh token, using an atomic operation when available
+5. removes the old access token and returns the new pair
+
+`RefreshOAuth2AccessToken` retains the original scopes. To narrow them, pass `Scopes` in an `OAuth2Token` request with `GrantTypeRefreshToken`. Omitted or empty scopes retain the original grant; supplied scopes must be a subset. Rejected scope requests do not consume the old refresh token.
 
 ## Validate Access Token
 
@@ -231,6 +237,8 @@ Revocation clears both:
 
 The current implementation checks whether requested scopes belong to the client allowlist before issuing a token.  
 If the client `Scopes` field is empty, scope restriction is treated as open.
+
+Authorization-code exchange and refresh also recheck the current client scope allowlist. Code exchange additionally requires the original redirect URI to remain registered. These checks apply to new issuance; they do not retroactively revoke existing access tokens.
 
 ## Recommended Integration Model
 
@@ -259,6 +267,7 @@ The OAuth2 implementation is already usable for common authorization flows, with
 1. there is no `GetOAuth2Server()` public entry in the current API
 2. no ready-made HTTP introspection endpoint is provided; you write the route yourself
 3. PKCE is built into the authorization-code helpers and unified token entry, but you still generate and store the client-side verifier in your application
+4. ordinary storage supports sequential code exchange and refresh; concurrent one-time consumption across server instances requires truly atomic `adapter.AtomicStorage` operations
 
 ## Related Documentation
 

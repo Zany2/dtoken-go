@@ -87,11 +87,13 @@ type EventData struct {
 }
 ```
 
-The trigger methods take an event payload snapshot. Each listener receives its own copy of the scalar fields and the top-level `Extra` map. This is a shallow copy: nested maps, slices, pointers, and other reference values inside `Extra` remain shared and must be treated as read-only by filters and listeners.
+The trigger methods take an event payload snapshot. Each listener receives its own copy of the scalar fields, the top-level `Extra` map, and any values of type `[]string` stored directly in that map. Copying is not recursive: nested maps, slices other than these directly stored `[]string` values, pointers, and other reference values remain shared and must be treated as read-only by filters and listeners.
 
 The manager's diagnostic trigger log contains only the event type, auth type, timestamp, and listener count. It does not write `LoginID`, device fields, tokens, or `Extra`; application listeners and custom panic handlers remain responsible for protecting the payload they receive.
 
 ## Extra Field Constants
+
+For Ticket and ShortKey events, `ExtraKeyTTL` is the remaining lifetime when the event is created. It uses the credential's precise `ExpiresAt` when available, rounds positive fractional seconds up, and returns `0` after expiry. Legacy credentials without `ExpiresAt` use `CreateTime + ExpiresIn`. Asynchronous listeners receive this event-time snapshot.
 
 Current extra keys include:
 
@@ -247,6 +249,10 @@ These usually appear in the `Extra` payload of permission and role check events.
 ## Practical Recommendation
 
 Obtain the event manager from the facade or Manager instance and register application listeners before serving traffic. During shutdown, stop event producers before using `Wait` to drain accepted asynchronous work.
+
+Before calling `Manager.CloseManager`, stop and drain application requests, then call it from outside tasks and listeners. It rejects new asynchronous tasks, stops background status logging, drains accepted tasks and asynchronous listeners, and finally releases its owned Pool, Storage, and Logger. Caller-owned components remain open. Accepted renewal tasks dispatch their renewal event within the same task, avoiding both nested pool submission and event loss from rejected submissions during shutdown. Each listener's own `Async` setting still applies.
+
+Manager recovers and logs task panics, including the goroutine fallback used when no pool is available or submission fails. Recovery isolates the failure; it does not retry the task or roll back completed storage operations.
 
 ## Related Documentation
 

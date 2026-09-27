@@ -113,6 +113,7 @@ func SetManager(mgr *manager.Manager) {
 }
 
 // GetManager retrieves a manager from the global registry by auth type. GetManager 根据认证类型从全局注册表获取管理器。
+// Missing or closed managers return ErrManagerNotFound. 管理器不存在或已关闭时返回 ErrManagerNotFound。
 func GetManager(authType ...string) (*manager.Manager, error) {
 	validAutoType := getAutoType(authType...)
 	return loadManager(validAutoType)
@@ -234,8 +235,11 @@ func loadManager(authType string) (*manager.Manager, error) {
 		return nil, derror.ErrManagerNotFound
 	}
 	mgr, ok := value.(*manager.Manager)
-	if !ok {
+	if !ok || mgr == nil {
 		return nil, derror.ErrManagerInvalidType
+	}
+	if mgr.IsClosed() {
+		return nil, derror.ErrManagerNotFound
 	}
 	return mgr, nil
 }

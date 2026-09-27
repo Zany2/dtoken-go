@@ -157,7 +157,7 @@ func TestManagerCompositeDisableKeysAreInjective(t *testing.T) {
 		}
 		seen[key] = struct{}{}
 	}
-	if got := mgr.getDisableServiceKey("plain-user", "billing"); got != mgr.config.KeyPrefix+mgr.config.AuthType+DisableServiceKeyPrefix+"plain-user:billing" {
+	if got := mgr.getDisableServiceKey("plain-user", "billing"); got != mgr.storageNamespace()+DisableServiceKeyPrefix+"plain-user:billing" {
 		t.Fatalf("ordinary composite key = %q, want stable unescaped form", got)
 	}
 	legacyInfo := ServiceDisableInfo{Service: "billing", Level: 1}

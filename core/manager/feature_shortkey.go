@@ -136,7 +136,17 @@ func (m *Manager) triggerShortKeyEvent(event listener.Event, value *shortkey.Sho
 
 // remainingShortKeyTTLSeconds calculates remaining short key seconds for event data. remainingShortKeyTTLSeconds 计算事件数据中的短 Key 剩余秒数。
 func remainingShortKeyTTLSeconds(value *shortkey.ShortKey) int64 {
-	if value == nil || value.ExpiresIn <= 0 {
+	if value == nil {
+		return 0
+	}
+
+	// Prefer the same precise deadline used by short-key validation. 优先使用与短 Key 校验一致的精确截止时间。
+	if !value.ExpiresAt.IsZero() {
+		return durationSecondsCeil(time.Until(value.ExpiresAt))
+	}
+
+	// Preserve compatibility with records created before precise deadlines were stored. 兼容尚未存储精确截止时间的旧记录。
+	if value.ExpiresIn <= 0 {
 		return 0
 	}
 	remaining := value.CreateTime + value.ExpiresIn - time.Now().Unix()

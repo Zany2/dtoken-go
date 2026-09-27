@@ -43,6 +43,8 @@ r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
 
 The annotation middleware then reuses the cached `DTokenContext` on the request. If that context was created with `WithManager`, annotations with an empty `AuthType` use the same explicit manager; an annotation that sets `AuthType` keeps the global multi-auth lookup behavior.
 
+Passing an explicit nil annotation pointer to Gin's `GetHandler` returns an invalid-parameter error and aborts the request. Use `IgnoreMiddleware` or `Ignore: true` when authentication should be skipped.
+
 ## Basic Examples
 
 ### Ignore Authentication

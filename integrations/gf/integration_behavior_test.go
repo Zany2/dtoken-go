@@ -109,9 +109,9 @@ func TestGFAnnotationHandlerControlFlow(t *testing.T) {
 	failureReq.Header.Set(mgr.GetConfig().TokenName, token)
 	getDContext(failureReq, mgr)
 	var gotErr error
-	CheckRoleMiddleware(ctx, []string{"admin"}, nil, func(_ *ghttp.Request, err error) {
+	gfReviewExpectExit(t, failureReq, CheckRoleMiddleware(ctx, []string{"admin"}, nil, func(_ *ghttp.Request, err error) {
 		gotErr = err
-	})(failureReq)
+	}))
 	if !errors.Is(gotErr, derror.ErrRoleDenied) {
 		t.Fatalf("failure error = %v, want ErrRoleDenied", gotErr)
 	}

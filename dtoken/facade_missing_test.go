@@ -774,11 +774,12 @@ func TestInstanceOAuth2Facade(t *testing.T) {
 		t.Fatalf("Auth.ExchangeOAuth2CodeForToken() = %+v, %v", issued, err)
 	}
 
-	pkceCode, err := auth.GenerateOAuth2AuthorizationCodeWithPKCE(ctx, client.ClientID, "pkce-user", client.RedirectURIs[0], []string{"write"}, "verifier", oauth2.CodeChallengeMethodPlain)
+	pkceVerifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	pkceCode, err := auth.GenerateOAuth2AuthorizationCodeWithPKCE(ctx, client.ClientID, "pkce-user", client.RedirectURIs[0], []string{"write"}, pkceVerifier, oauth2.CodeChallengeMethodPlain)
 	if err != nil {
 		t.Fatalf("Auth.GenerateOAuth2AuthorizationCodeWithPKCE() error = %v", err)
 	}
-	if _, err = auth.ExchangeOAuth2CodeForTokenWithPKCE(ctx, pkceCode.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], "verifier"); err != nil {
+	if _, err = auth.ExchangeOAuth2CodeForTokenWithPKCE(ctx, pkceCode.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], pkceVerifier); err != nil {
 		t.Fatalf("Auth.ExchangeOAuth2CodeForTokenWithPKCE() error = %v", err)
 	}
 

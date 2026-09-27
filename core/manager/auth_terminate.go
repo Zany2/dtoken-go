@@ -10,10 +10,16 @@ import (
 
 // Terminate applies one terminal operation by options Terminate 根据选项执行一次终端下线操作。
 func (m *Manager) Terminate(ctx context.Context, opts TerminateOptions) error {
+	// Remember explicit filters so whitespace cannot widen a destructive operation. 记录显式筛选字段，避免空白值扩大下线范围。
+	explicitToken, explicitDevice, explicitDeviceID := opts.Token != "", opts.Device != "", opts.DeviceID != ""
+
 	// Normalize option fields before dispatching 规范化选项字段后再分发。
 	opts.Token = strings.TrimSpace(opts.Token)
 	opts.Device = strings.TrimSpace(opts.Device)
 	opts.DeviceID = strings.TrimSpace(opts.DeviceID)
+	if explicitToken && opts.Token == "" {
+		return derror.ErrInvalidToken
+	}
 
 	// Use logout as the default terminal action 默认使用注销作为终端操作
 	action := opts.Action
@@ -38,6 +44,9 @@ func (m *Manager) Terminate(ctx context.Context, opts TerminateOptions) error {
 	// Require login ID for account or device scoped operations 账号或设备范围操作必须提供登录 ID
 	if opts.LoginID == "" {
 		return derror.ErrIDIsEmpty
+	}
+	if (explicitDevice && opts.Device == "") || (explicitDeviceID && opts.DeviceID == "") {
+		return derror.ErrInvalidParam
 	}
 
 	// Dispatch operation by terminal action 根据终端操作类型分发处理

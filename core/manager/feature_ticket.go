@@ -117,7 +117,17 @@ func (m *Manager) triggerTicketEvent(event listener.Event, value *ticket.Ticket,
 
 // remainingTicketTTLSeconds calculates remaining ticket seconds for event data. remainingTicketTTLSeconds 计算事件数据中的 Ticket 剩余秒数。
 func remainingTicketTTLSeconds(value *ticket.Ticket) int64 {
-	if value == nil || value.ExpiresIn <= 0 {
+	if value == nil {
+		return 0
+	}
+
+	// Prefer the same precise deadline used by ticket validation. 优先使用与 Ticket 校验一致的精确截止时间。
+	if !value.ExpiresAt.IsZero() {
+		return durationSecondsCeil(time.Until(value.ExpiresAt))
+	}
+
+	// Preserve compatibility with records created before precise deadlines were stored. 兼容尚未存储精确截止时间的旧记录。
+	if value.ExpiresIn <= 0 {
 		return 0
 	}
 	remaining := value.CreateTime + value.ExpiresIn - time.Now().Unix()

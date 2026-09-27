@@ -12,7 +12,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/listener"
 )
 
-// TestManagerBasicLoginValidationSkipsTerminalLookup verifies basic checks use the token mapping without loading terminal context. TestManagerBasicLoginValidationSkipsTerminalLookup 验证基础登录态检查使用 Token 映射且不加载终端上下文。
+// TestManagerBasicLoginValidationSkipsTerminalLookup verifies terminal membership is not required when token mapping and account session remain valid. TestManagerBasicLoginValidationSkipsTerminalLookup 验证 Token 映射与账号 Session 有效时不要求终端列表包含该 Token。
 func TestManagerBasicLoginValidationSkipsTerminalLookup(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {

@@ -43,7 +43,7 @@ func TestManagerOAuth2ValidationUsesDecodedToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Encode(mismatched token) error = %v", err)
 	}
-	tokenKey := mgr.GetConfig().KeyPrefix + mgr.GetConfig().AuthType + oauth2.TokenKeySuffix + token.Token
+	tokenKey := mgr.storageNamespace() + oauth2.TokenKeySuffix + token.Token
 	if err = mgr.GetStorage().Set(ctx, tokenKey, encoded, time.Minute); err != nil {
 		t.Fatalf("Set(mismatched token) error = %v", err)
 	}
@@ -71,7 +71,7 @@ func TestManagerOAuth2ValidationUsesDecodedToken(t *testing.T) {
 	if err = mgr.RevokeOAuth2Token(ctx, token.Token); !errors.Is(err, derror.ErrInvalidAccessToken) {
 		t.Fatalf("RevokeOAuth2Token(mismatched payload) error = %v, want ErrInvalidAccessToken", err)
 	}
-	refreshKey := mgr.GetConfig().KeyPrefix + mgr.GetConfig().AuthType + oauth2.RefreshKeySuffix + token.RefreshToken
+	refreshKey := mgr.storageNamespace() + oauth2.RefreshKeySuffix + token.RefreshToken
 	if !mgr.GetStorage().Exists(ctx, tokenKey) || !mgr.GetStorage().Exists(ctx, refreshKey) {
 		t.Fatal("RevokeOAuth2Token(mismatched payload) removed credential data")
 	}
@@ -96,7 +96,7 @@ func TestManagerOAuth2RejectsMismatchedStoredIdentities(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Encode(mismatched client) error = %v", err)
 		}
-		key := mgr.GetConfig().KeyPrefix + mgr.GetConfig().AuthType + oauth2.ClientKeySuffix + client.ClientID
+		key := mgr.storageNamespace() + oauth2.ClientKeySuffix + client.ClientID
 		if err = mgr.GetStorage().Set(ctx, key, encoded, time.Minute); err != nil {
 			t.Fatalf("Set(mismatched client) error = %v", err)
 		}
@@ -123,7 +123,7 @@ func TestManagerOAuth2RejectsMismatchedStoredIdentities(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Encode(mismatched code) error = %v", err)
 		}
-		key := mgr.GetConfig().KeyPrefix + mgr.GetConfig().AuthType + oauth2.CodeKeySuffix + code.Code
+		key := mgr.storageNamespace() + oauth2.CodeKeySuffix + code.Code
 		if err = mgr.GetStorage().Set(ctx, key, encoded, time.Minute); err != nil {
 			t.Fatalf("Set(mismatched code) error = %v", err)
 		}
@@ -150,14 +150,14 @@ func TestManagerOAuth2RejectsMismatchedStoredIdentities(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Encode(mismatched refresh token) error = %v", err)
 		}
-		key := mgr.GetConfig().KeyPrefix + mgr.GetConfig().AuthType + oauth2.RefreshKeySuffix + token.RefreshToken
+		key := mgr.storageNamespace() + oauth2.RefreshKeySuffix + token.RefreshToken
 		if err = mgr.GetStorage().Set(ctx, key, encoded, time.Minute); err != nil {
 			t.Fatalf("Set(mismatched refresh token) error = %v", err)
 		}
 		if _, err = mgr.RefreshOAuth2AccessToken(ctx, client.ClientID, token.RefreshToken, client.ClientSecret); !errors.Is(err, derror.ErrInvalidRefreshToken) {
 			t.Fatalf("RefreshOAuth2AccessToken(mismatched payload) error = %v, want ErrInvalidRefreshToken", err)
 		}
-		accessKey := mgr.GetConfig().KeyPrefix + mgr.GetConfig().AuthType + oauth2.TokenKeySuffix + token.Token
+		accessKey := mgr.storageNamespace() + oauth2.TokenKeySuffix + token.Token
 		if !mgr.GetStorage().Exists(ctx, accessKey) {
 			t.Fatal("RefreshOAuth2AccessToken(mismatched payload) removed the existing access token")
 		}

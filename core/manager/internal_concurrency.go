@@ -173,6 +173,11 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 	case device != "":
 		// Fall back to device type matching when no device ID exists. 没有设备 ID 时按设备类型匹配。
 		candidates = sess.getTerminalsByDevice(device)
+	case deviceID != "":
+		// Respect an independent device ID filter when the device type is omitted. 省略设备类型时仍按独立的设备 ID 过滤。
+		candidates = sess.filterTerminals(func(terminal TerminalInfo) bool {
+			return terminal.DeviceID == deviceID
+		})
 	default:
 		// Reuse by account only when caller supplied no device dimension. 调用方未提供设备维度时才按账号复用。
 		candidates = sess.TerminalInfos
@@ -199,7 +204,7 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 		candidateInfo := &candidateRecord.TokenInfo
 
 		// Require the session terminal and token mapping to describe the same lifecycle. 要求 Session 终端与 Token 映射描述同一生命周期。
-		if !terminalMatchesTokenRecord(sess.LoginID, candidate, candidateRecord) {
+		if candidateRecord.Revoked || !terminalMatchesTokenRecord(sess.LoginID, candidate, candidateRecord) {
 			continue
 		}
 
@@ -230,6 +235,9 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 	if err := m.saveToStorage(ctx, m.getTokenKey(terminalInfo.Token), *record, expiration); err != nil {
 		return "", err
 	}
+
+	// Shared login supersedes activity captured by older queued validation tasks. 共享登录取代旧校验任务捕获的活跃时间，避免后续回写倒退。
+	m.cancelLoginMaintenance(terminalInfo.Token)
 
 	// Renew or reset metadata 续期或重置元数据
 	if m.config.RenewInterval > 0 {

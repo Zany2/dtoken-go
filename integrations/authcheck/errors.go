@@ -7,9 +7,14 @@ import (
 )
 
 // GetErrorCodeAndMessage maps core errors to stable integration responses GetErrorCodeAndMessage 将核心错误映射为稳定的集成层响应。
+// A nil error means success; a typed nil error retains the server-error fallback. nil 错误表示成功，带类型的空错误仍按服务器错误兜底。
 func GetErrorCodeAndMessage(err error) (int, string) {
+	if err == nil {
+		return derror.CodeSuccess, "success"
+	}
+
 	var dErr *derror.DTokenError
-	if errors.As(err, &dErr) {
+	if errors.As(err, &dErr) && dErr != nil {
 		return dErr.Code, dErr.Message
 	}
 
@@ -28,6 +33,7 @@ func GetErrorCodeAndMessage(err error) (int, string) {
 		errors.Is(err, derror.ErrShortKeyRevoked):
 		return derror.CodeTokenInvalid, err.Error()
 	case errors.Is(err, derror.ErrTokenExpired),
+		errors.Is(err, derror.ErrAuthCodeExpired),
 		errors.Is(err, derror.ErrTicketExpired),
 		errors.Is(err, derror.ErrShortKeyExpired):
 		return derror.CodeTokenExpired, err.Error()

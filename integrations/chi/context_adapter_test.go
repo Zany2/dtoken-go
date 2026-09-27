@@ -16,6 +16,7 @@ func TestChiContextAdapterRequestAndResponse(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/demo?foo=bar", strings.NewReader("hello"))
 	req.Header.Set("X-Token", "token")
 	req.Header.Set("X-Forwarded-For", "203.0.113.1, 10.0.0.1")
+	req.RemoteAddr = "198.51.100.7:12345"
 	req.Header.Set("User-Agent", "chi-test")
 	req.AddCookie(&http.Cookie{Name: "sid", Value: "cookie-token"})
 	rec := httptest.NewRecorder()
@@ -43,8 +44,8 @@ func TestChiContextAdapterRequestAndResponse(t *testing.T) {
 	if err != nil || string(body) != "hello" {
 		t.Fatalf("GetBody(second) = %q, %v, want hello", body, err)
 	}
-	if got := ctx.GetClientIP(); got != "203.0.113.1" {
-		t.Fatalf("GetClientIP() = %q, want forwarded client IP", got)
+	if got := ctx.GetClientIP(); got != "198.51.100.7" {
+		t.Fatalf("GetClientIP() = %q, want remote host", got)
 	}
 	if got := ctx.GetMethod(); got != http.MethodPost {
 		t.Fatalf("GetMethod() = %q, want POST", got)

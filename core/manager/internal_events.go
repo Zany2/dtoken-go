@@ -9,6 +9,14 @@ import (
 
 // triggerEvent triggers an event through the event manager. triggerEvent 通过事件管理器触发事件。
 func (m *Manager) triggerEvent(event listener.Event, loginID, device, deviceID, token string, extra map[string]any) {
+	if m.eventManager == nil {
+		return
+	}
+	m.triggerEventWithDispatch(event, loginID, device, deviceID, token, extra, m.config.AsyncEvent)
+}
+
+// triggerEventWithDispatch lets an already tracked worker deliver its event without another pool submission. triggerEventWithDispatch 允许已跟踪的工作任务直接分发事件，避免再次提交协程池。
+func (m *Manager) triggerEventWithDispatch(event listener.Event, loginID, device, deviceID, token string, extra map[string]any, async bool) {
 	// Skip when event manager is absent 事件管理器不存在时跳过。
 	if m.eventManager == nil {
 		return
@@ -26,7 +34,7 @@ func (m *Manager) triggerEvent(event listener.Event, loginID, device, deviceID, 
 		Timestamp: time.Now().Unix(),
 	}
 
-	if m.config.AsyncEvent {
+	if async {
 		// Dispatch event asynchronously 异步分发事件
 		m.submitAsync("triggerEvent", func() {
 			// Trigger event in async task 在异步任务中触发事件。
@@ -37,6 +45,19 @@ func (m *Manager) triggerEvent(event listener.Event, loginID, device, deviceID, 
 
 	// Dispatch event synchronously 同步分发事件
 	m.eventManager.Trigger(eventData)
+}
+
+// triggerSharedLoginEvent reports the reused terminal identity instead of optional request filters. triggerSharedLoginEvent 使用复用终端的身份发布事件，而非请求中的可选筛选字段。
+func (m *Manager) triggerSharedLoginEvent(sess *Session, token string) {
+	for i := len(sess.TerminalInfos) - 1; i >= 0; i-- {
+		terminal := sess.TerminalInfos[i]
+		if terminal.Token == token {
+			m.triggerEvent(listener.EventLogin, sess.LoginID, terminal.Device, terminal.DeviceID, token, map[string]any{
+				listener.ExtraKeyShared: true,
+			})
+			return
+		}
+	}
 }
 
 // cloneEventExtra snapshots mutable built-in event payloads before async submission. cloneEventExtra 在异步提交前快照内置的可变事件载荷。

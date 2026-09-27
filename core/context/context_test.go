@@ -1302,7 +1302,8 @@ func TestContextTicketShortKeyAndPKCEFacades(t *testing.T) {
 	if err = dctx.OAuth2().RegisterClient(client); err != nil {
 		t.Fatalf("OAuth2.RegisterClient() error = %v", err)
 	}
-	code, err := dctx.OAuth2().GenerateAuthorizationCodeWithPKCE(ctx, client.ClientID, "pkce-user", client.RedirectURIs[0], []string{"read"}, "plain-verifier", "")
+	pkceVerifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	code, err := dctx.OAuth2().GenerateAuthorizationCodeWithPKCE(ctx, client.ClientID, "pkce-user", client.RedirectURIs[0], []string{"read"}, pkceVerifier, "")
 	if err != nil {
 		t.Fatalf("OAuth2.GenerateAuthorizationCodeWithPKCE() error = %v", err)
 	}
@@ -1312,7 +1313,7 @@ func TestContextTicketShortKeyAndPKCEFacades(t *testing.T) {
 	if _, err = dctx.OAuth2().ExchangeCodeForTokenWithPKCE(ctx, code.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], "wrong-verifier"); !errors.Is(err, derror.ErrInvalidCodeVerifier) {
 		t.Fatalf("OAuth2.ExchangeCodeForTokenWithPKCE(wrong verifier) error = %v, want ErrInvalidCodeVerifier", err)
 	}
-	accessToken, err := dctx.OAuth2().ExchangeCodeForTokenWithPKCE(ctx, code.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], "plain-verifier")
+	accessToken, err := dctx.OAuth2().ExchangeCodeForTokenWithPKCE(ctx, code.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], pkceVerifier)
 	if err != nil {
 		t.Fatalf("OAuth2.ExchangeCodeForTokenWithPKCE() error = %v", err)
 	}

@@ -24,6 +24,8 @@
 3. 校验时通过 `GetAndDelete` 原子消费
 4. 同一个 nonce 只能成功一次
 
+消费操作要求存储实现 `adapter.AtomicStorage`，内置内存和 Redis 存储均支持。自定义存储的 `GetAndDelete` 必须对共享该存储的所有调用者保持原子性；不支持原子能力时，消费返回 `ErrStorageCapabilityUnsupported`。`IsNonceValid` 仅用于预检查，不会预留 nonce。
+
 ## 默认行为
 
 根据 `core/nonce` 当前实现：
@@ -31,6 +33,7 @@
 - nonce 原始长度为 `32` 字节随机数
 - 输出后是 `64` 位十六进制字符串
 - 默认 TTL 为 `5` 分钟
+- 必须通过 `dtoken.NewBuilder().EnableNonce()` 启用模块，或通过 `SetNonceManager` 注入
 
 ## 基本使用
 
@@ -42,13 +45,13 @@ import (
     "fmt"
 
     "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/defaults"
     "github.com/Zany2/dtoken-go/dtoken"
 )
 
 func initDToken() {
     if _, err := dtoken.BuildAndSetManager(
-        defaults.NewBuilder().
+        dtoken.NewBuilder().
+            EnableNonce().
             SetStorage(memory.NewStorage()),
     ); err != nil {
         panic(err)
@@ -56,9 +59,15 @@ func initDToken() {
 }
 
 func main() {
+    initDToken()
+    defer dtoken.DeleteAllManager()
+
     ctx := context.Background()
 
-    nonce, _ := dtoken.GenerateNonce(ctx)
+    nonce, err := dtoken.GenerateNonce(ctx)
+    if err != nil {
+        panic(err)
+    }
     fmt.Println(nonce)
 
     ok := dtoken.VerifyNonce(ctx, nonce)
@@ -79,7 +88,7 @@ _ = nonce
 _ = err
 ```
 
-如果传入的超时时间小于等于 `0`，底层会退回默认 TTL。
+如果传入的超时时间小于等于 `0`，底层会退回该管理器配置的 TTL（默认 `5` 分钟）。
 
 ## 非消费式校验
 
@@ -96,7 +105,7 @@ err := dtoken.VerifyAndConsumeNonce(ctx, nonce)
 
 - `IsNonceValid`：只检查
 - `VerifyNonce`：检查并消费，返回 `bool`
-- `VerifyAndConsumeNonce`：检查并消费，失败时返回 `ErrInvalidNonce`
+- `VerifyAndConsumeNonce`：检查并消费；nonce 不存在、已过期或已消费时返回 `ErrInvalidNonce`，存储故障返回 `ErrStorageUnavailable`，缺少原子能力返回 `ErrStorageCapabilityUnsupported`
 
 ## 查看 TTL
 
@@ -110,7 +119,7 @@ ttl, err := dtoken.GetNonceTTL(ctx, nonce)
 
 - `-2`：nonce 不存在
 - `-1`：永久有效
-- `>=0`：剩余秒数
+- `>=0`：向下取整的剩余秒数；`0` 也可能表示 nonce 仍有效，但剩余时间不足一秒
 
 ## HTTP 场景示例
 

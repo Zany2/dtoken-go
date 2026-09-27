@@ -65,11 +65,6 @@ func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, 
 	// Normalize permission values 规范化权限值。
 	permissions = normalizeAccessValues(permissions)
 
-	// Return early when nothing to change 无变更时直接返回。
-	if len(permissions) == 0 {
-		return nil
-	}
-
 	// Capture the token lifecycle before choosing its account lock. 选择账号锁前捕获 Token 生命周期。
 	expectedRecord, err := m.getTokenRecord(ctx, tokenValue)
 	if err != nil {
@@ -101,7 +96,13 @@ func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, 
 		}
 		return err
 	}
-	submitMaintenance = m.prepareLoginMaintenance(ctx, tokenValue, tokenInfo, m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout))
+
+	// Empty changes still require a valid login, but do not schedule maintenance. 空变更仍需有效登录，但不安排维护任务。
+	if len(permissions) == 0 {
+		return nil
+	}
+
+	submitMaintenance = m.prepareLoginMaintenance(ctx, tokenValue, expectedRecord, m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout))
 
 	// Skip persistence and events when permissions are unchanged. 权限未变化时跳过持久化与事件。
 	added := sess.addPermissions(permissions...)
@@ -181,11 +182,6 @@ func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue strin
 	// Normalize permission values 规范化权限值。
 	permissions = normalizeAccessValues(permissions)
 
-	// Return early when nothing to change 无变更时直接返回。
-	if len(permissions) == 0 {
-		return nil
-	}
-
 	// Capture the token lifecycle before choosing its account lock. 选择账号锁前捕获 Token 生命周期。
 	expectedRecord, err := m.getTokenRecord(ctx, tokenValue)
 	if err != nil {
@@ -217,7 +213,13 @@ func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue strin
 		}
 		return err
 	}
-	submitMaintenance = m.prepareLoginMaintenance(ctx, tokenValue, tokenInfo, m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout))
+
+	// Empty changes still require a valid login, but do not schedule maintenance. 空变更仍需有效登录，但不安排维护任务。
+	if len(permissions) == 0 {
+		return nil
+	}
+
+	submitMaintenance = m.prepareLoginMaintenance(ctx, tokenValue, expectedRecord, m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout))
 
 	// Skip persistence and events when permissions are unchanged. 权限未变化时跳过持久化与事件。
 	removed := sess.removePermissions(permissions...)

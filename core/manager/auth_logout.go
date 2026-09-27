@@ -35,10 +35,10 @@ func (m *Manager) Logout(ctx context.Context, tokenValue string) error {
 	if err == nil {
 		return m.logoutTerminalsIf(ctx, expected.LoginID, checkBinding, removeToken, terminalInfoFromTokenRecord(tokenValue, expected))
 	}
-	if isTokenInactiveError(err) {
+	if isTokenInactiveError(err) && !errors.Is(err, derror.ErrInvalidToken) {
 		return nil
 	}
-	if !errors.Is(err, derror.ErrAccountDisabled) && !errors.Is(err, derror.ErrDeviceDisabled) {
+	if !errors.Is(err, derror.ErrInvalidToken) && !errors.Is(err, derror.ErrAccountDisabled) && !errors.Is(err, derror.ErrDeviceDisabled) {
 		return err
 	}
 
@@ -46,7 +46,7 @@ func (m *Manager) Logout(ctx context.Context, tokenValue string) error {
 		return nil
 	}
 
-	// Remove the matched terminal, or clean the detached token when account disable already removed its session. 移除命中的终端；账号封禁已删除 Session 时清理脱离会话的 Token。
+	// Retire the captured lifecycle even when its session or activity marker is missing. 即使 Session 或活跃标记缺失，也清理已捕获生命周期及其刷新令牌。
 	return m.logoutTerminalsIf(ctx, expected.LoginID, checkBinding, removeToken, terminalInfoFromTokenRecord(tokenValue, expected))
 }
 
@@ -131,10 +131,15 @@ func (m *Manager) Kickout(ctx context.Context, tokenValue string) error {
 	_, _, err = m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
 	if err != nil {
 		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
-		if isTokenInactiveError(err) {
+		if isTokenInactiveError(err) && !errors.Is(err, derror.ErrInvalidToken) {
 			return nil
 		}
-		return err
+		if !errors.Is(err, derror.ErrInvalidToken) && !errors.Is(err, derror.ErrAccountDisabled) && !errors.Is(err, derror.ErrDeviceDisabled) {
+			return err
+		}
+	}
+	if expected.LoginID == "" {
+		return nil
 	}
 
 	// Mark matched terminal as kicked out 将命中终端标记为踢下线。
@@ -223,10 +228,15 @@ func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
 	_, _, err = m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
 	if err != nil {
 		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
-		if isTokenInactiveError(err) {
+		if isTokenInactiveError(err) && !errors.Is(err, derror.ErrInvalidToken) {
 			return nil
 		}
-		return err
+		if !errors.Is(err, derror.ErrInvalidToken) && !errors.Is(err, derror.ErrAccountDisabled) && !errors.Is(err, derror.ErrDeviceDisabled) {
+			return err
+		}
+	}
+	if expected.LoginID == "" {
+		return nil
 	}
 
 	// Mark matched terminal as replaced 将命中终端标记为顶下线。
@@ -517,6 +527,21 @@ func (m *Manager) logoutTerminalsIf(
 
 // cleanTokenMetadata cleans token metadata in batch. cleanTokenMetadata 批量清理 Token 的附属元数据，包括续期键和活跃时间键。
 func (m *Manager) cleanTokenMetadata(ctx context.Context, tokens []string) error {
+	if err := m.cleanTokenActivityMetadata(ctx, tokens); err != nil {
+		return err
+	}
+	for _, token := range tokens {
+		if token != "" {
+			if err := m.cleanRefreshTokenByAccessToken(ctx, token); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// cleanTokenActivityMetadata removes access-only state without revoking independent refresh credentials. cleanTokenActivityMetadata 清理访问令牌专属状态，不撤销独立有效的刷新凭证。
+func (m *Manager) cleanTokenActivityMetadata(ctx context.Context, tokens []string) error {
 	// Return when token list is empty Token 列表为空时直接返回。
 	if len(tokens) == 0 {
 		return nil
@@ -537,15 +562,6 @@ func (m *Manager) cleanTokenMetadata(ctx context.Context, tokens []string) error
 	if len(keys) > 0 {
 		if err := m.storage.Delete(ctx, keys...); err != nil {
 			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-		}
-	}
-
-	for _, token := range tokens {
-		if token == "" {
-			continue
-		}
-		if err := m.cleanRefreshTokenByAccessToken(ctx, token); err != nil {
-			return err
 		}
 	}
 
@@ -726,6 +742,16 @@ func (m *Manager) processTerminalsIf(
 				return err
 			}
 			transitionedTerminals = append(transitionedTerminals, info)
+		} else {
+			// Remove unusable mappings so a repeat call cannot treat them as a detached active login. 删除不可用映射，避免重复调用将其视为脱离会话的活跃登录。
+			_, recordErr := m.getTokenRecord(ctx, token)
+			if recordErr == nil {
+				if err = m.storage.Delete(ctx, m.getTokenKey(token)); err != nil {
+					return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+				}
+			} else if !isTokenInactiveError(recordErr) {
+				return recordErr
+			}
 		}
 
 		// Delete renew key 删除续期 key

@@ -94,7 +94,7 @@ func TestManagerSharedLoginUsesSessionKeyOwner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSession(owner) error = %v", err)
 	}
-	ownerSession.AuthType = "foreign-auth-type:"
+	ownerSession.AuthType = ""
 	ownerSession.LoginID = "session-key-victim"
 	if err = mgr.saveToStorage(ctx, mgr.getSessionKey("session-key-owner"), *ownerSession); err != nil {
 		t.Fatalf("save corrupted owner session error = %v", err)

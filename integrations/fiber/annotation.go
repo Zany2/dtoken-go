@@ -23,6 +23,17 @@ type Annotation struct {
 // GetHandler wraps Fiber handler with annotation-based auth checks GetHandler 为 Fiber 处理器包裹基于注解的认证校验。
 func GetHandler(ctx context.Context, handler gofiber.Handler, failFunc func(c *gofiber.Ctx, err error), annotations ...*Annotation) gofiber.Handler {
 	return func(c *gofiber.Ctx) error {
+		if isRequestAborted(c) {
+			return nil
+		}
+
+		if len(annotations) > 0 && annotations[0] == nil {
+			if failFunc != nil {
+				failFunc(c, derror.ErrInvalidParam)
+				return nil
+			}
+			return writeErrorResponse(c, derror.ErrInvalidParam)
+		}
 		if len(annotations) > 0 && annotations[0].Ignore {
 			if handler != nil {
 				return handler(c)
@@ -57,7 +68,7 @@ func GetHandler(ctx context.Context, handler gofiber.Handler, failFunc func(c *g
 		dCtx := getDTokenContext(c, mgr)
 		token := dCtx.GetTokenValue()
 
-		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
 			TokenValue:   token,
 			CheckLogin:   true,
 			CheckDisable: ann.CheckDisable,

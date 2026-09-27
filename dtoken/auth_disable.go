@@ -65,10 +65,7 @@ func (a *Auth) DisableService(ctx context.Context, opts ServiceDisableOptions) e
 	if err != nil {
 		return err
 	}
-	if opts.Level > 0 {
-		return mgr.DisableServiceLevel(ctx, opts.LoginID, opts.Service, opts.Level, opts.Duration, opts.Reason)
-	}
-	return mgr.DisableService(ctx, opts.LoginID, opts.Service, opts.Duration, opts.Reason)
+	return mgr.DisableServiceLevel(ctx, opts.LoginID, opts.Service, opts.Level, opts.Duration, opts.Reason)
 }
 
 // DisableServiceWithReason disables an account service with reason. DisableServiceWithReason 带原因封禁账号的指定服务。
@@ -126,23 +123,20 @@ func (a *Auth) DisableDeviceWithReason(ctx context.Context, loginID, device stri
 
 // DisableDeviceAndDeviceID disables a concrete device. DisableDeviceAndDeviceID 封禁账号的具体设备。
 func (a *Auth) DisableDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string, duration time.Duration) error {
-	return a.DisableDevice(ctx, DeviceDisableOptions{
-		LoginID:  loginID,
-		Device:   device,
-		DeviceID: deviceID,
-		Duration: duration,
-	})
+	mgr, err := a.requireManager()
+	if err != nil {
+		return err
+	}
+	return mgr.DisableDeviceAndDeviceID(ctx, loginID, device, deviceID, duration)
 }
 
 // DisableDeviceAndDeviceIDWithReason disables a concrete device with reason. DisableDeviceAndDeviceIDWithReason 带原因封禁账号的具体设备。
 func (a *Auth) DisableDeviceAndDeviceIDWithReason(ctx context.Context, loginID, device, deviceID string, duration time.Duration, reason string) error {
-	return a.DisableDevice(ctx, DeviceDisableOptions{
-		LoginID:  loginID,
-		Device:   device,
-		DeviceID: deviceID,
-		Duration: duration,
-		Reason:   reason,
-	})
+	mgr, err := a.requireManager()
+	if err != nil {
+		return err
+	}
+	return mgr.DisableDeviceAndDeviceID(ctx, loginID, device, deviceID, duration, reason)
 }
 
 // UntieService removes service disable state. UntieService 解除服务封禁状态。

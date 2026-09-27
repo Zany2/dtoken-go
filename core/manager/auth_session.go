@@ -44,6 +44,9 @@ func (m *Manager) GetTokenValueListByLoginID(ctx context.Context, loginID string
 	if loginID == "" {
 		return nil, derror.ErrIDIsEmpty
 	}
+	if len(checkAlive) > 1 {
+		return nil, derror.ErrInvalidParam
+	}
 
 	// Load session 加载会话。
 	sess, err := m.getSession(ctx, loginID)
@@ -72,6 +75,9 @@ func (m *Manager) GetTokenValueListByDevice(ctx context.Context, loginID, device
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return []string{}, derror.ErrIDIsEmpty
+	}
+	if len(checkAlive) > 1 {
+		return nil, derror.ErrInvalidParam
 	}
 
 	// Normalize device type 规范化设备类型。
@@ -109,6 +115,9 @@ func (m *Manager) GetTokenValueListByDeviceAndDeviceID(ctx context.Context, logi
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return []string{}, derror.ErrIDIsEmpty
+	}
+	if len(checkAlive) > 1 {
+		return nil, derror.ErrInvalidParam
 	}
 
 	// Normalize device fields 规范化设备字段。
@@ -243,6 +252,9 @@ func (m *Manager) GetTerminalListByLoginID(ctx context.Context, loginID string, 
 	if loginID == "" {
 		return nil, derror.ErrIDIsEmpty
 	}
+	if len(device) > 1 {
+		return nil, derror.ErrInvalidParam
+	}
 
 	// Validate the optional filter before reading session state. 读取会话状态前校验可选过滤条件。
 	var targetDevice string
@@ -287,15 +299,21 @@ func (m *Manager) GetTerminalInfoByToken(ctx context.Context, tokenValue string)
 		return nil, derror.ErrInvalidToken
 	}
 
-	// Validate token and load context 校验 Token 并加载上下文。
-	sess, _, err := m.getCheckedTokenSession(ctx, tokenValue)
+	// Capture lifecycle identity before validating the account context. 校验账号上下文前捕获生命周期身份。
+	record, err := m.getTokenRecord(ctx, tokenValue)
+	if err != nil {
+		return nil, err
+	}
+	sess, tokenInfo, err := m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{expectedRecord: record})
 	if err != nil {
 		return nil, err
 	}
 
 	// Search terminal info 查找终端信息。
 	for _, ti := range sess.TerminalInfos {
-		if ti.Token == tokenValue {
+		if ti.Token == tokenValue && terminalMatchesTokenRecord(sess.LoginID, ti, record) {
+			// Only successful terminal queries count as activity. 仅成功的终端查询触发活跃维护。
+			m.submitLoginMaintenance(ctx, tokenValue, record, m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout))
 			return &ti, nil
 		}
 	}
@@ -308,6 +326,9 @@ func (m *Manager) GetTokenValueByLoginID(ctx context.Context, loginID string, de
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return "", derror.ErrIDIsEmpty
+	}
+	if len(device) > 1 {
+		return "", derror.ErrInvalidParam
 	}
 
 	// Validate the optional filter before reading session state. 读取会话状态前校验可选过滤条件。
@@ -338,7 +359,7 @@ func (m *Manager) GetTokenValueByLoginID(ctx context.Context, loginID string, de
 	// Walk backward so the newest alive token wins. 反向遍历以返回最新仍有效的 token。
 	cache := &terminalAliveCheckCache{}
 	for i := len(terminals) - 1; i >= 0; i-- {
-		alive, err := m.checkTerminalTokenAliveWithCache(ctx, terminals[i].Token, nil, sess, cache)
+		alive, err := m.checkTerminalEntryAlive(ctx, terminals[i], sess, cache)
 		if err != nil {
 			return "", err
 		}
@@ -353,7 +374,7 @@ func (m *Manager) GetTokenValueByLoginID(ctx context.Context, loginID string, de
 // SearchTokenValue searches token values by keyword with pagination. SearchTokenValue 按关键词分页搜索 Token 值，size 为 -1 时返回全部。
 func (m *Manager) SearchTokenValue(ctx context.Context, keyword string, start, size int) ([]string, error) {
 	// Treat both the namespace and keyword as literals in the scan pattern. 扫描模式中的命名空间和关键词均按字面量处理。
-	prefix := m.config.KeyPrefix + m.config.AuthType + config.TokenKeyPrefix
+	prefix := m.storageNamespace() + config.TokenKeyPrefix
 	pattern := escapeSearchKeyword(prefix) + "*" + escapeSearchKeyword(keyword) + "*"
 	return m.searchValues(ctx, pattern, prefix, start, size)
 }
@@ -361,7 +382,7 @@ func (m *Manager) SearchTokenValue(ctx context.Context, keyword string, start, s
 // SearchSessionId searches session IDs by keyword with pagination. SearchSessionId 按关键词分页搜索 Session ID，size 为 -1 时返回全部。
 func (m *Manager) SearchSessionId(ctx context.Context, keyword string, start, size int) ([]string, error) {
 	// Treat both the namespace and keyword as literals in the scan pattern. 扫描模式中的命名空间和关键词均按字面量处理。
-	prefix := m.config.KeyPrefix + m.config.AuthType + SessionKeyPrefix
+	prefix := m.storageNamespace() + SessionKeyPrefix
 	pattern := escapeSearchKeyword(prefix) + "*" + escapeSearchKeyword(keyword) + "*"
 	return m.searchValues(ctx, pattern, prefix, start, size)
 }
@@ -475,7 +496,7 @@ func (m *Manager) filterTokens(ctx context.Context, terminals []TerminalInfo, ch
 	tokens := make([]string, 0, len(terminals))
 	cache := &terminalAliveCheckCache{}
 	for _, ti := range terminals {
-		alive, err := m.checkTerminalTokenAliveWithCache(ctx, ti.Token, nil, sess, cache)
+		alive, err := m.checkTerminalEntryAlive(ctx, ti, sess, cache)
 		if err != nil {
 			return nil, err
 		}
@@ -499,7 +520,7 @@ func (m *Manager) countAliveTokens(ctx context.Context, terminals []TerminalInfo
 	count := 0
 	cache := &terminalAliveCheckCache{}
 	for _, ti := range terminals {
-		alive, err := m.checkTerminalTokenAliveWithCache(ctx, ti.Token, nil, sess, cache)
+		alive, err := m.checkTerminalEntryAlive(ctx, ti, sess, cache)
 		if err != nil {
 			return 0, err
 		}

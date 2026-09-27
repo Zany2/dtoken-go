@@ -91,7 +91,7 @@ KeyPrefix = "dtoken:"
 Storage keys usually follow this structure:
 
 ```text
-{KeyPrefix}{AuthType}{business-prefix}{business-value}
+{encoded KeyPrefix}{encoded AuthType}{business-prefix}{business-value}
 ```
 
 For example:
@@ -100,6 +100,12 @@ For example:
 dtoken:admin:token:xxx
 dtoken:admin:session:10001
 ```
+
+Each namespace component is encoded independently: remove one trailing separator, escape internal `\` as `\\` and `:` as `\:`, then append `:`. For example, `AuthType = "admin:token:"` becomes the storage component `admin\:token:`, distinct from Token keys under `admin:`. Ordinary names retain their key format. Manager, Nonce, OAuth2, Ticket, and ShortKey share this rule; custom storage integrations can call `utils.StorageNamespace(keyPrefix, authType)`.
+
+Existing deployments using internal colons or backslashes in namespaces, or extension constructors previously called without trailing separators, require an explicit key migration. Ambiguous old namespaces are not read through a fallback. Stop old writers, verify ownership, migrate the related keys while preserving remaining TTLs, then start the new version. Include sessions, disable markers, and refresh credentials alongside tokens; requiring a fresh login does not remove the need to preserve existing disable policies.
+
+Disable records now store internal `loginId` and `kind` fields (`account`, `service`, or `device`), without changing public return types. Account disable keys also escape the account ID. Unambiguous legacy markers remain supported. Legacy business keys containing backslashes without stored ownership cannot reliably distinguish raw and escaped account IDs: checks, metadata reads, TTL reads, and untie operations return `ErrInvalidParam`, without overwriting or deleting the marker. Verify ownership against trusted account records before adding these internal fields and moving the marker to its proper key; never infer ownership solely from the ambiguous key. Boolean queries retain their existing `false`-on-error convention; use the corresponding `Check` or `Get` method when errors must be handled.
 
 `AuthType`, `KeyPrefix`, and `TokenName` must not contain whitespace and must not exceed `64` characters.
 
@@ -142,6 +148,8 @@ defaults.NewBuilder().
 ```
 
 ## Token Sources
+
+Enabled sources are checked in this order: the header named by `TokenName`, `Authorization`, Cookie, Query, then form body. Headers accept raw tokens or a `Bearer` prefix. An empty or unparseable header is skipped, including when `TokenName` is `Authorization`. Once a token is extracted, authentication failure does not trigger fallback to another source.
 
 DToken-Go must have at least one Token source enabled:
 

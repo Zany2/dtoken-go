@@ -221,8 +221,8 @@ func TestManagerExpirationHelpers(t *testing.T) {
 	if err := manager.expireIfLimited(ctx, "missing", time.Second); !errors.Is(err, derror.ErrStorageUnavailable) {
 		t.Fatalf("expireIfLimited(missing) = %v, want ErrStorageUnavailable", err)
 	}
-	if err := manager.expireTokenIfLimited(ctx, "missing", time.Second); err != nil {
-		t.Fatalf("expireTokenIfLimited(missing) error = %v, want nil", err)
+	if err := manager.expireTokenIfLimited(ctx, "missing", time.Second); !errors.Is(err, derror.ErrInvalidToken) {
+		t.Fatalf("expireTokenIfLimited(missing) error = %v, want ErrInvalidToken", err)
 	}
 
 	token, err := manager.Login(ctx, "expiration-user", "web")

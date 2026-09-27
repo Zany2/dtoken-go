@@ -23,6 +23,16 @@ type Annotation struct {
 // GetHandler wraps Echo handler with annotation checks GetHandler 使用注解检查包装 Echo 处理器
 func GetHandler(ctx context.Context, handler echo4.HandlerFunc, failFunc func(c echo4.Context, err error) error, annotations ...*Annotation) echo4.HandlerFunc {
 	return func(c echo4.Context) error {
+		if isRequestAborted(c) {
+			return nil
+		}
+
+		if len(annotations) > 0 && annotations[0] == nil {
+			if failFunc != nil {
+				return failFunc(c, derror.ErrInvalidParam)
+			}
+			return writeErrorResponse(c, derror.ErrInvalidParam)
+		}
 		if len(annotations) > 0 && annotations[0].Ignore {
 			if handler != nil {
 				return handler(c)
@@ -56,7 +66,7 @@ func GetHandler(ctx context.Context, handler echo4.HandlerFunc, failFunc func(c 
 		dCtx := getDTokenContext(c, mgr)
 		token := dCtx.GetTokenValue()
 
-		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
 			TokenValue:   token,
 			CheckLogin:   true,
 			CheckDisable: ann.CheckDisable,

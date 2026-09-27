@@ -7,10 +7,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/derror"
+	"github.com/Zany2/dtoken-go/core/utils"
 )
 
 var (
@@ -71,6 +73,7 @@ type Ticket struct {
 	Extra      map[string]any `json:"extra,omitempty"`     // Extra stores extension data. Extra 存储扩展数据。
 	CreateTime int64          `json:"createTime"`          // CreateTime stores creation unix time. CreateTime 存储创建时间戳。
 	ExpiresIn  int64          `json:"expiresIn"`           // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
+	ExpiresAt  time.Time      `json:"expiresAt,omitempty"` // ExpiresAt stores the precise deadline; zero denotes a legacy ticket. ExpiresAt 存储精确截止时间，零值表示旧版 Ticket。
 	Status     Status         `json:"status"`              // Status stores lifecycle state. Status 存储生命周期状态。
 }
 
@@ -109,6 +112,7 @@ type Manager struct {
 	ttl        time.Duration
 	storage    adapter.Storage
 	serializer adapter.Codec
+	stateMu    sync.Mutex // stateMu serializes fallback consumption and revocation within this manager. stateMu 在当前管理器内串行化回退消费与撤销。
 }
 
 // NewDefaultManager creates ticket manager with default config. NewDefaultManager 使用默认配置创建 Ticket 管理器。
@@ -148,7 +152,7 @@ func (m *Manager) CreateWithTimeout(ctx context.Context, opts CreateOptions, tim
 	if err != nil {
 		return nil, err
 	}
-	now := time.Now().Unix()
+	now := time.Now()
 	ticket := &Ticket{
 		Ticket:     value,
 		AuthType:   m.authType,
@@ -160,8 +164,9 @@ func (m *Manager) CreateWithTimeout(ctx context.Context, opts CreateOptions, tim
 		TargetApp:  opts.TargetApp,
 		Scopes:     append([]string(nil), opts.Scopes...),
 		Extra:      cloneMap(opts.Extra),
-		CreateTime: now,
+		CreateTime: now.Unix(),
 		ExpiresIn:  durationSeconds(timeout),
+		ExpiresAt:  now.Add(timeout),
 		Status:     StatusValid,
 	}
 	if err = m.save(ctx, ticket, timeout); err != nil {
@@ -176,7 +181,7 @@ func (m *Manager) Validate(ctx context.Context, ticketValue string, opts ...Vali
 	if err != nil {
 		return nil, err
 	}
-	if err = m.checkAlive(ticket); err != nil {
+	if err = m.checkAlive(ticket, time.Now()); err != nil {
 		return nil, err
 	}
 	if len(opts) > 0 {
@@ -188,39 +193,52 @@ func (m *Manager) Validate(ctx context.Context, ticketValue string, opts ...Vali
 }
 
 // Consume validates and consumes a one-time ticket. Consume 校验并消费一次性 Ticket。
+// Plain Storage is serialized only within this manager; cross-instance consumption requires AtomicStorage. 普通 Storage 仅在当前管理器内串行消费，跨实例消费需要 AtomicStorage。
 func (m *Manager) Consume(ctx context.Context, ticketValue string, opts ...ValidateOptions) (*ConsumeResult, error) {
-	if _, err := m.Validate(ctx, ticketValue, opts...); err != nil {
-		return nil, err
-	}
 	atomicStorage, ok := m.storage.(adapter.AtomicStorage)
 	if !ok {
-		return nil, derror.ErrStorageCapabilityUnsupported
+		m.stateMu.Lock()
+		defer m.stateMu.Unlock()
 	}
-	value, err := atomicStorage.GetAndDelete(ctx, m.getTicketKey(ticketValue))
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-	}
-	if value == nil {
-		return nil, ErrInvalidTicket
-	}
-	ticket, err := m.decode(value, ticketValue)
+
+	ticket, err := m.Validate(ctx, ticketValue, opts...)
 	if err != nil {
 		return nil, err
 	}
-	if err = m.checkAlive(ticket); err != nil {
-		if ttl := remainingDuration(ticket); ttl > 0 {
-			_ = m.save(ctx, ticket, ttl)
+
+	// Prefer atomic removal, and revalidate the value actually removed. 优先原子读删，并重新校验实际取出的载荷。
+	if ok {
+		value, err := atomicStorage.GetAndDelete(ctx, m.getTicketKey(ticketValue))
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
-		return nil, err
-	}
-	if len(opts) > 0 {
-		if err = checkConstraints(ticket, opts[0]); err != nil {
+		if value == nil {
+			return nil, ErrInvalidTicket
+		}
+		ticket, err = m.decode(value, ticketValue)
+		if err != nil {
+			return nil, err
+		}
+		if err = m.checkAlive(ticket, time.Now()); err != nil {
 			if ttl := remainingDuration(ticket); ttl > 0 {
 				_ = m.save(ctx, ticket, ttl)
 			}
 			return nil, err
 		}
+		if len(opts) > 0 {
+			if err = checkConstraints(ticket, opts[0]); err != nil {
+				if ttl := remainingDuration(ticket); ttl > 0 {
+					_ = m.save(ctx, ticket, ttl)
+				}
+				return nil, err
+			}
+		}
+	} else if err = m.storage.Delete(ctx, m.getTicketKey(ticketValue)); err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	} else if err = m.checkAlive(ticket, time.Now()); err != nil {
+		return nil, err
 	}
+
 	ticket.Status = StatusConsumed
 	if ttl := remainingDuration(ticket); ttl > 0 {
 		if err = m.save(ctx, ticket, ttl); err != nil {
@@ -235,6 +253,11 @@ func (m *Manager) Revoke(ctx context.Context, ticketValue string) error {
 	if ticketValue == "" {
 		return nil
 	}
+	if _, ok := m.storage.(adapter.AtomicStorage); !ok {
+		m.stateMu.Lock()
+		defer m.stateMu.Unlock()
+	}
+
 	ticket, err := m.get(ctx, ticketValue)
 	if err != nil {
 		if errors.Is(err, ErrInvalidTicket) {
@@ -242,7 +265,7 @@ func (m *Manager) Revoke(ctx context.Context, ticketValue string) error {
 		}
 		return err
 	}
-	if err = m.checkAlive(ticket); err != nil {
+	if err = m.checkAlive(ticket, time.Now()); err != nil {
 		switch {
 		case errors.Is(err, ErrTicketConsumed), errors.Is(err, ErrTicketRevoked), errors.Is(err, ErrTicketExpired):
 			return nil
@@ -273,7 +296,7 @@ func (m *Manager) Status(ctx context.Context, ticketValue string) (Status, error
 		}
 		return StatusInvalid, err
 	}
-	if err = m.checkAlive(ticket); err != nil {
+	if err = m.checkAlive(ticket, time.Now()); err != nil {
 		switch {
 		case errors.Is(err, ErrTicketConsumed):
 			return StatusConsumed, nil
@@ -315,6 +338,18 @@ func (m *Manager) save(ctx context.Context, ticket *Ticket, timeout time.Duratio
 	if err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
+
+	// Clamp storage TTL after encoding so state writes cannot extend the precise deadline. 编码后按精确截止时间限制存储 TTL，避免状态回写延长有效期。
+	if !ticket.ExpiresAt.IsZero() {
+		ttl := remainingDuration(ticket)
+		if ttl <= 0 {
+			return ErrTicketExpired
+		}
+		if timeout <= 0 || ttl < timeout {
+			timeout = ttl
+		}
+	}
+
 	if err = m.storage.Set(ctx, m.getTicketKey(ticket.Ticket), encoded, timeout); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
@@ -353,7 +388,7 @@ func (m *Manager) decode(value any, ticketValue string) (*Ticket, error) {
 }
 
 // checkAlive validates ticket state and expiration. checkAlive 校验 Ticket 状态与有效期。
-func (m *Manager) checkAlive(ticket *Ticket) error {
+func (m *Manager) checkAlive(ticket *Ticket, now time.Time) error {
 	if ticket == nil || ticket.Ticket == "" {
 		return ErrInvalidTicket
 	}
@@ -368,7 +403,7 @@ func (m *Manager) checkAlive(ticket *Ticket) error {
 	default:
 		return ErrInvalidTicket
 	}
-	if ticket.ExpiresIn > 0 && time.Now().Unix() >= ticket.CreateTime+ticket.ExpiresIn {
+	if expiresAt := expirationTime(ticket); !expiresAt.IsZero() && !now.Before(expiresAt) {
 		return ErrTicketExpired
 	}
 	return nil
@@ -376,7 +411,7 @@ func (m *Manager) checkAlive(ticket *Ticket) error {
 
 // getTicketKey builds the storage key for a ticket. getTicketKey 构建 Ticket 存储键。
 func (m *Manager) getTicketKey(ticketValue string) string {
-	return m.keyPrefix + m.authType + TicketKeySuffix + ticketValue
+	return utils.StorageNamespace(m.keyPrefix, m.authType) + TicketKeySuffix + ticketValue
 }
 
 // checkConstraints validates ticket binding constraints. checkConstraints 校验 Ticket 绑定约束。
@@ -402,13 +437,23 @@ func checkConstraints(ticket *Ticket, opts ValidateOptions) error {
 	return nil
 }
 
+// expirationTime reads the precise deadline with compatibility for legacy payloads. expirationTime 读取精确截止时间，并兼容旧版载荷。
+func expirationTime(ticket *Ticket) time.Time {
+	if ticket == nil {
+		return time.Time{}
+	}
+	if !ticket.ExpiresAt.IsZero() {
+		return ticket.ExpiresAt
+	}
+	if ticket.ExpiresIn > 0 {
+		return time.Unix(ticket.CreateTime+ticket.ExpiresIn, 0)
+	}
+	return time.Time{}
+}
+
 // remainingDuration calculates the remaining ticket lifetime. remainingDuration 计算 Ticket 剩余有效期。
 func remainingDuration(ticket *Ticket) time.Duration {
-	if ticket == nil || ticket.ExpiresIn <= 0 {
-		return 0
-	}
-	expiresAt := time.Unix(ticket.CreateTime+ticket.ExpiresIn, 0)
-	ttl := time.Until(expiresAt)
+	ttl := time.Until(expirationTime(ticket))
 	if ttl <= 0 {
 		return 0
 	}

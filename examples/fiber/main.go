@@ -3,7 +3,10 @@ package main
 
 import (
 	"context"
+	"errors"
+	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	fiberdt "github.com/Zany2/dtoken-go/integrations/fiber"
@@ -29,29 +32,37 @@ type LoginRequest struct {
 }
 
 func main() {
-	ctx := context.Background()
 	initDToken()
+	defer fiberdt.DeleteAllManager()
 
 	app := gofiber.New()
-	app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx))
-	app.Post("/login", handleLogin)
-
-	auth := app.Group("")
-	auth.Use(fiberdt.AuthMiddleware(ctx))
-	auth.Get("/me", handleMe)
-	auth.Get("/admin", fiberdt.RoleMiddleware(ctx, []string{"admin"}), handleAdmin)
-	auth.Get("/articles", fiberdt.PermissionMiddleware(ctx, []string{"article:read"}), handleArticles)
-	auth.Post("/logout", handleLogout)
+	registerRoutes(app)
 
 	if err := app.Listen(":8080"); err != nil {
 		panic(err)
 	}
 }
 
+// registerRoutes shares production middleware and routes with regression tests. registerRoutes 与回归测试共用实际中间件和路由。
+func registerRoutes(app *gofiber.App) {
+	ctx := context.Background()
+	fail := func(c *gofiber.Ctx, err error) { _ = writeAuthError(c, err) }
+	app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx, fiberdt.WithFailFunc(fail)))
+	app.Post("/login", handleLogin)
+
+	auth := app.Group("")
+	auth.Use(fiberdt.AuthMiddleware(ctx, fiberdt.WithFailFunc(fail)))
+	auth.Get("/me", handleMe)
+	auth.Get("/admin", fiberdt.RoleMiddleware(ctx, []string{"admin"}, fiberdt.WithFailFunc(fail)), handleAdmin)
+	auth.Get("/articles", fiberdt.PermissionMiddleware(ctx, []string{"article:read"}, fiberdt.WithFailFunc(fail)), handleArticles)
+	auth.Post("/logout", handleLogout)
+}
+
 // initDToken initializes integration manager initDToken 初始化集成管理器
 func initDToken() {
 	mgr, err := fiberdt.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
+		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
 	if err != nil {
@@ -72,17 +83,20 @@ func handleLogin(c *gofiber.Ctx) error {
 		return writeJSON(c, http.StatusUnauthorized, fiberdt.CodeNotLogin, "invalid username or password", nil)
 	}
 
+	// Form strings may share Fiber's request buffer; login events can outlive the request. 表单字符串可能引用 Fiber 请求缓冲区，而登录事件可能在请求结束后执行。
+	req.Username = strings.Clone(req.Username)
+
 	token, err := fiberdt.Login(c.UserContext(), req.Username)
 	if err != nil {
-		return writeJSON(c, http.StatusInternalServerError, fiberdt.CodeServerError, err.Error(), nil)
+		return writeAuthError(c, err)
 	}
 
-	// Seed demo authorization data 初始化示例权限数据
+	// Grant every demo user the same role and permission; real apps must load their own access rules. 为每个演示用户授予相同角色和权限；实际应用应加载自身的授权规则。
 	if err = fiberdt.AddRoles(c.UserContext(), req.Username, []string{"admin"}); err != nil {
-		return writeJSON(c, http.StatusInternalServerError, fiberdt.CodeServerError, err.Error(), nil)
+		return writeAuthError(c, err)
 	}
 	if err = fiberdt.AddPermissions(c.UserContext(), req.Username, []string{"article:read"}); err != nil {
-		return writeJSON(c, http.StatusInternalServerError, fiberdt.CodeServerError, err.Error(), nil)
+		return writeAuthError(c, err)
 	}
 
 	return writeJSON(c, http.StatusOK, fiberdt.CodeSuccess, "ok", gofiber.Map{"token": token})
@@ -97,16 +111,16 @@ func handleMe(c *gofiber.Ctx) error {
 
 	loginID, err := dCtx.Auth().GetLoginID(c.UserContext())
 	if err != nil {
-		return writeJSON(c, http.StatusUnauthorized, fiberdt.CodeNotLogin, err.Error(), nil)
+		return writeAuthError(c, err)
 	}
 
 	roles, err := dCtx.Access().GetRoles(c.UserContext())
 	if err != nil {
-		return writeJSON(c, http.StatusInternalServerError, fiberdt.CodeServerError, err.Error(), nil)
+		return writeAuthError(c, err)
 	}
 	permissions, err := dCtx.Access().GetPermissions(c.UserContext())
 	if err != nil {
-		return writeJSON(c, http.StatusInternalServerError, fiberdt.CodeServerError, err.Error(), nil)
+		return writeAuthError(c, err)
 	}
 
 	return writeJSON(c, http.StatusOK, fiberdt.CodeSuccess, "ok", gofiber.Map{
@@ -134,10 +148,28 @@ func handleLogout(c *gofiber.Ctx) error {
 	}
 
 	if err := dCtx.Auth().Logout(c.UserContext()); err != nil {
-		return writeJSON(c, http.StatusInternalServerError, fiberdt.CodeServerError, err.Error(), nil)
+		return writeAuthError(c, err)
 	}
 
 	return writeJSON(c, http.StatusOK, fiberdt.CodeSuccess, "ok", nil)
+}
+
+// writeAuthError distinguishes credential failures from access restrictions and server failures. writeAuthError 区分凭证无效、访问限制及服务端故障。
+func writeAuthError(c *gofiber.Ctx, err error) error {
+	switch {
+	case errors.Is(err, fiberdt.ErrNotLogin), errors.Is(err, fiberdt.ErrInvalidToken),
+		errors.Is(err, fiberdt.ErrTokenExpired), errors.Is(err, fiberdt.ErrActiveTimeout),
+		errors.Is(err, fiberdt.ErrTokenKickout), errors.Is(err, fiberdt.ErrTokenReplaced):
+		return writeJSON(c, http.StatusUnauthorized, fiberdt.CodeNotLogin, err.Error(), nil)
+	case errors.Is(err, fiberdt.ErrAccountDisabled), errors.Is(err, fiberdt.ErrDeviceDisabled):
+		return writeJSON(c, http.StatusForbidden, fiberdt.CodeAccountDisabled, err.Error(), nil)
+	case errors.Is(err, fiberdt.ErrPermissionDenied), errors.Is(err, fiberdt.ErrRoleDenied):
+		return writeJSON(c, http.StatusForbidden, fiberdt.CodePermissionDenied, err.Error(), nil)
+	default:
+		// Keep server details in logs rather than HTTP responses. 将服务端详情保留在日志中，不在 HTTP 响应中暴露。
+		log.Printf("dtoken request failed: %v", err)
+		return writeJSON(c, http.StatusInternalServerError, fiberdt.CodeServerError, "internal server error", nil)
+	}
 }
 
 // writeJSON writes a unified JSON response writeJSON 写入统一 JSON 响应

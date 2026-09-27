@@ -189,11 +189,11 @@ func GetTokenCreateTimeByContext(c *gin.Context) (int64, error) {
 
 // RenewTimeoutByContext renews current token timeout RenewTimeoutByContext 续期当前 token 过期时间
 func RenewTimeoutByContext(c *gin.Context, timeout time.Duration) error {
-	tokenValue, err := GetTokenValueByContext(c)
+	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return err
 	}
-	return RenewTimeout(requestContext(c), tokenValue, timeout)
+	return dCtx.Auth().RenewTimeout(requestContext(c), timeout)
 }
 
 // GetSessionByContext gets current user session GetSessionByContext 获取当前用户会话
@@ -460,6 +460,12 @@ func requireDTokenContextByContext(c *gin.Context) (*DTokenContext, error) {
 			return nil, err
 		}
 		return getDContext(c, mgr), nil
+	}
+
+	// A cached request must not continue using a closed or missing manager. 缓存的请求上下文不能继续使用已关闭或缺失的 Manager。
+	mgr := dCtx.GetManager()
+	if mgr == nil || mgr.IsClosed() {
+		return nil, ErrManagerNotFound
 	}
 	return dCtx, nil
 }

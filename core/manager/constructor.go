@@ -139,13 +139,15 @@ func (m *Manager) CloseManager() {
 		// Wait for this manager's accepted tasks even when the pool is caller-owned. 即使协程池由调用方持有，也等待当前 Manager 已接收的任务。
 		m.asyncWG.Wait()
 
+		// Listeners may still use the pool, storage, and logger after event dispatch returns. 事件分发返回后，监听器仍可能使用协程池、存储和日志器。
+		if m.eventManager != nil {
+			m.eventManager.Wait()
+		}
+
 		if m.pool != nil && m.ownership.Pool {
 			m.pool.Stop()
 		}
 		m.pool = nil
-		if m.eventManager != nil {
-			m.eventManager.Wait()
-		}
 		if storageCloser, ok := m.storage.(interface{ Close() error }); ok && m.ownership.Storage {
 			if err := storageCloser.Close(); err != nil {
 				m.logger.Errorf("manager.CloseManager: failed to close storage, error=%v", err)

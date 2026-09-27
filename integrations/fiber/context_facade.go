@@ -189,11 +189,11 @@ func GetTokenCreateTimeByContext(c *gofiber.Ctx) (int64, error) {
 
 // RenewTimeoutByContext renews current token timeout RenewTimeoutByContext 续期当前 token 过期时间
 func RenewTimeoutByContext(c *gofiber.Ctx, timeout time.Duration) error {
-	tokenValue, err := GetTokenValueByContext(c)
+	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return err
 	}
-	return RenewTimeout(requestContext(c), tokenValue, timeout)
+	return dCtx.Auth().RenewTimeout(requestContext(c), timeout)
 }
 
 // GetSessionByContext gets current user session GetSessionByContext 获取当前用户会话
@@ -443,7 +443,8 @@ func VerifyAndConsumeNonceByContext(c *gofiber.Ctx, nonce string) error {
 // requestContext gets standard context from Fiber request requestContext 从 Fiber 请求获取标准上下文。
 func requestContext(c *gofiber.Ctx) context.Context {
 	if c != nil {
-		return c.Context()
+		// UserContext carries application deadlines and is not Fiber's pooled RequestCtx. UserContext 承载业务截止时间，避免将复用的 RequestCtx 传入异步任务。
+		return c.UserContext()
 	}
 	return context.Background()
 }
@@ -460,6 +461,9 @@ func requireDTokenContextByContext(c *gofiber.Ctx) (*DTokenContext, error) {
 			return nil, err
 		}
 		return getDTokenContext(c, mgr), nil
+	}
+	if mgr := dCtx.GetManager(); mgr == nil || mgr.IsClosed() {
+		return nil, ErrManagerNotFound
 	}
 	return dCtx, nil
 }

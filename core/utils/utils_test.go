@@ -2,7 +2,9 @@
 package utils
 
 import (
+	"errors"
 	"math"
+	"strconv"
 	"testing"
 )
 
@@ -52,6 +54,13 @@ func TestToInt64ParsesStoredNumberTypes(t *testing.T) {
 		{name: "trimmed string", value: " 123 ", want: 123},
 		{name: "bytes", value: []byte("123"), want: 123},
 		{name: "bool", value: true, want: 1},
+		{name: "signed minimum", value: int64(math.MinInt64), want: math.MinInt64},
+		{name: "signed maximum", value: int64(math.MaxInt64), want: math.MaxInt64},
+		{name: "unsigned maximum valid", value: uint64(math.MaxInt64), want: math.MaxInt64},
+		{name: "minimum string", value: "-9223372036854775808", want: math.MinInt64},
+		{name: "maximum string", value: "9223372036854775807", want: math.MaxInt64},
+		{name: "minimum bytes", value: []byte("-9223372036854775808"), want: math.MinInt64},
+		{name: "maximum bytes", value: []byte("9223372036854775807"), want: math.MaxInt64},
 	}
 
 	for _, tt := range tests {
@@ -64,6 +73,45 @@ func TestToInt64ParsesStoredNumberTypes(t *testing.T) {
 				t.Fatalf("ToInt64() = %d, want %d", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestToInt64UnsignedBoundaries verifies overflow rejection on both 32-bit and 64-bit platforms. TestToInt64UnsignedBoundaries 验证 32 位和 64 位平台的无符号溢出边界。
+func TestToInt64UnsignedBoundaries(t *testing.T) {
+	for _, value := range []uint64{uint64(math.MaxInt64) + 1, math.MaxUint64} {
+		if got, err := ToInt64(value); err == nil || got != 0 {
+			t.Fatalf("ToInt64(%d) = %d, %v, want zero and error", value, got, err)
+		}
+	}
+
+	maxUint := ^uint(0)
+	got, err := ToInt64(maxUint)
+	if strconv.IntSize == 32 {
+		if err != nil || got != math.MaxUint32 {
+			t.Fatalf("ToInt64(max uint32) = %d, %v, want %d", got, err, uint64(math.MaxUint32))
+		}
+	} else {
+		if err == nil || got != 0 {
+			t.Fatalf("ToInt64(max uint64) = %d, %v, want zero and error", got, err)
+		}
+		maxValid := uint64(math.MaxInt64)
+		if got, err := ToInt64(uint(maxValid)); err != nil || got != math.MaxInt64 {
+			t.Fatalf("ToInt64(max valid uint) = %d, %v, want MaxInt64", got, err)
+		}
+		if got, err := ToInt64(uint(maxValid + 1)); err == nil || got != 0 {
+			t.Fatalf("ToInt64(first overflowing uint) = %d, %v, want zero and error", got, err)
+		}
+	}
+}
+
+// TestToInt64RejectsOutOfRangeStrings verifies range errors survive wrapping. TestToInt64RejectsOutOfRangeStrings 验证字符串越界错误在包装后仍可识别。
+func TestToInt64RejectsOutOfRangeStrings(t *testing.T) {
+	for _, value := range []string{"-9223372036854775809", "9223372036854775808"} {
+		for _, input := range []any{value, []byte(value)} {
+			if got, err := ToInt64(input); got != 0 || !errors.Is(err, strconv.ErrRange) {
+				t.Fatalf("ToInt64(%T(%q)) = %d, %v, want zero and ErrRange", input, input, got, err)
+			}
+		}
 	}
 }
 
@@ -82,16 +130,33 @@ func TestToInt64RejectsNonFiniteAndOverflowingFloats(t *testing.T) {
 	for _, value := range []any{
 		math.NaN(), math.Inf(1), math.Inf(-1),
 		float64(math.MaxInt64), float64(math.MinInt64) * 2,
+		math.Nextafter(float64(math.MinInt64), math.Inf(-1)),
+		float32(math.NaN()), float32(math.Inf(1)), float32(math.Inf(-1)),
+		float32(math.MaxInt64), math.Nextafter32(float32(math.MinInt64), float32(math.Inf(-1))),
 	} {
 		if got, err := ToInt64(value); err == nil || got != 0 {
 			t.Fatalf("ToInt64(%v) = %d, %v, want zero and error", value, got, err)
 		}
 	}
 
-	if got, err := ToInt64(float64(math.MinInt64)); err != nil || got != math.MinInt64 {
-		t.Fatalf("ToInt64(MinInt64 float) = %d, %v, want MinInt64", got, err)
+	tests := []struct {
+		value any
+		want  int64
+	}{
+		{value: float64(math.MinInt64), want: math.MinInt64},
+		{value: float32(math.MinInt64), want: math.MinInt64},
+		// MaxInt64 rounds to 2^63 as a float64; its predecessor is 2^63 - 1024. MaxInt64 转为 float64 后舍入为 2^63，前一个浮点数为 2^63 - 1024。
+		{value: math.Nextafter(float64(math.MaxInt64), 0), want: math.MaxInt64 - 1023},
+		{value: float64(12.9), want: 12},
+		{value: float64(-12.9), want: -12},
+		{value: float32(12.9), want: 12},
+		{value: float32(-12.9), want: -12},
+		{value: float64(0.9), want: 0},
+		{value: float64(-0.9), want: 0},
 	}
-	if got, err := ToInt64(float64(12.9)); err != nil || got != 12 {
-		t.Fatalf("ToInt64(12.9) = %d, %v, want 12", got, err)
+	for _, tt := range tests {
+		if got, err := ToInt64(tt.value); err != nil || got != tt.want {
+			t.Fatalf("ToInt64(%T(%v)) = %d, %v, want %d", tt.value, tt.value, got, err, tt.want)
+		}
 	}
 }

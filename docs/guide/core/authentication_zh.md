@@ -70,6 +70,8 @@ err := dtoken.LoginByToken(ctx, token)
 
 `LoginByToken()` 会在当前 token 仍然有效时，异步续期 token、session、活跃时间等相关信息。
 
+自动续期使用存储返回的精确剩余时长比较阈值；不足一秒但尚未过期的 Token 仍可续期。共享登录会使此前排队的维护任务失效，防止旧任务覆盖较新的活跃时间。有限期 Token 若在实际续期前过期，不会发送续期成功事件。
+
 ## 检查登录状态
 
 ```go
@@ -93,6 +95,8 @@ loginID, err := dtoken.GetLoginID(ctx, token)
 ```
 
 ### 获取 Token 信息
+
+`GetTokenInfo` 读取已存储的元数据，成功返回不代表登录态有效；它不检查账号或设备封禁、活跃超时及 Session 有效性。判断登录态请使用 `CheckLogin` 或 `IntrospectToken`。`GetLoginID` 等身份查询会同时校验 Token 和账号 Session。
 
 ```go
 ctx := context.Background()

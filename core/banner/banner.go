@@ -115,13 +115,17 @@ func formatDuration(seconds int64) string {
 		return "Disabled"
 	}
 
-	// Convert seconds to duration 转换秒数为时长
-	d := time.Duration(seconds) * time.Second
+	// Keep arithmetic in seconds to avoid nanosecond conversion overflow. 直接按秒计算，避免转换为纳秒时溢出。
+	const (
+		minute = 60
+		hour   = 60 * minute
+		day    = 24 * hour
+	)
 
 	// Format day-level duration 格式化天级时长
-	if d >= 24*time.Hour {
-		days := d / (24 * time.Hour)
-		hours := (d % (24 * time.Hour)) / time.Hour
+	if seconds >= day {
+		days := seconds / day
+		hours := (seconds % day) / hour
 		if hours > 0 {
 			return fmt.Sprintf("%dd %dh", days, hours)
 		}
@@ -129,9 +133,9 @@ func formatDuration(seconds int64) string {
 	}
 
 	// Format hour-level duration 格式化小时级时长
-	if d >= time.Hour {
-		hours := d / time.Hour
-		minutes := (d % time.Hour) / time.Minute
+	if seconds >= hour {
+		hours := seconds / hour
+		minutes := (seconds % hour) / minute
 		if minutes > 0 {
 			return fmt.Sprintf("%dh %dm", hours, minutes)
 		}
@@ -139,9 +143,9 @@ func formatDuration(seconds int64) string {
 	}
 
 	// Format minute-level duration 格式化分钟级时长
-	if d >= time.Minute {
-		minutes := d / time.Minute
-		seconds := (d % time.Minute) / time.Second
+	if seconds >= minute {
+		minutes := seconds / minute
+		seconds := seconds % minute
 		if seconds > 0 {
 			return fmt.Sprintf("%dm %ds", minutes, seconds)
 		}
@@ -218,6 +222,12 @@ func formatCookieConfig(cfg *config.CookieConfig) string {
 		domain = "<current-host>"
 	}
 
+	// Zero max age means a session cookie, not a disabled cookie. 零有效期表示会话 Cookie，而非禁用 Cookie。
+	maxAge := "Session"
+	if cfg.MaxAge != 0 {
+		maxAge = formatDuration(cfg.MaxAge)
+	}
+
 	// Collect cookie option parts 收集 Cookie 配置片段
 	parts := []string{
 		fmt.Sprintf("Path: %s", cfg.Path),
@@ -225,7 +235,7 @@ func formatCookieConfig(cfg *config.CookieConfig) string {
 		fmt.Sprintf("Secure: %s", formatYesNo(cfg.Secure)),
 		fmt.Sprintf("HttpOnly: %s", formatYesNo(cfg.HttpOnly)),
 		fmt.Sprintf("SameSite: %s", formatSameSite(cfg.SameSite)),
-		fmt.Sprintf("MaxAge: %s", formatDuration(cfg.MaxAge)),
+		fmt.Sprintf("MaxAge: %s", maxAge),
 	}
 
 	// Join cookie option summary 拼接 Cookie 配置摘要

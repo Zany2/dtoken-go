@@ -56,6 +56,9 @@ type AuthHandleRequest struct {
 
 // Next continues request and stops dtoken checks Next 放行请求并停止 dtoken 校验
 func (req *AuthHandleRequest) Next() {
+	if req.handled {
+		return
+	}
 	req.handled = true
 	if req.next != nil {
 		req.next()
@@ -64,6 +67,9 @@ func (req *AuthHandleRequest) Next() {
 
 // Exit stops dtoken checks after custom handling Exit 自定义处理后停止 dtoken 校验
 func (req *AuthHandleRequest) Exit() {
+	if req.handled {
+		return
+	}
 	req.handled = true
 	if req.exit != nil {
 		req.exit()
@@ -125,7 +131,7 @@ func (req *RouteAccessRequest) SetLogicType(logicType LogicType) {
 type AuthOptions struct {
 	// AuthType selects the auth type. AuthType 指定认证类型。
 	AuthType string
-	// Manager selects the manager explicitly; nil falls back to the global registry. Manager 显式指定 Manager；为 nil 时回退到全局注册表。
+	// Manager selects the manager explicitly. Auth checks otherwise prefer AuthType, the request manager, then the registry. Manager 显式指定 Manager；鉴权未显式指定时依次使用 AuthType、请求 Manager 和全局注册表。
 	Manager *manager.Manager
 	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
 	LogicType LogicType
@@ -195,7 +201,13 @@ func RegisterDTokenContextMiddleware(opts ...AuthOption) func(http.Handler) http
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
+			chiCtx := prepareRequestContext(w, r)
+			if chiCtx.IsAborted() {
+				return
+			}
+			r = chiCtx.r
+
+			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, r, err)
@@ -205,7 +217,6 @@ func RegisterDTokenContextMiddleware(opts ...AuthOption) func(http.Handler) http
 				return
 			}
 
-			chiCtx := NewChiContext(w, r).(*ChiContext)
 			_ = getDTokenContext(chiCtx, mgr)
 			next.ServeHTTP(w, chiCtx.r)
 		})
@@ -221,15 +232,23 @@ func AuthMiddleware(opts ...AuthOption) func(http.Handler) http.Handler {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			chiCtx := prepareRequestContext(w, r)
+			if chiCtx.IsAborted() {
+				return
+			}
+			r = chiCtx.r
+
 			authReq := newAuthHandleRequest(options, func() {
-				next.ServeHTTP(w, r)
+				if !chiCtx.IsAborted() {
+					next.ServeHTTP(w, chiCtx.r)
+				}
 			}, nil)
 			authReq.CheckLogin = true
 			if runBeforeAuthHandler(w, r, options, authReq) {
 				return
 			}
 
-			mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
+			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, r, err)
@@ -239,7 +258,6 @@ func AuthMiddleware(opts ...AuthOption) func(http.Handler) http.Handler {
 				return
 			}
 
-			chiCtx := NewChiContext(w, r).(*ChiContext)
 			dCtx := getDTokenContext(chiCtx, mgr)
 			tokenValue := dCtx.GetTokenValue()
 
@@ -271,17 +289,26 @@ func AccessMiddleware(opts ...AuthOption) func(http.Handler) http.Handler {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			chiCtx := prepareRequestContext(w, r)
+			if chiCtx.IsAborted() {
+				return
+			}
+			r = chiCtx.r
+
 			accessReq := newRouteAccessRequest(options)
 			if options.RouteAccessHandler != nil {
 				options.RouteAccessHandler(w, r, accessReq)
 			}
-
-			if accessReq.skipAuth {
-				next.ServeHTTP(w, r)
+			if chiCtx.IsAborted() {
 				return
 			}
 
-			mgr, err := authcheck.ResolveManager(options.Manager, accessReq.AuthType)
+			if accessReq.skipAuth {
+				next.ServeHTTP(w, chiCtx.r)
+				return
+			}
+
+			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, accessReq.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, r, err)
@@ -291,7 +318,6 @@ func AccessMiddleware(opts ...AuthOption) func(http.Handler) http.Handler {
 				return
 			}
 
-			chiCtx := NewChiContext(w, r).(*ChiContext)
 			dCtx := getDTokenContext(chiCtx, mgr)
 			tokenValue := dCtx.GetTokenValue()
 
@@ -332,8 +358,16 @@ func PermissionMiddleware(permissions []string, opts ...AuthOption) func(http.Ha
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			chiCtx := prepareRequestContext(w, r)
+			if chiCtx.IsAborted() {
+				return
+			}
+			r = chiCtx.r
+
 			authReq := newAuthHandleRequest(options, func() {
-				next.ServeHTTP(w, r)
+				if !chiCtx.IsAborted() {
+					next.ServeHTTP(w, chiCtx.r)
+				}
 			}, nil)
 			authReq.Permissions = append([]string{}, permissions...)
 			if runBeforeAuthHandler(w, r, options, authReq) {
@@ -341,11 +375,11 @@ func PermissionMiddleware(permissions []string, opts ...AuthOption) func(http.Ha
 			}
 
 			if len(permissions) == 0 {
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(w, chiCtx.r)
 				return
 			}
 
-			mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
+			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, r, err)
@@ -355,7 +389,6 @@ func PermissionMiddleware(permissions []string, opts ...AuthOption) func(http.Ha
 				return
 			}
 
-			chiCtx := NewChiContext(w, r).(*ChiContext)
 			dCtx := getDTokenContext(chiCtx, mgr)
 			tokenValue := dCtx.GetTokenValue()
 
@@ -387,11 +420,19 @@ func PermissionPathMiddleware(permissions []string, opts ...AuthOption) func(htt
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			chiCtx := prepareRequestContext(w, r)
+			if chiCtx.IsAborted() {
+				return
+			}
+			r = chiCtx.r
+
 			reqPermissions := append([]string{}, permissions...)
 			reqPermissions = append(reqPermissions, r.URL.Path)
 
 			authReq := newAuthHandleRequest(options, func() {
-				next.ServeHTTP(w, r)
+				if !chiCtx.IsAborted() {
+					next.ServeHTTP(w, chiCtx.r)
+				}
 			}, nil)
 			authReq.Permissions = append([]string{}, reqPermissions...)
 			if runBeforeAuthHandler(w, r, options, authReq) {
@@ -399,11 +440,11 @@ func PermissionPathMiddleware(permissions []string, opts ...AuthOption) func(htt
 			}
 
 			if len(reqPermissions) == 0 {
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(w, chiCtx.r)
 				return
 			}
 
-			mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
+			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, r, err)
@@ -413,7 +454,6 @@ func PermissionPathMiddleware(permissions []string, opts ...AuthOption) func(htt
 				return
 			}
 
-			chiCtx := NewChiContext(w, r).(*ChiContext)
 			dCtx := getDTokenContext(chiCtx, mgr)
 			tokenValue := dCtx.GetTokenValue()
 
@@ -445,8 +485,16 @@ func RoleMiddleware(roles []string, opts ...AuthOption) func(http.Handler) http.
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			chiCtx := prepareRequestContext(w, r)
+			if chiCtx.IsAborted() {
+				return
+			}
+			r = chiCtx.r
+
 			authReq := newAuthHandleRequest(options, func() {
-				next.ServeHTTP(w, r)
+				if !chiCtx.IsAborted() {
+					next.ServeHTTP(w, chiCtx.r)
+				}
 			}, nil)
 			authReq.Roles = append([]string{}, roles...)
 			if runBeforeAuthHandler(w, r, options, authReq) {
@@ -454,11 +502,11 @@ func RoleMiddleware(roles []string, opts ...AuthOption) func(http.Handler) http.
 			}
 
 			if len(roles) == 0 {
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(w, chiCtx.r)
 				return
 			}
 
-			mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
+			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, r, err)
@@ -468,7 +516,6 @@ func RoleMiddleware(roles []string, opts ...AuthOption) func(http.Handler) http.
 				return
 			}
 
-			chiCtx := NewChiContext(w, r).(*ChiContext)
 			dCtx := getDTokenContext(chiCtx, mgr)
 			tokenValue := dCtx.GetTokenValue()
 
@@ -516,6 +563,9 @@ func runBeforeAuthHandler(w http.ResponseWriter, r *http.Request, options *AuthO
 	}
 
 	options.BeforeAuthHandler(w, r, req)
+	if cached, ok := GetDTokenContext(r); ok && cached.GetRequestContext().IsAborted() {
+		return true
+	}
 	return req.IsHandled()
 }
 
@@ -551,36 +601,57 @@ func GetDTokenContextByCtx(ctx context.Context) (*DContext.DTokenContext, bool) 
 
 // GetLoginIDByCtx gets login ID by context GetLoginIDByCtx 从上下文获取登录 ID
 func GetLoginIDByCtx(ctx context.Context) (string, error) {
-	dCtx, ok := GetDTokenContextByCtx(ctx)
-	if !ok {
-		return "", derror.ErrNotLogin
+	dCtx, err := requireDTokenContextByCtx(ctx)
+	if err != nil {
+		return "", err
 	}
 	return dCtx.Auth().GetLoginID(ctx)
 }
 
 // GetTokenInfoByCtx gets token info by context GetTokenInfoByCtx 从上下文获取 Token 信息
 func GetTokenInfoByCtx(ctx context.Context) (*manager.TokenInfo, error) {
-	dCtx, ok := GetDTokenContextByCtx(ctx)
-	if !ok {
-		return nil, derror.ErrNotLogin
+	dCtx, err := requireDTokenContextByCtx(ctx)
+	if err != nil {
+		return nil, err
 	}
 	return dCtx.Auth().GetTokenInfo(ctx)
 }
 
 // IntrospectTokenByCtx inspects current token without renewal side effects IntrospectTokenByCtx 无续期副作用地检查当前 token 状态
 func IntrospectTokenByCtx(ctx context.Context) (*manager.TokenIntrospection, error) {
-	dCtx, ok := GetDTokenContextByCtx(ctx)
-	if !ok {
-		return nil, derror.ErrNotLogin
+	dCtx, err := requireDTokenContextByCtx(ctx)
+	if err != nil {
+		return nil, err
 	}
 	return dCtx.Auth().IntrospectToken(ctx)
 }
 
-// getDTokenContext gets or creates dtoken context getDTokenContext 获取或创建 DToken 上下文
+// resolveRequestManager preserves explicit selection before inheriting the request manager. resolveRequestManager 优先使用显式配置，否则继承请求 Manager。
+func resolveRequestManager(r *http.Request, explicit *manager.Manager, authType string) (*manager.Manager, error) {
+	if explicit != nil {
+		return authcheck.ResolveManager(explicit, authType)
+	}
+	cached, _ := GetDTokenContext(r)
+	return authcheck.ResolveManagerFromContext(authType, cached)
+}
+
+// prepareRequestContext binds cached metadata to the current request and writer before hooks run. prepareRequestContext 在钩子执行前将缓存元数据绑定到当前请求和响应写入器。
+func prepareRequestContext(w http.ResponseWriter, r *http.Request) *ChiContext {
+	chiCtx := NewChiContext(w, r).(*ChiContext)
+	if cached, ok := GetDTokenContext(r); ok {
+		if previous := cached.GetRequestContext(); previous != nil {
+			chiCtx.aborted = previous.IsAborted()
+		}
+		getDTokenContext(chiCtx, cached.GetManager())
+	}
+	return chiCtx
+}
+
+// getDTokenContext reuses a context only when both its manager and request adapter match. getDTokenContext 仅在 Manager 和请求适配器均相同时复用上下文。
 func getDTokenContext(chiCtx *ChiContext, mgr *manager.Manager) *DContext.DTokenContext {
 	if v := chiCtx.r.Context().Value(DTokenCtxKey); v != nil {
 		if dCtx, ok := v.(*DContext.DTokenContext); ok {
-			if dCtx != nil && dCtx.GetManager() == mgr {
+			if dCtx != nil && dCtx.GetManager() == mgr && dCtx.GetRequestContext() == chiCtx {
 				return dCtx
 			}
 		}

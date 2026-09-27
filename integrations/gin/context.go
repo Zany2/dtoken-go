@@ -3,6 +3,7 @@ package gin
 
 import (
 	"net/http"
+	"net/url"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/gin-gonic/gin"
@@ -10,8 +11,7 @@ import (
 
 // GinContext adapts request context 适配 Gin 请求上下文
 type GinContext struct {
-	c       *gin.Context
-	aborted bool
+	c *gin.Context
 }
 
 // Interface assertion keeps request context contract checked at compile time 接口断言在编译期检查请求上下文契约
@@ -57,7 +57,8 @@ func (g *GinContext) GetPath() string {
 
 // GetQuery implements adapter.RequestContext 实现 adapter.RequestContext 接口
 func (g *GinContext) GetQuery(key string) string {
-	return g.c.Query(key)
+	// Gin's query cache can outlive a replaced request. Gin 的查询缓存可能在请求替换后仍保留旧值，因此直接读取当前 URL。
+	return g.c.Request.URL.Query().Get(key)
 }
 
 // Set implements adapter.RequestContext 实现 adapter.RequestContext 接口
@@ -67,8 +68,9 @@ func (g *GinContext) Set(key string, value interface{}) {
 
 // SetCookie implements adapter.RequestContext 实现 adapter.RequestContext 接口
 func (g *GinContext) SetCookie(name string, value string, maxAge int, path string, domain string, secure bool, httpOnly bool) {
-	g.c.SetSameSite(http.SameSiteLaxMode)
-	g.c.SetCookie(name, value, maxAge, path, domain, secure, httpOnly)
+	g.SetCookieWithOptions(&adapter.CookieOptions{
+		Name: name, Value: value, MaxAge: maxAge, Path: path, Domain: domain, Secure: secure, HttpOnly: httpOnly,
+	})
 }
 
 // SetHeader implements adapter.RequestContext 实现 adapter.RequestContext 接口
@@ -88,7 +90,11 @@ func (g *GinContext) GetQueryAll() map[string][]string {
 
 // GetPostForm implements adapter.RequestContext 实现 adapter.RequestContext 接口
 func (g *GinContext) GetPostForm(key string) string {
-	return g.c.PostForm(key)
+	// Parse the current request with Gin's multipart limit, bypassing its context-level form cache. 使用 Gin 的 multipart 内存限制解析当前请求，绕过上下文级旧表单缓存。
+	if g.c.Request.PostForm == nil {
+		_, _ = g.c.MultipartForm()
+	}
+	return g.c.Request.PostForm.Get(key)
 }
 
 // GetBody implements adapter.RequestContext 实现 adapter.RequestContext 接口
@@ -115,16 +121,16 @@ func (g *GinContext) SetCookieWithOptions(options *adapter.CookieOptions) {
 	case "None":
 		sameSite = http.SameSiteNoneMode
 	}
-	g.c.SetSameSite(sameSite)
-	g.c.SetCookie(
-		options.Name,
-		options.Value,
-		options.MaxAge,
-		options.Path,
-		options.Domain,
-		options.Secure,
-		options.HttpOnly,
-	)
+	path := options.Path
+	if path == "" {
+		path = "/"
+	}
+
+	// Apply SameSite to this cookie without changing later application cookies. 仅为当前 Cookie 应用 SameSite，不改变业务后续 Cookie 的设置。
+	http.SetCookie(g.c.Writer, &http.Cookie{
+		Name: options.Name, Value: url.QueryEscape(options.Value), MaxAge: options.MaxAge,
+		Path: path, Domain: options.Domain, Secure: options.Secure, HttpOnly: options.HttpOnly, SameSite: sameSite,
+	})
 }
 
 // GetString implements adapter.RequestContext 实现 adapter.RequestContext 接口
@@ -144,13 +150,12 @@ func (g *GinContext) MustGet(key string) any {
 
 // Abort implements adapter.RequestContext 实现 adapter.RequestContext 接口
 func (g *GinContext) Abort() {
-	g.aborted = true
 	g.c.Abort()
 }
 
 // IsAborted implements adapter.RequestContext 实现 adapter.RequestContext 接口
 func (g *GinContext) IsAborted() bool {
-	return g.aborted
+	return g.c.IsAborted()
 }
 
 // IsTLS implements adapter.RequestContext 实现 adapter.RequestContext 接口

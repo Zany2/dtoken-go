@@ -64,6 +64,8 @@ func TestDTokenErrorNilReceiver(t *testing.T) {
 // TestSentinelErrorsAreDistinct verifies sentinel errors preserve distinct identities. TestSentinelErrorsAreDistinct 验证哨兵错误保持独立身份。
 func TestSentinelErrorsAreDistinct(t *testing.T) {
 	cases := []error{
+		ErrInvalidAccessToken,
+		ErrInvalidRefreshToken,
 		ErrInvalidTicket,
 		ErrTicketConsumed,
 		ErrInvalidShortKey,
@@ -72,12 +74,40 @@ func TestSentinelErrorsAreDistinct(t *testing.T) {
 		ErrRoleDenied,
 	}
 
-	for _, err := range cases {
+	for i, err := range cases {
 		if err == nil {
 			t.Fatalf("sentinel error is nil")
 		}
 		if err.Error() == "" {
 			t.Fatalf("sentinel error %v has empty message", err)
 		}
+		for j, other := range cases {
+			if i != j && (err == other || errors.Is(err, other)) {
+				t.Fatalf("sentinels at indexes %d and %d share an identity: %v, %v", i, j, err, other)
+			}
+		}
+	}
+}
+
+// TestOAuth2SentinelAliases verifies aliases retain their original error identities. TestOAuth2SentinelAliases 验证别名保留原始错误身份。
+func TestOAuth2SentinelAliases(t *testing.T) {
+	tests := []struct {
+		name     string
+		alias    error
+		original error
+	}{
+		{name: "access token", alias: ErrOAuth2InvalidAccessToken, original: ErrInvalidAccessToken},
+		{name: "refresh token", alias: ErrOAuth2InvalidRefreshToken, original: ErrInvalidRefreshToken},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.alias != tt.original {
+				t.Fatal("alias does not preserve original identity")
+			}
+			if !errors.Is(fmt.Errorf("wrapped: %w", tt.alias), tt.original) ||
+				!errors.Is(fmt.Errorf("wrapped: %w", tt.original), tt.alias) {
+				t.Fatal("wrapped alias and original do not match through errors.Is")
+			}
+		})
 	}
 }

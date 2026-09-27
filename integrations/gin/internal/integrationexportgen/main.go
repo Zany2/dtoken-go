@@ -59,7 +59,8 @@ func main() {
 
 // render creates one framework export file from a Gin canonical source. render 根据 Gin 标准源生成单个框架导出文件。
 func render(source []byte, target targetSpec) ([]byte, error) {
-	text := string(source)
+	// Windows checkouts must match the same newline-sensitive anchors as Unix sources. Windows 检出文件须与 Unix 源文件匹配相同的换行敏感锚点。
+	text := strings.ReplaceAll(string(source), "\r\n", "\n")
 	packageClause := "package " + sourcePackage
 	packageIndex := strings.Index(text, packageClause)
 	if packageIndex < 0 {

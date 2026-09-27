@@ -3,6 +3,8 @@ package authcheck
 
 import (
 	"context"
+	"errors"
+	"reflect"
 
 	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/manager"
@@ -31,9 +33,9 @@ type Request struct {
 	Permissions []string
 	// Roles lists required roles Roles 表示本次请求需要的角色列表。
 	Roles []string
-	// LogicType controls AND/OR checks for permissions and roles LogicType 控制权限和角色的 AND/OR 逻辑。
+	// LogicType controls AND/OR checks; empty defaults to OR. LogicType 控制权限和角色的 AND/OR 逻辑，空值默认 OR。
 	LogicType LogicType
-	// LoginError is returned when IsLogin is false LoginError 是登录态校验失败时返回的错误。
+	// LoginError replaces invalid or inactive token errors, while operational and disable errors are preserved. LoginError 替换无效或非活跃 Token 错误，保留运行故障及封禁错误。
 	LoginError error
 }
 
@@ -51,6 +53,9 @@ func GetManager(authType string) (*manager.Manager, error) {
 // ResolveManager prefers an explicitly injected manager and falls back to the global registry. ResolveManager 优先使用显式注入的 Manager，否则回退到全局注册表。
 func ResolveManager(explicit *manager.Manager, authType string) (*manager.Manager, error) {
 	if explicit != nil {
+		if explicit.IsClosed() {
+			return nil, derror.ErrManagerNotFound
+		}
 		return explicit, nil
 	}
 	return GetManager(authType)
@@ -60,9 +65,21 @@ func ResolveManager(explicit *manager.Manager, authType string) (*manager.Manage
 func ResolveManagerFromContext(authType string, cached any) (*manager.Manager, error) {
 	if authType == "" {
 		if source, ok := cached.(interface{ GetManager() *manager.Manager }); ok {
-			if mgr := source.GetManager(); mgr != nil {
-				return mgr, nil
+			// A missing framework context can reach this interface as a typed nil. 框架中缺失的上下文可能以带类型的空值传入接口。
+			value := reflect.ValueOf(source)
+			switch value.Kind() {
+			case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+				if value.IsNil() {
+					return GetManager(authType)
+				}
 			}
+
+			// An existing scope without a manager is invalid, not a global fallback. 已有请求作用域缺少 Manager 时应拒绝，避免切换到全局认证空间。
+			mgr := source.GetManager()
+			if mgr == nil {
+				return nil, derror.ErrManagerNotFound
+			}
+			return ResolveManager(mgr, authType)
 		}
 	}
 	return GetManager(authType)
@@ -81,13 +98,36 @@ func Check(ctx context.Context, mgr *manager.Manager, req Request) (*Result, err
 		return result, nil
 	}
 
+	if mgr == nil || mgr.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
+	// Reject misspelled access logic instead of silently weakening it to OR. 拒绝错误的权限逻辑配置，避免静默放宽为 OR。
+	if len(req.Permissions) > 0 || len(req.Roles) > 0 {
+		switch req.LogicType {
+		case "", LogicOr, LogicAnd:
+		default:
+			return nil, derror.ErrInvalidParam
+		}
+	}
+
 	if req.LoginError == nil {
 		req.LoginError = derror.ErrNotLogin
 	}
 
-	// Check login first when caller requires explicit login 需要显式登录时先检查登录态。
-	if req.CheckLogin && !mgr.IsLogin(ctx, req.TokenValue) {
-		return nil, req.LoginError
+	// Preserve failure causes instead of collapsing storage faults and restrictions into login failures. 保留失败原因，避免把存储故障和访问限制压成登录失效。
+	if req.CheckLogin {
+		if err := mgr.CheckLogin(ctx, req.TokenValue); err != nil {
+			switch {
+			case errors.Is(err, derror.ErrNotLogin), errors.Is(err, derror.ErrInvalidToken),
+				errors.Is(err, derror.ErrTokenExpired), errors.Is(err, derror.ErrActiveTimeout),
+				errors.Is(err, derror.ErrTokenKickout), errors.Is(err, derror.ErrTokenReplaced),
+				errors.Is(err, derror.ErrSessionNotFound):
+				return nil, req.LoginError
+			default:
+				return nil, err
+			}
+		}
 	}
 
 	// Resolve loginID only once because disable/annotation checks share it loginID 只解析一次，供封禁和注解类权限校验复用。
@@ -110,9 +150,9 @@ func Check(ctx context.Context, mgr *manager.Manager, req Request) (*Result, err
 			return nil, err
 		}
 
-		// Check account disable state after loginID is resolved 获取 loginID 后校验账号封禁状态。
-		if mgr.IsDisable(ctx, loginID) {
-			return nil, derror.ErrAccountDisabled
+		// Preserve storage errors when checking disable state. 校验封禁状态时保留存储错误。
+		if err := mgr.CheckDisable(ctx, loginID); err != nil {
+			return nil, err
 		}
 	}
 

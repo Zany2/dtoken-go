@@ -22,7 +22,13 @@ fmt.Println(info.LoginID, info.ExpiresIn, info.Permissions, info.Roles)
 
 ## Refresh Token
 
-普通登录流程支持 access token + refresh token 双令牌。刷新时会轮换 refresh token：旧 access token 和旧 refresh token 会被撤销，然后签发一组新的令牌。
+普通登录流程支持 access token + refresh token 双令牌。刷新时先一次性消费旧 refresh token，再签发新令牌对，成功后撤销旧 access token。新令牌对签发失败时，旧 refresh token 不恢复；未被其他操作终止的旧 access token 保留到原有效期结束。
+
+访问令牌自然过期不撤销仍有效的刷新凭证；轮换会清理 Session 中过期的终端条目，并保留其他终端及账号数据。显式登出、踢下线或顶替会清理已关联的刷新凭证。
+
+新签发的访问令牌到刷新令牌反向索引沿用刷新令牌有效期，避免访问令牌续期后失去撤销关联。已有短期索引不自动迁移；重新签发或轮换后的令牌对使用新规则。
+
+消费优先使用 `AtomicStorage.GetAndDelete`；基础存储通过同一 Manager 的账号锁串行处理，不保证跨实例或跨进程原子消费。
 
 ```go
 pair, err := dtoken.LoginWithRefreshToken(ctx, "user-1001")
@@ -50,6 +56,10 @@ _ = dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
 
 用于一次性票据、临时授权和系统间换票。
 
+Ticket 校验和状态回写使用精确截止时间 `ExpiresAt`。`CreateTime` 仍为 Unix 秒时间戳，`ExpiresIn` 仍为向上取整后的有效秒数。存储中不含 `ExpiresAt` 的旧票据继续使用原有整秒到期规则。
+
+消费时优先使用 `adapter.AtomicStorage`。仅提供基础 `Storage` 时，消费和撤销在同一个 Ticket 管理器实例内串行执行；该回退不保证不同管理器实例或进程之间的原子消费。多个实例共享票据时应使用原子存储。
+
 ```go
 createdTicket, err := dtoken.CreateTicket(ctx, "user-1001")
 if err != nil {
@@ -66,6 +76,10 @@ fmt.Println(result.Ticket.LoginID)
 ## Short-Key 访问凭证
 
 用于短链访问、扫码确认、临时授权和系统间换票。
+
+短 Key 的校验和状态回写使用精确截止时间 `ExpiresAt`。`CreateTime`、`UpdateTime` 和 `ExpiresIn` 保留原有秒单位；存储中不含 `ExpiresAt` 的旧短 Key 继续使用原有到期规则。
+
+创建写入、确认、消费和撤销在同一个 ShortKey 管理器实例内串行执行。创建和消费优先使用 `adapter.AtomicStorage`，基础 `Storage` 提供本地回退。实例锁不协调其他管理器实例或进程；原子创建和消费也不使跨实例的确认、撤销成为事务操作。
 
 ```go
 createdKey, err := dtoken.CreateShortKey(ctx)

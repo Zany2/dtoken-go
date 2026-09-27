@@ -22,7 +22,13 @@ Framework packages re-export the same API, so a GoFrame project can call `gfdt.I
 
 ## Refresh Token
 
-The normal login flow supports an access-token + refresh-token pair. Refreshing rotates the refresh token: the old access token and old refresh token are revoked, then a fresh pair is issued.
+Rotation consumes the old refresh token once, issues a replacement pair, then retires the old access token. Failed issuance does not restore the consumed refresh token; the old access token remains until its original expiry unless another operation terminates it.
+
+Natural access-token expiry preserves an independently valid refresh credential. Rotation prunes expired session terminals while preserving other terminals and account data. Explicit logout, kickout, or replacement cleans up linked refresh credentials.
+
+New reverse indexes from access tokens to refresh tokens use the refresh lifetime so access-token renewal does not lose revocation links. Existing shorter-lived indexes are not migrated automatically; newly issued or rotated pairs use the new rule.
+
+Consumption prefers `AtomicStorage.GetAndDelete`. Basic storage is serialized by the account lock within one Manager, without atomic consumption guarantees across instances or processes.
 
 ```go
 pair, err := dtoken.LoginWithRefreshToken(ctx, "user-1001")
@@ -50,6 +56,10 @@ The default refresh-token TTL is `30` days. You can override it globally with `R
 
 For one-time tickets, temporary authorization, and system-to-system ticket exchange.
 
+Ticket validation and state updates use the precise `ExpiresAt` deadline. `CreateTime` remains a Unix timestamp in seconds and `ExpiresIn` remains the TTL rounded up to seconds. Stored tickets without `ExpiresAt` retain their previous whole-second expiration behavior.
+
+Consumption prefers `adapter.AtomicStorage`. With plain `Storage`, consumption and revocation are serialized within one Ticket manager instance; this fallback does not provide atomic consumption across manager instances or processes. Use atomic storage when multiple instances share tickets.
+
 ```go
 createdTicket, err := dtoken.CreateTicket(ctx, "user-1001")
 if err != nil {
@@ -66,6 +76,10 @@ fmt.Println(result.Ticket.LoginID)
 ## Short-Key Access Credential
 
 For short-link access, QR confirmation, temporary authorization, and system-to-system ticket exchange.
+
+Short keys use the precise `ExpiresAt` deadline for validation and state updates. `CreateTime`, `UpdateTime`, and `ExpiresIn` retain their second-based units; stored keys without `ExpiresAt` retain the previous expiration rules.
+
+Creation writes, confirmation, consumption, and revocation are serialized within each ShortKey manager instance. Creation and consumption prefer `adapter.AtomicStorage`; plain `Storage` supports a local fallback. This instance lock does not coordinate separate managers or processes, and atomic create/consume operations do not make cross-instance confirmation and revocation transactional.
 
 ```go
 createdKey, err := dtoken.CreateShortKey(ctx)

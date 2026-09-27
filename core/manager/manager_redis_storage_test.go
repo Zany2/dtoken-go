@@ -11,6 +11,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
+	"github.com/Zany2/dtoken-go/core/utils"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -37,7 +38,7 @@ func newManagerRedisTestStorage(t interface {
 		t.Fatalf("parse DTOKEN_REDIS_URL error = %v", err)
 	}
 	client := redis.NewClient(redisOptions)
-	storage := &managerRedisTestStorage{client: client, prefix: cfg.KeyPrefix}
+	storage := &managerRedisTestStorage{client: client, prefix: utils.StorageNamespace(cfg.KeyPrefix, cfg.AuthType)}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -154,7 +155,7 @@ func (s *managerRedisTestStorage) Keys(ctx context.Context, pattern string) ([]s
 }
 
 func (s *managerRedisTestStorage) Clear(ctx context.Context) error {
-	keys, err := s.Keys(ctx, s.prefix+"*")
+	keys, err := s.Keys(ctx, escapeSearchKeyword(s.prefix)+"*")
 	if err != nil {
 		return err
 	}

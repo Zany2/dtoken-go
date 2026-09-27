@@ -23,6 +23,13 @@ type Annotation struct {
 // GetHandler gets annotation handler GetHandler 获取注解处理器
 func GetHandler(ctx context.Context, handler gin.HandlerFunc, failFunc func(c *gin.Context, err error), annotations ...*Annotation) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := requestContext(c)
+
+		// Explicit nil configuration is invalid rather than an implicit authentication bypass. 显式空注解属于无效配置，不应隐式跳过鉴权。
+		if len(annotations) > 0 && annotations[0] == nil {
+			failAuthentication(c, derror.ErrInvalidParam, failFunc)
+			return
+		}
 		if len(annotations) > 0 && annotations[0].Ignore {
 			if handler != nil {
 				handler(c)
@@ -50,12 +57,7 @@ func GetHandler(ctx context.Context, handler gin.HandlerFunc, failFunc func(c *g
 		cached, _ := GetDTokenContext(c)
 		mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached)
 		if err != nil {
-			if failFunc != nil {
-				failFunc(c, err)
-			} else {
-				writeErrorResponse(c, err)
-			}
-			c.Abort()
+			failAuthentication(c, err, failFunc)
 			return
 		}
 
@@ -72,12 +74,7 @@ func GetHandler(ctx context.Context, handler gin.HandlerFunc, failFunc func(c *g
 			LoginError:   derror.ErrNotLogin,
 		})
 		if err != nil {
-			if failFunc != nil {
-				failFunc(c, err)
-			} else {
-				writeErrorResponse(c, err)
-			}
-			c.Abort()
+			failAuthentication(c, err, failFunc)
 			return
 		}
 

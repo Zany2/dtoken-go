@@ -91,7 +91,7 @@ KeyPrefix = "dtoken:"
 存储 key 通常会组合为：
 
 ```text
-{KeyPrefix}{AuthType}{业务前缀}{业务值}
+{编码后的 KeyPrefix}{编码后的 AuthType}{业务前缀}{业务值}
 ```
 
 例如：
@@ -100,6 +100,12 @@ KeyPrefix = "dtoken:"
 dtoken:admin:token:xxx
 dtoken:admin:session:10001
 ```
+
+两个命名空间分别编码：移除一个末尾分隔符，将内部 `\` 转为 `\\`、内部 `:` 转为 `\:`，再补上末尾 `:`。例如 `AuthType = "admin:token:"` 的存储片段为 `admin\:token:`，不会与 `admin:` 下的 Token 键混淆。普通名称的键格式不变；Manager、Nonce、OAuth2、Ticket、ShortKey 共用此规则。自定义存储操作可调用 `utils.StorageNamespace(keyPrefix, authType)` 获取命名空间前缀。
+
+升级已有部署时，含内部冒号或反斜杠的命名空间，以及直接使用未带末尾分隔符的旧扩展模块构造器所产生的键，需要显式迁移；不会自动回退读取有歧义的旧命名空间。应先停止旧版本写入，核对数据归属后迁移相关键并保留剩余 TTL，再启用新版本。不要只迁移 Token 而遗漏 Session、封禁及刷新凭证；若重新建立登录态，也仍须保留原封禁策略。
+
+封禁记录新增内部 `loginId`、`kind`（`account`、`service`、`device`）字段，公开返回结构不变。账号封禁的 `loginID` 同样转义。归属明确的旧标记继续兼容；业务键中含反斜杠且没有账号归属的旧标记无法可靠区分原始和转义账号，`Check`、读取详情、TTL 和解封操作会返回 `ErrInvalidParam`，不会覆盖或删除该记录。此类数据需依据可信账号资料确认归属，补齐内部字段并迁移到对应键；不能仅凭旧键猜测账号。布尔查询仍沿用出错返回 `false` 的约定，需要错误信息时使用对应的 `Check` 或 `Get` 方法。
 
 `AuthType`、`KeyPrefix`、`TokenName` 不能包含空白字符，并且长度不能超过 `64` 个字符。
 
@@ -142,6 +148,8 @@ defaults.NewBuilder().
 ```
 
 ## Token 读取来源
+
+已启用来源按以下顺序读取：`TokenName` 指定的 Header、`Authorization`、Cookie、Query、表单 Body。Header 支持原始 Token 和 `Bearer` 前缀。空值或无法解析的 Header 会被跳过，`TokenName` 为 `Authorization` 时也遵循此规则。一旦提取出 Token，认证失败不会回退到其他来源。
 
 DToken-Go 至少需要开启一个 Token 来源：
 

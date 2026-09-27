@@ -35,8 +35,9 @@ When a login sets `Token`, `Timeout`, `ActiveTimeout`, `Extra`, or `TerminalExtr
 
 Reuse depends on the device dimension:
 
-- account-level login without device information can reuse the account token
-- device-level login usually reuses only within the same device type and device ID
+- When both device type and device ID are provided, reuse requires both to match
+- When only one field is provided, reuse is filtered by that field, including device ID alone
+- When neither field is provided, an existing account token may be reused
 - `IsShare(false)` creates a new token for each login
 
 ## MaxLoginCount
@@ -91,6 +92,10 @@ When `IsConcurrent(false)`, non-concurrent login is handled by `ReplacedLoginExi
 |------|----------|
 | `config.ReplacedLoginExitModeOldDevice` | allow new login and mark old terminals as replaced |
 | `config.ReplacedLoginExitModeNewDevice` | keep old terminals and reject the new login |
+
+Temporarily disabling a device does not release its login slot: its original token can become usable again after the disable is lifted. The slot is released when the login ends, such as through logout or expiration. This also applies to `MaxLoginCount` accounting.
+
+Shared login events use the device type and device ID of the reused terminal, even when the login request omits those fields.
 
 ## Recommended Combinations
 

@@ -39,7 +39,12 @@ func (m *Manager) getSession(ctx context.Context, loginID string) (*Session, err
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
 
-	// Treat the manager namespace and requested storage key as canonical identity. 以 Manager 命名空间和请求的存储键作为 Session 身份真值。
+	// Reject records from a different authentication namespace. 拒绝其他认证命名空间的记录。
+	if sess.AuthType != "" && sess.AuthType != m.config.AuthType {
+		return nil, derror.ErrInvalidToken
+	}
+
+	// The requested key remains authoritative for the account ID. 请求的存储键仍是账号 ID 的真值。
 	sess.AuthType = m.config.AuthType
 	sess.LoginID = loginID
 
@@ -61,6 +66,7 @@ type tokenRecord struct {
 	TokenInfo     `msgpack:",inline"` // TokenInfo keeps existing storage fields flat. TokenInfo 保持已有存储字段平铺。
 	AccessID      string              `json:"accessId,omitempty" msgpack:",omitempty"`      // AccessID distinguishes lifecycles that reuse a token value. AccessID 区分复用同一 Token 值的生命周期。
 	TerminalIndex int64               `json:"terminalIndex,omitempty" msgpack:",omitempty"` // TerminalIndex binds the token to its account terminal entry. TerminalIndex 将 Token 绑定到账号终端条目。
+	Revoked       bool                `json:"revoked,omitempty" msgpack:",omitempty"`       // Revoked keeps account-disabled credentials invalid after untie. Revoked 保证账号封禁废弃的凭证在解封后仍然无效。
 }
 
 // getTokenRecord loads token metadata together with its optional lifecycle identity. getTokenRecord 加载 Token 元数据及可选的生命周期标识。
@@ -99,7 +105,12 @@ func (m *Manager) getTokenRecord(ctx context.Context, tokenValue string) (*token
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
 
-	// Treat the token key namespace as the canonical auth type. 以 Token 存储键命名空间作为认证类型真值。
+	// Reject foreign records left under historically overlapping namespace keys. 拒绝历史重叠命名空间键中遗留的其他认证体系记录。
+	if tokenInfo.AuthType != "" && tokenInfo.AuthType != m.config.AuthType {
+		return nil, derror.ErrInvalidToken
+	}
+
+	// Fill the namespace for legacy records without auth metadata. 为缺少认证类型的旧记录补齐命名空间。
 	tokenInfo.AuthType = m.config.AuthType
 
 	// Return token info 返回 Token 信息。
@@ -173,33 +184,10 @@ func (m *Manager) checkLoginAndGetContext(ctx context.Context, tokenValue string
 	return m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{allowRenew: true})
 }
 
-// checkLoginAndGetTokenInfo validates login state without loading account session. checkLoginAndGetTokenInfo 校验登录态但不加载账号 Session。
+// checkLoginAndGetTokenInfo uses the same session validation as context-aware login checks. checkLoginAndGetTokenInfo 与需要会话上下文的登录检查使用相同的 Session 校验。
 func (m *Manager) checkLoginAndGetTokenInfo(ctx context.Context, tokenValue string) (*TokenInfo, error) {
-	// Inspect token mapping and the states that directly determine validity. 检查直接决定有效性的 Token 映射及状态。
-	record, activeTimeout, activeExpired, err := m.inspectLoginToken(ctx, tokenValue, nil)
-	if err != nil {
-		return nil, err
-	}
-	tokenInfo := &record.TokenInfo
-
-	// Require only the session key because account disable intentionally detaches all tokens. 仅确认 Session 键存在，因为账号封禁会主动解绑全部 Token。
-	if !m.storage.Exists(ctx, m.getSessionKey(tokenInfo.LoginID)) {
-		return nil, derror.ErrInvalidToken
-	}
-
-	// Persist active-timeout state only on the exceptional path. 仅在不活跃超时的异常路径落盘状态。
-	if activeExpired {
-		if err = m.processTerminalsIf(ctx, tokenInfo.LoginID, func() (bool, error) {
-			return m.tokenRecordStillMatches(ctx, tokenValue, record)
-		}, terminalRemovalForTokenRecord(tokenValue, record), TokenStateActiveTimeout, terminalInfoFromTokenRecord(tokenValue, record)); err != nil {
-			return nil, err
-		}
-		return nil, derror.ErrActiveTimeout
-	}
-
-	// Keep renewal and active refresh outside the synchronous validation path. 将续期和活跃刷新移出同步校验路径。
-	m.submitLoginMaintenance(ctx, tokenValue, tokenInfo, activeTimeout)
-	return tokenInfo, nil
+	_, tokenInfo, err := m.checkLoginAndGetContext(ctx, tokenValue)
+	return tokenInfo, err
 }
 
 // checkLoginAndGetContextNoRenew validates login state without renew side effects. checkLoginAndGetContextNoRenew 校验登录态但不触发续期副作用。
@@ -275,7 +263,7 @@ func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenV
 
 	// Keep optional maintenance outside the synchronous validation path. 将可选维护移出同步校验路径。
 	if opts.allowRenew {
-		m.submitLoginMaintenance(ctx, tokenValue, tokenInfo, activeTimeout)
+		m.submitLoginMaintenance(ctx, tokenValue, record, activeTimeout)
 	}
 
 	// Return checked context 返回已校验上下文。
@@ -304,6 +292,11 @@ func (m *Manager) inspectLoginToken(ctx context.Context, tokenValue string, expe
 		return nil, 0, false, err
 	}
 
+	// Keep the disable error while banned, but never revive retired credentials after untie. 封禁期间保留封禁错误，解封后也不能恢复已废弃凭证。
+	if record.Revoked {
+		return nil, 0, false, derror.ErrInvalidToken
+	}
+
 	// Skip active marker lookup when inactive timeout is disabled. 未启用不活跃超时时跳过活跃标记查询。
 	activeTimeout := m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout)
 	if activeTimeout <= 0 {
@@ -319,8 +312,9 @@ func (m *Manager) inspectLoginToken(ctx context.Context, tokenValue string, expe
 		return nil, 0, false, derror.ErrInvalidToken
 	}
 
+	// Negative timestamps are malformed and can overflow elapsed-time subtraction. 负时间戳属于损坏数据，且可能导致时间差运算溢出。
 	activeAt, err := utils.ToInt64(activeValue)
-	if err != nil {
+	if err != nil || activeAt < 0 {
 		_ = m.storage.Delete(ctx, m.getActiveKey(tokenValue))
 		return nil, 0, false, derror.ErrInvalidToken
 	}
@@ -328,15 +322,15 @@ func (m *Manager) inspectLoginToken(ctx context.Context, tokenValue string, expe
 }
 
 // submitLoginMaintenance schedules renewal and active refresh after validation. submitLoginMaintenance 在校验成功后调度续期和活跃刷新。
-func (m *Manager) submitLoginMaintenance(ctx context.Context, tokenValue string, tokenInfo *TokenInfo, activeTimeout int64) {
-	if submit := m.prepareLoginMaintenance(ctx, tokenValue, tokenInfo, activeTimeout); submit != nil {
+func (m *Manager) submitLoginMaintenance(ctx context.Context, tokenValue string, record *tokenRecord, activeTimeout int64) {
+	if submit := m.prepareLoginMaintenance(ctx, tokenValue, record, activeTimeout); submit != nil {
 		submit()
 	}
 }
 
 // prepareLoginMaintenance reserves maintenance now and returns submission for use after unlocking. prepareLoginMaintenance 立即预留维护任务，返回供解锁后调用的提交函数。
-func (m *Manager) prepareLoginMaintenance(ctx context.Context, tokenValue string, tokenInfo *TokenInfo, activeTimeout int64) func() {
-	if tokenInfo == nil || tokenValue == "" || tokenInfo.LoginID == "" {
+func (m *Manager) prepareLoginMaintenance(ctx context.Context, tokenValue string, record *tokenRecord, activeTimeout int64) func() {
+	if record == nil || record.Revoked || tokenValue == "" || record.LoginID == "" {
 		return nil
 	}
 
@@ -352,7 +346,8 @@ func (m *Manager) prepareLoginMaintenance(ctx context.Context, tokenValue string
 	}
 
 	// Reserve one task before storage checks so concurrent requests do not repeat maintenance reads. 存储检查前登记唯一任务，避免并发请求重复执行维护读取。
-	generation, reserved := m.beginLoginMaintenance(tokenValue, activeAt, false)
+	expectedRecord := *record
+	generation, reserved := m.beginLoginMaintenance(tokenValue, &expectedRecord, activeAt, false)
 	if !reserved {
 		return nil
 	}
@@ -367,12 +362,10 @@ func (m *Manager) prepareLoginMaintenance(ctx context.Context, tokenValue string
 		return nil
 	}
 
-	loginID := tokenInfo.LoginID
-	createTime := tokenInfo.CreateTime
 	return func() {
 		accepted := m.submitAsync("check login maintenance", func() {
 			defer m.finishLoginMaintenance(tokenValue, generation)
-			m.runLoginMaintenance(tokenValue, loginID, createTime, generation, checkRenew, true, activeTimeout > 0)
+			m.runLoginMaintenance(tokenValue, &expectedRecord, generation, checkRenew, true, activeTimeout > 0)
 		})
 		if !accepted {
 			m.finishLoginMaintenance(tokenValue, generation)
@@ -381,13 +374,14 @@ func (m *Manager) prepareLoginMaintenance(ctx context.Context, tokenValue string
 }
 
 // runLoginMaintenance renews token timeout and active state using one checked context. runLoginMaintenance 使用一次校验上下文续期 Token 和活跃状态。
-func (m *Manager) runLoginMaintenance(tokenValue, loginID string, createTime int64, generation uint64, renew, recheckRenewDue, refreshActive bool) {
+func (m *Manager) runLoginMaintenance(tokenValue string, expectedRecord *tokenRecord, generation uint64, renew, recheckRenewDue, refreshActive bool) {
 	// Reject a task invalidated before worker execution. 拒绝在线程执行前已失效的任务。
-	if !m.isLoginMaintenanceCurrent(tokenValue, generation) {
+	if expectedRecord == nil || !m.isLoginMaintenanceCurrent(tokenValue, generation) {
 		return
 	}
 
 	bg := context.Background()
+	loginID := expectedRecord.LoginID
 	unlock := m.lockLoginWrite(loginID)
 	defer func() { unlock() }()
 
@@ -397,10 +391,11 @@ func (m *Manager) runLoginMaintenance(tokenValue, loginID string, createTime int
 	}
 
 	// Reload token identity so a stale task cannot maintain a reused token. 重新加载 Token 身份，避免旧任务维护被复用的 Token。
-	latestTokenInfo, err := m.getTokenInfo(bg, tokenValue)
-	if err != nil || latestTokenInfo.LoginID != loginID || latestTokenInfo.CreateTime != createTime {
+	latestRecord, err := m.getTokenRecord(bg, tokenValue)
+	if err != nil || latestRecord.Revoked || !tokenRecordsMatchLifecycle(expectedRecord, latestRecord) {
 		return
 	}
+	latestTokenInfo := &latestRecord.TokenInfo
 	if err = m.checkLoginDisableState(bg, loginID, latestTokenInfo.Device, latestTokenInfo.DeviceID); err != nil {
 		return
 	}
@@ -439,7 +434,8 @@ func (m *Manager) runLoginMaintenance(tokenValue, loginID string, createTime int
 	unlock()
 	unlock = func() {}
 	if renewed {
-		m.triggerEvent(listener.EventRenew, loginID, latestTokenInfo.Device, latestTokenInfo.DeviceID, tokenValue, nil)
+		// This worker is already tracked; resubmission can deadlock a full pool or lose the event during shutdown. 当前任务已被跟踪，再次提交可能使满载协程池死锁或在关闭期间丢失事件。
+		m.triggerEventWithDispatch(listener.EventRenew, loginID, latestTokenInfo.Device, latestTokenInfo.DeviceID, tokenValue, nil, false)
 	}
 }
 
@@ -454,8 +450,7 @@ func (m *Manager) isAutoRenewDue(ctx context.Context, tokenValue string) bool {
 	if err != nil || ttl <= 0 {
 		return false
 	}
-	ttlSeconds := int64(ttl.Seconds())
-	if ttlSeconds <= 0 || (m.config.RenewMaxRefresh > 0 && ttlSeconds > m.config.RenewMaxRefresh) {
+	if m.config.RenewMaxRefresh > 0 && ttl > secondsToDuration(m.config.RenewMaxRefresh) {
 		return false
 	}
 
@@ -498,7 +493,7 @@ func (m *Manager) markActiveTimeoutLocked(ctx context.Context, loginID, tokenVal
 
 // checkLoginInternal performs the core login validation logic. checkLoginInternal 执行登录状态的核心验证逻辑。
 func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) error {
-	// Validate the token mapping without loading account session. 校验 Token 映射但不加载账号 Session。
+	// Validate token mapping and account session consistently. 一致地校验 Token 映射与账号 Session。
 	_, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	return err
 }
@@ -521,6 +516,18 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (boo
 		record, err := m.getTokenRecord(ctx, ti.Token)
 		if err != nil {
 			if isTokenInactiveError(err) {
+				// Natural access expiry must not revoke a longer-lived refresh credential. 访问令牌自然过期不能撤销有效期更长的刷新凭证。
+				data, readErr := m.storage.Get(ctx, m.getTokenKey(ti.Token))
+				if readErr != nil {
+					return false, activeTimeoutTerminals, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, readErr)
+				}
+				if data == nil {
+					if cleanErr := m.cleanTokenActivityMetadata(ctx, []string{ti.Token}); cleanErr != nil {
+						return false, activeTimeoutTerminals, cleanErr
+					}
+					hasExpired = true
+					continue
+				}
 				// Clean metadata for inactive tokens while preserving any logical token state. 清理失效 Token 的元数据，同时保留其逻辑状态。
 				if cleanErr := m.cleanTokenMetadata(ctx, []string{ti.Token}); cleanErr != nil {
 					return false, activeTimeoutTerminals, cleanErr
@@ -572,7 +579,7 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (boo
 		}
 
 		activeAt, convertErr := utils.ToInt64(activeValue)
-		if convertErr != nil {
+		if convertErr != nil || activeAt < 0 {
 			if deleteErr := m.storage.Delete(ctx, m.getTokenKey(ti.Token)); deleteErr != nil {
 				return false, activeTimeoutTerminals, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, deleteErr)
 			}

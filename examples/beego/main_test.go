@@ -5,151 +5,121 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
-	"github.com/Zany2/dtoken-go/dtoken"
 	beegodt "github.com/Zany2/dtoken-go/integrations/beego"
-	beegocontext "github.com/beego/beego/v2/server/web/context"
+	web "github.com/beego/beego/v2/server/web"
 )
 
 // TestLoginValidationAndAuthorizationSeed verifies login validation and demo authorization data. TestLoginValidationAndAuthorizationSeed 验证登录校验与示例授权数据初始化。
 func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	setupBeegoManager(t)
-	ctx := context.Background()
+	router := newBeegoExampleRouter()
+	assertBeegoResponse(t, requestBeego(router, http.MethodPost, "/login?username=alice", "", ""), http.StatusBadRequest, beegodt.CodeBadRequest)
+	assertBeegoResponse(t, requestBeego(router, http.MethodPost, "/login?username=alice&password=bad", "", ""), http.StatusUnauthorized, beegodt.CodeNotLogin)
 
-	missing, missingRecorder := newBeegoExampleContext(http.MethodPost, "/login?username=alice")
-	handleLogin(missing)
-	if missingRecorder.Code != http.StatusBadRequest {
-		t.Fatalf("missing credentials status = %d, want %d", missingRecorder.Code, http.StatusBadRequest)
+	for _, form := range []bool{false, true} {
+		path, body := "/login?username=alice&password=123456", ""
+		if form {
+			path, body = "/login", "username=alice&password=123456"
+		}
+		login := requestBeego(router, http.MethodPost, path, body, "")
+		assertBeegoResponse(t, login, http.StatusOK, beegodt.CodeSuccess)
+		var envelope struct {
+			Data struct {
+				Token string `json:"token"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(login.Body.Bytes(), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if id, err := beegodt.GetLoginID(context.Background(), envelope.Data.Token); err != nil || id != "alice" {
+			t.Fatalf("returned token login ID=%q error=%v", id, err)
+		}
 	}
-
-	invalid, invalidRecorder := newBeegoExampleContext(http.MethodPost, "/login?username=alice&password=bad")
-	handleLogin(invalid)
-	if invalidRecorder.Code != http.StatusUnauthorized {
-		t.Fatalf("invalid password status = %d, want %d", invalidRecorder.Code, http.StatusUnauthorized)
-	}
-
-	login, loginRecorder := newBeegoExampleContext(http.MethodPost, "/login?username=alice&password=123456")
-	handleLogin(login)
-	if loginRecorder.Code != http.StatusOK {
-		t.Fatalf("login status = %d, want %d", loginRecorder.Code, http.StatusOK)
-	}
-	var envelope struct {
-		Code int `json:"code"`
-		Data struct {
-			Token string `json:"token"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(loginRecorder.Body.Bytes(), &envelope); err != nil {
-		t.Fatalf("decode login response: %v", err)
-	}
-	if envelope.Code != beegodt.CodeSuccess || envelope.Data.Token == "" {
-		t.Fatalf("login envelope = %+v, want success and token", envelope)
-	}
-	if !dtoken.HasRole(ctx, "alice", "admin") {
-		t.Fatal("login did not seed admin role")
-	}
-	if !dtoken.HasPermission(ctx, "alice", "article:read") {
-		t.Fatal("login did not seed article permission")
+	if !beegodt.HasRole(context.Background(), "alice", "admin") || !beegodt.HasPermission(context.Background(), "alice", "article:read") {
+		t.Fatal("login did not seed demo authorization")
 	}
 }
 
-// TestProtectedHandlersAndLogout verifies Beego filter order, protected handlers, and logout invalidation. TestProtectedHandlersAndLogout 验证 Beego 过滤器顺序、受保护处理器及注销失效。
-func TestProtectedHandlersAndLogout(t *testing.T) {
+// TestProtectedRoutesAndLogout uses native routing to verify failed filters stop protected handlers. TestProtectedRoutesAndLogout 使用真实路由验证过滤器失败后不会执行受保护处理器。
+func TestProtectedRoutesAndLogout(t *testing.T) {
 	setupBeegoManager(t)
 	ctx := context.Background()
-	token, err := dtoken.Login(ctx, "alice")
+	token, err := beegodt.Login(ctx, "alice")
 	if err != nil {
-		t.Fatalf("Login() error = %v", err)
+		t.Fatal(err)
 	}
-	if err = dtoken.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
-		t.Fatalf("AddRoles() error = %v", err)
+	if err := beegodt.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
+		t.Fatal(err)
 	}
-	if err = dtoken.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
-		t.Fatalf("AddPermissions() error = %v", err)
+	if err := beegodt.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
+		t.Fatal(err)
 	}
-
-	me, meRecorder := newBeegoExampleContextWithToken(http.MethodGet, "/me", token)
-	beegodt.RegisterDTokenContextMiddleware(ctx)(me)
-	beegodt.AuthMiddleware(ctx)(me)
-	handleMe(me)
-	if meRecorder.Code != http.StatusOK {
-		t.Fatalf("authorized /me status = %d, want %d", meRecorder.Code, http.StatusOK)
+	router := newBeegoExampleRouter()
+	for _, path := range []string{"/me", "/admin", "/articles"} {
+		for _, header := range []string{"dtoken", "Authorization"} {
+			for _, value := range []string{token, "Bearer " + token} {
+				req := httptest.NewRequest(http.MethodGet, path, nil)
+				req.Header.Set(header, value)
+				rec := httptest.NewRecorder()
+				router.ServeHTTP(rec, req)
+				assertBeegoResponse(t, rec, http.StatusOK, beegodt.CodeSuccess)
+			}
+		}
 	}
-
-	admin, adminRecorder := newBeegoExampleContextWithToken(http.MethodGet, "/admin", token)
-	beegodt.RegisterDTokenContextMiddleware(ctx)(admin)
-	beegodt.AuthMiddleware(ctx)(admin)
-	beegodt.RoleMiddleware(ctx, []string{"admin"})(admin)
-	handleAdmin(admin)
-	if adminRecorder.Code != http.StatusOK {
-		t.Fatalf("authorized /admin status = %d, want %d", adminRecorder.Code, http.StatusOK)
+	for _, path := range []string{"/me", "/admin", "/articles", "/logout"} {
+		method := http.MethodGet
+		if path == "/logout" {
+			method = http.MethodPost
+		}
+		for _, invalid := range []string{"", "invalid-token"} {
+			assertBeegoResponse(t, requestBeego(router, method, path, "", invalid), http.StatusUnauthorized, beegodt.CodeNotLogin)
+		}
 	}
-
-	articles, articlesRecorder := newBeegoExampleContextWithToken(http.MethodGet, "/articles", token)
-	beegodt.RegisterDTokenContextMiddleware(ctx)(articles)
-	beegodt.AuthMiddleware(ctx)(articles)
-	beegodt.PermissionMiddleware(ctx, []string{"article:read"})(articles)
-	handleArticles(articles)
-	if articlesRecorder.Code != http.StatusOK {
-		t.Fatalf("authorized /articles status = %d, want %d", articlesRecorder.Code, http.StatusOK)
-	}
-
-	unauthorized, unauthorizedRecorder := newBeegoExampleContext(http.MethodGet, "/me")
-	handleMe(unauthorized)
-	if unauthorizedRecorder.Code != http.StatusUnauthorized {
-		t.Fatalf("unauthorized /me status = %d, want %d", unauthorizedRecorder.Code, http.StatusUnauthorized)
-	}
-
-	bobToken, err := dtoken.Login(ctx, "bob")
+	bobToken, err := beegodt.Login(ctx, "bob")
 	if err != nil {
-		t.Fatalf("Login(bob) error = %v", err)
+		t.Fatal(err)
 	}
-	adminDenied, adminDeniedRecorder := newBeegoExampleContextWithToken(http.MethodGet, "/admin", bobToken)
-	beegodt.RegisterDTokenContextMiddleware(ctx)(adminDenied)
-	beegodt.AuthMiddleware(ctx)(adminDenied)
-	beegodt.RoleMiddleware(ctx, []string{"admin"})(adminDenied)
-	if adminDeniedRecorder.Code != http.StatusForbidden {
-		t.Fatalf("unauthorized /admin status = %d, want %d", adminDeniedRecorder.Code, http.StatusForbidden)
+	for _, path := range []string{"/admin", "/articles"} {
+		assertBeegoResponse(t, requestBeego(router, http.MethodGet, path, "", bobToken), http.StatusForbidden, beegodt.CodePermissionDenied)
 	}
-
-	logout, logoutRecorder := newBeegoExampleContextWithToken(http.MethodPost, "/logout", token)
-	beegodt.RegisterDTokenContextMiddleware(ctx)(logout)
-	beegodt.AuthMiddleware(ctx)(logout)
-	handleLogout(logout)
-	if logoutRecorder.Code != http.StatusOK {
-		t.Fatalf("logout status = %d, want %d", logoutRecorder.Code, http.StatusOK)
-	}
-
-	afterLogout, afterLogoutRecorder := newBeegoExampleContextWithToken(http.MethodGet, "/me", token)
-	beegodt.RegisterDTokenContextMiddleware(ctx)(afterLogout)
-	beegodt.AuthMiddleware(ctx)(afterLogout)
-	if afterLogoutRecorder.Code != http.StatusUnauthorized {
-		t.Fatalf("request after logout status = %d, want %d", afterLogoutRecorder.Code, http.StatusUnauthorized)
-	}
+	assertBeegoResponse(t, requestBeego(router, http.MethodPost, "/logout", "", token), http.StatusOK, beegodt.CodeSuccess)
+	assertBeegoResponse(t, requestBeego(router, http.MethodGet, "/me", "", token), http.StatusUnauthorized, beegodt.CodeNotLogin)
 }
 
 func setupBeegoManager(t *testing.T) {
 	t.Helper()
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	beegodt.DeleteAllManager()
+	t.Cleanup(beegodt.DeleteAllManager)
 	initDToken()
 }
 
-func newBeegoExampleContext(method, path string) (*beegocontext.Context, *httptest.ResponseRecorder) {
-	return newBeegoExampleContextWithRequest(httptest.NewRequest(method, path, nil))
+func newBeegoExampleRouter() *web.ControllerRegister {
+	router := web.NewControllerRegister()
+	registerRoutes(router)
+	return router
 }
 
-func newBeegoExampleContextWithToken(method, path, token string) (*beegocontext.Context, *httptest.ResponseRecorder) {
-	req := httptest.NewRequest(method, path, nil)
-	mgr, _ := dtoken.GetManager()
-	req.Header.Set(mgr.GetConfig().TokenName, token)
-	return newBeegoExampleContextWithRequest(req)
+func requestBeego(router *web.ControllerRegister, method, path, body, token string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if token != "" {
+		req.Header.Set("dtoken", token)
+	}
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
 }
 
-func newBeegoExampleContextWithRequest(req *http.Request) (*beegocontext.Context, *httptest.ResponseRecorder) {
-	recorder := httptest.NewRecorder()
-	c := beegocontext.NewContext()
-	c.Reset(recorder, req)
-	return c, recorder
+func assertBeegoResponse(t *testing.T, rec *httptest.ResponseRecorder, status, code int) {
+	t.Helper()
+	var response Response
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("invalid response: %v, body=%s", err, rec.Body.String())
+	}
+	if rec.Code != status || response.Code != code || !strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") {
+		t.Fatalf("response=%d %s, want status=%d code=%d", rec.Code, rec.Body.String(), status, code)
+	}
 }

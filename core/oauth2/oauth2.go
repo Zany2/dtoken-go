@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -75,16 +76,17 @@ type Client struct {
 
 // AuthorizationCode authorization code information 授权码信息
 type AuthorizationCode struct {
-	Code                string   // Authorization code 授权码
-	ClientID            string   // Client ID 客户端ID
-	RedirectURI         string   // Redirect URI 回调URI
-	UserID              string   // User ID 用户ID
-	Scopes              []string // Requested scopes 请求的权限范围
-	CodeChallenge       string   // PKCE code challenge PKCE 授权码挑战值
-	CodeChallengeMethod string   // PKCE challenge method PKCE 授权码挑战方法
-	CreateTime          int64    // Creation time 创建时间
-	ExpiresIn           int64    // Expiration time in seconds 过期时间（秒）
-	Used                bool     // Whether used 是否已使用
+	Code                string    // Authorization code 授权码
+	ClientID            string    // Client ID 客户端ID
+	RedirectURI         string    // Redirect URI 回调URI
+	UserID              string    // User ID 用户ID
+	Scopes              []string  // Requested scopes 请求的权限范围
+	CodeChallenge       string    // PKCE code challenge PKCE 授权码挑战值
+	CodeChallengeMethod string    // PKCE challenge method PKCE 授权码挑战方法
+	CreateTime          int64     // Creation time 创建时间
+	ExpiresIn           int64     // Expiration time in seconds 过期时间（秒）
+	ExpiresAt           time.Time // Precise deadline; zero preserves legacy timestamp validation. 精确截止时间，零值兼容旧时间戳校验。
+	Used                bool      // Whether used 是否已使用
 }
 
 // AccessToken access token information 访问令牌信息
@@ -109,7 +111,7 @@ type TokenRequest struct {
 	RefreshToken string    // For refresh_token: refresh token 刷新令牌模式：刷新令牌
 	Username     string    // For password: username 密码模式：用户名
 	Password     string    // For password: password 密码模式：密码
-	Scopes       []string  // Optional: requested scopes 可选：请求的权限范围
+	Scopes       []string  // Optional scopes; refresh requests may only narrow the original grant. 可选权限范围，刷新请求只能缩小原授权。
 }
 
 // UserValidator Function type for validating user credentials 验证用户凭证的函数类型
@@ -204,7 +206,7 @@ func (s *OAuth2Server) Token(ctx context.Context, req *TokenRequest, validateUse
 		return s.PasswordGrantToken(ctx, req.ClientID, req.ClientSecret, req.Username, req.Password, req.Scopes, validateUser)
 
 	case GrantTypeRefreshToken:
-		return s.RefreshAccessToken(ctx, req.ClientID, req.RefreshToken, req.ClientSecret)
+		return s.refreshAccessToken(ctx, req.ClientID, req.RefreshToken, req.ClientSecret, req.Scopes)
 
 	default:
 		return nil, derror.ErrInvalidGrantType
@@ -240,7 +242,6 @@ func (s *OAuth2Server) GenerateAuthorizationCodeWithPKCE(ctx context.Context, cl
 	if !s.isValidScopes(client, scopes) {
 		return nil, derror.ErrInvalidScope
 	}
-	codeChallenge = strings.TrimSpace(codeChallenge)
 	codeChallengeMethod, err = normalizeCodeChallengeMethod(codeChallenge, codeChallengeMethod)
 	if err != nil {
 		return nil, err
@@ -252,6 +253,7 @@ func (s *OAuth2Server) GenerateAuthorizationCodeWithPKCE(ctx context.Context, cl
 	}
 	code := hex.EncodeToString(codeBytes)
 
+	now := time.Now()
 	authCode := &AuthorizationCode{
 		Code:                code,
 		ClientID:            clientID,
@@ -260,8 +262,9 @@ func (s *OAuth2Server) GenerateAuthorizationCodeWithPKCE(ctx context.Context, cl
 		Scopes:              append([]string(nil), scopes...),
 		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
-		CreateTime:          time.Now().Unix(),
+		CreateTime:          now.Unix(),
 		ExpiresIn:           durationSeconds(s.codeExpiration),
+		ExpiresAt:           now.Add(s.codeExpiration),
 		Used:                false,
 	}
 
@@ -271,7 +274,11 @@ func (s *OAuth2Server) GenerateAuthorizationCodeWithPKCE(ctx context.Context, cl
 	}
 
 	key := s.getCodeKey(code)
-	if err := s.storage.Set(ctx, key, encodeData, s.codeExpiration); err != nil {
+	ttl := remainingAuthCodeDuration(authCode)
+	if ttl <= 0 {
+		return nil, derror.ErrAuthCodeExpired
+	}
+	if err := s.storage.Set(ctx, key, encodeData, ttl); err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
@@ -314,8 +321,16 @@ func (s *OAuth2Server) ExchangeCodeForTokenWithPKCE(ctx context.Context, code, c
 		return nil, derror.ErrRedirectURIMismatch
 	}
 
-	if time.Now().Unix() >= authCode.CreateTime+authCode.ExpiresIn {
+	if remainingAuthCodeDuration(authCode) <= 0 {
 		return nil, derror.ErrAuthCodeExpired
+	}
+
+	// Recheck current client policy before consuming the code. 消费授权码前重新检查当前客户端策略。
+	if !s.isValidRedirectURI(client, redirectURI) {
+		return nil, derror.ErrInvalidRedirectURI
+	}
+	if !s.isValidScopes(client, authCode.Scopes) {
+		return nil, derror.ErrInvalidScope
 	}
 	if err = verifyCodeChallenge(authCode.CodeChallenge, authCode.CodeChallengeMethod, codeVerifier); err != nil {
 		return nil, err
@@ -397,6 +412,12 @@ func (s *OAuth2Server) markAuthorizationCodeUsed(ctx context.Context, authCode *
 	if err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
+
+	// Encoding and claiming may consume the remaining lifetime. 编码及领取记录可能耗尽剩余有效期。
+	ttl = remainingAuthCodeDuration(authCode)
+	if ttl <= 0 {
+		return derror.ErrAuthCodeExpired
+	}
 	if err = s.storage.Set(ctx, s.getCodeKey(authCode.Code), encoded, ttl); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
@@ -408,7 +429,15 @@ func remainingAuthCodeDuration(authCode *AuthorizationCode) time.Duration {
 	if authCode == nil || authCode.ExpiresIn <= 0 {
 		return 0
 	}
-	ttl := time.Until(time.Unix(authCode.CreateTime+authCode.ExpiresIn, 0))
+	deadline := authCode.ExpiresAt
+	if deadline.IsZero() {
+		// Keep old records readable without overflowing timestamp addition. 兼容旧记录并避免时间戳相加溢出。
+		if authCode.CreateTime > math.MaxInt64-authCode.ExpiresIn {
+			return 0
+		}
+		deadline = time.Unix(authCode.CreateTime+authCode.ExpiresIn, 0)
+	}
+	ttl := time.Until(deadline)
 	if ttl <= 0 {
 		return 0
 	}
@@ -474,6 +503,11 @@ func (s *OAuth2Server) PasswordGrantToken(ctx context.Context, clientID, clientS
 
 // RefreshAccessToken Refreshes access token using refresh token 使用刷新令牌刷新访问令牌
 func (s *OAuth2Server) RefreshAccessToken(ctx context.Context, clientID, refreshToken, clientSecret string) (*AccessToken, error) {
+	return s.refreshAccessToken(ctx, clientID, refreshToken, clientSecret, nil)
+}
+
+// refreshAccessToken rotates a token pair, optionally narrowing its granted scopes. refreshAccessToken 轮换令牌对，并可缩小授权范围。
+func (s *OAuth2Server) refreshAccessToken(ctx context.Context, clientID, refreshToken, clientSecret string, scopes []string) (*AccessToken, error) {
 	if refreshToken == "" {
 		return nil, derror.ErrInvalidRefreshToken
 	}
@@ -518,7 +552,28 @@ func (s *OAuth2Server) RefreshAccessToken(ctx context.Context, clientID, refresh
 		return nil, derror.ErrClientMismatch
 	}
 
-	token, err := s.generateAccessToken(ctx, accessTokenInfo.UserID, accessTokenInfo.ClientID, accessTokenInfo.Scopes)
+	// A refresh can retain or narrow the original grant, never expand it. 刷新只能保留或缩小原授权范围，不能扩大。
+	if len(scopes) == 0 {
+		scopes = accessTokenInfo.Scopes
+	} else {
+		for _, requested := range scopes {
+			found := false
+			for _, granted := range accessTokenInfo.Scopes {
+				if requested == granted {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil, derror.ErrInvalidScope
+			}
+		}
+	}
+	if !s.isValidScopes(client, scopes) {
+		return nil, derror.ErrInvalidScope
+	}
+
+	token, err := s.generateAccessToken(ctx, accessTokenInfo.UserID, accessTokenInfo.ClientID, scopes)
 	if err != nil {
 		return nil, err
 	}
@@ -624,22 +679,22 @@ func (s *OAuth2Server) RevokeToken(ctx context.Context, accessToken string) erro
 
 // getCodeKey Gets storage key for authorization code 获取授权码的存储键
 func (s *OAuth2Server) getCodeKey(code string) string {
-	return s.keyPrefix + s.authType + CodeKeySuffix + code
+	return utils.StorageNamespace(s.keyPrefix, s.authType) + CodeKeySuffix + code
 }
 
 // getTokenKey Gets storage key for access token 获取访问令牌的存储键
 func (s *OAuth2Server) getTokenKey(token string) string {
-	return s.keyPrefix + s.authType + TokenKeySuffix + token
+	return utils.StorageNamespace(s.keyPrefix, s.authType) + TokenKeySuffix + token
 }
 
 // getRefreshKey Gets storage key for refresh token 获取刷新令牌的存储键
 func (s *OAuth2Server) getRefreshKey(refreshToken string) string {
-	return s.keyPrefix + s.authType + RefreshKeySuffix + refreshToken
+	return utils.StorageNamespace(s.keyPrefix, s.authType) + RefreshKeySuffix + refreshToken
 }
 
 // getClientKey gets storage key for OAuth2 client. getClientKey 获取 OAuth2 客户端存储键。
 func (s *OAuth2Server) getClientKey(clientID string) string {
-	return s.keyPrefix + s.authType + ClientKeySuffix + clientID
+	return utils.StorageNamespace(s.keyPrefix, s.authType) + ClientKeySuffix + clientID
 }
 
 // saveClient saves OAuth2 client through shared storage. saveClient 通过共享存储保存 OAuth2 客户端。
@@ -747,31 +802,62 @@ func (s *OAuth2Server) isValidGrantType(client *Client, grantType GrantType) boo
 // normalizeCodeChallengeMethod normalizes the PKCE challenge method. normalizeCodeChallengeMethod 规范化 PKCE 挑战方法。
 func normalizeCodeChallengeMethod(codeChallenge, method string) (string, error) {
 	if codeChallenge == "" {
+		if method != "" {
+			return "", derror.ErrInvalidParam
+		}
 		return "", nil
 	}
 	method = strings.TrimSpace(method)
 	if method == "" {
-		return CodeChallengeMethodPlain, nil
+		method = CodeChallengeMethodPlain
 	}
 	switch method {
-	case CodeChallengeMethodPlain, CodeChallengeMethodS256:
-		return method, nil
+	case CodeChallengeMethodPlain:
+		if !validPKCEVerifier(codeChallenge) {
+			return "", derror.ErrInvalidParam
+		}
+	case CodeChallengeMethodS256:
+		if len(codeChallenge) != 43 {
+			return "", derror.ErrInvalidParam
+		}
+		decoded, err := base64.RawURLEncoding.DecodeString(codeChallenge)
+		if err != nil || len(decoded) != sha256.Size || base64.RawURLEncoding.EncodeToString(decoded) != codeChallenge {
+			return "", derror.ErrInvalidParam
+		}
 	default:
 		return "", derror.ErrInvalidParam
 	}
+	return method, nil
+}
+
+// validPKCEVerifier enforces RFC 7636 length and unreserved ASCII characters. validPKCEVerifier 校验 RFC 7636 要求的长度和 ASCII 非保留字符。
+func validPKCEVerifier(value string) bool {
+	if len(value) < 43 || len(value) > 128 {
+		return false
+	}
+	for i := range len(value) {
+		c := value[i]
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_' || c == '~') {
+			return false
+		}
+	}
+	return true
 }
 
 // verifyCodeChallenge verifies a PKCE verifier against the stored challenge. verifyCodeChallenge 根据已存储挑战校验 PKCE 校验器。
 func verifyCodeChallenge(codeChallenge, method, codeVerifier string) error {
+	method, err := normalizeCodeChallengeMethod(codeChallenge, method)
+	if err != nil {
+		return err
+	}
 	if codeChallenge == "" {
+		if codeVerifier != "" {
+			return derror.ErrInvalidCodeVerifier
+		}
 		return nil
 	}
-	codeVerifier = strings.TrimSpace(codeVerifier)
-	if codeVerifier == "" {
+	if !validPKCEVerifier(codeVerifier) {
 		return derror.ErrInvalidCodeVerifier
-	}
-	if method == "" {
-		method = CodeChallengeMethodPlain
 	}
 	switch method {
 	case CodeChallengeMethodPlain:

@@ -2,9 +2,11 @@ package manager
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
+	"github.com/Zany2/dtoken-go/core/derror"
 )
 
 // TestManagerIntrospectionRejectsTokenExpiredBeforeTTLLookup verifies a token cannot remain active after disappearing between storage reads. TestManagerIntrospectionRejectsTokenExpiredBeforeTTLLookup 验证 Token 在两次存储读取之间消失后不会仍被判定为活跃。
@@ -29,8 +31,8 @@ func TestManagerIntrospectionRejectsTokenExpiredBeforeTTLLookup(t *testing.T) {
 	}
 }
 
-// TestManagerIntrospectionUsesCanonicalAuthType verifies the storage namespace remains authoritative over token payload metadata. TestManagerIntrospectionUsesCanonicalAuthType 验证存储命名空间优先于 Token 载荷中的认证类型。
-func TestManagerIntrospectionUsesCanonicalAuthType(t *testing.T) {
+// TestManagerIntrospectionRejectsForeignAuthType verifies foreign payloads cannot be adopted by the current namespace. TestManagerIntrospectionRejectsForeignAuthType 验证当前命名空间不能接管其他认证体系载荷。
+func TestManagerIntrospectionRejectsForeignAuthType(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, nil)
 	token, err := mgr.Login(ctx, "introspection-auth-type", "web", "browser")
@@ -46,20 +48,16 @@ func TestManagerIntrospectionUsesCanonicalAuthType(t *testing.T) {
 	if err = mgr.saveToStorage(ctx, mgr.getTokenKey(token), *tokenInfo); err != nil {
 		t.Fatalf("save mismatched token info error = %v", err)
 	}
-	loadedInfo, err := mgr.GetTokenInfo(ctx, token)
-	if err != nil {
-		t.Fatalf("GetTokenInfo() error = %v", err)
-	}
-	if loadedInfo.AuthType != mgr.config.AuthType {
-		t.Fatalf("GetTokenInfo().AuthType = %q, want %q", loadedInfo.AuthType, mgr.config.AuthType)
+	if _, err := mgr.GetTokenInfo(ctx, token); !errors.Is(err, derror.ErrInvalidToken) {
+		t.Fatalf("GetTokenInfo(foreign namespace) error = %v, want ErrInvalidToken", err)
 	}
 
 	result, err := mgr.IntrospectToken(ctx, token)
 	if err != nil {
 		t.Fatalf("IntrospectToken() error = %v", err)
 	}
-	if !result.Active || result.AuthType != mgr.config.AuthType {
-		t.Fatalf("IntrospectToken() = %+v, want active auth type %q", result, mgr.config.AuthType)
+	if result.Active {
+		t.Fatalf("IntrospectToken() = %+v, want inactive foreign record", result)
 	}
 }
 

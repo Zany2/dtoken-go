@@ -150,7 +150,7 @@ func TestKratosAnnotationHandlerControlFlow(t *testing.T) {
 		called = true
 		return "ok", nil
 	})
-	if result, err := nilAnnotation(context.Background(), nil); err != nil || result != "ok" || !called {
+	if result, err := nilAnnotation(context.Background(), nil); !errors.Is(err, derror.ErrInvalidParam) || result != nil || called {
 		t.Fatalf("nil annotation result=%v err=%v called=%v", result, err, called)
 	}
 

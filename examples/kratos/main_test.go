@@ -43,6 +43,9 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	if envelope.Code != kratosdt.CodeSuccess || envelope.Data.Token == "" {
 		t.Fatalf("login envelope = %+v, want success and token", envelope)
 	}
+	if id, err := dtoken.GetLoginID(context.Background(), envelope.Data.Token); err != nil || id != "alice" {
+		t.Fatalf("returned token login ID=%q error=%v", id, err)
+	}
 	if !dtoken.HasRole(context.Background(), "alice", "admin") {
 		t.Fatal("login did not seed admin role")
 	}
@@ -68,14 +71,24 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 
 	server := newKratosExampleServer()
 	for _, route := range []string{"/me", "/admin", "/articles"} {
-		response := requestKratos(t, server, http.MethodGet, route, "", token)
-		if response.Code != http.StatusOK {
-			t.Fatalf("authorized %s status = %d, want %d", route, response.Code, http.StatusOK)
+		for _, header := range []string{"dtoken", "Authorization"} {
+			for _, value := range []string{token, "Bearer " + token} {
+				req := httptest.NewRequest(http.MethodGet, route, nil)
+				req.Header.Set(header, value)
+				response := httptest.NewRecorder()
+				server.ServeHTTP(response, req)
+				assertKratosResponse(t, response, http.StatusOK, kratosdt.CodeSuccess)
+			}
 		}
 	}
-	unauthorized := requestKratos(t, server, http.MethodGet, "/me", "", "")
-	if unauthorized.Code != http.StatusUnauthorized {
-		t.Fatalf("unauthorized /me status = %d, want %d", unauthorized.Code, http.StatusUnauthorized)
+	for _, route := range []string{"/me", "/admin", "/articles", "/logout"} {
+		method := http.MethodGet
+		if route == "/logout" {
+			method = http.MethodPost
+		}
+		for _, invalidToken := range []string{"", "invalid-token"} {
+			assertKratosResponse(t, requestKratos(t, server, method, route, "", invalidToken), http.StatusUnauthorized, kratosdt.CodeNotLogin)
+		}
 	}
 
 	bobToken, err := dtoken.Login(ctx, "bob")
@@ -84,9 +97,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 	}
 	for _, route := range []string{"/admin", "/articles"} {
 		response := requestKratos(t, server, http.MethodGet, route, "", bobToken)
-		if response.Code != http.StatusForbidden {
-			t.Fatalf("unauthorized %s status = %d, want %d", route, response.Code, http.StatusForbidden)
-		}
+		assertKratosResponse(t, response, http.StatusForbidden, kratosdt.CodePermissionDenied)
 	}
 
 	logout := requestKratos(t, server, http.MethodPost, "/logout", "", token)
@@ -104,17 +115,6 @@ func setupKratosManager(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
 	initDToken()
-}
-
-func newKratosExampleServer() *khttp.Server {
-	server := khttp.NewServer(khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware()))
-	r := server.Route("/")
-	r.POST("/login", wrapHandler(handleLogin))
-	r.GET("/me", wrapHandler(handleMe, kratosdt.AuthMiddleware()))
-	r.GET("/admin", wrapHandler(handleAdmin, kratosdt.AuthMiddleware(), kratosdt.RoleMiddleware([]string{"admin"})))
-	r.GET("/articles", wrapHandler(handleArticles, kratosdt.AuthMiddleware(), kratosdt.PermissionMiddleware([]string{"article:read"})))
-	r.POST("/logout", wrapHandler(handleLogout, kratosdt.AuthMiddleware()))
-	return server
 }
 
 func requestKratos(t *testing.T, server *khttp.Server, method, path, body, token string) *httptest.ResponseRecorder {

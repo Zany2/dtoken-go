@@ -162,11 +162,11 @@ func GetTokenCreateTimeByContext(c *beegocontext.Context) (int64, error) {
 
 // RenewTimeoutByContext renews current token timeout RenewTimeoutByContext 续期当前 token 过期时间
 func RenewTimeoutByContext(c *beegocontext.Context, timeout time.Duration) error {
-	tokenValue, err := GetTokenValueByContext(c)
+	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return err
 	}
-	return RenewTimeout(requestContext(c), tokenValue, timeout)
+	return dCtx.Auth().RenewTimeout(requestContext(c), timeout)
 }
 
 // requestContext gets standard context from Beego request requestContext 从 Beego 请求获取标准上下文。
@@ -189,6 +189,9 @@ func requireDTokenContextByContext(c *beegocontext.Context) (*DTokenContext, err
 			return nil, err
 		}
 		return getDContext(c, mgr), nil
+	}
+	if mgr := dCtx.GetManager(); mgr == nil || mgr.IsClosed() {
+		return nil, ErrManagerNotFound
 	}
 	return dCtx, nil
 }

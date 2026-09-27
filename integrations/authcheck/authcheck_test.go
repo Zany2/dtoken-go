@@ -173,6 +173,8 @@ func TestGetErrorCodeAndMessage(t *testing.T) {
 		{name: "storage", err: derror.ErrStorageUnavailable, code: derror.CodeStorageError},
 		{name: "not found", err: derror.ErrClientNotFound, code: derror.CodeNotFound},
 		{name: "oauth2 token", err: derror.ErrInvalidAccessToken, code: derror.CodeTokenInvalid},
+		{name: "oauth2 code expired", err: derror.ErrAuthCodeExpired, code: derror.CodeTokenExpired},
+		{name: "wrapped oauth2 code expired", err: fmt.Errorf("exchange: %w", derror.ErrAuthCodeExpired), code: derror.CodeTokenExpired},
 		{name: "ticket expired", err: derror.ErrTicketExpired, code: derror.CodeTokenExpired},
 		{name: "short key pending", err: derror.ErrShortKeyPending, code: derror.CodeBadRequest},
 		{name: "server", err: errors.New("boom"), code: derror.CodeServerError},

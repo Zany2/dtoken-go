@@ -29,10 +29,10 @@ func (a *Auth) Manager() *manager.Manager {
 	return a.manager.Load()
 }
 
-// EventManager returns the underlying event manager. EventManager 返回底层事件监听管理器。
+// EventManager returns the event manager, or nil when the auth manager is unavailable. EventManager 返回事件监听管理器，鉴权管理器不可用时返回 nil。
 func (a *Auth) EventManager() *listener.Manager {
-	mgr := a.Manager()
-	if mgr == nil {
+	mgr, err := a.requireManager()
+	if err != nil {
 		return nil
 	}
 	return mgr.GetEventManager()
@@ -55,7 +55,7 @@ func (a *Auth) Close() {
 // requireManager returns the underlying manager or an explicit error. requireManager 返回底层管理器或明确错误。
 func (a *Auth) requireManager() (*manager.Manager, error) {
 	mgr := a.Manager()
-	if mgr == nil {
+	if mgr == nil || mgr.IsClosed() {
 		return nil, derror.ErrManagerNotFound
 	}
 	return mgr, nil

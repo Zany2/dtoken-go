@@ -35,8 +35,9 @@ func (c *DTokenContext) GetTokenValue() string {
 	cfg := c.manager.GetConfig()
 
 	if cfg.IsReadHeader {
-		if token := strings.TrimSpace(c.reqCtx.GetHeader(cfg.TokenName)); token != "" {
-			return extractBearerToken(token)
+		// Continue source lookup when the configured header contains no usable token. 配置请求头无法解析出 Token 时继续查找后续来源。
+		if token := extractBearerToken(c.reqCtx.GetHeader(cfg.TokenName)); token != "" {
+			return token
 		}
 		if auth := c.reqCtx.GetHeader(authHeader); auth != "" {
 			if token := extractBearerToken(auth); token != "" {

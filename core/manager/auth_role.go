@@ -65,11 +65,6 @@ func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles 
 	// Normalize role values 规范化角色值。
 	roles = normalizeAccessValues(roles)
 
-	// Return early when nothing to change 无变更时直接返回。
-	if len(roles) == 0 {
-		return nil
-	}
-
 	// Capture the token lifecycle before choosing its account lock. 选择账号锁前捕获 Token 生命周期。
 	expectedRecord, err := m.getTokenRecord(ctx, tokenValue)
 	if err != nil {
@@ -101,7 +96,13 @@ func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles 
 		}
 		return err
 	}
-	submitMaintenance = m.prepareLoginMaintenance(ctx, tokenValue, tokenInfo, m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout))
+
+	// Empty changes still require a valid login, but do not schedule maintenance. 空变更仍需有效登录，但不安排维护任务。
+	if len(roles) == 0 {
+		return nil
+	}
+
+	submitMaintenance = m.prepareLoginMaintenance(ctx, tokenValue, expectedRecord, m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout))
 
 	// Skip persistence and events when roles are unchanged. 角色未变化时跳过持久化与事件。
 	added := sess.addRoles(roles...)
@@ -181,11 +182,6 @@ func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, rol
 	// Normalize role values 规范化角色值。
 	roles = normalizeAccessValues(roles)
 
-	// Return early when nothing to change 无变更时直接返回。
-	if len(roles) == 0 {
-		return nil
-	}
-
 	// Capture the token lifecycle before choosing its account lock. 选择账号锁前捕获 Token 生命周期。
 	expectedRecord, err := m.getTokenRecord(ctx, tokenValue)
 	if err != nil {
@@ -217,7 +213,13 @@ func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, rol
 		}
 		return err
 	}
-	submitMaintenance = m.prepareLoginMaintenance(ctx, tokenValue, tokenInfo, m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout))
+
+	// Empty changes still require a valid login, but do not schedule maintenance. 空变更仍需有效登录，但不安排维护任务。
+	if len(roles) == 0 {
+		return nil
+	}
+
+	submitMaintenance = m.prepareLoginMaintenance(ctx, tokenValue, expectedRecord, m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout))
 
 	// Skip persistence and events when roles are unchanged. 角色未变化时跳过持久化与事件。
 	removed := sess.removeRoles(roles...)

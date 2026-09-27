@@ -11,6 +11,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
+	"github.com/Zany2/dtoken-go/core/utils"
 )
 
 // managerGetCountingStorage counts reads while forwarding storage operations. managerGetCountingStorage 统计读取次数并转发存储操作。
@@ -126,14 +127,14 @@ func TestManagerSearchTreatsNamespacesAndKeywordsLiterally(t *testing.T) {
 				switch field {
 				case "key prefix":
 					cfg.KeyPrefix = "search-" + tt.literal + ":"
-					otherNamespace = "search-" + tt.other + ":" + cfg.AuthType
+					otherNamespace = utils.StorageNamespace("search-"+tt.other+":", cfg.AuthType)
 				case "auth type":
 					cfg.AuthType = "search-" + tt.literal + ":"
-					otherNamespace = cfg.KeyPrefix + "search-" + tt.other + ":"
+					otherNamespace = utils.StorageNamespace(cfg.KeyPrefix, "search-"+tt.other+":")
 				case "keyword":
 					keyword = tt.literal
 					otherKeyword = tt.other
-					otherNamespace = cfg.KeyPrefix + cfg.AuthType
+					otherNamespace = utils.StorageNamespace(cfg.KeyPrefix, cfg.AuthType)
 				}
 				if err := cfg.Validate(); err != nil {
 					t.Fatalf("Validate() error = %v", err)
@@ -150,7 +151,7 @@ func TestManagerSearchTreatsNamespacesAndKeywordsLiterally(t *testing.T) {
 				}
 				for _, query := range queries {
 					t.Run(query.name, func(t *testing.T) {
-						prefix := cfg.KeyPrefix + cfg.AuthType + query.prefix
+						prefix := mgr.storageNamespace() + query.prefix
 						want := []string{"value-" + keyword + "-a", "value-" + keyword + "-z"}
 						storage.keys = []string{
 							prefix + want[1],

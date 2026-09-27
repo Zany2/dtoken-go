@@ -19,19 +19,19 @@ type LoginOptions struct {
 	// DeviceID stores the concrete device id DeviceID 存储具体设备 ID
 	DeviceID string `json:"deviceId"`
 
-	// Timeout overrides token timeout for this login Timeout 覆盖本次登录的 token 有效期。
+	// Timeout overrides token timeout when positive; otherwise the global timeout applies. Timeout 为正数时覆盖本次 Token 有效期，否则沿用全局配置。
 	Timeout time.Duration `json:"timeout"`
 
-	// ActiveTimeout overrides active timeout for this token ActiveTimeout 覆盖本次 token 的活跃超时时间。
+	// ActiveTimeout overrides inactivity timeout; zero inherits config and negative values disable it. ActiveTimeout 覆盖活跃超时；零沿用配置，负数表示不限制。
 	ActiveTimeout time.Duration `json:"activeTimeout"`
 
 	// Token uses a pre-created token value Token 使用预生成的 token。
 	Token string `json:"token"`
 
-	// Extra stores token extension data Extra 存储 token 扩展数据
+	// Extra stores token extension data supported by the configured codec. Extra 存储当前编解码器支持的 Token 扩展数据。
 	Extra map[string]any `json:"extra,omitempty"`
 
-	// TerminalExtra stores terminal extension data TerminalExtra 存储终端扩展数据
+	// TerminalExtra stores terminal extension data supported by the configured codec. TerminalExtra 存储当前编解码器支持的终端扩展数据。
 	TerminalExtra map[string]any `json:"terminalExtra,omitempty"`
 
 	// IsConcurrent overrides concurrent login switch IsConcurrent 覆盖并发登录开关。

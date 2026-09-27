@@ -17,20 +17,27 @@ type Annotation struct {
 	CheckPermission []string  `json:"checkPermission"` // Check permissions 检查权限
 	CheckDisable    bool      `json:"checkDisable"`    // Check disable status 检查封禁状态
 	Ignore          bool      `json:"ignore"`          // Ignore authentication 忽略认证
-	LogicType       LogicType `json:"logicType"`       // OR or AND logic (default: OR) OR 或 AND 逻辑（默认：OR）
+	LogicType       LogicType `json:"logicType"`       // OR or AND logic (default: AND) OR 或 AND 逻辑（默认：AND）
 }
 
 // GetHandler gets annotation middleware GetHandler 获取注解中间件
 func GetHandler(failFunc FailFunc, annotations ...*Annotation) middleware.Middleware {
 	return func(next middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req any) (any, error) {
-			if len(annotations) > 0 && annotations[0] != nil && annotations[0].Ignore {
+			if isRequestAborted(ctx) {
+				return nil, nil
+			}
+			if len(annotations) > 0 && annotations[0] == nil {
+				return nil, dispatchFail(ctx, failFunc, derror.ErrInvalidParam)
+			}
+			if len(annotations) > 0 && annotations[0].Ignore {
 				return next(ctx, req)
 			}
 
-			ann := &Annotation{LogicType: LogicAnd}
-			if len(annotations) > 0 && annotations[0] != nil {
-				ann = annotations[0]
+			// Apply defaults to a request-local copy, never to shared route configuration. 仅在请求内副本上应用默认值，不修改共享路由配置。
+			ann := Annotation{LogicType: LogicAnd}
+			if len(annotations) > 0 {
+				ann = *annotations[0]
 				if ann.LogicType == "" {
 					ann.LogicType = LogicAnd
 				}
@@ -41,8 +48,7 @@ func GetHandler(failFunc FailFunc, annotations ...*Annotation) middleware.Middle
 				return next(ctx, req)
 			}
 
-			cached, _ := GetDTokenContext(ctx)
-			mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached)
+			mgr, err := resolveRequestManager(ctx, nil, ann.AuthType)
 			if err != nil {
 				return nil, dispatchFail(ctx, failFunc, err)
 			}
@@ -149,8 +155,7 @@ func GetLoginIDFromRequest(ctx context.Context, authType ...string) (string, err
 
 // IsLoginFromRequest checks login state from request context IsLoginFromRequest 从请求上下文检查登录状态
 func IsLoginFromRequest(ctx context.Context, authType ...string) bool {
-	cached, _ := GetDTokenContext(ctx)
-	mgr, err := authcheck.ResolveManagerFromContext(firstAuthType(authType...), cached)
+	mgr, err := resolveRequestManager(ctx, nil, firstAuthType(authType...))
 	if err != nil {
 		return false
 	}
@@ -165,8 +170,7 @@ func IsLoginFromRequest(ctx context.Context, authType ...string) bool {
 
 // GetTokenFromRequest gets token from request context GetTokenFromRequest 从请求上下文获取 Token
 func GetTokenFromRequest(ctx context.Context, authType ...string) string {
-	cached, _ := GetDTokenContext(ctx)
-	mgr, err := authcheck.ResolveManagerFromContext(firstAuthType(authType...), cached)
+	mgr, err := resolveRequestManager(ctx, nil, firstAuthType(authType...))
 	if err != nil {
 		return ""
 	}

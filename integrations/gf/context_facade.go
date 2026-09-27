@@ -162,11 +162,11 @@ func GetTokenCreateTimeByCtx(ctx context.Context) (int64, error) {
 
 // RenewTimeoutByCtx renews current token timeout RenewTimeoutByCtx 续期当前 token 过期时间
 func RenewTimeoutByCtx(ctx context.Context, timeout time.Duration) error {
-	tokenValue, err := GetTokenValueByCtx(ctx)
+	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
 		return err
 	}
-	return RenewTimeout(ctx, tokenValue, timeout)
+	return dCtx.Auth().RenewTimeout(ctx, timeout)
 }
 
 // GetSessionByCtx gets current user session GetSessionByCtx 获取当前用户会话
@@ -421,6 +421,9 @@ func requireDTokenContextByCtx(ctx context.Context, authType ...string) (*DToken
 
 	dCtx, ok := GetDTokenContextByCtx(ctx)
 	if ok && len(authType) == 0 {
+		if mgr := dCtx.GetManager(); mgr == nil || mgr.IsClosed() {
+			return nil, ErrManagerNotFound
+		}
 		return dCtx, nil
 	}
 

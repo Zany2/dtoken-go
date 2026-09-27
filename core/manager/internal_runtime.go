@@ -18,8 +18,9 @@ type loginLockEntry struct {
 
 // loginMaintenanceState tracks one token maintenance generation and its latest activity. loginMaintenanceState 跟踪 Token 维护任务代次及最新活跃时间。
 type loginMaintenanceState struct {
-	generation uint64 // generation identifies the token lifecycle task. generation 标识 Token 生命周期任务。
-	activeAt   int64  // activeAt stores the latest validation timestamp. activeAt 存储最近一次校验时间戳。
+	generation uint64      // generation identifies the token lifecycle task. generation 标识 Token 生命周期任务。
+	activeAt   int64       // activeAt stores the latest validation timestamp. activeAt 存储最近一次校验时间戳。
+	record     tokenRecord // record binds merged activity to the checked lifecycle. record 将合并的活跃时间绑定到已校验生命周期。
 }
 
 // lockLoginWrite locks write operations for one login ID lockLoginWrite 锁定指定账号的写操作
@@ -73,6 +74,13 @@ func (m *Manager) submitAsync(name string, task func()) bool {
 	// Track task completion independently from pool ownership. 独立于协程池所有权跟踪任务完成状态。
 	trackedTask := func() {
 		defer m.asyncWG.Done()
+
+		// Keep goroutine fallback as safe as pool execution when a component panics. 组件发生 panic 时，确保 goroutine 回退与协程池执行一样不会终止进程。
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				m.logger.Errorf("manager.submitAsync: task panic recovered, task=%s, panic=%v", name, recovered)
+			}
+		}()
 		task()
 	}
 
@@ -93,8 +101,8 @@ func (m *Manager) submitAsync(name string, task func()) bool {
 }
 
 // beginLoginMaintenance reserves or replaces one in-flight maintenance generation for a token. beginLoginMaintenance 为 Token 登记或替换一个执行中的维护任务代次。
-func (m *Manager) beginLoginMaintenance(tokenValue string, activeAt int64, replace bool) (uint64, bool) {
-	if tokenValue == "" || m.closed.Load() {
+func (m *Manager) beginLoginMaintenance(tokenValue string, record *tokenRecord, activeAt int64, replace bool) (uint64, bool) {
+	if tokenValue == "" || record == nil || record.Revoked || m.closed.Load() {
 		return 0, false
 	}
 
@@ -102,6 +110,11 @@ func (m *Manager) beginLoginMaintenance(tokenValue string, activeAt int64, repla
 	m.maintenanceMu.Lock()
 	defer m.maintenanceMu.Unlock()
 	if state, exists := m.maintenance[tokenValue]; exists && !replace {
+		// Never merge activity across token lifecycles. 不合并其他 Token 生命周期的活跃时间。
+		if !tokenRecordsMatchLifecycle(record, &state.record) {
+			return 0, false
+		}
+
 		// Preserve the latest request activity while sharing the existing task. 复用已有任务时保留最近一次请求活跃时间。
 		if activeAt > state.activeAt {
 			state.activeAt = activeAt
@@ -114,7 +127,7 @@ func (m *Manager) beginLoginMaintenance(tokenValue string, activeAt int64, repla
 	}
 	m.maintenanceSeq++
 	generation := m.maintenanceSeq
-	m.maintenance[tokenValue] = loginMaintenanceState{generation: generation, activeAt: activeAt}
+	m.maintenance[tokenValue] = loginMaintenanceState{generation: generation, activeAt: activeAt, record: *record}
 	return generation, true
 }
 
@@ -197,9 +210,9 @@ func (m *Manager) expireTokenIfLimited(ctx context.Context, tokenValue string, e
 	// Build token key 构建 Token 键。
 	key := m.getTokenKey(tokenValue)
 
-	// Skip missing token key 跳过不存在的 Token 键。
+	// A token that expired after validation was not successfully renewed. 校验后已过期的 Token 不能被视为续期成功。
 	if !m.storage.Exists(ctx, key) {
-		return nil
+		return derror.ErrInvalidToken
 	}
 
 	// Renew token key expiration 续期 Token 键过期时间。

@@ -128,12 +128,14 @@ func TestNonceManagerTimeoutFallback(t *testing.T) {
 
 	storage := newNonceTestStorage()
 	manager = NewNonceManager("auth:", "dtoken:", storage, time.Minute)
-	value, err := manager.GenerateWithTimeout(context.Background(), 0)
-	if err != nil {
-		t.Fatalf("GenerateWithTimeout(zero) error = %v", err)
-	}
-	if remaining := time.Until(storage.expires[manager.getNonceKey(value)]); remaining <= 0 || remaining > time.Minute {
-		t.Fatalf("GenerateWithTimeout(zero) ttl remaining = %s, want (0, 1m]", remaining)
+	for _, timeout := range []time.Duration{0, -time.Second} {
+		value, err := manager.GenerateWithTimeout(context.Background(), timeout)
+		if err != nil {
+			t.Fatalf("GenerateWithTimeout(%s) error = %v", timeout, err)
+		}
+		if remaining := time.Until(storage.expires[manager.getNonceKey(value)]); remaining <= 0 || remaining > time.Minute {
+			t.Fatalf("GenerateWithTimeout(%s) ttl remaining = %s, want (0, 1m]", timeout, remaining)
+		}
 	}
 }
 
@@ -157,13 +159,14 @@ func TestNonceManagerGenerateStorageError(t *testing.T) {
 // TestNonceManagerExpiredNonce verifies expired nonce cannot be consumed. TestNonceManagerExpiredNonce 验证过期 nonce 不可消费。
 func TestNonceManagerExpiredNonce(t *testing.T) {
 	ctx := context.Background()
-	manager := NewNonceManager("auth:", "dtoken:", newNonceTestStorage(), time.Minute)
+	storage := newNonceTestStorage()
+	manager := NewNonceManager("auth:", "dtoken:", storage, time.Minute)
 
-	value, err := manager.GenerateWithTimeout(ctx, time.Nanosecond)
+	value, err := manager.Generate(ctx)
 	if err != nil {
-		t.Fatalf("GenerateWithTimeout() error = %v", err)
+		t.Fatalf("Generate() error = %v", err)
 	}
-	time.Sleep(time.Millisecond)
+	storage.expires[manager.getNonceKey(value)] = time.Now().Add(-time.Second)
 
 	if manager.IsValid(ctx, value) {
 		t.Fatal("IsValid(expired) = true, want false")
@@ -187,6 +190,12 @@ func TestNonceManagerGetTTLSentinels(t *testing.T) {
 		{name: "not found", raw: adapter.TTLNotFound, want: -2},
 		{name: "no expire", raw: adapter.TTLNoExpire, want: -1},
 		{name: "positive", raw: 3 * time.Second, want: 3},
+		{name: "subsecond", raw: time.Nanosecond, want: 0},
+		{name: "below second", raw: time.Second - time.Nanosecond, want: 0},
+		{name: "fractional seconds", raw: 3500 * time.Millisecond, want: 3},
+		{name: "long ttl below whole second", raw: 365*24*time.Hour - time.Nanosecond, want: 31535999},
+		{name: "long ttl whole second", raw: 365 * 24 * time.Hour, want: 31536000},
+		{name: "maximum duration", raw: time.Duration(1<<63 - 1), want: 9223372036},
 		{name: "zero", raw: 0, want: 0},
 		{name: "other negative", raw: -3 * time.Second, want: 0},
 	} {
@@ -294,6 +303,80 @@ func TestNonceManagerConcurrentVerifyConsumesOnce(t *testing.T) {
 	}
 	if successes != 1 || invalid != 1 {
 		t.Fatalf("concurrent VerifyAndConsume() results = %d success, %d invalid; want 1 each", successes, invalid)
+	}
+}
+
+// TestNonceManagerSharedStorageConsumesOnce verifies atomic consumption across manager instances. TestNonceManagerSharedStorageConsumesOnce 验证共享存储的多个管理器只能成功消费一次。
+func TestNonceManagerSharedStorageConsumesOnce(t *testing.T) {
+	ctx := context.Background()
+	storage := newNonceTestStorage()
+	first := NewDefaultNonceManager("auth:", "dtoken:", storage)
+	second := NewDefaultNonceManager("auth:", "dtoken:", storage)
+	value, err := first.Generate(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.IsValid(ctx, value) || !second.IsValid(ctx, value) {
+		t.Fatal("pre-check should leave the nonce available to both managers")
+	}
+
+	const callers = 32
+	start := make(chan struct{})
+	errs := make(chan error, callers)
+	for i := range callers {
+		mgr := first
+		if i%2 != 0 {
+			mgr = second
+		}
+		go func() {
+			<-start
+			errs <- mgr.VerifyAndConsume(ctx, value)
+		}()
+	}
+	close(start)
+
+	successes := 0
+	for range callers {
+		err := <-errs
+		if err == nil {
+			successes++
+		} else if !errors.Is(err, derror.ErrInvalidNonce) {
+			t.Errorf("VerifyAndConsume() error = %v, want ErrInvalidNonce", err)
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("successful consumes = %d, want 1", successes)
+	}
+	if first.IsValid(ctx, value) || second.IsValid(ctx, value) {
+		t.Fatal("consumed nonce remains valid")
+	}
+}
+
+// TestNonceManagerNamespaceIsolation verifies a different auth type or prefix cannot consume another namespace's nonce. TestNonceManagerNamespaceIsolation 验证不同认证类型或前缀无法消费其他命名空间的 nonce。
+func TestNonceManagerNamespaceIsolation(t *testing.T) {
+	ctx := context.Background()
+	storage := newNonceTestStorage()
+	owner := NewDefaultNonceManager("user:", "dtoken:", storage)
+	value, err := owner.Generate(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, other := range []*NonceManager{
+		NewDefaultNonceManager("admin:", "dtoken:", storage),
+		NewDefaultNonceManager("user:", "other:", storage),
+	} {
+		if other.IsValid(ctx, value) {
+			t.Fatal("nonce is valid in another namespace")
+		}
+		if ttl, err := other.GetTTL(ctx, value); err != nil || ttl != -2 {
+			t.Fatalf("GetTTL(other namespace) = %d, %v, want -2, nil", ttl, err)
+		}
+		if err := other.VerifyAndConsume(ctx, value); !errors.Is(err, derror.ErrInvalidNonce) {
+			t.Fatalf("VerifyAndConsume(other namespace) error = %v", err)
+		}
+	}
+	if err := owner.VerifyAndConsume(ctx, value); err != nil {
+		t.Fatalf("owner's nonce was affected by another namespace: %v", err)
 	}
 }
 

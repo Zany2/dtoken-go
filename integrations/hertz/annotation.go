@@ -29,6 +29,15 @@ func GetHandler(
 	annotations ...*Annotation,
 ) hertzapp.HandlerFunc {
 	return func(c context.Context, reqCtx *hertzapp.RequestContext) {
+		if reqCtx.IsAborted() {
+			return
+		}
+		defer bindRequestContext(c, reqCtx)()
+
+		if len(annotations) > 0 && annotations[0] == nil {
+			failAuthentication(c, reqCtx, derror.ErrInvalidParam, failFunc)
+			return
+		}
 		if len(annotations) > 0 && annotations[0].Ignore {
 			if handler != nil {
 				handler(c, reqCtx)
@@ -56,12 +65,7 @@ func GetHandler(
 		cached, _ := GetDTokenContext(reqCtx)
 		mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached)
 		if err != nil {
-			if failFunc != nil {
-				failFunc(c, reqCtx, err)
-			} else {
-				writeErrorResponse(reqCtx, err)
-			}
-			reqCtx.Abort()
+			failAuthentication(c, reqCtx, err, failFunc)
 			return
 		}
 
@@ -69,7 +73,7 @@ func GetHandler(
 		dCtx := getDTokenContext(reqCtx, mgr)
 		token := dCtx.GetTokenValue()
 
-		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		_, err = authcheck.Check(c, mgr, authcheck.Request{
 			TokenValue:   token,
 			CheckLogin:   true,
 			CheckDisable: ann.CheckDisable,
@@ -79,12 +83,7 @@ func GetHandler(
 			LoginError:   derror.ErrNotLogin,
 		})
 		if err != nil {
-			if failFunc != nil {
-				failFunc(c, reqCtx, err)
-			} else {
-				writeErrorResponse(reqCtx, err)
-			}
-			reqCtx.Abort()
+			failAuthentication(c, reqCtx, err, failFunc)
 			return
 		}
 

@@ -54,6 +54,9 @@ type AuthHandleRequest struct {
 
 // Next continues request and stops dtoken checks Next 放行请求并停止 dtoken 校验
 func (req *AuthHandleRequest) Next() {
+	if req.handled {
+		return
+	}
 	req.handled = true
 	if req.next != nil {
 		req.result = req.next()
@@ -120,11 +123,11 @@ func (req *RouteAccessRequest) SetLogicType(logicType LogicType) {
 type AuthOptions struct {
 	// AuthType selects the auth type. AuthType 指定认证类型。
 	AuthType string
-	// Manager selects the manager explicitly; nil falls back to the global registry. Manager 显式指定 Manager；为 nil 时回退到全局注册表。
+	// Manager selects the manager explicitly. Auth checks otherwise prefer AuthType, the request manager, then the registry. Manager 显式指定 Manager；鉴权未显式指定时依次使用 AuthType、请求 Manager 和全局注册表。
 	Manager *manager.Manager
 	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
 	LogicType LogicType
-	// FailFunc handles authentication failures. FailFunc 处理认证失败。
+	// FailFunc writes an authentication failure response and must not call c.Next(). FailFunc 输出认证失败响应，不应调用 c.Next() 放行请求。
 	FailFunc func(c *gofiber.Ctx, err error)
 	// BeforeAuthHandler runs before authentication checks. BeforeAuthHandler 在认证校验前执行。
 	BeforeAuthHandler BeforeAuthHandler
@@ -160,7 +163,7 @@ func WithLogicType(logicType LogicType) AuthOption {
 	}
 }
 
-// WithFailFunc sets a custom auth failure callback WithFailFunc 设置自定义认证失败回调。
+// WithFailFunc sets a failure response callback; it must not call c.Next(). WithFailFunc 设置失败响应回调；回调不应调用 c.Next()。
 func WithFailFunc(fn func(c *gofiber.Ctx, err error)) AuthOption {
 	return func(o *AuthOptions) {
 		o.FailFunc = fn
@@ -189,7 +192,11 @@ func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) go
 	}
 
 	return func(c *gofiber.Ctx) error {
-		mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
+		if isRequestAborted(c) {
+			return nil
+		}
+
+		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, err)
@@ -211,15 +218,22 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) gofiber.Handler {
 	}
 
 	return func(c *gofiber.Ctx) error {
+		if isRequestAborted(c) {
+			return nil
+		}
+
 		authReq := newAuthHandleRequest(options, func() error {
+			if isRequestAborted(c) {
+				return nil
+			}
 			return c.Next()
 		})
 		authReq.CheckLogin = true
-		if runBeforeAuthHandler(ctx, c, options, authReq) {
+		if runBeforeAuthHandler(requestContext(c), c, options, authReq) {
 			return authReq.result
 		}
 
-		mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
+		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, err)
@@ -231,7 +245,7 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) gofiber.Handler {
 		dCtx := getDTokenContext(c, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
-		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
 			TokenValue: tokenValue,
 			CheckLogin: true,
 			LoginError: derror.ErrTokenExpired,
@@ -256,16 +270,23 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) gofiber.Handler {
 	}
 
 	return func(c *gofiber.Ctx) error {
+		if isRequestAborted(c) {
+			return nil
+		}
+
 		accessReq := newRouteAccessRequest(options)
 		if options.RouteAccessHandler != nil {
-			options.RouteAccessHandler(ctx, c, accessReq)
+			options.RouteAccessHandler(requestContext(c), c, accessReq)
+		}
+		if isRequestAborted(c) {
+			return nil
 		}
 
 		if accessReq.skipAuth {
 			return c.Next()
 		}
 
-		mgr, err := authcheck.ResolveManager(options.Manager, accessReq.AuthType)
+		mgr, err := resolveRequestManager(c, options.Manager, accessReq.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, err)
@@ -290,7 +311,7 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) gofiber.Handler {
 			req.LogicType = accessReq.LogicType
 		}
 
-		_, err = authcheck.Check(ctx, mgr, req)
+		_, err = authcheck.Check(requestContext(c), mgr, req)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, err)
@@ -315,11 +336,18 @@ func PermissionMiddleware(
 	}
 
 	return func(c *gofiber.Ctx) error {
+		if isRequestAborted(c) {
+			return nil
+		}
+
 		authReq := newAuthHandleRequest(options, func() error {
+			if isRequestAborted(c) {
+				return nil
+			}
 			return c.Next()
 		})
 		authReq.Permissions = append([]string{}, permissions...)
-		if runBeforeAuthHandler(ctx, c, options, authReq) {
+		if runBeforeAuthHandler(requestContext(c), c, options, authReq) {
 			return authReq.result
 		}
 
@@ -327,7 +355,7 @@ func PermissionMiddleware(
 			return c.Next()
 		}
 
-		mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
+		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, err)
@@ -339,7 +367,7 @@ func PermissionMiddleware(
 		dCtx := getDTokenContext(c, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
-		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
 			TokenValue:  tokenValue,
 			Permissions: permissions,
 			LogicType:   options.LogicType,
@@ -368,11 +396,18 @@ func RoleMiddleware(
 	}
 
 	return func(c *gofiber.Ctx) error {
+		if isRequestAborted(c) {
+			return nil
+		}
+
 		authReq := newAuthHandleRequest(options, func() error {
+			if isRequestAborted(c) {
+				return nil
+			}
 			return c.Next()
 		})
 		authReq.Roles = append([]string{}, roles...)
-		if runBeforeAuthHandler(ctx, c, options, authReq) {
+		if runBeforeAuthHandler(requestContext(c), c, options, authReq) {
 			return authReq.result
 		}
 
@@ -380,7 +415,7 @@ func RoleMiddleware(
 			return c.Next()
 		}
 
-		mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
+		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, err)
@@ -392,7 +427,7 @@ func RoleMiddleware(
 		dCtx := getDTokenContext(c, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
-		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
 			TokenValue: tokenValue,
 			Roles:      roles,
 			LogicType:  options.LogicType,
@@ -433,7 +468,7 @@ func runBeforeAuthHandler(ctx context.Context, c *gofiber.Ctx, options *AuthOpti
 	}
 
 	options.BeforeAuthHandler(ctx, c, req)
-	return req.IsHandled()
+	return req.IsHandled() || isRequestAborted(c)
 }
 
 // GetDTokenContext gets cached DToken context from Fiber request GetDTokenContext 从 Fiber 请求中获取缓存的 DToken 上下文。
@@ -448,14 +483,14 @@ func GetDTokenContext(c *gofiber.Ctx) (*corecontext.DTokenContext, bool) {
 	}
 
 	dCtx, ok := value.(*corecontext.DTokenContext)
-	return dCtx, ok
+	return dCtx, ok && dCtx != nil
 }
 
 // getDTokenContext gets or creates dtoken context getDTokenContext 获取或创建 DToken 上下文
 func getDTokenContext(c *gofiber.Ctx, mgr *manager.Manager) *corecontext.DTokenContext {
 	if value := c.Locals(DTokenCtxKey); value != nil {
 		if dCtx, ok := value.(*corecontext.DTokenContext); ok {
-			if dCtx.GetManager() == mgr {
+			if dCtx != nil && dCtx.GetManager() == mgr {
 				return dCtx
 			}
 		}
@@ -464,6 +499,25 @@ func getDTokenContext(c *gofiber.Ctx, mgr *manager.Manager) *corecontext.DTokenC
 	dCtx := corecontext.NewContext(NewFiberContext(c), mgr)
 	c.Locals(DTokenCtxKey, dCtx)
 	return dCtx
+}
+
+// resolveRequestManager honors explicit selection before inheriting the request manager. resolveRequestManager 优先使用显式配置，否则继承请求 Manager。
+func resolveRequestManager(c *gofiber.Ctx, explicit *manager.Manager, authType string) (*manager.Manager, error) {
+	if explicit != nil {
+		return authcheck.ResolveManager(explicit, authType)
+	}
+	cached, _ := GetDTokenContext(c)
+	return authcheck.ResolveManagerFromContext(authType, cached)
+}
+
+// isRequestAborted checks the shared adapter before continuing DToken handling. isRequestAborted 在继续 DToken 处理前检查共享适配器的终止状态。
+func isRequestAborted(c *gofiber.Ctx) bool {
+	if cached, ok := GetDTokenContext(c); ok {
+		if reqCtx := cached.GetRequestContext(); reqCtx != nil {
+			return reqCtx.IsAborted()
+		}
+	}
+	return false
 }
 
 // writeErrorResponse writes a standard error response writeErrorResponse 写入标准错误响应。

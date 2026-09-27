@@ -3,12 +3,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
 	hertzdt "github.com/Zany2/dtoken-go/integrations/hertz"
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
+	"github.com/cloudwego/hertz/pkg/common/hlog"
 )
 
 // Response defines the example response body Response 定义示例响应结构
@@ -30,27 +32,33 @@ type LoginRequest struct {
 }
 
 func main() {
-	ctx := context.Background()
 	initDToken()
+	defer hertzdt.DeleteAllManager()
 
 	h := server.Default(server.WithHostPorts(":8080"))
-	h.Use(hertzdt.RegisterDTokenContextMiddleware(ctx))
+	registerRoutes(h)
+	h.Spin()
+}
+
+// registerRoutes shares the example's middleware and routes with regression tests. registerRoutes 与回归测试共用示例中间件和路由。
+func registerRoutes(h *server.Hertz) {
+	ctx := context.Background()
+	h.Use(hertzdt.RegisterDTokenContextMiddleware(ctx, hertzdt.WithFailFunc(writeAuthError)))
 	h.POST("/login", handleLogin)
 
 	auth := h.Group("/")
-	auth.Use(hertzdt.AuthMiddleware(ctx))
+	auth.Use(hertzdt.AuthMiddleware(ctx, hertzdt.WithFailFunc(writeAuthError)))
 	auth.GET("/me", handleMe)
-	auth.GET("/admin", hertzdt.RoleMiddleware(ctx, []string{"admin"}), handleAdmin)
-	auth.GET("/articles", hertzdt.PermissionMiddleware(ctx, []string{"article:read"}), handleArticles)
+	auth.GET("/admin", hertzdt.RoleMiddleware(ctx, []string{"admin"}, hertzdt.WithFailFunc(writeAuthError)), handleAdmin)
+	auth.GET("/articles", hertzdt.PermissionMiddleware(ctx, []string{"article:read"}, hertzdt.WithFailFunc(writeAuthError)), handleArticles)
 	auth.POST("/logout", handleLogout)
-
-	h.Spin()
 }
 
 // initDToken initializes integration manager initDToken 初始化集成管理器
 func initDToken() {
 	mgr, err := hertzdt.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
+		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
 	if err != nil {
@@ -75,17 +83,17 @@ func handleLogin(ctx context.Context, c *hertzapp.RequestContext) {
 
 	token, err := hertzdt.Login(ctx, req.Username)
 	if err != nil {
-		writeJSON(c, http.StatusInternalServerError, hertzdt.CodeServerError, err.Error(), nil)
+		writeAuthError(ctx, c, err)
 		return
 	}
 
-	// Seed demo authorization data 初始化示例权限数据
+	// Grant every demo user the same role and permission; real apps must load their own access rules. 为每个演示用户授予相同角色和权限；实际应用应加载自身的授权规则。
 	if err = hertzdt.AddRoles(ctx, req.Username, []string{"admin"}); err != nil {
-		writeJSON(c, http.StatusInternalServerError, hertzdt.CodeServerError, err.Error(), nil)
+		writeAuthError(ctx, c, err)
 		return
 	}
 	if err = hertzdt.AddPermissions(ctx, req.Username, []string{"article:read"}); err != nil {
-		writeJSON(c, http.StatusInternalServerError, hertzdt.CodeServerError, err.Error(), nil)
+		writeAuthError(ctx, c, err)
 		return
 	}
 
@@ -102,18 +110,18 @@ func handleMe(ctx context.Context, c *hertzapp.RequestContext) {
 
 	loginID, err := dCtx.Auth().GetLoginID(ctx)
 	if err != nil {
-		writeJSON(c, http.StatusUnauthorized, hertzdt.CodeNotLogin, err.Error(), nil)
+		writeAuthError(ctx, c, err)
 		return
 	}
 
 	roles, err := dCtx.Access().GetRoles(ctx)
 	if err != nil {
-		writeJSON(c, http.StatusInternalServerError, hertzdt.CodeServerError, err.Error(), nil)
+		writeAuthError(ctx, c, err)
 		return
 	}
 	permissions, err := dCtx.Access().GetPermissions(ctx)
 	if err != nil {
-		writeJSON(c, http.StatusInternalServerError, hertzdt.CodeServerError, err.Error(), nil)
+		writeAuthError(ctx, c, err)
 		return
 	}
 
@@ -143,11 +151,29 @@ func handleLogout(ctx context.Context, c *hertzapp.RequestContext) {
 	}
 
 	if err := dCtx.Auth().Logout(ctx); err != nil {
-		writeJSON(c, http.StatusInternalServerError, hertzdt.CodeServerError, err.Error(), nil)
+		writeAuthError(ctx, c, err)
 		return
 	}
 
 	writeJSON(c, http.StatusOK, hertzdt.CodeSuccess, "ok", nil)
+}
+
+// writeAuthError distinguishes credential failures, access restrictions and server failures. writeAuthError 区分凭证无效、访问限制及服务端故障。
+func writeAuthError(ctx context.Context, c *hertzapp.RequestContext, err error) {
+	switch {
+	case errors.Is(err, hertzdt.ErrNotLogin), errors.Is(err, hertzdt.ErrInvalidToken),
+		errors.Is(err, hertzdt.ErrTokenExpired), errors.Is(err, hertzdt.ErrActiveTimeout),
+		errors.Is(err, hertzdt.ErrTokenKickout), errors.Is(err, hertzdt.ErrTokenReplaced):
+		writeJSON(c, http.StatusUnauthorized, hertzdt.CodeNotLogin, err.Error(), nil)
+	case errors.Is(err, hertzdt.ErrAccountDisabled), errors.Is(err, hertzdt.ErrDeviceDisabled):
+		writeJSON(c, http.StatusForbidden, hertzdt.CodeAccountDisabled, err.Error(), nil)
+	case errors.Is(err, hertzdt.ErrPermissionDenied), errors.Is(err, hertzdt.ErrRoleDenied):
+		writeJSON(c, http.StatusForbidden, hertzdt.CodePermissionDenied, err.Error(), nil)
+	default:
+		// Keep server details in logs rather than HTTP responses. 将服务端详情保留在日志中，不在 HTTP 响应中暴露。
+		hlog.CtxErrorf(ctx, "dtoken request failed: %v", err)
+		writeJSON(c, http.StatusInternalServerError, hertzdt.CodeServerError, "internal server error", nil)
+	}
 }
 
 // writeJSON writes a unified JSON response writeJSON 写入统一 JSON 响应

@@ -38,8 +38,8 @@ func TestKratosContextAdapterRequestAndResponse(t *testing.T) {
 		if got := ctx.GetUserAgent(); got != "kratos-test" {
 			t.Errorf("GetUserAgent() = %q, want kratos-test", got)
 		}
-		if got := ctx.GetClientIP(); got != "203.0.113.8" {
-			t.Errorf("GetClientIP() = %q, want forwarded client IP", got)
+		if got := ctx.GetClientIP(); got != "192.0.2.8" {
+			t.Errorf("GetClientIP() = %q, want connection peer IP", got)
 		}
 
 		body, err := ctx.GetBody()
@@ -81,6 +81,7 @@ func TestKratosContextAdapterRequestAndResponse(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/demo?foo=bar", strings.NewReader("hello"))
+	req.RemoteAddr = "192.0.2.8:8080"
 	req.Header.Set("X-Token", "token")
 	req.Header.Set("X-Forwarded-For", "203.0.113.8, 10.0.0.1")
 	req.Header.Set("User-Agent", "kratos-test")

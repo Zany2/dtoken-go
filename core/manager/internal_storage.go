@@ -4,6 +4,7 @@ package manager
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -17,7 +18,7 @@ import (
 func (m *Manager) getExpiration() time.Duration {
 	// Use configured timeout when limited 配置有限超时时使用配置值。
 	if m.config.Timeout > 0 {
-		return time.Duration(m.config.Timeout) * time.Second
+		return secondsToDuration(m.config.Timeout)
 	}
 
 	// Return no expiration 返回不过期。
@@ -54,12 +55,26 @@ func (m *Manager) resolveTokenExpiration(tokenInfo *TokenInfo) time.Duration {
 		case tokenInfo.Timeout == config.NoLimit:
 			return 0
 		case tokenInfo.Timeout > 0:
-			return time.Duration(tokenInfo.Timeout) * time.Second
+			return secondsToDuration(tokenInfo.Timeout)
 		}
 	}
 
 	// Fallback to global expiration 回退到全局过期时间。
 	return m.getExpiration()
+}
+
+// secondsToDuration saturates positive seconds instead of overflowing into an unlimited duration. secondsToDuration 对超出上界的正秒数取最大时长，避免溢出为无限有效期。
+func secondsToDuration(seconds int64) time.Duration {
+	if seconds == config.NoLimit {
+		return -1
+	}
+	if seconds <= 0 {
+		return 0
+	}
+	if seconds > math.MaxInt64/int64(time.Second) {
+		return time.Duration(math.MaxInt64)
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 // saveSessionWithMinTTL saves session while keeping the longer existing TTL saveSessionWithMinTTL 保存 session，并保留更长的现有 TTL

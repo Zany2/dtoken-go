@@ -95,6 +95,15 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 		return "", derror.ErrInvalidToken
 	}
 
+	// Reject unsupported extension values before cleanup or replacement can retire existing logins. 清理或顶替旧登录前拒绝无法序列化的扩展值。
+	for _, extra := range []map[string]any{opts.Extra, opts.TerminalExtra} {
+		if extra != nil {
+			if _, err := m.serializer.Encode(extra); err != nil {
+				return "", fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+			}
+		}
+	}
+
 	// Load existing session 尝试加载现有 session
 	sess, err := m.getSession(ctx, opts.LoginID)
 	if errors.Is(err, derror.ErrSessionNotFound) {
@@ -137,9 +146,7 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 					unlock = func() {}
 					m.triggerTerminalLifecycleEvents(opts.LoginID, concurrencyEvents)
 					concurrencyEvents = nil
-					m.triggerEvent(listener.EventLogin, opts.LoginID, device, deviceID, sharedToken, map[string]any{
-						listener.ExtraKeyShared: true,
-					})
+					m.triggerSharedLoginEvent(sess, sharedToken)
 					return sharedToken, nil
 				}
 				sess = nil
@@ -171,6 +178,18 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 	destroyedSession := false
 
 	// Handle concurrency strategy 处理并发策略
+	if sess != nil && internal.skipConcurrencyControl {
+		// Rotation skips eviction, but still removes expired terminal entries. 轮换跳过并发淘汰，但仍清理过期终端条目。
+		var expired []TerminalInfo
+		destroyedSession, expired, err = m.cleanExpiredTerminals(ctx, sess)
+		for _, terminal := range expired {
+			concurrencyEvents = append(concurrencyEvents, terminalLifecycleEvent{terminal: terminal, state: TokenStateActiveTimeout})
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+
 	if sess != nil && !internal.skipConcurrencyControl {
 		// Sharing was attempted before candidate generation; do not repeat it after the candidate is validated. 共享已在候选 Token 生成前尝试，候选校验后不再重复执行。
 		policy.isShare = false
@@ -192,9 +211,7 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 				concurrencyEvents = nil
 
 				// Trigger shared login event 触发共享 Token 登录事件。
-				m.triggerEvent(listener.EventLogin, opts.LoginID, device, deviceID, result.reuseToken, map[string]any{
-					listener.ExtraKeyShared: true,
-				})
+				m.triggerSharedLoginEvent(sess, result.reuseToken)
 
 				return result.reuseToken, nil // 复用 token
 			}
@@ -212,6 +229,14 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 		if sess == nil {
 			return "", fmt.Errorf("%w: session strategy returned nil", derror.ErrInvalidParam)
 		}
+
+		// Keep custom session identity aligned with the token and its storage namespace. 保证自定义 Session 身份与 Token 及存储命名空间一致。
+		if (sess.AuthType != "" && sess.AuthType != m.config.AuthType) ||
+			(sess.LoginID != "" && sess.LoginID != opts.LoginID) {
+			return "", fmt.Errorf("%w: session strategy returned a different identity", derror.ErrInvalidParam)
+		}
+		sess.AuthType = m.config.AuthType
+		sess.LoginID = opts.LoginID
 	}
 
 	// Increase history terminal count 递增历史终端计数
@@ -400,7 +425,6 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 	if tokenInfo == nil {
 		return derror.ErrInvalidToken
 	}
-	loginID := tokenInfo.LoginID
 	activeTimeout := m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout)
 	activeAt := int64(0)
 	if activeTimeout > 0 {
@@ -408,7 +432,7 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 	}
 
 	// Atomically replace queued automatic maintenance with one forced renewal for this checked lifecycle. 用本次已校验生命周期的强制续期原子替换排队中的自动维护。
-	generation, reserved := m.beginLoginMaintenance(tokenValue, activeAt, true)
+	generation, reserved := m.beginLoginMaintenance(tokenValue, expectedRecord, activeAt, true)
 
 	// Release the account lock before submitting because a pool may execute tasks inline. 提交前释放账号锁，因为协程池可能内联执行任务。
 	unlock()
@@ -417,10 +441,9 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 		return nil
 	}
 
-	createTime := tokenInfo.CreateTime
 	accepted := m.submitAsync("LoginByToken", func() {
 		defer m.finishLoginMaintenance(tokenValue, generation)
-		m.runLoginMaintenance(tokenValue, loginID, createTime, generation, true, false, activeTimeout > 0)
+		m.runLoginMaintenance(tokenValue, expectedRecord, generation, true, false, activeTimeout > 0)
 	})
 	if !accepted {
 		m.finishLoginMaintenance(tokenValue, generation)
@@ -443,7 +466,7 @@ func (m *Manager) CheckLogin(ctx context.Context, tokenValue string) error {
 
 // GetLoginID retrieves the login ID from a token. GetLoginID 根据 Token 获取登录 ID。
 func (m *Manager) GetLoginID(ctx context.Context, tokenValue string) (string, error) {
-	// Validate token without loading account session. 校验 Token 但不加载账号 Session。
+	// Validate token and account session before returning identity. 返回身份前校验 Token 与账号 Session。
 	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return "", err
@@ -453,7 +476,8 @@ func (m *Manager) GetLoginID(ctx context.Context, tokenValue string) (string, er
 	return tokenInfo.LoginID, nil
 }
 
-// GetTokenInfo retrieves token information. GetTokenInfo 根据 Token 获取 TokenInfo 信息。
+// GetTokenInfo reads stored metadata without checking disable state, active timeout, or session validity. GetTokenInfo 读取已存元数据，不检查封禁、活跃超时或 Session 有效性。
+// Use CheckLogin or IntrospectToken to validate login state. 判断登录态请使用 CheckLogin 或 IntrospectToken。
 func (m *Manager) GetTokenInfo(ctx context.Context, tokenValue string) (*TokenInfo, error) {
 	// Load token info 加载 Token 信息。
 	return m.getTokenInfo(ctx, tokenValue)
@@ -461,7 +485,7 @@ func (m *Manager) GetTokenInfo(ctx context.Context, tokenValue string) (*TokenIn
 
 // GetDevice retrieves the device type for a token. GetDevice 获取 Token 的设备类型。
 func (m *Manager) GetDevice(ctx context.Context, tokenValue string) (string, error) {
-	// Validate token without loading account session. 校验 Token 但不加载账号 Session。
+	// Validate token and account session before returning identity. 返回身份前校验 Token 与账号 Session。
 	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return "", err
@@ -473,7 +497,7 @@ func (m *Manager) GetDevice(ctx context.Context, tokenValue string) (string, err
 
 // GetDeviceID retrieves the device ID for a token. GetDeviceID 获取 Token 的设备 ID。
 func (m *Manager) GetDeviceID(ctx context.Context, tokenValue string) (string, error) {
-	// Validate token without loading account session. 校验 Token 但不加载账号 Session。
+	// Validate token and account session before returning identity. 返回身份前校验 Token 与账号 Session。
 	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return "", err
@@ -485,7 +509,7 @@ func (m *Manager) GetDeviceID(ctx context.Context, tokenValue string) (string, e
 
 // GetDeviceAndDeviceID retrieves the device type and device ID for a token. GetDeviceAndDeviceID 获取 Token 的设备类型和设备 ID。
 func (m *Manager) GetDeviceAndDeviceID(ctx context.Context, tokenValue string) (string, string, error) {
-	// Validate token once without loading account session. 单次校验 Token 但不加载账号 Session。
+	// Validate once so both device fields come from the same checked token. 单次校验，确保设备字段来自同一个已校验 Token。
 	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return "", "", err
@@ -497,7 +521,7 @@ func (m *Manager) GetDeviceAndDeviceID(ctx context.Context, tokenValue string) (
 
 // GetTokenCreateTime retrieves the creation time for a token. GetTokenCreateTime 获取 Token 的创建时间戳。
 func (m *Manager) GetTokenCreateTime(ctx context.Context, tokenValue string) (int64, error) {
-	// Validate token without loading account session. 校验 Token 但不加载账号 Session。
+	// Validate token and account session before returning metadata. 返回元数据前校验 Token 与账号 Session。
 	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return 0, err

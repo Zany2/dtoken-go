@@ -302,6 +302,9 @@ func (m *Manager) issueRefreshToken(ctx context.Context, expected *refreshTokenR
 	if err = m.checkLoginDisableState(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID); err != nil {
 		return nil, err
 	}
+	if tokenInfo.Revoked {
+		return nil, derror.ErrInvalidToken
+	}
 	alive, err := m.checkTerminalTokenStructurallyAliveWithContext(ctx, accessToken, &tokenInfo.TokenInfo, nil)
 	if err != nil {
 		return nil, err
@@ -319,6 +322,10 @@ func (m *Manager) issueRefreshToken(ctx context.Context, expected *refreshTokenR
 	accessTTL, err := m.GetTokenTTL(ctx, accessToken)
 	if err != nil {
 		return nil, err
+	}
+
+	if accessTTL == -2 {
+		return nil, derror.ErrInvalidToken
 	}
 
 	// Generate an opaque refresh token value. 生成不透明刷新令牌值。
@@ -352,12 +359,8 @@ func (m *Manager) issueRefreshToken(ctx context.Context, expected *refreshTokenR
 		return nil, fmt.Errorf("%w: refresh token already exists", derror.ErrStorageUnavailable)
 	}
 
-	// Store reverse lookup no longer than either side. 反向索引有效期不超过访问令牌或刷新令牌任一侧。
-	reverseExpiration := m.resolveTokenExpiration(&tokenInfo.TokenInfo)
-	if expiration > 0 && (reverseExpiration <= 0 || reverseExpiration > expiration) {
-		reverseExpiration = expiration
-	}
-	if err = m.storage.Set(ctx, m.getTokenRefreshKey(accessToken), refreshToken, reverseExpiration); err != nil {
+	// Keep revocation discoverable after access-token renewal or expiry. 访问令牌续期或过期后仍保留撤销索引，索引沿用刷新令牌生命周期。
+	if err = m.storage.Set(ctx, m.getTokenRefreshKey(accessToken), refreshToken, expiration); err != nil {
 		_ = m.storage.Delete(ctx, m.getRefreshTokenKey(refreshToken))
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
@@ -366,6 +369,9 @@ func (m *Manager) issueRefreshToken(ctx context.Context, expected *refreshTokenR
 	refreshTTL, err := m.GetRefreshTokenTTL(ctx, refreshToken)
 	if err != nil {
 		return nil, err
+	}
+	if refreshTTL == -2 {
+		return nil, derror.ErrInvalidRefreshToken
 	}
 	return &RefreshTokenPair{
 		AccessToken:      accessToken,
@@ -439,6 +445,9 @@ func (m *Manager) decodeRefreshTokenInfo(data any) (*refreshTokenRecord, error) 
 	if err = m.serializer.Decode(rawData, &info); err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
+	if info.AuthType != "" && info.AuthType != m.config.AuthType {
+		return nil, derror.ErrInvalidRefreshToken
+	}
 	return &info, nil
 }
 
@@ -469,7 +478,17 @@ func (m *Manager) cleanRefreshTokenByAccessToken(ctx context.Context, accessToke
 		}
 		return nil
 	}
-	if err := m.storage.Delete(ctx, m.getRefreshTokenKey(refreshToken), m.getTokenRefreshKey(accessToken)); err != nil {
+
+	// A corrupt reverse index must never revoke another access token's refresh credential. 损坏的反向索引不能撤销其他访问令牌的刷新凭证。
+	info, err := m.getRefreshTokenInfo(ctx, refreshToken)
+	if err != nil && !errors.Is(err, derror.ErrInvalidRefreshToken) {
+		return err
+	}
+	keys := []string{m.getTokenRefreshKey(accessToken)}
+	if err == nil && info.AccessToken == accessToken {
+		keys = append(keys, m.getRefreshTokenKey(refreshToken))
+	}
+	if err := m.storage.Delete(ctx, keys...); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 	return nil
@@ -561,7 +580,7 @@ func (m *Manager) resolveRefreshTokenExpiration(timeout time.Duration) time.Dura
 	if timeout < 0 || m.config.RefreshTokenTimeout == config.NoLimit {
 		return 0
 	}
-	return time.Duration(m.config.RefreshTokenTimeout) * time.Second
+	return secondsToDuration(m.config.RefreshTokenTimeout)
 }
 
 // generateRefreshToken generates a random refresh token. generateRefreshToken 生成随机刷新令牌。
@@ -584,15 +603,4 @@ func (m *Manager) triggerRefreshTokenEvent(event listener.Event, pair *RefreshTo
 		listener.ExtraKeyRefreshToken: pair.RefreshToken,
 		listener.ExtraKeyTTL:          pair.RefreshExpiresIn,
 	})
-}
-
-// secondsToDuration converts seconds to duration. secondsToDuration 将秒转换为时长。
-func secondsToDuration(seconds int64) time.Duration {
-	if seconds == config.NoLimit {
-		return -1
-	}
-	if seconds <= 0 {
-		return 0
-	}
-	return time.Duration(seconds) * time.Second
 }

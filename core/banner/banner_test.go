@@ -3,6 +3,7 @@ package banner
 
 import (
 	"io"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -57,6 +58,10 @@ func TestFormatDuration(t *testing.T) {
 		{name: "hour and minutes", seconds: 3660, want: "1h 1m"},
 		{name: "exact day", seconds: 86400, want: "1d"},
 		{name: "day and hours", seconds: 90000, want: "1d 1h"},
+		{name: "duration limit", seconds: 9223372036, want: "106751d 23h"},
+		{name: "above duration limit", seconds: 9223372037, want: "106751d 23h"},
+		{name: "large exact days", seconds: 86400000000, want: "1000000d"},
+		{name: "maximum seconds", seconds: math.MaxInt64, want: "106751991167300d 15h"},
 	}
 
 	for _, tt := range tests {
@@ -159,7 +164,7 @@ func TestFormatCookieConfig(t *testing.T) {
 		{
 			name: "empty domain",
 			cfg:  &config.CookieConfig{Path: "/", SameSite: config.SameSiteLax},
-			want: "Path: /, Domain: <current-host>, Secure: No, HttpOnly: No, SameSite: Lax, MaxAge: Disabled",
+			want: "Path: /, Domain: <current-host>, Secure: No, HttpOnly: No, SameSite: Lax, MaxAge: Session",
 		},
 		{
 			name: "complete",
@@ -263,7 +268,7 @@ func TestPrintBannerOutput(t *testing.T) {
 		"ActiveTimeout    : Disabled",
 		"Concurrency      : Enabled, Scope: account, Exit: old_device, Share: Yes, Max: Unlimited, Overflow: kickout",
 		"Token Source     : Header, Authorization Bearer, Cookie, Query",
-		"Cookie           : Path: /, Domain: <current-host>, Secure: No, HttpOnly: No, SameSite: Lax, MaxAge: Disabled",
+		"Cookie           : Path: /, Domain: <current-host>, Secure: No, HttpOnly: No, SameSite: Lax, MaxAge: Session",
 		"AsyncEvent       : Disabled",
 		"Logging          : Enabled",
 		"Started at: ",

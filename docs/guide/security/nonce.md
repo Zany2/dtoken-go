@@ -24,6 +24,8 @@ The current implementation works like this:
 3. verify it through an atomic `GetAndDelete`
 4. allow it to succeed only once
 
+Consumption requires `adapter.AtomicStorage`. Built-in memory and Redis storage support it. A custom storage must implement a truly atomic `GetAndDelete` across all callers sharing that storage. Storage without this interface returns `ErrStorageCapabilityUnsupported` on consumption. `IsNonceValid` is only a pre-check and does not reserve a nonce.
+
 ## Default Behavior
 
 Based on the current `core/nonce` implementation:
@@ -31,6 +33,7 @@ Based on the current `core/nonce` implementation:
 - the raw nonce uses `32` random bytes
 - the output is a `64`-character hexadecimal string
 - the default TTL is `5` minutes
+- the module must be enabled with `dtoken.NewBuilder().EnableNonce()`, or supplied through `SetNonceManager`
 
 ## Basic Usage
 
@@ -42,13 +45,13 @@ import (
     "fmt"
 
     "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/defaults"
     "github.com/Zany2/dtoken-go/dtoken"
 )
 
 func initDToken() {
     if _, err := dtoken.BuildAndSetManager(
-        defaults.NewBuilder().
+        dtoken.NewBuilder().
+            EnableNonce().
             SetStorage(memory.NewStorage()),
     ); err != nil {
         panic(err)
@@ -56,9 +59,15 @@ func initDToken() {
 }
 
 func main() {
+    initDToken()
+    defer dtoken.DeleteAllManager()
+
     ctx := context.Background()
 
-    nonce, _ := dtoken.GenerateNonce(ctx)
+    nonce, err := dtoken.GenerateNonce(ctx)
+    if err != nil {
+        panic(err)
+    }
     fmt.Println(nonce)
 
     ok := dtoken.VerifyNonce(ctx, nonce)
@@ -79,7 +88,7 @@ _ = nonce
 _ = err
 ```
 
-If the timeout is less than or equal to `0`, the implementation falls back to the default TTL.
+If the timeout is less than or equal to `0`, the implementation falls back to the manager's configured TTL (`5` minutes by default).
 
 ## Non-Consuming Validation
 
@@ -96,7 +105,7 @@ Difference:
 
 - `IsNonceValid`: validate only
 - `VerifyNonce`: validate and consume, returning `bool`
-- `VerifyAndConsumeNonce`: validate and consume, returning `ErrInvalidNonce` on failure
+- `VerifyAndConsumeNonce`: validate and consume, returning `ErrInvalidNonce` for a missing, expired, or consumed nonce; storage failures return `ErrStorageUnavailable`, and missing atomic capability returns `ErrStorageCapabilityUnsupported`
 
 ## TTL Query
 
@@ -110,7 +119,7 @@ Return values:
 
 - `-2`: nonce does not exist
 - `-1`: no expiration
-- `>=0`: remaining seconds
+- `>=0`: remaining whole seconds, rounded down; `0` can mean a nonce is still valid for less than one second
 
 ## HTTP Example
 

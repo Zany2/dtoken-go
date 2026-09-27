@@ -763,11 +763,12 @@ func TestGlobalOAuth2FacadeFlows(t *testing.T) {
 		t.Fatalf("RevokeOAuth2Token() error = %v, valid = %v", err, ValidateOAuth2AccessToken(ctx, issued.Token, "oauth2-global"))
 	}
 
-	pkceCode, err := GenerateOAuth2AuthorizationCodeWithPKCE(ctx, client.ClientID, "pkce-user", client.RedirectURIs[0], []string{"write"}, "verifier", oauth2.CodeChallengeMethodPlain, "oauth2-global")
+	pkceVerifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	pkceCode, err := GenerateOAuth2AuthorizationCodeWithPKCE(ctx, client.ClientID, "pkce-user", client.RedirectURIs[0], []string{"write"}, pkceVerifier, oauth2.CodeChallengeMethodPlain, "oauth2-global")
 	if err != nil {
 		t.Fatalf("GenerateOAuth2AuthorizationCodeWithPKCE() error = %v", err)
 	}
-	if _, err = ExchangeOAuth2CodeForTokenWithPKCE(ctx, pkceCode.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], "verifier", "oauth2-global"); err != nil {
+	if _, err = ExchangeOAuth2CodeForTokenWithPKCE(ctx, pkceCode.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], pkceVerifier, "oauth2-global"); err != nil {
 		t.Fatalf("ExchangeOAuth2CodeForTokenWithPKCE() error = %v", err)
 	}
 

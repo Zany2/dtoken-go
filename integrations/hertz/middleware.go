@@ -56,6 +56,9 @@ type AuthHandleRequest struct {
 
 // Next continues request and stops dtoken checks Next 放行请求并停止 dtoken 校验
 func (req *AuthHandleRequest) Next() {
+	if req.handled {
+		return
+	}
 	req.handled = true
 	if req.next != nil {
 		req.next()
@@ -64,6 +67,9 @@ func (req *AuthHandleRequest) Next() {
 
 // Exit stops dtoken checks after custom handling Exit 自定义处理后停止 dtoken 校验
 func (req *AuthHandleRequest) Exit() {
+	if req.handled {
+		return
+	}
 	req.handled = true
 	if req.exit != nil {
 		req.exit()
@@ -125,7 +131,7 @@ func (req *RouteAccessRequest) SetLogicType(logicType LogicType) {
 type AuthOptions struct {
 	// AuthType selects the auth type. AuthType 指定认证类型。
 	AuthType string
-	// Manager selects the manager explicitly; nil falls back to the global registry. Manager 显式指定 Manager；为 nil 时回退到全局注册表。
+	// Manager overrides auth type, request cache and global selection. Manager 优先于认证类型、请求缓存及全局选择。
 	Manager *manager.Manager
 	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
 	LogicType LogicType
@@ -194,14 +200,14 @@ func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) he
 	}
 
 	return func(c context.Context, reqCtx *hertzapp.RequestContext) {
-		mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
+		if reqCtx.IsAborted() {
+			return
+		}
+		defer bindRequestContext(c, reqCtx)()
+
+		mgr, err := resolveRequestManager(reqCtx, options.Manager, options.AuthType)
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(c, reqCtx, err)
-			} else {
-				writeErrorResponse(reqCtx, err)
-			}
-			reqCtx.Abort()
+			failAuthentication(c, reqCtx, err, options.FailFunc)
 			return
 		}
 
@@ -218,8 +224,15 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) hertzapp.HandlerFun
 	}
 
 	return func(c context.Context, reqCtx *hertzapp.RequestContext) {
+		if reqCtx.IsAborted() {
+			return
+		}
+		defer bindRequestContext(c, reqCtx)()
+
 		authReq := newAuthHandleRequest(options, func() {
-			reqCtx.Next(c)
+			if !reqCtx.IsAborted() {
+				reqCtx.Next(c)
+			}
 		}, func() {
 			reqCtx.Abort()
 		})
@@ -228,32 +241,22 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) hertzapp.HandlerFun
 			return
 		}
 
-		mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
+		mgr, err := resolveRequestManager(reqCtx, options.Manager, options.AuthType)
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(c, reqCtx, err)
-			} else {
-				writeErrorResponse(reqCtx, err)
-			}
-			reqCtx.Abort()
+			failAuthentication(c, reqCtx, err, options.FailFunc)
 			return
 		}
 
 		dCtx := getDTokenContext(reqCtx, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
-		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		_, err = authcheck.Check(c, mgr, authcheck.Request{
 			TokenValue: tokenValue,
 			CheckLogin: true,
 			LoginError: derror.ErrTokenExpired,
 		})
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(c, reqCtx, err)
-			} else {
-				writeErrorResponse(reqCtx, err)
-			}
-			reqCtx.Abort()
+			failAuthentication(c, reqCtx, err, options.FailFunc)
 			return
 		}
 
@@ -269,9 +272,18 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) hertzapp.HandlerF
 	}
 
 	return func(c context.Context, reqCtx *hertzapp.RequestContext) {
+		if reqCtx.IsAborted() {
+			return
+		}
+		defer bindRequestContext(c, reqCtx)()
+
 		accessReq := newRouteAccessRequest(options)
 		if options.RouteAccessHandler != nil {
 			options.RouteAccessHandler(c, reqCtx, accessReq)
+		}
+
+		if reqCtx.IsAborted() {
+			return
 		}
 
 		if accessReq.skipAuth {
@@ -279,14 +291,9 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) hertzapp.HandlerF
 			return
 		}
 
-		mgr, err := authcheck.ResolveManager(options.Manager, accessReq.AuthType)
+		mgr, err := resolveRequestManager(reqCtx, options.Manager, accessReq.AuthType)
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(c, reqCtx, err)
-			} else {
-				writeErrorResponse(reqCtx, err)
-			}
-			reqCtx.Abort()
+			failAuthentication(c, reqCtx, err, options.FailFunc)
 			return
 		}
 
@@ -306,14 +313,9 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) hertzapp.HandlerF
 			req.LogicType = accessReq.LogicType
 		}
 
-		_, err = authcheck.Check(ctx, mgr, req)
+		_, err = authcheck.Check(c, mgr, req)
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(c, reqCtx, err)
-			} else {
-				writeErrorResponse(reqCtx, err)
-			}
-			reqCtx.Abort()
+			failAuthentication(c, reqCtx, err, options.FailFunc)
 			return
 		}
 
@@ -333,8 +335,15 @@ func PermissionMiddleware(
 	}
 
 	return func(c context.Context, reqCtx *hertzapp.RequestContext) {
+		if reqCtx.IsAborted() {
+			return
+		}
+		defer bindRequestContext(c, reqCtx)()
+
 		authReq := newAuthHandleRequest(options, func() {
-			reqCtx.Next(c)
+			if !reqCtx.IsAborted() {
+				reqCtx.Next(c)
+			}
 		}, func() {
 			reqCtx.Abort()
 		})
@@ -348,32 +357,22 @@ func PermissionMiddleware(
 			return
 		}
 
-		mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
+		mgr, err := resolveRequestManager(reqCtx, options.Manager, options.AuthType)
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(c, reqCtx, err)
-			} else {
-				writeErrorResponse(reqCtx, err)
-			}
-			reqCtx.Abort()
+			failAuthentication(c, reqCtx, err, options.FailFunc)
 			return
 		}
 
 		dCtx := getDTokenContext(reqCtx, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
-		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		_, err = authcheck.Check(c, mgr, authcheck.Request{
 			TokenValue:  tokenValue,
 			Permissions: permissions,
 			LogicType:   options.LogicType,
 		})
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(c, reqCtx, err)
-			} else {
-				writeErrorResponse(reqCtx, err)
-			}
-			reqCtx.Abort()
+			failAuthentication(c, reqCtx, err, options.FailFunc)
 			return
 		}
 
@@ -393,8 +392,15 @@ func RoleMiddleware(
 	}
 
 	return func(c context.Context, reqCtx *hertzapp.RequestContext) {
+		if reqCtx.IsAborted() {
+			return
+		}
+		defer bindRequestContext(c, reqCtx)()
+
 		authReq := newAuthHandleRequest(options, func() {
-			reqCtx.Next(c)
+			if !reqCtx.IsAborted() {
+				reqCtx.Next(c)
+			}
 		}, func() {
 			reqCtx.Abort()
 		})
@@ -408,32 +414,22 @@ func RoleMiddleware(
 			return
 		}
 
-		mgr, err := authcheck.ResolveManager(options.Manager, options.AuthType)
+		mgr, err := resolveRequestManager(reqCtx, options.Manager, options.AuthType)
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(c, reqCtx, err)
-			} else {
-				writeErrorResponse(reqCtx, err)
-			}
-			reqCtx.Abort()
+			failAuthentication(c, reqCtx, err, options.FailFunc)
 			return
 		}
 
 		dCtx := getDTokenContext(reqCtx, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
-		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		_, err = authcheck.Check(c, mgr, authcheck.Request{
 			TokenValue: tokenValue,
 			Roles:      roles,
 			LogicType:  options.LogicType,
 		})
 		if err != nil {
-			if options.FailFunc != nil {
-				options.FailFunc(c, reqCtx, err)
-			} else {
-				writeErrorResponse(reqCtx, err)
-			}
-			reqCtx.Abort()
+			failAuthentication(c, reqCtx, err, options.FailFunc)
 			return
 		}
 
@@ -466,7 +462,7 @@ func runBeforeAuthHandler(c context.Context, ctx *hertzapp.RequestContext, optio
 	}
 
 	options.BeforeAuthHandler(c, ctx, req)
-	return req.IsHandled()
+	return req.IsHandled() || ctx.IsAborted()
 }
 
 // GetDTokenContext gets cached DToken context GetDTokenContext 获取缓存的 DToken 上下文
@@ -497,6 +493,25 @@ func getDTokenContext(ctx *hertzapp.RequestContext, mgr *manager.Manager) *corec
 	dCtx := corecontext.NewContext(NewHertzContext(ctx), mgr)
 	ctx.Set(DTokenCtxKey, dCtx)
 	return dCtx
+}
+
+// resolveRequestManager honors explicit selection before inheriting the request manager. resolveRequestManager 优先使用显式配置，否则继承请求 Manager。
+func resolveRequestManager(ctx *hertzapp.RequestContext, explicit *manager.Manager, authType string) (*manager.Manager, error) {
+	if explicit != nil {
+		return authcheck.ResolveManager(explicit, authType)
+	}
+	cached, _ := GetDTokenContext(ctx)
+	return authcheck.ResolveManagerFromContext(authType, cached)
+}
+
+// failAuthentication aborts before invoking callbacks so Next cannot bypass failure. failAuthentication 先中止处理链再执行回调，避免 Next 绕过鉴权失败。
+func failAuthentication(c context.Context, ctx *hertzapp.RequestContext, err error, failFunc func(context.Context, *hertzapp.RequestContext, error)) {
+	ctx.Abort()
+	if failFunc != nil {
+		failFunc(c, ctx, err)
+		return
+	}
+	writeErrorResponse(ctx, err)
 }
 
 // writeErrorResponse writes error response writeErrorResponse 写入错误响应

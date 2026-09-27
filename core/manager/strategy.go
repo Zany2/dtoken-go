@@ -10,6 +10,7 @@ type Strategy struct {
 	// RoleMatcher matches owned role pattern with required role RoleMatcher 匹配已有角色模式和所需角色
 	RoleMatcher func(pattern, role string) bool
 	// CreateSession creates a new account session CreateSession 创建新的账号会话
+	// Empty identity fields are filled by Manager; non-empty fields must match the supplied identity. 空身份字段由 Manager 补齐；非空字段必须与传入身份一致。
 	CreateSession func(authType, loginID string, createTime int64) *Session
 }
 

@@ -417,5 +417,8 @@ func requireDTokenContextByCtx(ctx context.Context) (*DTokenContext, error) {
 	if !ok {
 		return nil, ErrNotLogin
 	}
+	if mgr := dCtx.GetManager(); mgr == nil || mgr.IsClosed() {
+		return nil, ErrManagerNotFound
+	}
 	return dCtx, nil
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/derror"
+	"github.com/Zany2/dtoken-go/core/utils"
 )
 
 // Config defines nonce manager config Config 定义 Nonce 管理器配置
@@ -108,7 +109,7 @@ func (nm *NonceManager) GenerateWithTimeout(ctx context.Context, timeout time.Du
 	return nonce, nil
 }
 
-// GetTTL gets remaining nonce ttl GetTTL 获取 nonce 的剩余有效时间秒数
+// GetTTL returns remaining whole seconds, -2 when missing, or -1 without expiry. GetTTL 返回向下取整的剩余秒数，不存在返回 -2，永不过期返回 -1。
 func (nm *NonceManager) GetTTL(ctx context.Context, nonce string) (int64, error) {
 	if nonce == "" {
 		return -2, nil
@@ -126,7 +127,7 @@ func (nm *NonceManager) GetTTL(ctx context.Context, nonce string) (int64, error)
 	case ttl == adapter.TTLNoExpire:
 		return -1, nil
 	case ttl > 0:
-		return int64(ttl.Seconds()), nil
+		return int64(ttl / time.Second), nil
 	default:
 		return 0, nil
 	}
@@ -177,5 +178,5 @@ func (nm *NonceManager) IsValid(ctx context.Context, nonce string) bool {
 
 // getNonceKey builds nonce storage key getNonceKey 获取 nonce 的存储键
 func (nm *NonceManager) getNonceKey(nonce string) string {
-	return nm.keyPrefix + nm.authType + NonceKeySuffix + nonce
+	return utils.StorageNamespace(nm.keyPrefix, nm.authType) + NonceKeySuffix + nonce
 }

@@ -97,11 +97,12 @@ func TestManagerOAuth2FacadeFlowAndEvents(t *testing.T) {
 		t.Fatalf("OAuth2Token(client_credentials) UserID = %q, want client id", clientToken.UserID)
 	}
 
-	pkceCode, err := mgr.GenerateOAuth2AuthorizationCodeWithPKCE(ctx, client.ClientID, "oauth-pkce-user", client.RedirectURIs[0], []string{"read"}, "plain-verifier", oauth2.CodeChallengeMethodPlain)
+	pkceVerifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	pkceCode, err := mgr.GenerateOAuth2AuthorizationCodeWithPKCE(ctx, client.ClientID, "oauth-pkce-user", client.RedirectURIs[0], []string{"read"}, pkceVerifier, oauth2.CodeChallengeMethodPlain)
 	if err != nil {
 		t.Fatalf("GenerateOAuth2AuthorizationCodeWithPKCE() error = %v", err)
 	}
-	pkceToken, err := mgr.ExchangeOAuth2CodeForTokenWithPKCE(ctx, pkceCode.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], "plain-verifier")
+	pkceToken, err := mgr.ExchangeOAuth2CodeForTokenWithPKCE(ctx, pkceCode.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], pkceVerifier)
 	if err != nil {
 		t.Fatalf("ExchangeOAuth2CodeForTokenWithPKCE() error = %v", err)
 	}

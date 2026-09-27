@@ -145,13 +145,11 @@ func (m *Manager) ensureTerminalTokenAlive(ctx context.Context, tokenValue strin
 	return nil
 }
 
-// hasActiveTerminal reports whether any terminal is still alive. hasActiveTerminal 判断是否存在仍有效的终端。
+// hasActiveTerminal reports whether a terminal still occupies a login slot, including temporarily disabled devices. hasActiveTerminal 判断是否有终端仍占用登录名额，包括临时封禁设备。
 func (m *Manager) hasActiveTerminal(ctx context.Context, terminals []TerminalInfo, sess *Session) (bool, error) {
-	cache := &terminalAliveCheckCache{}
-
 	// Check each terminal 逐个检查终端。
 	for _, terminal := range terminals {
-		alive, err := m.checkTerminalTokenAliveWithCache(ctx, terminal.Token, nil, sess, cache)
+		alive, err := m.checkTerminalTokenStructurallyAliveWithContext(ctx, terminal.Token, nil, sess)
 		if err != nil {
 			return false, err
 		}
@@ -189,6 +187,21 @@ func (m *Manager) checkTerminalTokenStructurallyAliveWithContext(ctx context.Con
 	return m.checkTerminalTokenAliveWithOptions(ctx, tokenValue, tokenInfo, sess, nil, false)
 }
 
+// checkTerminalEntryAlive validates a queried terminal against its current token lifecycle. checkTerminalEntryAlive 将被查询终端与当前 Token 生命周期核对后判断存活。
+func (m *Manager) checkTerminalEntryAlive(ctx context.Context, terminal TerminalInfo, sess *Session, cache *terminalAliveCheckCache) (bool, error) {
+	record, err := m.getTokenRecord(ctx, terminal.Token)
+	if err != nil {
+		if isTokenInactiveError(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if record.Revoked || sess == nil || !terminalMatchesTokenRecord(sess.LoginID, terminal, record) {
+		return false, nil
+	}
+	return m.checkTerminalTokenAliveWithCache(ctx, terminal.Token, &record.TokenInfo, sess, cache)
+}
+
 // checkTerminalTokenAliveWithCache checks token validity and reuses disable-state lookups. checkTerminalTokenAliveWithCache 检查 Token 有效性并复用封禁状态查询。
 func (m *Manager) checkTerminalTokenAliveWithCache(ctx context.Context, tokenValue string, tokenInfo *TokenInfo, sess *Session, cache *terminalAliveCheckCache) (bool, error) {
 	return m.checkTerminalTokenAliveWithOptions(ctx, tokenValue, tokenInfo, sess, cache, true)
@@ -200,7 +213,15 @@ func (m *Manager) checkTerminalTokenAliveWithOptions(ctx context.Context, tokenV
 
 	// Load token info when caller has not provided it 调用方未提供时加载 Token 信息。
 	if tokenInfo == nil {
-		tokenInfo, err = m.getTokenInfo(ctx, tokenValue)
+		var record *tokenRecord
+		record, err = m.getTokenRecord(ctx, tokenValue)
+		if err == nil {
+			// Retired credentials remain invalid even if an old session snapshot is available. 即使仍有旧会话快照，已废弃凭证也不能恢复有效。
+			if record.Revoked {
+				return false, nil
+			}
+			tokenInfo = &record.TokenInfo
+		}
 	}
 	if err != nil {
 		// Treat known token states as not alive 已知 Token 状态视为不存活。
@@ -264,7 +285,7 @@ func (m *Manager) checkTerminalTokenAliveWithOptions(ctx context.Context, tokenV
 
 	// Convert active timestamp 转换活跃时间戳。
 	timeStamp, err := utils.ToInt64(timeStampAny)
-	if err != nil {
+	if err != nil || timeStamp < 0 {
 		return false, nil
 	}
 

@@ -2,6 +2,9 @@
 package fiber
 
 import (
+	"bytes"
+	"strings"
+
 	"github.com/Zany2/dtoken-go/core/adapter"
 	gofiber "github.com/gofiber/fiber/v2"
 )
@@ -33,12 +36,13 @@ func (f *FiberContext) GetHeaders() map[string][]string {
 
 // GetHeader implements adapter.RequestContext GetHeader 实现 adapter.RequestContext 接口。
 func (f *FiberContext) GetHeader(key string) string {
-	return f.c.Get(key)
+	// Token values may outlive Fiber's pooled request buffers during maintenance. Token 可能被异步维护任务持有，需要脱离 Fiber 复用的请求缓冲区。
+	return strings.Clone(f.c.Get(key))
 }
 
 // GetQuery implements adapter.RequestContext GetQuery 实现 adapter.RequestContext 接口。
 func (f *FiberContext) GetQuery(key string) string {
-	return f.c.Query(key)
+	return strings.Clone(f.c.Query(key))
 }
 
 // GetQueryAll implements adapter.RequestContext GetQueryAll 实现 adapter.RequestContext 接口。
@@ -52,17 +56,27 @@ func (f *FiberContext) GetQueryAll() map[string][]string {
 
 // GetPostForm implements adapter.RequestContext GetPostForm 实现 adapter.RequestContext 接口。
 func (f *FiberContext) GetPostForm(key string) string {
-	return f.c.FormValue(key)
+	// FormValue also reads query parameters; only inspect body fields here. FormValue 同时读取查询参数，此处仅检查请求体字段。
+	if value := f.c.Context().PostArgs().Peek(key); len(value) > 0 {
+		return string(value)
+	}
+	if form, err := f.c.MultipartForm(); err == nil && form != nil {
+		if values := form.Value[key]; len(values) > 0 {
+			return strings.Clone(values[0])
+		}
+	}
+	return ""
 }
 
 // GetCookie implements adapter.RequestContext GetCookie 实现 adapter.RequestContext 接口。
 func (f *FiberContext) GetCookie(key string) string {
-	return f.c.Cookies(key)
+	return strings.Clone(f.c.Cookies(key))
 }
 
 // GetBody implements adapter.RequestContext GetBody 实现 adapter.RequestContext 接口。
 func (f *FiberContext) GetBody() ([]byte, error) {
-	return f.c.Body(), nil
+	// Preserve raw bytes; Fiber Body decodes content and turns decode errors into body text. 保留原始字节；Fiber Body 会解压并将解压错误替换为正文。
+	return bytes.Clone(f.c.BodyRaw()), nil
 }
 
 // GetClientIP implements adapter.RequestContext GetClientIP 实现 adapter.RequestContext 接口。

@@ -311,12 +311,17 @@ func TestShortKeyExpirationBoundaryAndDurationRounding(t *testing.T) {
 		t.Fatalf("Validate(expired boundary) error = %v, want ErrShortKeyExpired", err)
 	}
 
+	beforeCreate := time.Now()
 	created, err := mgr.CreateWithTimeout(context.Background(), CreateOptions{}, 500*time.Millisecond)
+	afterCreate := time.Now()
 	if err != nil {
 		t.Fatalf("CreateWithTimeout(500ms) error = %v", err)
 	}
 	if created.ExpiresIn < 1 {
 		t.Fatalf("CreateWithTimeout(500ms) ExpiresIn = %d, want positive", created.ExpiresIn)
+	}
+	if created.ExpiresAt.Before(beforeCreate.Add(500*time.Millisecond)) || created.ExpiresAt.After(afterCreate.Add(500*time.Millisecond)) {
+		t.Fatalf("ExpiresAt = %v, want creation time + 500ms", created.ExpiresAt)
 	}
 }
 

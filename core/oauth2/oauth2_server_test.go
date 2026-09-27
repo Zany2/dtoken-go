@@ -269,7 +269,7 @@ func TestOAuth2PKCEPlainDefault(t *testing.T) {
 		t.Fatalf("RegisterClient() error = %v", err)
 	}
 
-	verifier := "plain-verifier"
+	verifier := strings.Repeat("v", 43)
 	code, err := server.GenerateAuthorizationCodeWithPKCE(ctx, client.ClientID, "user-1", client.RedirectURIs[0], []string{"read"}, verifier, "")
 	if err != nil {
 		t.Fatalf("GenerateAuthorizationCodeWithPKCE() error = %v", err)
@@ -312,23 +312,24 @@ func TestOAuth2ConfigFallbacksAndDurationRounding(t *testing.T) {
 
 // TestOAuth2PKCEValidationBoundaries verifies PKCE normalization and verifier rejection rules. TestOAuth2PKCEValidationBoundaries 验证 PKCE 规范化和校验器拒绝规则。
 func TestOAuth2PKCEValidationBoundaries(t *testing.T) {
-	if method, err := normalizeCodeChallengeMethod("", "unsupported"); err != nil || method != "" {
+	verifier := strings.Repeat("v", 43)
+	if method, err := normalizeCodeChallengeMethod("", ""); err != nil || method != "" {
 		t.Fatalf("normalizeCodeChallengeMethod(no challenge) = %q, %v, want empty and nil", method, err)
 	}
-	if method, err := normalizeCodeChallengeMethod("challenge", " "); err != nil || method != CodeChallengeMethodPlain {
+	if method, err := normalizeCodeChallengeMethod(verifier, " "); err != nil || method != CodeChallengeMethodPlain {
 		t.Fatalf("normalizeCodeChallengeMethod(default) = %q, %v, want plain", method, err)
 	}
 	if _, err := normalizeCodeChallengeMethod("challenge", "MD5"); !errors.Is(err, derror.ErrInvalidParam) {
 		t.Fatalf("normalizeCodeChallengeMethod(unsupported) error = %v, want ErrInvalidParam", err)
 	}
 
-	if err := verifyCodeChallenge("", "S256", ""); err != nil {
+	if err := verifyCodeChallenge("", "", ""); err != nil {
 		t.Fatalf("verifyCodeChallenge(no challenge) error = %v, want nil", err)
 	}
-	if err := verifyCodeChallenge("plain", CodeChallengeMethodPlain, " plain "); err != nil {
+	if err := verifyCodeChallenge(verifier, CodeChallengeMethodPlain, verifier); err != nil {
 		t.Fatalf("verifyCodeChallenge(plain) error = %v, want nil", err)
 	}
-	if !errors.Is(verifyCodeChallenge("plain", CodeChallengeMethodPlain, "wrong"), derror.ErrInvalidCodeVerifier) {
+	if !errors.Is(verifyCodeChallenge(verifier, CodeChallengeMethodPlain, "wrong"), derror.ErrInvalidCodeVerifier) {
 		t.Fatal("verifyCodeChallenge(wrong plain verifier) did not reject")
 	}
 	if !errors.Is(verifyCodeChallenge("challenge", "unknown", "value"), derror.ErrInvalidParam) {
@@ -345,7 +346,7 @@ func TestOAuth2TokenEndpointPKCE(t *testing.T) {
 		t.Fatalf("RegisterClient() error = %v", err)
 	}
 
-	verifier := "token-endpoint-verifier"
+	verifier := strings.Repeat("v", 43)
 	code, err := server.GenerateAuthorizationCodeWithPKCE(ctx, client.ClientID, "user-1", client.RedirectURIs[0], []string{"read"}, verifier, CodeChallengeMethodPlain)
 	if err != nil {
 		t.Fatalf("GenerateAuthorizationCodeWithPKCE() error = %v", err)

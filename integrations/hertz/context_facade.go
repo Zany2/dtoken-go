@@ -440,8 +440,25 @@ func VerifyAndConsumeNonceByContext(ctx *hertzapp.RequestContext, nonce string) 
 	return dCtx.Nonce().VerifyAndConsume(requestContext(ctx), nonce)
 }
 
-// requestContext returns default execution context requestContext 返回默认执行上下文。
-func requestContext(*hertzapp.RequestContext) context.Context {
+// requestContextKey stores the standard context separately from Hertz request data. requestContextKey 将标准上下文与 Hertz 请求数据分开存储。
+const requestContextKey = "dtoken-go/hertz/request-context"
+
+// bindRequestContext scopes the handler context to the current DToken call chain. bindRequestContext 在当前 DToken 调用链内绑定处理器上下文。
+func bindRequestContext(c context.Context, ctx *hertzapp.RequestContext) func() {
+	previous, _ := ctx.Get(requestContextKey)
+	ctx.Set(requestContextKey, c)
+	return func() { ctx.Set(requestContextKey, previous) }
+}
+
+// requestContext gets the context bound by DToken middleware or annotations. requestContext 获取 DToken 中间件或注解绑定的标准上下文。
+func requestContext(ctx *hertzapp.RequestContext) context.Context {
+	if ctx != nil {
+		if value, ok := ctx.Get(requestContextKey); ok {
+			if c, ok := value.(context.Context); ok && c != nil {
+				return c
+			}
+		}
+	}
 	return context.Background()
 }
 
@@ -457,6 +474,9 @@ func requireDTokenContextByContext(ctx *hertzapp.RequestContext) (*DTokenContext
 			return nil, err
 		}
 		return getDTokenContext(ctx, mgr), nil
+	}
+	if mgr := dCtx.GetManager(); mgr == nil || mgr.IsClosed() {
+		return nil, ErrManagerNotFound
 	}
 	return dCtx, nil
 }

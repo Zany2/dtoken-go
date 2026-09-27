@@ -42,17 +42,18 @@ func (e *EchoContext) GetHeader(key string) string {
 
 // GetQuery implements adapter.RequestContext GetQuery 实现 adapter.RequestContext 接口
 func (e *EchoContext) GetQuery(key string) string {
-	return e.c.QueryParam(key)
+	// Echo caches query values even after SetRequest; read the current URL. Echo 在 SetRequest 后仍可能保留旧查询缓存，因此读取当前 URL。
+	return e.c.Request().URL.Query().Get(key)
 }
 
 // GetQueryAll implements adapter.RequestContext GetQueryAll 实现 adapter.RequestContext 接口
 func (e *EchoContext) GetQueryAll() map[string][]string {
-	return e.c.QueryParams()
+	return e.c.Request().URL.Query()
 }
 
 // GetPostForm implements adapter.RequestContext GetPostForm 实现 adapter.RequestContext 接口
 func (e *EchoContext) GetPostForm(key string) string {
-	return e.c.FormValue(key)
+	return e.c.Request().PostFormValue(key)
 }
 
 // GetCookie implements adapter.RequestContext GetCookie 实现 adapter.RequestContext 接口

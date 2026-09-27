@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,20 +67,25 @@ func TestRenderCommonFramework(t *testing.T) {
 
 // TestRenderGoFrameFramework verifies GoFrame logger extensions are injected once. TestRenderGoFrameFramework 验证 GoFrame 日志扩展仅注入一次。
 func TestRenderGoFrameFramework(t *testing.T) {
-	output, err := render([]byte(testSource), targetSpec{packageName: "gf", includeGFLogger: true})
-	if err != nil {
-		t.Fatalf("render() error = %v", err)
-	}
+	for _, ending := range []string{"\n", "\r\n"} {
+		t.Run(fmt.Sprintf("newline=%q", ending), func(t *testing.T) {
+			source := strings.ReplaceAll(testSource, "\n", ending)
+			output, err := render([]byte(source), targetSpec{packageName: "gf", includeGFLogger: true})
+			if err != nil {
+				t.Fatalf("render() error = %v", err)
+			}
 
-	text := string(output)
-	for _, expected := range []string{
-		`gflog "github.com/Zany2/dtoken-go/com/log/gf"`,
-		"gflog.GFLogger",
-		"gflog.NewGFLogger",
-	} {
-		if strings.Count(text, expected) != 1 {
-			t.Fatalf("generated output count for %q is not 1:\n%s", expected, text)
-		}
+			text := string(output)
+			for _, expected := range []string{
+				`gflog "github.com/Zany2/dtoken-go/com/log/gf"`,
+				"gflog.GFLogger",
+				"gflog.NewGFLogger",
+			} {
+				if strings.Count(text, expected) != 1 {
+					t.Fatalf("generated output count for %q is not 1:\n%s", expected, text)
+				}
+			}
+		})
 	}
 }
 

@@ -35,8 +35,9 @@ mgr, err := dtoken.NewBuilder().
 
 复用是否发生取决于设备维度：
 
-- 账号维度下，没有设备信息时更容易复用账号已有 Token
-- 设备维度下，通常同设备类型和同设备 ID 才复用
+- 同时提供设备类型和设备 ID 时，复用二者均匹配的 Token
+- 只提供其中一个字段时，按该字段筛选；只提供设备 ID 也会生效
+- 两个字段均未提供时，可以复用账号已有 Token
 - `IsShare(false)` 时，每次登录都生成新 Token
 
 ## MaxLoginCount
@@ -91,6 +92,10 @@ builder.ConcurrencyScope(config.ConcurrencyScopeDevice)
 |------|------|
 | `config.ReplacedLoginExitModeOldDevice` | 新登录成功，旧终端被标记为 replaced |
 | `config.ReplacedLoginExitModeNewDevice` | 保留旧终端，拒绝新登录 |
+
+临时封禁设备不会释放其登录名额；该设备解封后原 Token 仍可恢复使用。只有退出或过期等使原登录失效的操作才会释放名额。此规则同样适用于 `MaxLoginCount` 计数。
+
+共享登录事件中的设备类型和设备 ID 来自实际复用的终端，即使登录请求省略了其中的字段。
 
 ## 推荐组合
 

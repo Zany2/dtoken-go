@@ -200,7 +200,16 @@ func TestManagerDisableCrossFormatCompatibility(t *testing.T) {
 			}
 
 			// Valid current state takes precedence without reading malformed legacy data. 有效当前状态优先返回，无需读取损坏的旧数据。
-			if err = mgr.saveToStorage(ctx, key, tt.info, 0); err != nil {
+			currentMarker := disableMarker{LoginID: tt.loginID}
+			switch info := tt.info.(type) {
+			case *ServiceDisableInfo:
+				currentMarker.Kind, currentMarker.Service, currentMarker.Level = "service", info.Service, info.Level
+				currentMarker.DisableInfo = DisableInfo{DisableTime: info.DisableTime, DisableReason: info.DisableReason}
+			case *DeviceDisableInfo:
+				currentMarker.Kind, currentMarker.Device, currentMarker.DeviceID = "device", info.Device, info.DeviceID
+				currentMarker.DisableInfo = DisableInfo{DisableTime: info.DisableTime, DisableReason: info.DisableReason}
+			}
+			if err = mgr.saveToStorage(ctx, key, currentMarker, 0); err != nil {
 				t.Fatalf("save matching current marker error = %v", err)
 			}
 			if err = mgr.storage.Set(ctx, legacyKey, []byte("not-json"), time.Minute); err != nil {
