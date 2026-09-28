@@ -134,7 +134,7 @@ func TestLoginBodyLimit(t *testing.T) {
 func TestAccountAndDeviceRestrictions(t *testing.T) {
 	setupBeegoManager(t)
 	ctx := context.Background()
-	if err := beegodt.Disable(ctx, "blocked", time.Hour); err != nil {
+	if err := beegodt.Disable(ctx, "blocked", time.Hour, ""); err != nil {
 		t.Fatal(err)
 	}
 	router := newBeegoExampleRouter()

@@ -121,7 +121,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 // TestDisabledAccountLogin verifies a blocked account receives an access restriction response. TestDisabledAccountLogin 验证封禁账号登录返回访问限制响应。
 func TestDisabledAccountLogin(t *testing.T) {
 	setupHertzManager(t)
-	if err := dtoken.Disable(context.Background(), "alice", time.Hour); err != nil {
+	if err := dtoken.Disable(context.Background(), "alice", time.Hour, ""); err != nil {
 		t.Fatal(err)
 	}
 	h := server.Default()

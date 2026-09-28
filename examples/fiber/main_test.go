@@ -223,7 +223,7 @@ func TestFormLoginOwnsUsername(t *testing.T) {
 // TestLoginRejectsDisabledAccount verifies an account restriction returns forbidden without issuing a token. TestLoginRejectsDisabledAccount 验证账号封禁返回禁止访问且不签发 Token。
 func TestLoginRejectsDisabledAccount(t *testing.T) {
 	setupFiberManager(t)
-	if err := fiberdt.Disable(context.Background(), "alice", time.Hour); err != nil {
+	if err := fiberdt.Disable(context.Background(), "alice", time.Hour, ""); err != nil {
 		t.Fatal(err)
 	}
 	app := gofiber.New()

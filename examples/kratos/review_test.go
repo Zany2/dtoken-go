@@ -64,7 +64,7 @@ func TestLoginRejectsMalformedBodies(t *testing.T) {
 func TestAccountAndDeviceRestrictions(t *testing.T) {
 	setupKratosManager(t)
 	ctx := context.Background()
-	if err := kratosdt.Disable(ctx, "blocked", time.Hour); err != nil {
+	if err := kratosdt.Disable(ctx, "blocked", time.Hour, ""); err != nil {
 		t.Fatal(err)
 	}
 	srv := newKratosExampleServer()

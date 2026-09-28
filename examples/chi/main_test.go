@@ -172,7 +172,7 @@ func TestLoginRejectsInvalidJSON(t *testing.T) {
 // TestLoginRejectsDisabledAccount verifies an account restriction returns forbidden without issuing a token. TestLoginRejectsDisabledAccount 验证账号封禁返回禁止访问且不签发 Token。
 func TestLoginRejectsDisabledAccount(t *testing.T) {
 	setupChiManager(t)
-	if err := chidt.Disable(context.Background(), "alice", time.Hour); err != nil {
+	if err := chidt.Disable(context.Background(), "alice", time.Hour, ""); err != nil {
 		t.Fatal(err)
 	}
 	router := chi.NewRouter()

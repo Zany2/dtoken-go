@@ -64,7 +64,7 @@ func TestProductionRouteFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	check(http.MethodGet, "/me", "", token, http.StatusForbidden)
-	if err := dtoken.Disable(ctx, "blocked", time.Hour); err != nil {
+	if err := dtoken.Disable(ctx, "blocked", time.Hour, ""); err != nil {
 		t.Fatal(err)
 	}
 	check(http.MethodPost, "/login", `{"username":"blocked","password":"123456"}`, "", http.StatusForbidden)

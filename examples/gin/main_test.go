@@ -198,7 +198,7 @@ func TestLoginRejectsDisabledAccountsAndDevices(t *testing.T) {
 			if device {
 				err = gindt.DisableDevice(context.Background(), "alice", "web", time.Hour)
 			} else {
-				err = gindt.Disable(context.Background(), "alice", time.Hour)
+				err = gindt.Disable(context.Background(), "alice", time.Hour, "")
 			}
 			if err != nil {
 				t.Fatal(err)
