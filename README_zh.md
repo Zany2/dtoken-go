@@ -57,6 +57,8 @@ DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，已提供登
 
 ## 安装
 
+核心模块要求 Go 1.25 或更高版本。使用当前仓库的 `go.work` 本地开发时，需要 Go 1.27 或更高版本；可选的 `com/codec/jsonv2` 模块还需要启用 `GOEXPERIMENT=jsonv2`。
+
 ### 使用默认核心能力
 
 ```bash
@@ -258,7 +260,7 @@ README 只保留最小上手路径，更多 API、配置和组件说明可以查
 
 ```text
 dtoken-go/
-├── core/                         # 框架核心模块，按能力拆分为独立 Go module
+├── core/                         # 单个 Go module，内部按能力组织 package
 │   ├── adapter/                  # 存储、编解码、日志、Token 生成器、请求上下文等接口契约
 │   ├── builder/                  # Manager 构建器、组件装配和配置校验入口
 │   ├── config/                   # 核心配置项、默认值和配置校验

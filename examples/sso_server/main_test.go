@@ -103,31 +103,30 @@ func TestLoginRejectsMalformedFormAndUnsupportedMethod(t *testing.T) {
 // TestHTTPSSORoutesIssueAndExchangeTicket verifies standard SSO route registration and Ticket flow. TestHTTPSSORoutesIssueAndExchangeTicket 验证标准 SSO 路由注册及 Ticket 流程。
 func TestHTTPSSORoutesIssueAndExchangeTicket(t *testing.T) {
 	server := sso.NewServer()
-	if err := server.RegisterClient(&sso.Client{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		Name:         "Demo Client",
-		RedirectURIs: []string{callbackURL},
-		Modes:        []sso.Mode{sso.ModeTicket},
-	}); err != nil {
-		t.Fatalf("RegisterClient() error = %v", err)
+	defer server.Close()
+	mux, err := newDemoHandler(server)
+	if err != nil {
+		t.Fatal(err)
 	}
-	httpSSO := sso.NewHTTPServer(server, sso.HTTPOptions{
-		ServerOptions: sso.ServerOptions{
-			CheckSign: false,
-			Endpoints: sso.DefaultEndpoints(),
-			Params:    sso.DefaultParamNames(),
-		},
-		LoginIDResolver: sso.LoginIDFromCookie(cookie),
-		LoginPageURL:    "http://localhost:9000/login",
-		Cookie:          cookie,
-	})
-	mux := http.NewServeMux()
-	httpSSO.Register(mux)
 
 	authorizeRequest := httptest.NewRequest(http.MethodGet, "/sso/authorize?client="+url.QueryEscape(clientID)+"&redirect="+url.QueryEscape(callbackURL), nil)
+	anonymous := httptest.NewRecorder()
+	mux.ServeHTTP(anonymous, authorizeRequest)
+	loginURL, err := url.Parse(anonymous.Header().Get("Location"))
+	if err != nil || anonymous.Code != http.StatusFound || loginURL.Path != "/login" || loginURL.Query().Get("back") != authorizeRequest.URL.RequestURI() {
+		t.Fatalf("anonymous authorization: status=%d, location=%v, error=%v", anonymous.Code, loginURL, err)
+	}
+
+	// Complete the actual login form before resuming authorization. 先提交实际登录表单，再继续授权。
 	cookieRecorder := httptest.NewRecorder()
-	sso.SetLoginIDCookie(cookieRecorder, cookie, "alice")
+	loginRequest := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(url.Values{
+		"loginId": {"alice"}, "back": {loginURL.Query().Get("back")},
+	}.Encode()))
+	loginRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	mux.ServeHTTP(cookieRecorder, loginRequest)
+	if cookieRecorder.Code != http.StatusFound || cookieRecorder.Header().Get("Location") != authorizeRequest.URL.RequestURI() || len(cookieRecorder.Result().Cookies()) != 1 {
+		t.Fatalf("login did not resume authorization: status=%d headers=%v", cookieRecorder.Code, cookieRecorder.Header())
+	}
 	authorizeRequest.AddCookie(cookieRecorder.Result().Cookies()[0])
 	authorizeRecorder := httptest.NewRecorder()
 	mux.ServeHTTP(authorizeRecorder, authorizeRequest)
@@ -149,6 +148,17 @@ func TestHTTPSSORoutesIssueAndExchangeTicket(t *testing.T) {
 		"clientSecret": {clientSecret},
 		"redirect":     {callbackURL},
 	}
+
+	// Invalid client credentials must not consume the Ticket. 错误客户端凭证不能消费 Ticket。
+	form.Set("clientSecret", "wrong-secret")
+	invalidRequest := httptest.NewRequest(http.MethodPost, "/sso/token", strings.NewReader(form.Encode()))
+	invalidRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	invalidRecorder := httptest.NewRecorder()
+	mux.ServeHTTP(invalidRecorder, invalidRequest)
+	if invalidRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("invalid client credentials status = %d", invalidRecorder.Code)
+	}
+	form.Set("clientSecret", clientSecret)
 	tokenRequest := httptest.NewRequest(http.MethodPost, "/sso/token", strings.NewReader(form.Encode()))
 	tokenRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	tokenRecorder := httptest.NewRecorder()
@@ -163,5 +173,12 @@ func TestHTTPSSORoutesIssueAndExchangeTicket(t *testing.T) {
 	data, ok := response.Data.(map[string]any)
 	if !ok || data["loginId"] != "alice" {
 		t.Fatalf("token response data = %#v, want loginId alice", response.Data)
+	}
+	replayRequest := httptest.NewRequest(http.MethodPost, "/sso/token", strings.NewReader(form.Encode()))
+	replayRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	replay := httptest.NewRecorder()
+	mux.ServeHTTP(replay, replayRequest)
+	if replay.Code != http.StatusBadRequest {
+		t.Fatalf("replayed ticket status = %d, want 400", replay.Code)
 	}
 }

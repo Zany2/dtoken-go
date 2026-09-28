@@ -27,7 +27,7 @@ mgr, err := defaults.NewBuilder().
     Build()
 ```
 
-In most projects, storage is the only component that must be explicitly set. Other default components can remain unchanged unless there is a specific requirement.
+Memory storage is already provided by default. Set storage explicitly when using Redis or another backend; other default components can remain unchanged unless there is a specific requirement.
 
 ## Replace Components
 
@@ -78,10 +78,19 @@ mgr, err := defaults.NewBuilder().
 To fully customize generation rules, implement `adapter.Generator`:
 
 ```go
+import (
+    "crypto/rand"
+    "encoding/hex"
+)
+
 type MyGenerator struct{}
 
 func (MyGenerator) Generate(loginID, device, deviceID string) (string, error) {
-    return "my-token-value", nil
+    var value [32]byte
+    if _, err := rand.Read(value[:]); err != nil {
+        return "", err
+    }
+    return hex.EncodeToString(value[:]), nil
 }
 ```
 

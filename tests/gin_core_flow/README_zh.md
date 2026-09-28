@@ -60,9 +60,13 @@
 
 - `TestAutoRenewFlow`：测试自动续期。
   - 启用 AutoRenew，并设置刷新阈值和续期间隔。
-  - 等待 token TTL 进入刷新窗口。
-  - 访问受保护接口并验证 TTL 延长。
-  - 立即再次访问并验证续期间隔会阻止重复增长。
+  - 验证登录后的初始续期间隔会阻止已经满足阈值的请求续期。
+  - 间隔结束后访问受保护接口，等待实际 TTL 增长和续期事件。
+  - 立即再次访问，验证间隔内不会产生额外的续期事件。
+  - 通过 Manager 只读接口观察 TTL，避免测量动作触发续期。
+
+- `TestRenewConfigurationMatrixFlow`：测试关闭续期、刷新阈值和无间隔时的重复续期。
+  - 使用有超时限制的存储 TTL 轮询，替代异步续期后的固定等待。
 
 - `TestRenewBoundaryFlow`：测试手动续期边界。
   - 在 HTTP 层拒绝 0 和负数续期值。
@@ -106,6 +110,10 @@
   - 将一个终端标记为离线。
   - 验证 token 列表查询只返回存活 session token。
   - 验证离线 token 保留准确的失败原因。
+
+- `TestSessionExpiredTokenFilterFlow`：测试自然过期过滤。
+  - 保持移动端登录有效，等待短有效期的 web token 过期。
+  - 验证 `alive=false` 保留两个终端条目，`alive=true` 仅返回移动端 token。
 
 - `TestTerminalOperationFlow`：测试终端范围操作。
   - 登出一个具体设备，同时保持另一个终端在线。
@@ -172,8 +180,12 @@
   - 使用授权码换取 access token 和 refresh token。
   - 验证授权码只能使用一次。
   - introspect access token。
-  - 刷新 token 并验证旧 access token 无效。
+  - 刷新后验证旧 access token 和 refresh token 均不可再用，并在撤销前确认新 access token 有效。
   - 撤销刷新后的 token 并验证其无效。
+
+- `TestOAuth2AuthorizationCodeBindingFlow`：测试授权码与客户端、回调地址的绑定。
+  - 拒绝其他已注册客户端换码，以及不匹配的回调地址。
+  - 验证上述请求被拒绝后，原客户端仍可使用同一授权码合法换码。
 
 - `TestOAuth2PasswordAndClientCredentialsFlow`：测试其他 OAuth2 授权方式。
   - password grant 返回用户 token。
@@ -189,11 +201,17 @@
 - `TestMultiAuthIsolationFlow`：测试多认证体系隔离。
   - 将同一个 ID 分别登录到 user-auth 和 admin-auth。
   - 验证 token 不能跨认证体系使用。
-  - 验证权限和角色按 AuthType 隔离。
+  - 读取两侧身份，对比权限列表和角色列表，验证 AuthType 隔离。
+
+- `TestDecodeFlowData`：拒绝缺失、null、格式错误及类型错误的数据，并在复用解码目标时清除旧字段。
+- `TestFlowClientDefaultsToMemory`：在未设置 Redis 环境变量时执行真实登录和受保护 HTTP 请求。
+- `TestFlowStorageCleanup`：删除真实测试实例的键，检查认证和 nonce 失效，并保留同一后端的无关键。
 
 ## 运行
 
-自动化流程测试仅在显式配置 `DTOKEN_REDIS_URL` 时使用 Redis。这样默认测试命令不依赖外部服务，同时仍可覆盖多进程存储语义、Redis 扫描和清理逻辑。
+自动化流程测试默认使用内存存储。设置 `DTOKEN_REDIS_URL` 后，流程场景会使用 Redis，覆盖其存储和扫描行为。默认命令无需外部服务，也会实际执行流程测试。
+
+每个测试实例使用随机的 `dt-gcf-<hex>:` 键前缀，不同测试进程之间也保持隔离。清理时只扫描并删除该实例前缀下的键。建议使用专门的测试 Redis 数据库。
 
 Redis URL 示例：
 
@@ -202,7 +220,7 @@ redis://localhost:6379/0
 redis://:password@localhost:6379/0
 ```
 
-未设置 `DTOKEN_REDIS_URL` 时，Redis 流程测试会自动跳过。
+未设置 `DTOKEN_REDIS_URL` 时，流程测试使用内存存储。配置 Redis 后若初始化失败，或应用配置、创建失败，测试会明确失败，不再静默跳过。
 
 在当前目录运行：
 

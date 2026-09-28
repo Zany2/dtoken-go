@@ -62,7 +62,7 @@ mgr, err := defaults.NewBuilder().
 | `ReplacedLoginExitMode` | `config.ReplacedLoginExitMode` | `old_device` | Non-concurrent login strategy |
 | `OverflowLogoutMode` | `config.LogoutMode` | `kickout` | How old Tokens are handled when max login count overflows |
 | `TokenStyle` | `adapter.TokenStyle` | `uuid` | Token generation style |
-| `JwtSecretKey` | `string` | `dtoken-go` | JWT signing secret |
+| `JwtSecretKey` | `string` | `dtoken-go` (placeholder) | JWT mode requires an explicitly configured secret; the default, empty, and whitespace-only keys are rejected |
 | `IsReadHeader` | `bool` | `true` | Whether to read Token from headers |
 | `IsReadCookie` | `bool` | `false` | Whether to read Token from cookies |
 | `IsReadQuery` | `bool` | `false` | Whether to read Token from query parameters |
@@ -124,6 +124,8 @@ Time options use seconds and support `-1` as unlimited:
 | `ActiveTimeout` | `-1` or `> 0` |
 
 `MaxLoginCount` is a count rather than a duration; it accepts `-1` for unlimited or a value greater than `0`.
+
+Positive time options cannot exceed `9223372036` seconds, the largest whole-second value representable by `time.Duration`. This bound does not apply to `MaxLoginCount`.
 
 The `-1` meaning depends on the option:
 

@@ -71,6 +71,9 @@ func initDToken() {
 }
 
 func main() {
+    initDToken()
+    defer dtoken.DeleteAllManager()
+
     ctx := context.Background()
     token, _ := dtoken.Login(ctx, "10001", "web", "chrome-mac")
     _ = token

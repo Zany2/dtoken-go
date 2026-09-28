@@ -6,7 +6,7 @@
 
 ```go
 token, err := dtoken.Login(ctx, "user-1001")
-token, err = dtoken.Login(ctx, "user-1001", "web", "browser-001", "user")
+token, err = dtoken.Login(ctx, "user-1001", "web", "browser-001")
 
 isLogin := dtoken.IsLogin(ctx, token)
 loginID, err := dtoken.GetLoginID(ctx, token)
@@ -44,7 +44,7 @@ _ = dtoken.ReplaceByLoginID(ctx, "user-1001")
 ## 封禁控制
 
 ```go
-_ = dtoken.Disable(ctx, "user-1001", 3600, "risk_control")
+_ = dtoken.Disable(ctx, "user-1001", time.Hour, "risk_control")
 disabled := dtoken.IsDisable(ctx, "user-1001")
 disableInfo, err := dtoken.GetDisableInfo(ctx, "user-1001")
 _ = dtoken.Untie(ctx, "user-1001")

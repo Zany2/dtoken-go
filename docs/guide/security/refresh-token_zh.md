@@ -111,9 +111,24 @@ mgr, err := dtoken.NewBuilder().
 import gfdt "github.com/Zany2/dtoken-go/integrations/gf"
 
 pair, err := gfdt.LoginWithRefreshToken(ctx, "user-1001")
+if err != nil {
+	return err
+}
+
 nextPair, err := gfdt.RefreshToken(ctx, pair.RefreshToken)
+if err != nil {
+	return err
+}
+
 ttl, err := gfdt.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
-_ = gfdt.RevokeRefreshToken(ctx, nextPair.RefreshToken)
+if err != nil {
+	return err
+}
+fmt.Println(ttl)
+
+if err := gfdt.RevokeRefreshToken(ctx, nextPair.RefreshToken); err != nil {
+	return err
+}
 ```
 
 在 GoFrame 控制器中，登录与刷新接口也可以只使用同一个框架包：

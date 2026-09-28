@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"sync"
 	"time"
@@ -71,6 +72,8 @@ var (
 	ErrClientSessionLimit = errors.New("registered client session limit reached")
 	// ErrInvalidSign indicates the request signature is invalid. ErrInvalidSign 表示请求签名无效。
 	ErrInvalidSign = errors.New("invalid sign")
+	// ErrInvalidRequest indicates conflicting or ambiguous protocol parameters. ErrInvalidRequest 表示协议参数冲突或存在歧义。
+	ErrInvalidRequest = errors.New("invalid SSO request parameters")
 	// ErrSignSecretRequired indicates signing is enabled without a secret. ErrSignSecretRequired 表示已启用签名但未配置密钥。
 	ErrSignSecretRequired = errors.New("signing secret is required")
 	// ErrMethodNotAllowed indicates the request method is not allowed. ErrMethodNotAllowed 表示请求方法不允许。
@@ -156,6 +159,9 @@ type Ticket struct {
 	ExpiresIn   int64          `json:"expiresIn"`        // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
 	Used        bool           `json:"used"`             // Used stores consume state after successful exchange. Used 存储成功换票后的消费状态。
 	Extra       map[string]any `json:"extra,omitempty"`  // Extra stores extension data. Extra 存储扩展数据。
+
+	// ExpiresAt stores the precise deadline; zero supports legacy records. ExpiresAt 存储精确截止时间；零值兼容旧记录。
+	ExpiresAt time.Time `json:"expiresAt,omitempty"`
 }
 
 // SharedToken defines a reusable SSO token shared by trusted apps. SharedToken 定义可信应用间共享复用的 SSO Token。
@@ -168,6 +174,9 @@ type SharedToken struct {
 	CreateTime int64          `json:"createTime"`       // CreateTime stores creation unix time. CreateTime 存储创建时间戳。
 	ExpiresIn  int64          `json:"expiresIn"`        // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
 	Extra      map[string]any `json:"extra,omitempty"`  // Extra stores extension data. Extra 存储扩展数据。
+
+	// ExpiresAt stores the precise deadline; zero supports legacy records. ExpiresAt 存储精确截止时间；零值兼容旧记录。
+	ExpiresAt time.Time `json:"expiresAt,omitempty"`
 }
 
 // RemoteSession defines a centralized SSO session checked by client apps remotely. RemoteSession 定义由子应用远程校验的中心化 SSO 会话。
@@ -180,6 +189,9 @@ type RemoteSession struct {
 	CreateTime int64          `json:"createTime"`       // CreateTime stores creation unix time. CreateTime 存储创建时间戳。
 	ExpiresIn  int64          `json:"expiresIn"`        // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
 	Extra      map[string]any `json:"extra,omitempty"`  // Extra stores extension data. Extra 存储扩展数据。
+
+	// ExpiresAt stores the precise deadline; zero supports legacy records. ExpiresAt 存储精确截止时间；零值兼容旧记录。
+	ExpiresAt time.Time `json:"expiresAt,omitempty"`
 }
 
 // OAuth2Code defines an SSO OAuth2 authorization code. OAuth2Code 定义 SSO OAuth2 授权码。
@@ -194,6 +206,9 @@ type OAuth2Code struct {
 	ExpiresIn   int64          `json:"expiresIn"`        // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
 	Used        bool           `json:"used"`             // Used stores consume state after exchange. Used 存储换取后的消费状态。
 	Extra       map[string]any `json:"extra,omitempty"`  // Extra stores extension data. Extra 存储扩展数据。
+
+	// ExpiresAt stores the precise deadline; zero supports legacy records. ExpiresAt 存储精确截止时间；零值兼容旧记录。
+	ExpiresAt time.Time `json:"expiresAt,omitempty"`
 }
 
 // ClientSession stores one client login binding for single logout. ClientSession 存储用于单点注销的客户端登录绑定。
@@ -351,6 +366,7 @@ func (s *Server) GenerateTicketWithTimeout(ctx context.Context, clientID, loginI
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
 	ticket := &Ticket{
 		Ticket:      ticketValue,
 		Mode:        ModeTicket,
@@ -358,14 +374,15 @@ func (s *Server) GenerateTicketWithTimeout(ctx context.Context, clientID, loginI
 		ClientID:    clientID,
 		RedirectURI: redirectURI,
 		Scopes:      scopes,
-		CreateTime:  time.Now().Unix(),
+		CreateTime:  now.Unix(),
 		ExpiresIn:   durationSeconds(timeout),
+		ExpiresAt:   now.Add(timeout),
 		Used:        false,
 		Extra:       extra,
 	}
 
 	// Persist the ticket with TTL so storage can expire unused callbacks automatically. 写入带 TTL 的 Ticket，让未使用回调自动过期。
-	if err = s.saveTicket(ctx, ticket, timeout); err != nil {
+	if err = s.saveTicket(ctx, ticket); err != nil {
 		return nil, err
 	}
 	return ticket, nil
@@ -522,17 +539,19 @@ func (s *Server) GenerateSharedTokenWithTimeout(ctx context.Context, clientID, l
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
 	token := &SharedToken{
 		Token:      tokenValue,
 		Mode:       ModeSharedToken,
 		LoginID:    loginID,
 		ClientID:   clientID,
 		Scopes:     scopes,
-		CreateTime: time.Now().Unix(),
+		CreateTime: now.Unix(),
 		ExpiresIn:  durationSeconds(timeout),
+		ExpiresAt:  now.Add(timeout),
 		Extra:      extra,
 	}
-	if err = s.saveSharedToken(ctx, token, timeout); err != nil {
+	if err = s.saveSharedToken(ctx, token); err != nil {
 		return nil, err
 	}
 	return token, nil
@@ -551,6 +570,9 @@ func (s *Server) ValidateSharedToken(ctx context.Context, tokenValue, clientID s
 		return nil, ErrClientMismatch
 	}
 	if err = s.checkSharedTokenAlive(token); err != nil {
+		return nil, err
+	}
+	if err = s.checkClientMode(ctx, clientID, ModeSharedToken); err != nil {
 		return nil, err
 	}
 	return token, nil
@@ -601,17 +623,19 @@ func (s *Server) CreateRemoteSessionWithTimeout(ctx context.Context, clientID, l
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
 	session := &RemoteSession{
 		SessionID:  sessionID,
 		Mode:       ModeRemoteSession,
 		LoginID:    loginID,
 		ClientID:   clientID,
 		Scopes:     scopes,
-		CreateTime: time.Now().Unix(),
+		CreateTime: now.Unix(),
 		ExpiresIn:  durationSeconds(timeout),
+		ExpiresAt:  now.Add(timeout),
 		Extra:      extra,
 	}
-	if err = s.saveRemoteSession(ctx, session, timeout); err != nil {
+	if err = s.saveRemoteSession(ctx, session); err != nil {
 		return nil, err
 	}
 	return session, nil
@@ -632,6 +656,9 @@ func (s *Server) ValidateRemoteSession(ctx context.Context, sessionID, clientID 
 	if err = s.checkRemoteSessionAlive(session); err != nil {
 		return nil, err
 	}
+	if err = s.checkClientMode(ctx, clientID, ModeRemoteSession); err != nil {
+		return nil, err
+	}
 	return session, nil
 }
 
@@ -650,9 +677,16 @@ func (s *Server) RenewRemoteSession(ctx context.Context, sessionID string, timeo
 	if err = s.checkRemoteSessionAlive(session); err != nil {
 		return err
 	}
-	session.CreateTime = time.Now().Unix()
+	if err = s.checkClientMode(ctx, session.ClientID, ModeRemoteSession); err != nil {
+		return err
+	}
+
+	// Refresh both metadata and the stored deadline together. 同步更新元数据与存储截止时间。
+	now := time.Now()
+	session.CreateTime = now.Unix()
 	session.ExpiresIn = durationSeconds(timeout)
-	return s.saveRemoteSession(ctx, session, timeout)
+	session.ExpiresAt = now.Add(timeout)
+	return s.saveRemoteSession(ctx, session)
 }
 
 // RevokeRemoteSession revokes a centralized SSO session. RevokeRemoteSession 撤销中心化 SSO 会话。
@@ -703,6 +737,7 @@ func (s *Server) GenerateOAuth2CodeWithTimeout(ctx context.Context, clientID, lo
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
 	code := &OAuth2Code{
 		Code:        codeValue,
 		Mode:        ModeOAuth2,
@@ -710,12 +745,13 @@ func (s *Server) GenerateOAuth2CodeWithTimeout(ctx context.Context, clientID, lo
 		ClientID:    clientID,
 		RedirectURI: redirectURI,
 		Scopes:      scopes,
-		CreateTime:  time.Now().Unix(),
+		CreateTime:  now.Unix(),
 		ExpiresIn:   durationSeconds(timeout),
+		ExpiresAt:   now.Add(timeout),
 		Used:        false,
 		Extra:       extra,
 	}
-	if err = s.saveOAuth2Code(ctx, code, timeout); err != nil {
+	if err = s.saveOAuth2Code(ctx, code); err != nil {
 		return nil, err
 	}
 	return code, nil
@@ -960,17 +996,17 @@ func (s *Server) getClient(ctx context.Context, clientID string) (*Client, error
 	return &client, nil
 }
 
-// hasClient checks whether a client is registered. hasClient 检查客户端是否已经注册。
-func (s *Server) hasClient(clientID string) bool {
-	_, err := s.getClient(context.Background(), clientID)
-	return err == nil
-}
-
-// saveTicket serializes and persists a ticket with the supplied ttl. saveTicket 按指定有效期序列化并保存 Ticket。
-func (s *Server) saveTicket(ctx context.Context, ticket *Ticket, timeout time.Duration) error {
+// saveTicket serializes and persists a ticket until its deadline. saveTicket 按截止时间序列化并保存 Ticket。
+func (s *Server) saveTicket(ctx context.Context, ticket *Ticket) error {
 	encodeData, err := s.serializer.Encode(ticket)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrSerializeFailed, err)
+	}
+
+	// Use the remaining lifetime after encoding; non-positive storage TTL means no expiry. 编码后使用剩余有效期；存储的非正 TTL 表示永不过期。
+	timeout := remainingCredentialDuration(ticket.CreateTime, ticket.ExpiresIn, ticket.ExpiresAt)
+	if timeout <= 0 {
+		return ErrTicketExpired
 	}
 	if err = s.storage.Set(ctx, s.getTicketKey(ticket.Ticket), encodeData, timeout); err != nil {
 		return fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
@@ -978,11 +1014,17 @@ func (s *Server) saveTicket(ctx context.Context, ticket *Ticket, timeout time.Du
 	return nil
 }
 
-// saveSharedToken serializes and persists a shared token with the supplied ttl. saveSharedToken 按指定有效期序列化并保存共享 Token。
-func (s *Server) saveSharedToken(ctx context.Context, token *SharedToken, timeout time.Duration) error {
+// saveSharedToken serializes and persists a shared token until its deadline. saveSharedToken 按截止时间序列化并保存共享 Token。
+func (s *Server) saveSharedToken(ctx context.Context, token *SharedToken) error {
 	encodeData, err := s.serializer.Encode(token)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrSerializeFailed, err)
+	}
+
+	// Use the remaining lifetime after encoding; non-positive storage TTL means no expiry. 编码后使用剩余有效期；存储的非正 TTL 表示永不过期。
+	timeout := remainingCredentialDuration(token.CreateTime, token.ExpiresIn, token.ExpiresAt)
+	if timeout <= 0 {
+		return ErrSharedTokenExpired
 	}
 	if err = s.storage.Set(ctx, s.getSharedTokenKey(token.Token), encodeData, timeout); err != nil {
 		return fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
@@ -990,11 +1032,17 @@ func (s *Server) saveSharedToken(ctx context.Context, token *SharedToken, timeou
 	return nil
 }
 
-// saveRemoteSession serializes and persists a remote session with the supplied ttl. saveRemoteSession 按指定有效期序列化并保存远程会话。
-func (s *Server) saveRemoteSession(ctx context.Context, session *RemoteSession, timeout time.Duration) error {
+// saveRemoteSession serializes and persists a remote session until its deadline. saveRemoteSession 按截止时间序列化并保存远程会话。
+func (s *Server) saveRemoteSession(ctx context.Context, session *RemoteSession) error {
 	encodeData, err := s.serializer.Encode(session)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrSerializeFailed, err)
+	}
+
+	// Use the remaining lifetime after encoding; non-positive storage TTL means no expiry. 编码后使用剩余有效期；存储的非正 TTL 表示永不过期。
+	timeout := remainingCredentialDuration(session.CreateTime, session.ExpiresIn, session.ExpiresAt)
+	if timeout <= 0 {
+		return ErrRemoteSessionExpired
 	}
 	if err = s.storage.Set(ctx, s.getRemoteSessionKey(session.SessionID), encodeData, timeout); err != nil {
 		return fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
@@ -1002,11 +1050,17 @@ func (s *Server) saveRemoteSession(ctx context.Context, session *RemoteSession, 
 	return nil
 }
 
-// saveOAuth2Code serializes and persists an OAuth2 code with the supplied ttl. saveOAuth2Code 按指定有效期序列化并保存 OAuth2 授权码。
-func (s *Server) saveOAuth2Code(ctx context.Context, code *OAuth2Code, timeout time.Duration) error {
+// saveOAuth2Code serializes and persists an OAuth2 code until its deadline. saveOAuth2Code 按截止时间序列化并保存 OAuth2 授权码。
+func (s *Server) saveOAuth2Code(ctx context.Context, code *OAuth2Code) error {
 	encodeData, err := s.serializer.Encode(code)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrSerializeFailed, err)
+	}
+
+	// Use the remaining lifetime after encoding; non-positive storage TTL means no expiry. 编码后使用剩余有效期；存储的非正 TTL 表示永不过期。
+	timeout := remainingCredentialDuration(code.CreateTime, code.ExpiresIn, code.ExpiresAt)
+	if timeout <= 0 {
+		return ErrOAuth2CodeExpired
 	}
 	if err = s.storage.Set(ctx, s.getOAuth2CodeKey(code.Code), encodeData, timeout); err != nil {
 		return fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
@@ -1200,7 +1254,7 @@ func (s *Server) checkTicketAlive(ticket *Ticket) error {
 	if ticket.Used {
 		return ErrTicketUsed
 	}
-	if ticket.ExpiresIn > 0 && time.Now().Unix() >= ticket.CreateTime+ticket.ExpiresIn {
+	if remainingCredentialDuration(ticket.CreateTime, ticket.ExpiresIn, ticket.ExpiresAt) <= 0 {
 		return ErrTicketExpired
 	}
 	return nil
@@ -1211,7 +1265,7 @@ func (s *Server) checkSharedTokenAlive(token *SharedToken) error {
 	if token == nil || token.Token == "" {
 		return ErrInvalidSharedToken
 	}
-	if token.ExpiresIn > 0 && time.Now().Unix() >= token.CreateTime+token.ExpiresIn {
+	if remainingCredentialDuration(token.CreateTime, token.ExpiresIn, token.ExpiresAt) <= 0 {
 		return ErrSharedTokenExpired
 	}
 	return nil
@@ -1222,7 +1276,7 @@ func (s *Server) checkRemoteSessionAlive(session *RemoteSession) error {
 	if session == nil || session.SessionID == "" {
 		return ErrInvalidRemoteSession
 	}
-	if session.ExpiresIn > 0 && time.Now().Unix() >= session.CreateTime+session.ExpiresIn {
+	if remainingCredentialDuration(session.CreateTime, session.ExpiresIn, session.ExpiresAt) <= 0 {
 		return ErrRemoteSessionExpired
 	}
 	return nil
@@ -1236,8 +1290,38 @@ func (s *Server) checkOAuth2CodeAlive(code *OAuth2Code) error {
 	if code.Used {
 		return ErrOAuth2CodeUsed
 	}
-	if code.ExpiresIn > 0 && time.Now().Unix() >= code.CreateTime+code.ExpiresIn {
+	if remainingCredentialDuration(code.CreateTime, code.ExpiresIn, code.ExpiresAt) <= 0 {
 		return ErrOAuth2CodeExpired
+	}
+	return nil
+}
+
+// remainingCredentialDuration uses precise deadlines and safely reads legacy second-based records. remainingCredentialDuration 使用精确截止时间并安全读取旧版秒级记录。
+func remainingCredentialDuration(createTime, expiresIn int64, expiresAt time.Time) time.Duration {
+	if expiresIn <= 0 {
+		return 0
+	}
+	if expiresAt.IsZero() {
+		if createTime > math.MaxInt64-expiresIn {
+			return 0
+		}
+		expiresAt = time.Unix(createTime+expiresIn, 0)
+	}
+	ttl := time.Until(expiresAt)
+	if ttl <= 0 {
+		return 0
+	}
+	return ttl
+}
+
+// checkClientMode rejects credentials for unregistered clients or disabled modes. checkClientMode 拒绝已注销客户端或已禁用模式的凭证。
+func (s *Server) checkClientMode(ctx context.Context, clientID string, mode Mode) error {
+	client, err := s.getClient(ctx, clientID)
+	if err != nil {
+		return err
+	}
+	if !s.isModeAllowed(client, mode) {
+		return ErrModeUnsupported
 	}
 	return nil
 }
@@ -1315,12 +1399,12 @@ func (s *Server) isValidLogoutCallbackURL(client *Client, callbackURL string) bo
 	if client == nil || callbackURL == "" {
 		return false
 	}
+	callback, err := url.Parse(callbackURL)
+	if err != nil || (callback.Scheme != "http" && callback.Scheme != "https") || callback.Hostname() == "" || callback.User != nil || callback.Fragment != "" {
+		return false
+	}
 	if s.isValidRedirectURI(client, callbackURL) {
 		return true
-	}
-	callback, err := url.Parse(callbackURL)
-	if err != nil || callback.Scheme == "" || callback.Host == "" {
-		return false
 	}
 	for _, origin := range client.AllowOrigins {
 		if originMatchesURL(origin, callback) {

@@ -194,6 +194,12 @@ mux.HandleFunc("/sso/logout-callback", app.LogoutCallbackHandler(func(r *http.Re
 | `UserInfo` | Read login subject information from a valid credential |
 | `Revoke` | Revoke a Ticket, shared token, remote session, or OAuth2 Code |
 
+`ServerURL` must be an absolute HTTP(S) URL without user credentials, query parameters, or a fragment. A gateway path prefix is supported and retained; endpoints must be paths without query parameters or fragments.
+
+HTTP calls default to a 10-second total timeout and do not follow redirects, including 307/308 redirects that could forward credential forms. An injected `HTTPClient` retains its timeout (including zero) and any explicit `CheckRedirect` policy; a nil policy still rejects redirects. The helper does not modify the injected client. Request context cancellation and earlier deadlines remain effective.
+
+Responses must contain a numeric `code`; identity and introspection calls also require non-null `data`. Exchange and UserInfo responses require a nonempty `loginId`. Numbers in `Extra` are decoded as `json.Number` without losing integer precision. `UserInfo` includes the credential's `active`, `mode`, and `expiresIn` fields.
+
 ## HTTP Redirect Integration
 
 `HTTPServer` exposes standard-library Handlers. You can mount them on `http.ServeMux` directly or bridge them into Gin, Echo, Fiber, and similar frameworks.
@@ -293,6 +299,8 @@ go test ./sso/storage/redis/... -v
 
 For applications under the same parent domain, shared cookies can be used as the SSO-center session source. This fits deployments such as `sso.example.com`, `app-a.example.com`, and `app-b.example.com`. A strong random `SecretKey` is required; without one, the cookie is not accepted as a trusted login identity.
 
+The signed cookie includes a precise expiration time that the server checks independently of browser `Max-Age`. Older cookies without a signed deadline are rejected after upgrading, so users must sign in again. Clearing a cookie removes the browser copy; it does not revoke other copies of this stateless credential before expiry. For immediate revocation, use a `LoginIDResolver` backed by server-side sessions and invalidate those sessions in the application's logout flow.
+
 ```go
 cookie := sso.CookieOptions{
 	Name:     "dtoken_sso",
@@ -360,12 +368,12 @@ if !signer.Verify(signedValues) {
 - The built-in `MemoryStorage` used by `sso.NewServer()` is intended for local debugging and tests only. Data is lost after process restart and it is not suitable for multi-instance deployments.
 - Production deployments should use `sso/storage/redis`. Redis storage implements atomic get-and-delete for cross-instance one-time Ticket and OAuth2 Code consumption.
 - Production deployments should enable `CheckSign` and configure `SecretKey` so Server and Client traffic, including logout callbacks, is protected against tampering.
-- Logout callback URLs are checked against client registration data. Avoid adding overly broad origins to `AllowOrigins`.
+- Logout callback URLs must be absolute HTTP(S) URLs without user information or fragments. Registration and sending both check current client allow-lists; unregistered clients are skipped. Avoid adding overly broad origins to `AllowOrigins`.
 - The framework prefers `adapter.AtomicStorage` for atomic Ticket and SSO OAuth2 Code consumption. Plain `Storage` uses a single-server serialized fallback and is not atomic across server instances.
 - `ModeSharedToken` is for trusted internal systems that reuse a short-lived credential and is client-scoped by default.
 - `ModeRemoteSession` is for applications that remotely check login state at the SSO center.
 - `ModeOAuth2` is an SSO authorization-code primitive, not the full OAuth2 Token Server.
-- `Signer` ignores the `sign` field itself and signs sorted parameter names and values, making it suitable for tamper protection between Server and Client.
+- `Signer` ignores the signature field itself, sorts parameter names, and preserves the order of repeated values to match first-value lookup semantics. Verification rejects empty secrets and multiple signature values. Single-value signatures are unchanged; regenerate signatures for repeated parameters when upgrading.
 - The HTTP authorization route can issue Ticket, shared-token, remote-session, or OAuth2-Code credentials by Mode, with exchange, introspection, revocation, userinfo, and unified logout callback endpoints.
 
 ## Testing And Examples

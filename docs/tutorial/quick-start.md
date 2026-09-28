@@ -11,7 +11,7 @@ This page is based on the current version of the codebase and walks through the 
 ### Option 1: Core Modules + Memory Storage
 
 ```bash
-go get github.com/Zany2/dtoken-go/core
+go get github.com/Zany2/dtoken-go/defaults
 go get github.com/Zany2/dtoken-go/dtoken
 go get github.com/Zany2/dtoken-go/com/storage/memory
 ```

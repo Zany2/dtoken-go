@@ -90,8 +90,6 @@ roles, err := dtoken.GetRoles(ctx, "10001", "user")
 不同路由组可以绑定不同认证体系：
 
 ```go
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
-
 userGroup := r.Group("/api")
 userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuthType("user")))
 
@@ -101,6 +99,8 @@ adminGroup.Use(gindt.RoleMiddleware(ctx, []string{"admin"}, gindt.WithAuthType("
 ```
 
 这样 `/api` 只能识别 `user` 体系的 Token，`/admin` 只能识别 `admin` 体系的 Token。
+
+各路由组的认证中间件会使用选定的 Manager 创建请求上下文。本例仅注册 `user` 和 `admin`，没有默认 `auth:` Manager，因此无需在全局挂载查找默认 Manager 的上下文注册中间件。
 
 ## Redis Key 隔离
 

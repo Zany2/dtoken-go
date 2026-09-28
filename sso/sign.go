@@ -23,10 +23,7 @@ func NewSigner(secret string) Signer {
 
 // NewSignerWithParams creates a signer with custom parameter names. NewSignerWithParams 使用自定义参数名创建签名器。
 func NewSignerWithParams(secret string, params ParamNames) Signer {
-	if params == (ParamNames{}) {
-		params = DefaultParamNames()
-	}
-	return Signer{secret: secret, params: params}
+	return Signer{secret: secret, params: normalizeParamNames(params)}
 }
 
 // Sign signs params with HMAC-SHA256. Sign 使用 HMAC-SHA256 签名参数。
@@ -45,7 +42,11 @@ func (s Signer) AttachSign(values url.Values) url.Values {
 }
 
 // Verify checks whether params carry a valid signature. Verify 校验参数签名是否有效。
+// Empty secrets and multiple signature values are rejected. 拒绝空密钥及多个签名值。
 func (s Signer) Verify(values url.Values) bool {
+	if s.secret == "" || len(values[s.params.Sign]) != 1 {
+		return false
+	}
 	got := values.Get(s.params.Sign)
 	if got == "" {
 		return false
@@ -67,9 +68,8 @@ func (s Signer) canonical(values url.Values) string {
 
 	parts := make([]string, 0, len(keys))
 	for _, key := range keys {
-		items := append([]string(nil), values[key]...)
-		sort.Strings(items)
-		for _, value := range items {
+		// Preserve value order because URL.Values.Get reads the first value. 保留同名参数值的顺序，因为 URL.Values.Get 读取第一个值。
+		for _, value := range values[key] {
 			// URL-encode key and value to prevent signature collision对键值进行URL编码，防止签名碰撞
 			parts = append(parts, url.QueryEscape(key)+"="+url.QueryEscape(value))
 		}

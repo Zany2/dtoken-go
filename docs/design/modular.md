@@ -64,7 +64,7 @@ github.com/Zany2/dtoken-go/com/storage/memory
 ```
 
 **Features**:
-- zero external dependencies
+- in-process storage with no external service requirement
 - suitable for development and testing
 
 #### Redis Storage
@@ -138,9 +138,11 @@ Application Code
 Framework Integration (integrations/*)    or    dtoken    or    sso
   ↓
 core
-  ↓
-com/storage/* / com/codec/* / com/log/* / com/pool/* / com/generator/*
+
+defaults -> com/* implementations -> core/adapter contracts
 ```
+
+`defaults` wires concrete components into the core Builder. The core does not import `com/*` implementations; applications may inject their own adapters.
 
 ## On-Demand Imports
 

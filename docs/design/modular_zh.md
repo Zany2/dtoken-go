@@ -64,7 +64,7 @@ github.com/Zany2/dtoken-go/com/storage/memory
 ```
 
 **特点**：
-- 零外部依赖
+- 进程内存储，无需外部服务
 - 适合开发和测试
 
 #### Redis 存储
@@ -138,9 +138,11 @@ go generate
 框架集成 (integrations/*)    或    dtoken    或    sso
   ↓
 core
-  ↓
-com/storage/* / com/codec/* / com/log/* / com/pool/* / com/generator/*
+
+defaults -> com/* 实现 -> core/adapter 契约
 ```
+
+`defaults` 将具体组件装配到核心 Builder 中。核心不导入 `com/*` 实现，应用也可以注入自定义适配器。
 
 ## 按需导入
 

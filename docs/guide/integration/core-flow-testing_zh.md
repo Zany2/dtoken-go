@@ -51,19 +51,18 @@ go test ./tests/gin_core_flow -v
 redis://localhost:6379/0
 ```
 
-未设置该环境变量时，Redis 流程测试会自动跳过。可复用的 `gin_core_app` fixture 在 `Config.RedisURL` 为空时使用内存存储。
+未设置该环境变量时，流程测试使用内存存储实际运行。显式配置 Redis 后，初始化或应用创建失败会导致测试失败，不再跳过。
 
-每个测试 app 会生成独立短前缀：
+每个测试 app 会生成随机独立前缀，不同测试进程之间也保持隔离：
 
 ```text
-dt:gcf:1:
-dt:gcf:2:
+dt-gcf-<32 位十六进制字符串>:
 ```
 
 测试结束时只清理当前前缀下的 key：
 
 ```text
-dt:gcf:1:*
+dt-gcf-<当前实例的 32 位十六进制字符串>:*
 ```
 
 不会清空整个 Redis DB。
@@ -89,7 +88,7 @@ dt:gcf:1:*
 
 ### Redis 里为什么还有 key？
 
-当前测试只删除 `dt:gcf:*` 本次测试前缀下的 key。其它前缀不会删除，例如：
+当前测试只删除自身随机前缀下的 key。其它前缀不会删除，例如：
 
 ```text
 dtoken:gin-core-flow:oauth2:client:demo-client
@@ -99,7 +98,7 @@ dtoken:gin-core-flow:oauth2:client:demo-client
 
 ### 自动续期 TTL 为什么会浮动？
 
-Redis TTL 是秒级返回，和内存存储的时间精度不完全一致。测试中只验证 TTL 落在合理区间，不依赖精确毫秒。
+Manager 对外返回整数秒 TTL，因此读数可能随秒级边界变化。续期测试通过 Manager 直接读取 TTL，避免测量时触发鉴权和续期；使用有超时限制的轮询观察实际 TTL 增长，并在相应用例中检查续期事件，不再依赖固定的任务等待时间。
 
 ### 什么时候需要启动 gin_core_app？
 

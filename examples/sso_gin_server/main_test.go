@@ -38,10 +38,12 @@ func TestSafeBackAllowsLocalPathsOnly(t *testing.T) {
 // TestGinLoginAndHome verifies login page rendering, login cookie creation, and home status. TestGinLoginAndHome 验证登录页渲染、登录 Cookie 创建与首页状态。
 func TestGinLoginAndHome(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.GET("/", home)
-	router.GET("/login", loginPageHandler)
-	router.POST("/login", loginSubmit)
+	server := sso.NewServer()
+	defer server.Close()
+	router, err := newDemoRouter(server)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	page := performGinRequest(router, http.MethodGet, "/login?back=%2Fprotected%3Ffrom%3Dlogin", "")
 	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "/protected?from=login") {
@@ -75,30 +77,25 @@ func TestGinLoginAndHome(t *testing.T) {
 func TestGinSSORoutesIssueAndExchangeTicket(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	server := sso.NewServer()
-	if err := server.RegisterClient(&sso.Client{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		Name:         "Gin Demo Client",
-		RedirectURIs: []string{callbackURL},
-		Modes:        []sso.Mode{sso.ModeTicket},
-	}); err != nil {
-		t.Fatalf("RegisterClient() error = %v", err)
+	defer server.Close()
+	router, err := newDemoRouter(server)
+	if err != nil {
+		t.Fatal(err)
 	}
-	httpSSO := sso.NewHTTPServer(server, sso.HTTPOptions{
-		ServerOptions: sso.ServerOptions{
-			CheckSign: false,
-			Endpoints: sso.DefaultEndpoints(),
-			Params:    sso.DefaultParamNames(),
-		},
-		LoginIDResolver: sso.LoginIDFromCookie(cookie),
-		Cookie:          cookie,
-	})
-	router := gin.New()
-	registerSSORoutes(router, httpSSO)
 
-	authorizeRequest := httptest.NewRequest(http.MethodGet, "/sso/authorize?client="+url.QueryEscape(clientID)+"&redirect="+url.QueryEscape(callbackURL), nil)
-	cookieRecorder := httptest.NewRecorder()
-	sso.SetLoginIDCookie(cookieRecorder, cookie, "alice")
+	authorizeRequest := httptest.NewRequest(http.MethodGet, "/sso/authorize?client="+url.QueryEscape(clientID)+"&redirect="+url.QueryEscape(callbackURL)+"&back=browser-state", nil)
+	anonymous := httptest.NewRecorder()
+	router.ServeHTTP(anonymous, authorizeRequest)
+	loginURL, err := url.Parse(anonymous.Header().Get("Location"))
+	if err != nil || anonymous.Code != http.StatusFound || loginURL.Path != "/login" || loginURL.Query().Get("back") != authorizeRequest.URL.RequestURI() {
+		t.Fatalf("anonymous authorize: status=%d location=%v error=%v", anonymous.Code, loginURL, err)
+	}
+	cookieRecorder := performGinRequest(router, http.MethodPost, "/login", url.Values{
+		"loginId": {"alice"}, "back": {loginURL.Query().Get("back")},
+	}.Encode())
+	if cookieRecorder.Code != http.StatusFound || cookieRecorder.Header().Get("Location") != authorizeRequest.URL.RequestURI() || len(cookieRecorder.Result().Cookies()) != 1 {
+		t.Fatalf("login did not resume authorization: status=%d headers=%v", cookieRecorder.Code, cookieRecorder.Header())
+	}
 	authorizeRequest.AddCookie(cookieRecorder.Result().Cookies()[0])
 	authorizeRecorder := httptest.NewRecorder()
 	router.ServeHTTP(authorizeRecorder, authorizeRequest)
@@ -110,7 +107,7 @@ func TestGinSSORoutesIssueAndExchangeTicket(t *testing.T) {
 		t.Fatalf("parse authorize location: %v", err)
 	}
 	ticket := location.Query().Get("ticket")
-	if ticket == "" || location.Path != "/sso/callback" {
+	if ticket == "" || location.Path != "/sso/callback" || location.Query().Get("back") != "browser-state" {
 		t.Fatalf("authorize location = %q, want callback with ticket", location.String())
 	}
 
@@ -120,6 +117,14 @@ func TestGinSSORoutesIssueAndExchangeTicket(t *testing.T) {
 		"clientSecret": {clientSecret},
 		"redirect":     {callbackURL},
 	}
+
+	// Invalid credentials must not consume the Ticket. 无效凭据不能消费 Ticket。
+	form.Set("clientSecret", "wrong-secret")
+	invalid := performGinRequest(router, http.MethodPost, "/sso/token", form.Encode())
+	if invalid.Code != http.StatusUnauthorized {
+		t.Fatalf("invalid credentials status = %d", invalid.Code)
+	}
+	form.Set("clientSecret", clientSecret)
 	tokenRequest := httptest.NewRequest(http.MethodPost, "/sso/token", strings.NewReader(form.Encode()))
 	tokenRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	tokenRecorder := httptest.NewRecorder()
@@ -135,8 +140,12 @@ func TestGinSSORoutesIssueAndExchangeTicket(t *testing.T) {
 	if !ok || data["loginId"] != "alice" {
 		t.Fatalf("token response data = %#v, want loginId alice", response.Data)
 	}
+	if replay := performGinRequest(router, http.MethodPost, "/sso/token", form.Encode()); replay.Code != http.StatusBadRequest {
+		t.Fatalf("replayed ticket status = %d, want 400", replay.Code)
+	}
 }
 
+// performGinRequest submits a request without opening a network listener. performGinRequest 不启动网络监听即可提交请求。
 func performGinRequest(router http.Handler, method, path, form string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(method, path, strings.NewReader(form))
 	if form != "" {

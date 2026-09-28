@@ -19,7 +19,7 @@ type ClientConfig struct {
 	Mode                 Mode          // Mode stores preferred SSO mode. Mode 存储首选 SSO 模式。
 	ClientID             string        // ClientID stores current application id. ClientID 存储当前应用 ID。
 	ClientSecret         string        // ClientSecret stores current application secret. ClientSecret 存储当前应用密钥。
-	ServerURL            string        // ServerURL stores SSO server base URL. ServerURL 存储 SSO 服务端根地址。
+	ServerURL            string        // ServerURL stores an absolute HTTP(S) base URL without credentials, query, or fragment. ServerURL 存储不含凭据、查询串和片段的 HTTP(S) 绝对基础地址。
 	LoginURL             string        // LoginURL stores current client login URL. LoginURL 存储当前客户端登录地址。
 	LogoutCallbackURL    string        // LogoutCallbackURL stores current client logout callback URL. LogoutCallbackURL 存储当前客户端注销回调地址。
 	UseHTTPCheck         bool          // UseHTTPCheck enables remote ticket validation mode. UseHTTPCheck 启用远程 Ticket 校验模式。
@@ -28,7 +28,7 @@ type ClientConfig struct {
 	CheckSign            bool          // CheckSign enables request signature checks. CheckSign 启用请求签名校验。
 	SecretKey            string        // SecretKey stores request signing secret. SecretKey 存储请求签名密钥。
 	LogoutCallbackMaxAge time.Duration // LogoutCallbackMaxAge stores accepted logout callback clock skew. LogoutCallbackMaxAge 存储注销回调允许时间差。
-	HTTPClient           *http.Client  // HTTPClient stores optional transport client. HTTPClient 存储可选 HTTP 客户端。
+	HTTPClient           *http.Client  // HTTPClient overrides the default 10-second client; redirects require an explicit policy. HTTPClient 覆盖默认 10 秒超时客户端；重定向需要显式策略。
 	Endpoints            Endpoints     // Endpoints stores server/client protocol paths. Endpoints 存储服务端/客户端协议路径。
 	Params               ParamNames    // Params stores protocol parameter names. Params 存储协议参数名。
 }
@@ -77,12 +77,8 @@ func NewClientApp(cfg ClientConfig) *ClientApp {
 	if cfg.Mode == "" {
 		cfg.Mode = defaults.Mode
 	}
-	if cfg.Endpoints == (Endpoints{}) {
-		cfg.Endpoints = defaults.Endpoints
-	}
-	if cfg.Params == (ParamNames{}) {
-		cfg.Params = defaults.Params
-	}
+	cfg.Endpoints = normalizeEndpoints(cfg.Endpoints)
+	cfg.Params = normalizeParamNames(cfg.Params)
 	if cfg.LogoutCallbackMaxAge <= 0 {
 		cfg.LogoutCallbackMaxAge = defaults.LogoutCallbackMaxAge
 	}
@@ -177,6 +173,9 @@ func (c *ClientApp) ExchangeCredential(ctx context.Context, req CredentialReques
 	if err := c.postForm(ctx, c.config.Endpoints.Token, values, &result); err != nil {
 		return nil, err
 	}
+	if result.LoginID == "" {
+		return nil, errors.New("sso exchange response is missing loginId")
+	}
 	return &result, nil
 }
 
@@ -203,6 +202,9 @@ func (c *ClientApp) UserInfo(ctx context.Context, req CredentialRequest) (*Crede
 	if err := c.postForm(ctx, c.config.Endpoints.UserInfo, values, &info); err != nil {
 		return nil, err
 	}
+	if info.LoginID == "" {
+		return nil, errors.New("sso userinfo response is missing loginId")
+	}
 	return &info, nil
 }
 
@@ -226,7 +228,7 @@ func (c *ClientApp) VerifyLogoutCallback(r *http.Request) (*LogoutCallback, erro
 		return nil, ErrMethodNotAllowed
 	}
 	if err := r.ParseForm(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}
 	values := cloneValues(r.Form)
 	if c.config.CheckSign {
@@ -260,6 +262,9 @@ func (c *ClientApp) VerifyLogoutCallback(r *http.Request) (*LogoutCallback, erro
 // LogoutCallbackHandler returns a standard HTTP handler for single logout. LogoutCallbackHandler 返回标准单点注销 HTTP 处理器。
 func (c *ClientApp) LogoutCallbackHandler(fn LogoutCallbackFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Pragma", "no-cache")
+
 		callback, err := c.VerifyLogoutCallback(r)
 		if err != nil {
 			http.Error(w, err.Error(), statusFromError(err))
@@ -277,7 +282,7 @@ func (c *ClientApp) LogoutCallbackHandler(fn LogoutCallbackFunc) http.HandlerFun
 
 // buildServerURL builds and optionally signs an SSO server URL. buildServerURL 构建并按需签名 SSO 服务端 URL。
 func (c *ClientApp) buildServerURL(path string, values url.Values) (string, error) {
-	base, err := url.Parse(joinURL(c.config.ServerURL, path))
+	base, err := joinURL(c.config.ServerURL, path)
 	if err != nil {
 		return "", err
 	}
@@ -353,8 +358,11 @@ func (c *ClientApp) postForm(ctx context.Context, path string, values url.Values
 		}
 		values = NewSignerWithParams(c.config.SecretKey, c.config.Params).AttachSign(values)
 	}
-	target := joinURL(c.config.ServerURL, path)
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, target, strings.NewReader(values.Encode()))
+	target, err := joinURL(c.config.ServerURL, path)
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, target.String(), strings.NewReader(values.Encode()))
 	if err != nil {
 		return err
 	}
@@ -362,7 +370,16 @@ func (c *ClientApp) postForm(ctx context.Context, path string, values url.Values
 
 	client := c.config.HTTPClient
 	if client == nil {
-		client = http.DefaultClient
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
+
+	// Do not implicitly forward credential forms or mutate the caller's client. 不隐式转发凭证表单，也不修改调用方客户端。
+	if client.CheckRedirect == nil {
+		clientCopy := *client
+		clientCopy.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+		client = &clientCopy
 	}
 	response, err := client.Do(request)
 	if err != nil {
@@ -378,28 +395,55 @@ func (c *ClientApp) postForm(ctx context.Context, path string, values url.Values
 		return fmt.Errorf("sso request failed with status %d: %s", response.StatusCode, string(payload))
 	}
 
-	var body Response
+	// Decode data only once so integer identities and metadata retain precision. 数据只解码一次，保留整数标识及元数据精度。
+	var body struct {
+		Code    *int            `json:"code"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
+	}
 	if err = json.Unmarshal(payload, &body); err != nil {
 		return err
 	}
-	if body.Code != 0 {
-		return errors.New(body.Message)
+	if body.Code == nil {
+		return errors.New("sso response is missing code")
 	}
-	if out == nil || body.Data == nil {
+	if *body.Code != 0 {
+		return fmt.Errorf("sso response failed with code %d: %s", *body.Code, body.Message)
+	}
+	if out == nil {
 		return nil
 	}
-	rawData, err := json.Marshal(body.Data)
-	if err != nil {
-		return err
+	if len(body.Data) == 0 || bytes.Equal(bytes.TrimSpace(body.Data), []byte("null")) {
+		return errors.New("sso response is missing data")
 	}
-	decoder := json.NewDecoder(bytes.NewReader(rawData))
+	decoder := json.NewDecoder(bytes.NewReader(body.Data))
 	decoder.UseNumber()
 	return decoder.Decode(out)
 }
 
-// joinURL joins a server base URL with a path. joinURL 连接服务端基础 URL 与路径。
-func joinURL(baseURL, path string) string {
-	baseURL = strings.TrimRight(baseURL, "/")
-	path = "/" + strings.TrimLeft(path, "/")
-	return baseURL + path
+// joinURL validates and joins a base URL with a protocol path, retaining escaped prefixes. joinURL 校验并连接基础地址和协议路径，保留转义的路径前缀。
+func joinURL(baseURL, path string) (*url.URL, error) {
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, err
+	}
+	if (base.Scheme != "http" && base.Scheme != "https") || base.Hostname() == "" || base.User != nil || base.RawQuery != "" || base.ForceQuery || strings.Contains(baseURL, "#") {
+		return nil, errors.New("sso server URL must be absolute HTTP(S) without credentials, query, or fragment")
+	}
+	endpoint, err := url.Parse(path)
+	if err != nil {
+		return nil, err
+	}
+	if endpoint.IsAbs() || endpoint.Host != "" || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.ForceQuery || strings.Contains(path, "#") {
+		return nil, errors.New("sso endpoint must be a path without query or fragment")
+	}
+
+	// Avoid resolving a leading slash against the host and losing the gateway prefix. 避免首斜杠按根路径解析而丢失网关前缀。
+	rawPath := strings.TrimRight(base.EscapedPath(), "/") + "/" + strings.TrimLeft(endpoint.EscapedPath(), "/")
+	base.Path, err = url.PathUnescape(rawPath)
+	if err != nil {
+		return nil, err
+	}
+	base.RawPath = rawPath
+	return base, nil
 }

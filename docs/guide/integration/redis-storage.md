@@ -94,6 +94,8 @@ if _, err := dtoken.BuildAndSetManager(
 }
 ```
 
+`NewStorageFromClient` wraps the supplied client without changing its connection settings. `Storage.Close()` closes that client, and a Manager owns injected storage by default. For a client shared elsewhere, use caller-owned storage through `ComponentOwnership{Storage: false, Logger: true, Pool: true}` and close it once after all users stop; see [Multi-Auth Systems](../core/multi-auth.md).
+
 ## Config Fields
 
 Current `redis.Config` fields:
@@ -133,14 +135,14 @@ if _, err = dtoken.BuildAndSetManager(
 }
 ```
 
-Login state, session data, permissions, roles, nonce data, and OAuth2 tokens will then all use Redis.
+Login state, session data, permissions, and roles use Redis. Nonce and OAuth2 use the same backend after their optional modules are enabled.
 
 ## Redis Key Structure
 
-Core storage keys use a unified format:
+Core storage keys use a unified format. Namespace components are escaped independently; see [Namespace Rules](../reference/configuration.md#namespace-rules).
 
 ```text
-KeyPrefix + AuthType + businessPrefix + businessID
+encoded KeyPrefix + encoded AuthType + businessPrefix + businessID
 ```
 
 With default configuration:
@@ -179,17 +181,16 @@ The same `loginID` under different `AuthType` values is independent. Tokens, ses
 
 ### Test Prefix
 
-`tests/gin_core_flow` uses short prefixes to avoid polluting Redis:
+`tests/gin_core_flow` uses a random prefix for each fixture, isolating independent test processes:
 
 ```text
-dt:gcf:1:
-dt:gcf:2:
+dt-gcf-<32 hexadecimal characters>:
 ```
 
 During cleanup, it deletes only keys under the current prefix:
 
 ```text
-dt:gcf:1:*
+dt-gcf-<this fixture's 32 hexadecimal characters>:*
 ```
 
 It does not clear the whole Redis DB.

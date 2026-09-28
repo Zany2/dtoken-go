@@ -94,8 +94,19 @@ func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...st
 **Example**:
 ```go
 nextPair, err := dtoken.RefreshToken(ctx, pair.RefreshToken)
+if err != nil {
+    return err
+}
+
 ttl, err := dtoken.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
-_ = dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
+if err != nil {
+    return err
+}
+fmt.Println(ttl)
+
+if err := dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken); err != nil {
+    return err
+}
 ```
 
 ### IntrospectToken
@@ -422,15 +433,17 @@ func GetSessionByToken(ctx context.Context, tokenValue string, authType ...strin
 
 **Example**:
 ```go
-sess, _ := dtoken.GetSession(ctx, "1000")
-sessByToken, _ := dtoken.GetSessionByToken(ctx, token)
-
-sess.Set("nickname", "John")
-nickname := sess.GetString("nickname")
-
-_ = sessByToken
-_ = nickname
+if err := dtoken.SetSessionValue(ctx, "1000", "nickname", "John"); err != nil {
+    return err
+}
+nickname, found, err := dtoken.GetSessionValue(ctx, "1000", "nickname")
+if err != nil {
+    return err
+}
+fmt.Println(nickname, found)
 ```
+
+`GetSession` and `GetSessionByToken` return decoded snapshots. Calling `sess.Set(...)` only changes that local value. Use `SetSessionValue` or `SetSessionValueByToken` to persist account data while preserving the Session lifetime.
 
 ### Common Extended Methods
 
@@ -479,6 +492,8 @@ type TokenInfo struct {
 
 ### Nonce API
 
+Enable this optional module with `EnableNonce()` before building the registered Manager.
+
 ```go
 func GenerateNonce(ctx context.Context, authType ...string) (string, error)
 func GenerateNonceWithTimeout(ctx context.Context, timeout time.Duration, authType ...string) (string, error)
@@ -489,6 +504,8 @@ func GetNonceTTL(ctx context.Context, nonce string, authType ...string) (int64, 
 ```
 
 ### OAuth2 API
+
+Enable this optional module with `EnableOAuth2()` before building the registered Manager.
 
 ```go
 func RegisterOAuth2Client(client *oauth2.Client, authType ...string) error

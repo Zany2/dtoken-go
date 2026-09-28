@@ -27,7 +27,7 @@ mgr, err := defaults.NewBuilder().
     Build()
 ```
 
-通常只需要显式设置存储。其他组件没有特殊诉求时，可以继续使用默认实现。
+默认已经提供内存存储；使用 Redis 或其他后端时再显式设置存储。其他组件没有特殊诉求时，可以继续使用默认实现。
 
 ## 替换具体组件
 
@@ -78,10 +78,19 @@ mgr, err := defaults.NewBuilder().
 如果需要完全自定义生成规则，实现 `adapter.Generator` 即可：
 
 ```go
+import (
+    "crypto/rand"
+    "encoding/hex"
+)
+
 type MyGenerator struct{}
 
 func (MyGenerator) Generate(loginID, device, deviceID string) (string, error) {
-    return "my-token-value", nil
+    var value [32]byte
+    if _, err := rand.Read(value[:]); err != nil {
+        return "", err
+    }
+    return hex.EncodeToString(value[:]), nil
 }
 ```
 

@@ -182,6 +182,120 @@ func ErrorResponse(code int, message string) Response {
 	return Response{Code: code, Message: message}
 }
 
+// normalizeEndpoints fills omitted fields while preserving explicit values. normalizeEndpoints 补齐未设置的协议路径并保留显式配置。
+func normalizeEndpoints(value Endpoints) Endpoints {
+	defaults := DefaultEndpoints()
+	if value.Authorize == "" {
+		value.Authorize = defaults.Authorize
+	}
+	if value.Token == "" {
+		value.Token = defaults.Token
+	}
+	if value.Introspect == "" {
+		value.Introspect = defaults.Introspect
+	}
+	if value.UserInfo == "" {
+		value.UserInfo = defaults.UserInfo
+	}
+	if value.Revoke == "" {
+		value.Revoke = defaults.Revoke
+	}
+	if value.Logout == "" {
+		value.Logout = defaults.Logout
+	}
+	if value.Message == "" {
+		value.Message = defaults.Message
+	}
+	if value.ClientLogin == "" {
+		value.ClientLogin = defaults.ClientLogin
+	}
+	if value.ClientCallback == "" {
+		value.ClientCallback = defaults.ClientCallback
+	}
+	if value.ClientLogout == "" {
+		value.ClientLogout = defaults.ClientLogout
+	}
+	if value.ClientMessage == "" {
+		value.ClientMessage = defaults.ClientMessage
+	}
+	return value
+}
+
+// normalizeParamNames fills omitted fields while preserving explicit values. normalizeParamNames 补齐未设置的参数名并保留显式配置。
+func normalizeParamNames(value ParamNames) ParamNames {
+	defaults := DefaultParamNames()
+	if value.Redirect == "" {
+		value.Redirect = defaults.Redirect
+	}
+	if value.Ticket == "" {
+		value.Ticket = defaults.Ticket
+	}
+	if value.Code == "" {
+		value.Code = defaults.Code
+	}
+	if value.SessionID == "" {
+		value.SessionID = defaults.SessionID
+	}
+	if value.Back == "" {
+		value.Back = defaults.Back
+	}
+	if value.Mode == "" {
+		value.Mode = defaults.Mode
+	}
+	if value.Scope == "" {
+		value.Scope = defaults.Scope
+	}
+	if value.LoginID == "" {
+		value.LoginID = defaults.LoginID
+	}
+	if value.Client == "" {
+		value.Client = defaults.Client
+	}
+	if value.TokenName == "" {
+		value.TokenName = defaults.TokenName
+	}
+	if value.TokenValue == "" {
+		value.TokenValue = defaults.TokenValue
+	}
+	if value.DeviceID == "" {
+		value.DeviceID = defaults.DeviceID
+	}
+	if value.ClientSecret == "" {
+		value.ClientSecret = defaults.ClientSecret
+	}
+	if value.Callback == "" {
+		value.Callback = defaults.Callback
+	}
+	if value.AutoLogout == "" {
+		value.AutoLogout = defaults.AutoLogout
+	}
+	if value.Name == "" {
+		value.Name = defaults.Name
+	}
+	if value.Password == "" {
+		value.Password = defaults.Password
+	}
+	if value.Timestamp == "" {
+		value.Timestamp = defaults.Timestamp
+	}
+	if value.Nonce == "" {
+		value.Nonce = defaults.Nonce
+	}
+	if value.Sign == "" {
+		value.Sign = defaults.Sign
+	}
+	if value.RemainSessionTimeout == "" {
+		value.RemainSessionTimeout = defaults.RemainSessionTimeout
+	}
+	if value.RemainTokenTimeout == "" {
+		value.RemainTokenTimeout = defaults.RemainTokenTimeout
+	}
+	if value.SingleDeviceIDLogout == "" {
+		value.SingleDeviceIDLogout = defaults.SingleDeviceIDLogout
+	}
+	return value
+}
+
 // joinPath joins a prefix with a protocol path. joinPath 连接前缀与协议路径。
 func joinPath(prefix, path string) string {
 	prefix = strings.TrimRight(prefix, "/")

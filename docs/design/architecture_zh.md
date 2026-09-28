@@ -141,7 +141,9 @@ type Storage interface {
     Get(ctx context.Context, key string) (any, error)
     Delete(ctx context.Context, keys ...string) error
     Exists(ctx context.Context, key string) bool
+    Expire(ctx context.Context, key string, expiration time.Duration) error
     TTL(ctx context.Context, key string) (time.Duration, error)
+    Ping(ctx context.Context) error
 }
 ```
 
@@ -187,9 +189,9 @@ dtoken.Login(ctx, loginID, ...)
   ↓
 2. 生成 Token
   ↓
-3. 保存 TokenInfo
+3. 保存 Session，保留已有的更长 TTL
   ↓
-4. 保存 Session
+4. 保存 TokenInfo
   ↓
 5. 初始化续期 / 活跃状态
   ↓
@@ -203,15 +205,15 @@ dtoken.Login(ctx, loginID, ...)
   ↓
 dtoken.IsLogin(ctx, token)
   ↓
-1. 读取 TokenInfo
+1. 校验 TokenInfo 及其 Session、终端绑定
   ↓
-2. 检查账号封禁状态
+2. 检查账号和设备封禁状态
   ↓
 3. 检查 ActiveTimeout
   ↓
-4. 满足条件时触发异步续期
+4. 按需调度合并的续期和活跃维护任务
   ↓
-5. 异步更新活跃时间
+5. 任务写入前复核生命周期，活跃时间采用请求时间
   ↓
 6. 返回校验结果
 ```
@@ -225,7 +227,7 @@ CheckPermissionMiddleware / HasPermission
   ↓
 1. 获取 Token 或 loginID
   ↓
-2. 检查登录状态
+2. 中间件和基于 Token 的接口校验登录状态
   ↓
 3. 获取权限列表
   ↓
@@ -235,6 +237,8 @@ CheckPermissionMiddleware / HasPermission
   ↓
 6. 返回结果
 ```
+
+按账号调用的 `HasPermission(ctx, loginID, ...)` 从账号或 AccessProvider 解析权限，不代表调用者持有有效登录 Token。请求处理应搭配认证中间件或基于 Token 的校验。
 
 ## 自动续签设计
 
@@ -263,7 +267,9 @@ CheckPermissionMiddleware / HasPermission
 
 当前 Key 由：
 
-`KeyPrefix + AuthType + 业务前缀 + 业务标识`
+`编码后的 KeyPrefix + 编码后的 AuthType + 业务前缀 + 业务标识`
+
+命名空间各部分会独立转义内部分隔符。分析包含内部冒号或反斜杠的键之前，请参阅[命名空间规则](../guide/reference/configuration_zh.md)。
 
 组成，默认前缀示例如下：
 

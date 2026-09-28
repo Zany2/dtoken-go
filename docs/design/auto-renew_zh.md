@@ -15,78 +15,43 @@
 
 ### 异步续签策略
 
-当前版本的自动续签发生在登录校验流程内部，核心入口是 `Manager.checkLoginInternal()`。
+登录校验先检查 Token 生命周期、Session、账号和设备封禁状态，以及不活跃超时，再调度维护任务。
 
-与旧版“每次 `IsLogin()` 直接裸 `goroutine` 续期”不同，当前实现会：
+`prepareLoginMaintenance` 将同一 Token 生命周期的并发请求合并为一个待执行任务。启用活跃跟踪时会记录最近一次成功请求的时间；未启用活跃跟踪时，仅在满足自动续期条件后提交任务。
 
-1. 先读取 Token 的剩余 TTL
-2. 只有剩余 TTL 小于等于 `RenewMaxRefresh` 时才考虑续期
-3. 如果配置了 `RenewInterval`，则通过续期标记键限制频繁续期
-4. 优先通过协程池提交续期任务
-5. 同时异步更新活跃时间键
-
-### 实现思路
-
-```go
-if m.config.AutoRenew && m.config.Timeout > 0 {
-    if ttl <= RenewMaxRefresh && renewInterval 条件满足 {
-        renewFunc := func() {
-            m.renewFunc(context.Background(), tokenValue, tokenInfo.LoginID)
-        }
-
-        if m.pool != nil {
-            _ = m.pool.Submit(renewFunc)
-        } else {
-            go renewFunc()
-        }
-    }
-}
-
-if m.config.ActiveTimeout > 0 {
-    activeFunc := func() {
-        _ = m.storage.Set(ctx, m.getActiveKey(tokenValue), time.Now().Unix(), m.getExpiration())
-    }
-    // 同样优先走协程池
-}
-```
+`submitAsync` 优先使用配置的协程池；没有池或提交失败时，回退到受 Manager 跟踪的 goroutine。Manager 关闭期间拒绝新任务。
 
 ## 工作流程
 
 ### 同步部分
 
 ```text
-1. 读取 TokenInfo
-   ├─ 失败 -> 返回未登录或 Token 状态错误
-   └─ 成功 -> 继续
-
-2. 检查账号封禁状态
-   ├─ 已封禁 -> 返回封禁错误
-   └─ 未封禁 -> 继续
-
-3. 检查 ActiveTimeout
-   ├─ 超时 -> 执行踢出并返回错误
-   └─ 未超时 -> 继续
-
-4. 返回登录校验成功
+1. 读取并校验 TokenInfo 和 Session
+2. 检查账号、设备封禁状态和 ActiveTimeout
+3. 为当前 Token 生命周期预留或更新维护任务
+4. 释放账号锁后提交任务，返回登录校验成功
 ```
 
 ### 异步部分
 
 ```text
-异步续期任务
+单个维护任务
   ↓
-1. 延长 Token 过期时间
+1. 在账号锁内复核任务代次和 Token 生命周期
   ↓
-2. 延长 Session 过期时间
+2. 重新加载 Session，并复核封禁状态
   ↓
-3. 写入续期间隔标记（如果启用）
+3. 满足续期条件时，按 Token 自身的有效期续期，
+   保留更长的 Session TTL，并写入续期间隔标记
   ↓
-4. 触发续期事件
-
-异步活跃任务
+4. 启用活跃跟踪时，持久化最近一次请求的活跃时间
   ↓
-1. 更新 active:{token} 键
+5. 释放账号锁，仅在续期成功后触发 EventRenew
 ```
+
+旧任务不能维护后来复用同一 Token 值的新登录。活跃时间采用记录的请求时间，而不是工作线程实际执行时间。
+
+`LoginByToken` 校验已有登录后请求强制维护，不受 `AutoRenew`、阈值和间隔资格检查限制。它仍是异步操作；调用方需要同步续期结果时，应使用 `RenewTimeout`。
 
 ## 续签触发条件
 
@@ -200,7 +165,9 @@ type Storage interface {
     Get(ctx context.Context, key string) (any, error)
     Delete(ctx context.Context, keys ...string) error
     Exists(ctx context.Context, key string) bool
+    Expire(ctx context.Context, key string, expiration time.Duration) error
     TTL(ctx context.Context, key string) (time.Duration, error)
+    Ping(ctx context.Context) error
 }
 ```
 

@@ -194,6 +194,12 @@ mux.HandleFunc("/sso/logout-callback", app.LogoutCallbackHandler(func(r *http.Re
 | `UserInfo` | 使用有效凭证读取登录主体信息 |
 | `Revoke` | 撤销 Ticket、共享 Token、远程会话或 OAuth2 Code |
 
+`ServerURL` 必须是 HTTP(S) 绝对地址，不能包含用户凭据、查询参数或片段；支持并保留网关路径前缀。端点配置必须是路径，不能包含查询参数或片段。
+
+HTTP 请求默认总超时为 10 秒，且不跟随重定向，包括可能转发表单凭证的 307/308。注入的 `HTTPClient` 保留自身超时（包括零值）及显式 `CheckRedirect` 策略；未配置策略时仍拒绝重定向。辅助对象不会修改注入的客户端，请求上下文的取消及更早截止时间仍然有效。
+
+响应必须包含数值型 `code`，身份获取和凭证检查还要求非空 `data`。交换凭证和 UserInfo 响应必须包含非空 `loginId`。`Extra` 中的数字解码为 `json.Number`，保留整数精度。`UserInfo` 包含凭证的 `active`、`mode` 和 `expiresIn` 字段。
+
 ## HTTP 重定向接入
 
 `HTTPServer` 提供标准库 Handler，可以直接挂载到 `http.ServeMux`，也可以被 Gin、Echo、Fiber 等框架转接。
@@ -293,6 +299,8 @@ go test ./sso/storage/redis/... -v
 
 同主域部署时，可以使用共享 Cookie 作为登录中心会话来源。它适合 `sso.example.com`、`app-a.example.com`、`app-b.example.com` 这类场景。必须配置强随机 `SecretKey`；未配置时 Cookie 不会被解析为可信登录身份。
 
+签名 Cookie 包含精确过期时间，服务端会独立于浏览器的 `Max-Age` 检查有效期。升级后，缺少签名截止时间的旧 Cookie 会被拒绝，用户需要重新登录。清除 Cookie 只删除浏览器副本，不能提前撤销这种无状态凭证的其他副本。如需立即撤销，请通过 `LoginIDResolver` 查询服务端会话，并在应用注销流程中使该会话失效。
+
 ```go
 cookie := sso.CookieOptions{
 	Name:     "dtoken_sso",
@@ -360,12 +368,12 @@ if !signer.Verify(signedValues) {
 - `sso.NewServer()` 内置的 `MemoryStorage` 只适合本地调试和测试，进程重启后数据会丢失，也不适合多实例部署。
 - 生产环境建议使用 `sso/storage/redis`，Redis 存储已经实现原子读删能力，适合一次性 Ticket 和 OAuth2 Code 消费场景。
 - 生产环境建议开启 `CheckSign` 并配置 `SecretKey`，让 Server 与 Client 之间的换票、检查和注销回调都具备防篡改能力。
-- 注销回调地址会按客户端注册信息校验来源，不建议把过宽的域名加入 `AllowOrigins`。
+- 注销回调地址必须是无用户信息、无片段的 HTTP(S) 绝对地址。登记和发送前都会校验当前客户端白名单，已注销客户端会被跳过。不建议把过宽的域名加入 `AllowOrigins`。
 - 如果使用自定义存储，框架会优先使用 `adapter.AtomicStorage` 原子消费 Ticket 和 SSO OAuth2 授权码；普通 `Storage` 使用单实例串行回退，不保证跨实例原子性。
 - `ModeSharedToken` 适合可信系统内部复用短期凭证，默认按客户端维度校验。
 - `ModeRemoteSession` 适合子系统不保存完整登录态、每次向统一登录中心远程校验的场景。
 - `ModeOAuth2` 是 SSO 场景下的授权码原语，不等同于完整 OAuth2 Token Server。
-- `Signer` 默认忽略 `sign` 字段本身，并按参数名和值排序后签名，适合 Server 与 Client 之间做请求防篡改。
+- `Signer` 忽略签名字段本身，按参数名排序，并保留同名参数值的顺序，与取首值的读取语义保持一致。验签拒绝空密钥和多个签名值。单值参数签名不变；升级时，同名多值参数需要重新签名。
 - 当前 HTTP 授权路由支持按 Mode 签发 Ticket、共享 Token、远程会话或 OAuth2 Code，并提供凭证交换、检查、撤销、用户信息和统一登出回调推送。
 
 ## 测试与示例

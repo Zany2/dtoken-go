@@ -141,7 +141,9 @@ type Storage interface {
     Get(ctx context.Context, key string) (any, error)
     Delete(ctx context.Context, keys ...string) error
     Exists(ctx context.Context, key string) bool
+    Expire(ctx context.Context, key string, expiration time.Duration) error
     TTL(ctx context.Context, key string) (time.Duration, error)
+    Ping(ctx context.Context) error
 }
 ```
 
@@ -187,9 +189,9 @@ dtoken.Login(ctx, loginID, ...)
   ↓
 2. Generate token
   ↓
-3. Save TokenInfo
+3. Save Session without shortening its existing TTL
   ↓
-4. Save Session
+4. Save TokenInfo
   ↓
 5. Initialize renew / active state
   ↓
@@ -203,15 +205,15 @@ Request
   ↓
 dtoken.IsLogin(ctx, token)
   ↓
-1. Load TokenInfo
+1. Validate TokenInfo and its Session / terminal binding
   ↓
-2. Check account disable state
+2. Check account and device disable state
   ↓
 3. Check ActiveTimeout
   ↓
-4. Trigger async renew if conditions match
+4. Schedule combined renewal / activity maintenance as needed
   ↓
-5. Update active timestamp asynchronously
+5. Worker rechecks lifecycle before writing; activity uses request time
   ↓
 6. Return validation result
 ```
@@ -225,7 +227,7 @@ CheckPermissionMiddleware / HasPermission
   ↓
 1. Get token or loginID
   ↓
-2. Check login state
+2. Middleware and token-based APIs validate login state
   ↓
 3. Load permission list
   ↓
@@ -235,6 +237,8 @@ CheckPermissionMiddleware / HasPermission
   ↓
 6. Return result
 ```
+
+Account-based `HasPermission(ctx, loginID, ...)` resolves permissions by account, including through an AccessProvider, and does not prove possession of a valid login token. Protect request handlers with authentication middleware or a token-based check.
 
 ## Auto-Renew Design
 
@@ -263,7 +267,9 @@ See: [Auto-Renew Design](auto-renew.md)
 
 Current keys are composed as:
 
-`KeyPrefix + AuthType + businessPrefix + businessID`
+`encoded KeyPrefix + encoded AuthType + businessPrefix + businessID`
+
+Namespace components escape internal separators independently. See [Namespace Rules](../guide/reference/configuration.md#namespace-rules) before interpreting keys with internal colons or backslashes.
 
 With default values, common key examples are:
 

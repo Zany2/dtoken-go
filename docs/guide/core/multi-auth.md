@@ -90,8 +90,6 @@ If `authType` is omitted, the default auth system `auth:` is used.
 Different route groups can bind different auth systems:
 
 ```go
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
-
 userGroup := r.Group("/api")
 userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuthType("user")))
 
@@ -101,6 +99,8 @@ adminGroup.Use(gindt.RoleMiddleware(ctx, []string{"admin"}, gindt.WithAuthType("
 ```
 
 With this setup, `/api` only recognizes Tokens from `user`, and `/admin` only recognizes Tokens from `admin`.
+
+Each group's authentication middleware creates the request context using its selected Manager. No global context-registration middleware is needed here: the setup registers `user` and `admin`, without a default `auth:` Manager.
 
 ## Redis Key Isolation
 

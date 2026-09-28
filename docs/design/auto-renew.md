@@ -15,78 +15,43 @@ The goals of auto-renew are:
 
 ### Asynchronous Renew Strategy
 
-In the current version, auto-renew happens inside the login validation flow, with `Manager.checkLoginInternal()` as the key entry.
+Login validation checks the token lifecycle, Session, account/device disable state, and inactivity timeout before scheduling maintenance.
 
-Compared with the old "plain goroutine on every `IsLogin()`" idea, the current implementation:
+`prepareLoginMaintenance` coalesces requests for the same token lifecycle into one pending task. If inactivity tracking is enabled, it records the latest successful request time. Without inactivity tracking, a task is submitted only when automatic renewal is due.
 
-1. checks the token TTL first
-2. only considers renew when TTL is less than or equal to `RenewMaxRefresh`
-3. uses a renew marker key to throttle repeated renews when `RenewInterval` is configured
-4. prefers submitting renew work to a worker pool
-5. updates the active timestamp asynchronously as well
-
-### Implementation Idea
-
-```go
-if m.config.AutoRenew && m.config.Timeout > 0 {
-    if ttl <= RenewMaxRefresh && renewInterval condition passes {
-        renewFunc := func() {
-            m.renewFunc(context.Background(), tokenValue, tokenInfo.LoginID)
-        }
-
-        if m.pool != nil {
-            _ = m.pool.Submit(renewFunc)
-        } else {
-            go renewFunc()
-        }
-    }
-}
-
-if m.config.ActiveTimeout > 0 {
-    activeFunc := func() {
-        _ = m.storage.Set(ctx, m.getActiveKey(tokenValue), time.Now().Unix(), m.getExpiration())
-    }
-    // also prefers the worker pool
-}
-```
+`submitAsync` prefers the configured pool and falls back to a tracked goroutine when no pool is available or submission fails. A closing Manager rejects new tasks.
 
 ## Workflow
 
 ### Synchronous Part
 
 ```text
-1. Load TokenInfo
-   ├─ failed -> return not-login or token-state error
-   └─ success -> continue
-
-2. Check account disable state
-   ├─ disabled -> return disable error
-   └─ not disabled -> continue
-
-3. Check ActiveTimeout
-   ├─ timeout -> kick out and return error
-   └─ not timeout -> continue
-
-4. Return login validation success
+1. Load and validate TokenInfo and Session
+2. Check account/device disable state and ActiveTimeout
+3. Reserve or update maintenance for the current token lifecycle
+4. Submit after releasing the account lock, then return validation success
 ```
 
 ### Asynchronous Part
 
 ```text
-Async renew task
+One maintenance task
   ↓
-1. Extend token expiration
+1. Recheck task generation and token lifecycle under the account lock
   ↓
-2. Extend session expiration
+2. Reload Session and recheck disable state
   ↓
-3. Write renew throttle marker (if enabled)
+3. If renewal is due, extend the token using its own timeout,
+   preserve the longer Session TTL, and write the renew interval marker
   ↓
-4. Trigger renew event
-
-Async active task
+4. If activity tracking is enabled, persist the latest request activity time
   ↓
-1. Update active:{token} key
+5. Release the account lock; emit EventRenew only after successful renewal
 ```
+
+Obsolete tasks cannot maintain a later login that reuses the same token value. Activity uses the recorded request time, rather than the worker execution time.
+
+`LoginByToken` requests forced maintenance after validating the existing login: it bypasses `AutoRenew`, threshold, and interval eligibility checks. It is asynchronous; use `RenewTimeout` when the caller needs a synchronous renewal result.
 
 ## Renew Trigger Conditions
 
@@ -200,7 +165,9 @@ type Storage interface {
     Get(ctx context.Context, key string) (any, error)
     Delete(ctx context.Context, keys ...string) error
     Exists(ctx context.Context, key string) bool
+    Expire(ctx context.Context, key string, expiration time.Duration) error
     TTL(ctx context.Context, key string) (time.Duration, error)
+    Ping(ctx context.Context) error
 }
 ```
 

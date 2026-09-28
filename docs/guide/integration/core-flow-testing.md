@@ -51,19 +51,18 @@ The `gin_core_flow` suite uses Redis only when `DTOKEN_REDIS_URL` is explicitly 
 redis://localhost:6379/0
 ```
 
-Without this environment variable, Redis-backed flow tests are skipped. The reusable `gin_core_app` fixture uses in-memory storage when `Config.RedisURL` is empty.
+Without this environment variable, the flow tests run with in-memory storage. When Redis is explicitly configured, initialization or application setup errors fail the test instead of skipping it.
 
-Each test app gets a short isolated key prefix:
+Each test app gets a random isolated key prefix, including across independent test processes:
 
 ```text
-dt:gcf:1:
-dt:gcf:2:
+dt-gcf-<32 hexadecimal characters>:
 ```
 
 On cleanup, the test only removes keys under the current prefix:
 
 ```text
-dt:gcf:1:*
+dt-gcf-<this fixture's 32 hexadecimal characters>:*
 ```
 
 It does not clear the whole Redis DB.
@@ -89,7 +88,7 @@ The suite covers:
 
 ### Why are there still keys in Redis?
 
-The test only deletes keys under the current `dt:gcf:*` prefix. It does not delete other prefixes, for example:
+The test only deletes keys under its own randomly generated prefix. It does not delete other prefixes, for example:
 
 ```text
 dtoken:gin-core-flow:oauth2:client:demo-client
@@ -99,7 +98,7 @@ That kind of key usually comes from manually running the example server or from 
 
 ### Why does auto-renew TTL drift?
 
-Redis returns TTL values in seconds, while memory storage can behave slightly differently around timing boundaries. The tests validate a reasonable TTL range instead of exact millisecond timing.
+The Manager exposes whole-second TTL values, so observations can differ around second boundaries. Renewal tests read TTL directly through the Manager to avoid triggering authentication and renewal while measuring it. They use bounded polling for actual TTL growth and, where applicable, renewal events instead of a fixed worker delay.
 
 ### When should I start gin_core_app manually?
 

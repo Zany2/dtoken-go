@@ -38,18 +38,16 @@ func DefaultHTTPOptions() HTTPOptions {
 type HTTPServer struct {
 	server          *Server
 	options         HTTPOptions
+	initErr         error      // initErr preserves constructor registration failures. initErr 保存构造期间的注册错误。
 	clientSessionMu sync.Mutex // clientSessionMu serializes session-limit checks and registrations. clientSessionMu 串行化会话上限检查和注册。
 }
 
 // NewHTTPServer creates a standalone HTTP SSO handler. NewHTTPServer 创建独立 HTTP SSO 处理器。
+// Client registration failures are retained and make handlers return HTTP 500. 客户端注册失败会被保留，并使处理器返回 HTTP 500。
 func NewHTTPServer(server *Server, options HTTPOptions) *HTTPServer {
 	defaults := DefaultHTTPOptions()
-	if options.ServerOptions.Endpoints == (Endpoints{}) {
-		options.ServerOptions.Endpoints = defaults.ServerOptions.Endpoints
-	}
-	if options.ServerOptions.Params == (ParamNames{}) {
-		options.ServerOptions.Params = defaults.ServerOptions.Params
-	}
+	options.ServerOptions.Endpoints = normalizeEndpoints(options.ServerOptions.Endpoints)
+	options.ServerOptions.Params = normalizeParamNames(options.ServerOptions.Params)
 	if options.ServerOptions.Mode == "" {
 		options.ServerOptions.Mode = defaults.ServerOptions.Mode
 	}
@@ -66,18 +64,37 @@ func NewHTTPServer(server *Server, options HTTPOptions) *HTTPServer {
 	if options.LoginIDResolver == nil {
 		options.LoginIDResolver = LoginIDFromCookie(options.Cookie)
 	}
-	if options.ServerOptions.Clients != nil && server != nil {
-		_ = server.RegisterClients(options.ServerOptions.Clients)
+	handler := &HTTPServer{server: server, options: options}
+	if server == nil {
+		return handler
 	}
-	if options.ServerOptions.AllowAnonymousClient && server != nil && !server.hasClient(ClientAnonymous) {
-		_ = server.RegisterClient(&Client{
-			ClientID:     ClientAnonymous,
-			Name:         "Anonymous Client",
-			RedirectURIs: append([]string(nil), options.ServerOptions.AllowURLs...),
-			Modes:        []Mode{ModeTicket},
-		})
+	if err := server.RegisterClients(options.ServerOptions.Clients); err != nil {
+		handler.initErr = fmt.Errorf("%w: %w", ErrServerNotInitialized, err)
+		return handler
 	}
-	return &HTTPServer{server: server, options: options}
+	if options.ServerOptions.AllowAnonymousClient {
+		_, err := server.GetClient(ClientAnonymous)
+		if errors.Is(err, ErrClientNotFound) {
+			err = server.RegisterClient(&Client{
+				ClientID:     ClientAnonymous,
+				Name:         "Anonymous Client",
+				RedirectURIs: append([]string(nil), options.ServerOptions.AllowURLs...),
+				Modes:        []Mode{ModeTicket},
+			})
+		}
+		if err != nil {
+			handler.initErr = fmt.Errorf("%w: %w", ErrServerNotInitialized, err)
+		}
+	}
+	return handler
+}
+
+// initializationError prevents partially initialized handlers from serving requests. initializationError 阻止未完成初始化的处理器接受请求。
+func (h *HTTPServer) initializationError() error {
+	if h == nil || h.server == nil {
+		return ErrServerNotInitialized
+	}
+	return h.initErr
 }
 
 // Register registers SSO routes into a ServeMux. Register 将 SSO 路由注册到 ServeMux。
@@ -103,8 +120,13 @@ func (h *HTTPServer) Handler() http.Handler {
 
 // HandleAuthorize handles redirect-based SSO credential issuing. HandleAuthorize 处理基于重定向的 SSO 凭证签发。
 func (h *HTTPServer) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
-	if h == nil || h.server == nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, ErrServerNotInitialized.Error()))
+	// Apply browser protections before every redirect or error response. 所有重定向及错误响应都应先应用浏览器保护。
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+
+	if err := h.initializationError(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, err.Error()))
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -246,8 +268,8 @@ func (h *HTTPServer) registerClientSession(ctx context.Context, loginID, clientI
 
 // HandleToken handles ticket or code exchange and returns user identity JSON. HandleToken 处理 Ticket 或授权码交换并返回用户身份 JSON。
 func (h *HTTPServer) HandleToken(w http.ResponseWriter, r *http.Request) {
-	if h == nil || h.server == nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, ErrServerNotInitialized.Error()))
+	if err := h.initializationError(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, err.Error()))
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -274,8 +296,8 @@ func (h *HTTPServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 
 // HandleIntrospect checks a credential without consuming it when possible. HandleIntrospect 尽量在不消费凭证的情况下检查凭证。
 func (h *HTTPServer) HandleIntrospect(w http.ResponseWriter, r *http.Request) {
-	if h == nil || h.server == nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, ErrServerNotInitialized.Error()))
+	if err := h.initializationError(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, err.Error()))
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -306,8 +328,8 @@ func (h *HTTPServer) HandleIntrospect(w http.ResponseWriter, r *http.Request) {
 
 // HandleUserInfo returns user info for a valid credential. HandleUserInfo 返回有效凭证对应的用户信息。
 func (h *HTTPServer) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
-	if h == nil || h.server == nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, ErrServerNotInitialized.Error()))
+	if err := h.initializationError(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, err.Error()))
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -338,17 +360,20 @@ func (h *HTTPServer) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, OKResponse(map[string]any{
-		"loginId":  info.LoginID,
-		"clientId": info.ClientID,
-		"scopes":   info.Scopes,
-		"extra":    info.Extra,
+		"active":    info.Active,
+		"mode":      info.Mode,
+		"loginId":   info.LoginID,
+		"clientId":  info.ClientID,
+		"scopes":    info.Scopes,
+		"expiresIn": info.ExpiresIn,
+		"extra":     info.Extra,
 	}))
 }
 
 // HandleRevoke revokes a supported SSO credential. HandleRevoke 撤销支持的 SSO 凭证。
 func (h *HTTPServer) HandleRevoke(w http.ResponseWriter, r *http.Request) {
-	if h == nil || h.server == nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, ErrServerNotInitialized.Error()))
+	if err := h.initializationError(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, err.Error()))
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -396,7 +421,28 @@ func (h *HTTPServer) authenticateClient(ctx context.Context, values url.Values) 
 // exchangeCredential dispatches credential exchange by mode. exchangeCredential 按模式分发凭证交换。
 func (h *HTTPServer) exchangeCredential(r *http.Request, values url.Values) (any, error) {
 	params := h.options.ServerOptions.Params
-	if codeValue := values.Get(params.Code); codeValue != "" {
+	mode := Mode(values.Get(params.Mode))
+	codeValue := values.Get(params.Code)
+	ticketValue := values.Get(params.Ticket)
+
+	// Resolve a single mode before consuming either credential. 消费凭证前先确定唯一模式。
+	if codeValue != "" && ticketValue != "" {
+		return nil, ErrInvalidRequest
+	}
+	if mode == "" {
+		mode = ModeTicket
+		if codeValue != "" {
+			mode = ModeOAuth2
+		}
+	}
+	if mode != ModeTicket && mode != ModeOAuth2 {
+		return nil, ErrModeUnsupported
+	}
+	if mode == ModeTicket && codeValue != "" || mode == ModeOAuth2 && ticketValue != "" {
+		return nil, ErrInvalidRequest
+	}
+
+	if mode == ModeOAuth2 {
 		code, err := h.server.ConsumeOAuth2Code(
 			r.Context(),
 			codeValue,
@@ -411,7 +457,7 @@ func (h *HTTPServer) exchangeCredential(r *http.Request, values url.Values) (any
 	}
 	ticket, err := h.server.ConsumeTicket(
 		r.Context(),
-		values.Get(params.Ticket),
+		ticketValue,
 		values.Get(params.Client),
 		values.Get(params.ClientSecret),
 		values.Get(params.Redirect),
@@ -428,6 +474,9 @@ func (h *HTTPServer) introspectCredential(r *http.Request, values url.Values) (*
 	clientID := values.Get(params.Client)
 	switch mode := Mode(values.Get(params.Mode)); mode {
 	case "", ModeTicket:
+		if err := h.server.checkClientMode(r.Context(), clientID, ModeTicket); err != nil {
+			return nil, err
+		}
 		ticket, err := h.server.ValidateTicket(r.Context(), values.Get(params.Ticket))
 		if err != nil || ticket.ClientID != clientID {
 			if err == nil {
@@ -461,6 +510,9 @@ func (h *HTTPServer) introspectCredential(r *http.Request, values url.Values) (*
 		}
 		return RemoteSessionCredentialInfo(session, ttl), nil
 	case ModeOAuth2:
+		if err := h.server.checkClientMode(r.Context(), clientID, ModeOAuth2); err != nil {
+			return nil, err
+		}
 		code, err := h.server.getOAuth2Code(r.Context(), values.Get(params.Code))
 		if err != nil {
 			return credentialIntrospectionFailure(err)
@@ -561,8 +613,8 @@ func (h *HTTPServer) revokeCredential(r *http.Request, values url.Values) error 
 
 // HandleLogout clears optional shared cookie, pushes logout callbacks, and returns success. HandleLogout 清除共享 Cookie、推送注销回调并返回成功。
 func (h *HTTPServer) HandleLogout(w http.ResponseWriter, r *http.Request) {
-	if h == nil || h.server == nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, ErrServerNotInitialized.Error()))
+	if err := h.initializationError(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse(http.StatusInternalServerError, err.Error()))
 		return
 	}
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
@@ -621,11 +673,9 @@ func (h *HTTPServer) pushLogoutCallbacks(r *http.Request, loginID string) error 
 	wg.Wait()
 	close(errCh)
 	if !h.options.ServerOptions.LogoutCallbackBestEffort {
-		// Return the first error if any返回第一个错误（如果有）
-		select {
-		case err := <-errCh:
+		// A closed, empty channel means success; continue to clear the index. 已关闭的空通道表示成功，应继续清理索引。
+		for err := range errCh {
 			return err
-		default:
 		}
 	}
 	return h.server.ClearClientSessions(r.Context(), loginID)
@@ -639,6 +689,19 @@ func (h *HTTPServer) postLogoutCallback(r *http.Request, session ClientSession) 
 		ctx, cancel = context.WithTimeout(ctx, h.options.ServerOptions.LogoutCallbackTimeout)
 		defer cancel()
 	}
+
+	// Recheck current registration before sending identity data to a stored callback. 向已保存回调发送身份信息前，复查当前注册配置。
+	registered, err := h.server.getClient(ctx, session.ClientID)
+	if errors.Is(err, ErrClientNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !h.server.isValidLogoutCallbackURL(registered, session.LogoutCallbackURL) {
+		return ErrInvalidCallbackURL
+	}
+
 	values := url.Values{}
 	values.Set(h.options.ServerOptions.Params.LoginID, session.LoginID)
 	values.Set(h.options.ServerOptions.Params.Client, session.ClientID)
@@ -718,6 +781,10 @@ func (h *HTTPServer) redirectToLogin(w http.ResponseWriter, r *http.Request) {
 
 // writeJSON writes a protocol JSON response. writeJSON 写入协议 JSON 响应。
 func writeJSON(w http.ResponseWriter, status int, response Response) {
+	// Keep identity, credential status, and logout responses out of caches. 避免缓存身份、凭证状态及注销响应。
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(status)
@@ -746,6 +813,7 @@ func parseScopes(scope string) []string {
 func statusFromError(err error) int {
 	switch {
 	case errors.Is(err, ErrClientOrClientIDEmpty),
+		errors.Is(err, ErrInvalidRequest),
 		errors.Is(err, ErrInvalidRedirectURI),
 		errors.Is(err, ErrRedirectURIMismatch),
 		errors.Is(err, ErrInvalidScope),
@@ -820,52 +888,72 @@ func LoginIDFromCookie(options CookieOptions) LoginIDResolver {
 // SetLoginIDCookie writes shared login cookie. SetLoginIDCookie 写入共享登录 Cookie。
 func SetLoginIDCookie(w http.ResponseWriter, options CookieOptions, loginID string) {
 	options = normalizeCookieOptions(options)
-	value := encodeLoginIDCookie(loginID, options.SecretKey)
+	expiresAt := time.Now().Add(options.MaxAge)
+	value := encodeLoginIDCookie(loginID, options.SecretKey, expiresAt)
 	if value == "" {
 		ClearLoginIDCookie(w, options)
 		return
 	}
+
+	// Round up short lifetimes and keep MaxAge representable on 32-bit systems. 向上取整短有效期，并确保 MaxAge 在 32 位系统中可表示。
+	maxAge := int(min(durationSeconds(options.MaxAge), int64(^uint(0)>>1)))
 	http.SetCookie(w, &http.Cookie{
 		Name:     options.Name,
 		Value:    value,
 		Path:     defaultCookiePath(options.Path),
 		Domain:   options.Domain,
-		MaxAge:   int(options.MaxAge.Seconds()),
+		MaxAge:   maxAge,
+		Expires:  expiresAt,
 		Secure:   options.Secure,
 		HttpOnly: options.HTTPOnly,
 		SameSite: options.SameSite,
 	})
 }
 
-// encodeLoginIDCookie signs and encodes a login id for cookie storage. encodeLoginIDCookie 对登录 ID 签名并编码为 Cookie 值。
-func encodeLoginIDCookie(loginID, secret string) string {
-	if loginID == "" || secret == "" {
+// loginCookieClaims binds the identity to a server-verified deadline. loginCookieClaims 将身份绑定到服务端校验的截止时间。
+type loginCookieClaims struct {
+	LoginID   string    `json:"loginId"`   // LoginID stores the authenticated subject. LoginID 存储已认证主体。
+	ExpiresAt time.Time `json:"expiresAt"` // ExpiresAt stores the signed deadline. ExpiresAt 存储签名截止时间。
+}
+
+// encodeLoginIDCookie signs the versioned identity and expiry payload. encodeLoginIDCookie 对带版本的身份与过期时间载荷签名。
+func encodeLoginIDCookie(loginID, secret string, expiresAt time.Time) string {
+	if loginID == "" || secret == "" || expiresAt.IsZero() {
 		return ""
 	}
-	payload := base64.RawURLEncoding.EncodeToString([]byte(loginID))
-	values := url.Values{"value": {payload}}
+	raw, err := json.Marshal(loginCookieClaims{LoginID: loginID, ExpiresAt: expiresAt})
+	if err != nil {
+		return ""
+	}
+	payload := base64.RawURLEncoding.EncodeToString(raw)
+	values := url.Values{"version": {"v1"}, "value": {payload}}
 	signed := NewSigner(secret).AttachSign(values)
-	return payload + "." + signed.Get(DefaultParamNames().Sign)
+	return "v1." + payload + "." + signed.Get(DefaultParamNames().Sign)
 }
 
 // decodeLoginIDCookie verifies and decodes a signed login cookie. decodeLoginIDCookie 校验并解码已签名的登录 Cookie。
 func decodeLoginIDCookie(value, secret string) (string, bool) {
-	parts := strings.SplitN(value, ".", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" || secret == "" {
+	parts := strings.Split(value, ".")
+	if len(parts) != 3 || parts[0] != "v1" || parts[1] == "" || parts[2] == "" || secret == "" {
 		return "", false
 	}
 	values := url.Values{
-		"value":                  {parts[0]},
-		DefaultParamNames().Sign: {parts[1]},
+		"version":                {parts[0]},
+		"value":                  {parts[1]},
+		DefaultParamNames().Sign: {parts[2]},
 	}
 	if !NewSigner(secret).Verify(values) {
 		return "", false
 	}
-	decoded, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err != nil || len(decoded) == 0 {
+	decoded, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
 		return "", false
 	}
-	return string(decoded), true
+	var claims loginCookieClaims
+	if err = json.Unmarshal(decoded, &claims); err != nil || claims.LoginID == "" || !time.Now().Before(claims.ExpiresAt) {
+		return "", false
+	}
+	return claims.LoginID, true
 }
 
 // ClearLoginIDCookie clears shared login cookie. ClearLoginIDCookie 清除共享登录 Cookie。
@@ -877,6 +965,7 @@ func ClearLoginIDCookie(w http.ResponseWriter, options CookieOptions) {
 		Path:     defaultCookiePath(options.Path),
 		Domain:   options.Domain,
 		MaxAge:   -1,
+		Expires:  time.Unix(1, 0),
 		Secure:   options.Secure,
 		HttpOnly: options.HTTPOnly,
 		SameSite: options.SameSite,

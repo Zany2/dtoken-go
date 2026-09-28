@@ -57,6 +57,8 @@ You can use it for:
 
 ## Installation
 
+The core modules target Go 1.25 or later. Local development with this repository's `go.work` requires Go 1.27 or later; the optional `com/codec/jsonv2` module additionally requires `GOEXPERIMENT=jsonv2`.
+
 ### Default Core Usage
 
 ```bash
@@ -258,7 +260,7 @@ README keeps only the minimal getting-started path. For more API, configuration,
 
 ```text
 dtoken-go/
-├── core/                         # Framework core modules, split by capability as independent Go modules
+├── core/                         # One Go module with packages organized by capability
 │   ├── adapter/                  # Contracts for storage, codec, logger, Token generator, and request context
 │   ├── builder/                  # Manager builder, component wiring, and configuration validation
 │   ├── config/                   # Core configuration, defaults, and validation

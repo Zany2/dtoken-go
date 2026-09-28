@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Zany2/dtoken-go/sso"
 )
@@ -89,17 +90,23 @@ func TestCallbackAndLogout(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	callback(recorder, httptest.NewRequest(http.MethodGet, "/sso/callback?ticket=ticket-value", nil))
+	callback(recorder, newCallbackRequest(t, "ticket-value"))
 	if recorder.Code != http.StatusFound {
 		t.Fatalf("callback status = %d, want %d", recorder.Code, http.StatusFound)
 	}
 	cookies := recorder.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].Name != localCookie || cookies[0].Value == "" {
+	var sessionCookie *http.Cookie
+	for _, item := range cookies {
+		if item.Name == localCookie {
+			sessionCookie = item
+		}
+	}
+	if sessionCookie == nil || sessionCookie.Value == "" {
 		t.Fatalf("callback cookies = %+v, want local session cookie", cookies)
 	}
 
 	logoutRequest := httptest.NewRequest(http.MethodGet, "/logout", nil)
-	logoutRequest.AddCookie(cookies[0])
+	logoutRequest.AddCookie(sessionCookie)
 	logoutRecorder := httptest.NewRecorder()
 	logout(logoutRecorder, logoutRequest)
 	if logoutRecorder.Code != http.StatusFound {
@@ -132,7 +139,7 @@ func TestCallbackRejectsIncompleteSSOResponse(t *testing.T) {
 	t.Cleanup(func() { clientApp = previous })
 
 	recorder := httptest.NewRecorder()
-	callback(recorder, httptest.NewRequest(http.MethodGet, "/sso/callback?ticket=ticket-value", nil))
+	callback(recorder, newCallbackRequest(t, "ticket-value"))
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("empty login ID status = %d, want %d", recorder.Code, http.StatusBadGateway)
 	}
@@ -157,7 +164,7 @@ func TestCallbackHandlesExchangeFailure(t *testing.T) {
 	t.Cleanup(func() { clientApp = previous })
 
 	recorder := httptest.NewRecorder()
-	callback(recorder, httptest.NewRequest(http.MethodGet, "/sso/callback?ticket=ticket-value", nil))
+	callback(recorder, newCallbackRequest(t, "ticket-value"))
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("exchange failure status = %d, want %d", recorder.Code, http.StatusBadGateway)
 	}
@@ -186,8 +193,13 @@ func TestLogoutCallbackRemovesAllSessions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newLocalSession(other) error = %v", err)
 	}
-	if err = logoutCallback(nil, sso.LogoutCallback{LoginID: "user-1001"}); err != nil {
-		t.Fatalf("logoutCallback() error = %v", err)
+	form := url.Values{"loginId": {"user-1001"}, "client": {clientID}, "timestamp": {time.Now().Format(time.RFC3339)}}
+	callbackRequest := httptest.NewRequest(http.MethodPost, "/sso/logout-callback", strings.NewReader(form.Encode()))
+	callbackRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	callbackRecorder := httptest.NewRecorder()
+	newDemoHandler().ServeHTTP(callbackRecorder, callbackRequest)
+	if callbackRecorder.Code != http.StatusOK {
+		t.Fatalf("logout callback status = %d, body=%s", callbackRecorder.Code, callbackRecorder.Body.String())
 	}
 	for _, sessionID := range []string{first, second} {
 		request := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -203,14 +215,36 @@ func TestLogoutCallbackRemovesAllSessions(t *testing.T) {
 	}
 }
 
+// newCallbackRequest starts an authorization flow and returns its browser-bound callback. newCallbackRequest 发起授权并返回与浏览器绑定的回调请求。
+func newCallbackRequest(t *testing.T, ticket string) *http.Request {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	newDemoHandler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/protected", nil))
+	location, err := url.Parse(recorder.Header().Get("Location"))
+	if err != nil || recorder.Code != http.StatusFound {
+		t.Fatalf("start authorization: status=%d error=%v", recorder.Code, err)
+	}
+	state := location.Query().Get(clientApp.Config().Params.Back)
+	if state == "" {
+		t.Fatal("authorization is missing browser state")
+	}
+	query := url.Values{"ticket": {ticket}, clientApp.Config().Params.Back: {state}}
+	request := httptest.NewRequest(http.MethodGet, "/sso/callback?"+query.Encode(), nil)
+	for _, item := range recorder.Result().Cookies() {
+		request.AddCookie(item)
+	}
+	return request
+}
+
+// resetClientSessions isolates local session state between tests. resetClientSessions 隔离各测试的本地会话状态。
 func resetClientSessions(t *testing.T) {
 	t.Helper()
 	localSessions.mu.Lock()
-	localSessions.values = make(map[string]string)
+	localSessions.values = make(map[string]localSession)
 	localSessions.mu.Unlock()
 	t.Cleanup(func() {
 		localSessions.mu.Lock()
-		localSessions.values = make(map[string]string)
+		localSessions.values = make(map[string]localSession)
 		localSessions.mu.Unlock()
 	})
 }

@@ -2,9 +2,13 @@ package gin_core_app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Zany2/dtoken-go/com/storage/memory"
@@ -30,7 +34,7 @@ type App struct {
 type Config struct {
 	// KeyPrefix isolates storage keys for a demo app instance. KeyPrefix 隔离示例应用实例的存储键。
 	KeyPrefix string
-	// TokenTimeout sets the default token lifetime. TokenTimeout 设置默认 Token 有效期。
+	// TokenTimeout sets a positive token lifetime; zero uses 30 seconds. TokenTimeout 设置正数 Token 有效期，零值使用 30 秒。
 	TokenTimeout time.Duration
 	// ActiveTimeout sets the inactive timeout in seconds. ActiveTimeout 设置不活跃超时时间，单位秒。
 	ActiveTimeout int64
@@ -198,7 +202,6 @@ type oauthClientRequest struct {
 
 // NewApp creates a runnable Gin demo app. NewApp 创建可运行的 Gin 示例应用。
 func NewApp(cfg Config) (*App, error) {
-	gin.SetMode(gin.ReleaseMode)
 	storageFactory := newDemoStorageFactory(cfg)
 
 	flowStorage, err := storageFactory()
@@ -313,7 +316,15 @@ func newDemoManager(cfg Config, authType string, storage adapter.Storage) (*mana
 	if cfg.UseAccessProvider {
 		builder.SetAccessProvider(demoAccessProvider{})
 	}
-	return builder.Build()
+	mgr, err := builder.Build()
+	if err != nil {
+		// Failed builds leave explicit storage caller-owned. 构建失败时显式传入的存储仍由调用方负责释放。
+		if closer, ok := storage.(io.Closer); ok {
+			_ = closer.Close()
+		}
+		return nil, err
+	}
+	return mgr, nil
 }
 
 // MustNewApp creates an app or panics. MustNewApp 创建应用，失败时 panic。
@@ -473,7 +484,7 @@ func (a *App) buildRouter() *gin.Engine {
 // handleLogin handles the Login test endpoint. handleLogin 处理 Login 测试端点。
 func (a *App) handleLogin(c *gin.Context) {
 	var req loginRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.Username == "" || req.Password == "" {
+	if err := bindJSON(c, &req); err != nil || req.Username == "" || req.Password == "" {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "username and password are required")
 		return
 	}
@@ -497,8 +508,8 @@ func (a *App) handleLogin(c *gin.Context) {
 // handleLoginWithTimeout handles the Login With Timeout test endpoint. handleLoginWithTimeout 处理 Login With Timeout 测试端点。
 func (a *App) handleLoginWithTimeout(c *gin.Context) {
 	var req loginTimeoutRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.Username == "" || req.Password == "" || req.Seconds <= 0 {
-		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "username, password and positive seconds are required")
+	if err := bindJSON(c, &req); err != nil || req.Username == "" || req.Password == "" || !validSeconds(req.Seconds) {
+		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "username, password and positive seconds within time.Duration range are required")
 		return
 	}
 	if req.Password != "123456" {
@@ -527,8 +538,16 @@ func (a *App) handleMe(c *gin.Context) {
 		writeDTokenError(c, err)
 		return
 	}
-	roles, _ := a.auth.GetRoles(c.Request.Context(), loginID)
-	permissions, _ := a.auth.GetPermissions(c.Request.Context(), loginID)
+	roles, err := a.auth.GetRoles(c.Request.Context(), loginID)
+	if err != nil {
+		writeDTokenError(c, err)
+		return
+	}
+	permissions, err := a.auth.GetPermissions(c.Request.Context(), loginID)
+	if err != nil {
+		writeDTokenError(c, err)
+		return
+	}
 	writeOK(c, gin.H{
 		"loginId":     loginID,
 		"roles":       roles,
@@ -610,8 +629,8 @@ func (a *App) handleLoginByToken(c *gin.Context) {
 // handleTokenRenew handles the Token Renew test endpoint. handleTokenRenew 处理 Token Renew 测试端点。
 func (a *App) handleTokenRenew(c *gin.Context) {
 	var req renewRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.Seconds <= 0 {
-		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "seconds must be positive")
+	if err := bindJSON(c, &req); err != nil || !validSeconds(req.Seconds) {
+		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "seconds must be positive and fit in time.Duration")
 		return
 	}
 	if err := a.auth.RenewTimeout(c.Request.Context(), tokenFromContext(c), time.Duration(req.Seconds)*time.Second); err != nil {
@@ -922,7 +941,7 @@ func (a *App) handleAccessList(c *gin.Context) {
 // handleAddPermission handles the Add Permission test endpoint. handleAddPermission 处理 Add Permission 测试端点。
 func (a *App) handleAddPermission(c *gin.Context) {
 	var req accessRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.Value == "" {
+	if err := bindJSON(c, &req); err != nil || req.Value == "" {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "permission is required")
 		return
 	}
@@ -940,7 +959,7 @@ func (a *App) handleAddPermission(c *gin.Context) {
 // handleRemovePermission handles the Remove Permission test endpoint. handleRemovePermission 处理 Remove Permission 测试端点。
 func (a *App) handleRemovePermission(c *gin.Context) {
 	var req accessRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.Value == "" {
+	if err := bindJSON(c, &req); err != nil || req.Value == "" {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "permission is required")
 		return
 	}
@@ -957,7 +976,7 @@ func (a *App) handleRemovePermission(c *gin.Context) {
 // handleAddPermissions handles the Add Permissions test endpoint. handleAddPermissions 处理 Add Permissions 测试端点。
 func (a *App) handleAddPermissions(c *gin.Context) {
 	var req accessListRequest
-	if err := c.ShouldBindJSON(&req); err != nil || len(req.Values) == 0 {
+	if err := bindJSON(c, &req); err != nil || len(req.Values) == 0 {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "permissions are required")
 		return
 	}
@@ -974,7 +993,7 @@ func (a *App) handleAddPermissions(c *gin.Context) {
 // handleAddRole handles the Add Role test endpoint. handleAddRole 处理 Add Role 测试端点。
 func (a *App) handleAddRole(c *gin.Context) {
 	var req accessRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.Value == "" {
+	if err := bindJSON(c, &req); err != nil || req.Value == "" {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "role is required")
 		return
 	}
@@ -992,7 +1011,7 @@ func (a *App) handleAddRole(c *gin.Context) {
 // handleRemoveRole handles the Remove Role test endpoint. handleRemoveRole 处理 Remove Role 测试端点。
 func (a *App) handleRemoveRole(c *gin.Context) {
 	var req accessRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.Value == "" {
+	if err := bindJSON(c, &req); err != nil || req.Value == "" {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "role is required")
 		return
 	}
@@ -1009,7 +1028,7 @@ func (a *App) handleRemoveRole(c *gin.Context) {
 // handleAddRoles handles the Add Roles test endpoint. handleAddRoles 处理 Add Roles 测试端点。
 func (a *App) handleAddRoles(c *gin.Context) {
 	var req accessListRequest
-	if err := c.ShouldBindJSON(&req); err != nil || len(req.Values) == 0 {
+	if err := bindJSON(c, &req); err != nil || len(req.Values) == 0 {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "roles are required")
 		return
 	}
@@ -1026,7 +1045,10 @@ func (a *App) handleAddRoles(c *gin.Context) {
 // handleDisableAccount handles the Disable Account test endpoint. handleDisableAccount 处理 Disable Account 测试端点。
 func (a *App) handleDisableAccount(c *gin.Context) {
 	var req disableRequest
-	_ = c.ShouldBindJSON(&req)
+	if err := bindJSON(c, &req); err != nil && !errors.Is(err, io.EOF) {
+		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "invalid disable request")
+		return
+	}
 	if err := a.auth.Disable(c.Request.Context(), dtoken.DisableOptions{
 		LoginID:  loginIDFromContext(c),
 		Duration: time.Minute,
@@ -1050,7 +1072,10 @@ func (a *App) handleUntieAccount(c *gin.Context) {
 // handleDisableService handles the Disable Service test endpoint. handleDisableService 处理 Disable Service 测试端点。
 func (a *App) handleDisableService(c *gin.Context) {
 	var req disableRequest
-	_ = c.ShouldBindJSON(&req)
+	if err := bindJSON(c, &req); err != nil && !errors.Is(err, io.EOF) {
+		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "invalid disable request")
+		return
+	}
 	if err := a.auth.DisableService(c.Request.Context(), dtoken.ServiceDisableOptions{
 		LoginID:  loginIDFromContext(c),
 		Service:  c.Param("service"),
@@ -1067,8 +1092,7 @@ func (a *App) handleDisableService(c *gin.Context) {
 // handleDisableServiceLevel handles the Disable Service Level test endpoint. handleDisableServiceLevel 处理 Disable Service Level 测试端点。
 func (a *App) handleDisableServiceLevel(c *gin.Context) {
 	var req serviceLevelDisableRequest
-	_ = c.ShouldBindJSON(&req)
-	if req.Level <= 0 {
+	if err := bindJSON(c, &req); err != nil || req.Level <= 0 {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "level must be positive")
 		return
 	}
@@ -1093,6 +1117,10 @@ func (a *App) handleServiceLevelStatus(c *gin.Context) {
 		return
 	}
 	err := a.auth.Manager().CheckDisableServiceLevel(c.Request.Context(), loginIDFromContext(c), c.Param("service"), level)
+	if err != nil && !errors.Is(err, derror.ErrServiceDisabled) {
+		writeDTokenError(c, err)
+		return
+	}
 	writeOK(c, gin.H{
 		"disabled": err != nil,
 		"level":    level,
@@ -1111,7 +1139,10 @@ func (a *App) handleUntieService(c *gin.Context) {
 // handleDisableDevice handles the Disable Device test endpoint. handleDisableDevice 处理 Disable Device 测试端点。
 func (a *App) handleDisableDevice(c *gin.Context) {
 	var req disableRequest
-	_ = c.ShouldBindJSON(&req)
+	if err := bindJSON(c, &req); err != nil && !errors.Is(err, io.EOF) {
+		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "invalid disable request")
+		return
+	}
 	if err := a.auth.DisableDevice(c.Request.Context(), dtoken.DeviceDisableOptions{
 		LoginID:  loginIDFromContext(c),
 		Device:   c.Param("device"),
@@ -1260,8 +1291,8 @@ func (a *App) handleNonce(c *gin.Context) {
 // handleNonceWithTimeout handles the Nonce With Timeout test endpoint. handleNonceWithTimeout 处理 Nonce With Timeout 测试端点。
 func (a *App) handleNonceWithTimeout(c *gin.Context) {
 	var req nonceTimeoutRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.Seconds <= 0 {
-		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "seconds must be positive")
+	if err := bindJSON(c, &req); err != nil || !validSeconds(req.Seconds) {
+		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "seconds must be positive and fit in time.Duration")
 		return
 	}
 	nonce, err := a.auth.GenerateNonceWithTimeout(c.Request.Context(), time.Duration(req.Seconds)*time.Second)
@@ -1289,7 +1320,7 @@ func (a *App) handleNonceStatus(c *gin.Context) {
 // handleNonceVerify handles the Nonce Verify test endpoint. handleNonceVerify 处理 Nonce Verify 测试端点。
 func (a *App) handleNonceVerify(c *gin.Context) {
 	var req nonceRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.Nonce == "" {
+	if err := bindJSON(c, &req); err != nil || req.Nonce == "" {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "nonce is required")
 		return
 	}
@@ -1303,7 +1334,7 @@ func (a *App) handleNonceVerify(c *gin.Context) {
 // handleOAuth2Authorize handles the OAuth2 Authorize test endpoint. handleOAuth2Authorize 处理 OAuth2 Authorize 测试端点。
 func (a *App) handleOAuth2Authorize(c *gin.Context) {
 	var req oauthCodeRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.ClientID == "" || req.UserID == "" || req.RedirectURI == "" {
+	if err := bindJSON(c, &req); err != nil || req.ClientID == "" || req.UserID == "" || req.RedirectURI == "" {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "clientId, userId and redirectUri are required")
 		return
 	}
@@ -1318,7 +1349,7 @@ func (a *App) handleOAuth2Authorize(c *gin.Context) {
 // handleOAuth2Token handles the OAuth2 Token test endpoint. handleOAuth2Token 处理 OAuth2 Token 测试端点。
 func (a *App) handleOAuth2Token(c *gin.Context) {
 	var req oauthTokenRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindJSON(c, &req); err != nil {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "invalid oauth2 token request")
 		return
 	}
@@ -1351,7 +1382,7 @@ func (a *App) handleOAuth2Token(c *gin.Context) {
 // handleOAuth2Revoke handles the OAuth2 Revoke test endpoint. handleOAuth2Revoke 处理 OAuth2 Revoke 测试端点。
 func (a *App) handleOAuth2Revoke(c *gin.Context) {
 	var req oauthRevokeRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.Token == "" {
+	if err := bindJSON(c, &req); err != nil || req.Token == "" {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "token is required")
 		return
 	}
@@ -1385,7 +1416,7 @@ func (a *App) handleOAuth2Introspect(c *gin.Context) {
 // handleOAuth2RegisterClient handles the OAuth2 Register Client test endpoint. handleOAuth2RegisterClient 处理 OAuth2 Register Client 测试端点。
 func (a *App) handleOAuth2RegisterClient(c *gin.Context) {
 	var req oauthClientRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.ClientID == "" {
+	if err := bindJSON(c, &req); err != nil || req.ClientID == "" {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "clientId is required")
 		return
 	}
@@ -1439,7 +1470,7 @@ func (a *App) handleOAuth2UnregisterClient(c *gin.Context) {
 func (a *App) handleMultiAuthLogin(auth *dtoken.Auth, authName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req loginRequest
-		if err := c.ShouldBindJSON(&req); err != nil || req.Username == "" || req.Password == "" {
+		if err := bindJSON(c, &req); err != nil || req.Username == "" || req.Password == "" {
 			writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "username and password are required")
 			return
 		}
@@ -1464,8 +1495,16 @@ func (a *App) handleMultiAuthLogin(auth *dtoken.Auth, authName string) gin.Handl
 func (a *App) handleMultiAuthMe(auth *dtoken.Auth, authName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		loginID := loginIDFromContext(c)
-		roles, _ := auth.GetRoles(c.Request.Context(), loginID)
-		permissions, _ := auth.GetPermissions(c.Request.Context(), loginID)
+		roles, err := auth.GetRoles(c.Request.Context(), loginID)
+		if err != nil {
+			writeDTokenError(c, err)
+			return
+		}
+		permissions, err := auth.GetPermissions(c.Request.Context(), loginID)
+		if err != nil {
+			writeDTokenError(c, err)
+			return
+		}
 		writeOK(c, gin.H{
 			"auth":        authName,
 			"loginId":     loginID,
@@ -1479,7 +1518,7 @@ func (a *App) handleMultiAuthMe(auth *dtoken.Auth, authName string) gin.HandlerF
 func (a *App) handleMultiAuthAddPermission(auth *dtoken.Auth) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req accessRequest
-		if err := c.ShouldBindJSON(&req); err != nil || req.Value == "" {
+		if err := bindJSON(c, &req); err != nil || req.Value == "" {
 			writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "permission is required")
 			return
 		}
@@ -1498,7 +1537,7 @@ func (a *App) handleMultiAuthAddPermission(auth *dtoken.Auth) gin.HandlerFunc {
 func (a *App) handleMultiAuthAddRole(auth *dtoken.Auth) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req accessRequest
-		if err := c.ShouldBindJSON(&req); err != nil || req.Value == "" {
+		if err := bindJSON(c, &req); err != nil || req.Value == "" {
 			writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "role is required")
 			return
 		}
@@ -1663,6 +1702,30 @@ func (a *App) requireService(service string, level int) gin.HandlerFunc {
 	}
 }
 
+// bindJSON accepts one complete JSON object; only an empty body returns EOF. bindJSON 接受一个完整 JSON 对象，仅空请求体返回 EOF。
+func bindJSON(c *gin.Context, value any) error {
+	decoder := json.NewDecoder(c.Request.Body)
+	var body json.RawMessage
+	if err := decoder.Decode(&body); err != nil {
+		return err
+	}
+	if len(body) == 0 || body[0] != '{' {
+		return derror.ErrInvalidParam
+	}
+
+	// Reject trailing data before binding fields used by mutations. 修改状态前先拒绝 JSON 对象后的多余内容。
+	var extra json.RawMessage
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return derror.ErrInvalidParam
+	}
+	return json.Unmarshal(body, value)
+}
+
+// validSeconds guards conversion to time.Duration against overflow. validSeconds 防止秒数转换为 time.Duration 时溢出。
+func validSeconds(seconds int64) bool {
+	return seconds > 0 && seconds <= math.MaxInt64/int64(time.Second)
+}
+
 // tokenFromContext reads the current token from Gin context. tokenFromContext 从 Gin 上下文读取当前 Token。
 func tokenFromContext(c *gin.Context) string {
 	token, _ := c.Get("token")
@@ -1679,16 +1742,19 @@ func loginIDFromContext(c *gin.Context) string {
 
 // bearerToken extracts a bearer token from an authorization header. bearerToken 从 Authorization 请求头提取 Bearer Token。
 func bearerToken(header string) string {
-	const prefix = "Bearer "
-	if len(header) > len(prefix) && header[:len(prefix)] == prefix {
-		return header[len(prefix):]
+	fields := strings.Fields(header)
+	if len(fields) == 2 && strings.EqualFold(fields[0], "Bearer") {
+		return fields[1]
 	}
-	return header
+	if len(fields) == 1 && !strings.EqualFold(fields[0], "Bearer") {
+		return fields[0]
+	}
+	return ""
 }
 
 // defaultDuration returns a fallback duration when the configured value is zero. defaultDuration 在配置值为零时返回备用时长。
 func defaultDuration(value, fallback time.Duration) time.Duration {
-	if value > 0 {
+	if value != 0 {
 		return value
 	}
 	return fallback
@@ -1745,15 +1811,22 @@ func writeDTokenError(c *gin.Context, err error) {
 		status, code = http.StatusForbidden, derror.CodePermissionDenied
 	case errors.Is(err, derror.ErrLoginLimitExceeded):
 		status, code = http.StatusForbidden, derror.CodeMaxLoginCount
-	case errors.Is(err, derror.ErrClientNotFound):
+	case errors.Is(err, derror.ErrClientNotFound), errors.Is(err, derror.ErrAccountNotDisabled),
+		errors.Is(err, derror.ErrServiceNotDisabled), errors.Is(err, derror.ErrDeviceNotDisabled):
 		status, code = http.StatusNotFound, derror.CodeNotFound
 	case errors.Is(err, derror.ErrInvalidParam), errors.Is(err, derror.ErrInvalidNonce), errors.Is(err, derror.ErrInvalidClientCredentials),
+		errors.Is(err, derror.ErrIDIsEmpty), errors.Is(err, derror.ErrEmptyLoginID), errors.Is(err, derror.ErrUserIDEmpty),
+		errors.Is(err, derror.ErrClientOrClientIDEmpty), errors.Is(err, derror.ErrClientMismatch), errors.Is(err, derror.ErrRedirectURIMismatch),
 		errors.Is(err, derror.ErrInvalidGrantType), errors.Is(err, derror.ErrInvalidRedirectURI), errors.Is(err, derror.ErrInvalidScope),
 		errors.Is(err, derror.ErrInvalidAuthCode), errors.Is(err, derror.ErrAuthCodeUsed), errors.Is(err, derror.ErrAuthCodeExpired),
 		errors.Is(err, derror.ErrInvalidRefreshToken), errors.Is(err, derror.ErrInvalidUserCredentials):
 		status, code = http.StatusBadRequest, derror.CodeBadRequest
 	}
-	c.JSON(status, Response{Code: code, Message: err.Error()})
+	message := err.Error()
+	if status == http.StatusInternalServerError {
+		message = "internal server error"
+	}
+	c.JSON(status, Response{Code: code, Message: message})
 }
 
 // Manager exposes the underlying manager for advanced demo checks. Manager 暴露底层管理器用于高级示例检查。

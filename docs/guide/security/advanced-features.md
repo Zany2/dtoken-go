@@ -2,6 +2,8 @@
 
 This page lists advanced DToken-Go capabilities that can be used on top of the normal login, logout, permission, and role APIs.
 
+Examples assume a registered Manager. Nonce, Ticket, and ShortKey are optional: enable the required modules with `EnableNonce()`, `EnableTicket()`, and `EnableShortKey()` on the Builder before `Build()`. See [Optional Modules](../reference/configuration.md#optional-modules). Token Introspection and business Refresh Token do not require these switches.
+
 ## Token Introspection
 
 Token introspection checks whether a token is currently active without renewing it. It returns ownership information, TTL, permissions, roles, token extra data, and an inactive reason.

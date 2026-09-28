@@ -60,9 +60,13 @@ This directory contains HTTP flow tests for `tests/gin_core_app`.
 
 - `TestAutoRenewFlow`: tests automatic renewal.
   - Enable AutoRenew with a refresh threshold and renew interval.
-  - Wait until token TTL enters the refresh window.
-  - Access a protected API and verify TTL is extended.
-  - Immediately access again and verify renew interval prevents repeated growth.
+  - Verify the initial renew interval blocks an otherwise eligible request.
+  - After the interval expires, access a protected API and wait for actual TTL growth and a renewal event.
+  - Immediately access again and verify the interval prevents an additional renewal event.
+  - Observe TTL through the read-only Manager API so measurements do not trigger renewal.
+
+- `TestRenewConfigurationMatrixFlow`: tests disabled renewal, refresh thresholds, and repeated renewal without an interval.
+  - Use bounded polling of stored TTL instead of fixed delays for asynchronous renewal.
 
 - `TestRenewBoundaryFlow`: tests manual renewal boundaries.
   - Reject zero and negative renewal values at the HTTP layer.
@@ -106,6 +110,10 @@ This directory contains HTTP flow tests for `tests/gin_core_app`.
   - Mark one terminal offline.
   - Verify token list queries return only live session tokens.
   - Verify the offline token keeps its exact failure cause.
+
+- `TestSessionExpiredTokenFilterFlow`: tests natural expiration filtering.
+  - Keep a mobile login alive while a short-lived web token expires.
+  - Verify `alive=false` retains both terminal entries and `alive=true` returns only the mobile token.
 
 - `TestTerminalOperationFlow`: tests terminal-scoped operations.
   - Logout one concrete device and keep another terminal online.
@@ -172,8 +180,12 @@ This directory contains HTTP flow tests for `tests/gin_core_app`.
   - Exchange code for access and refresh tokens.
   - Verify authorization code is single-use.
   - Introspect access token.
-  - Refresh token and verify old access token is invalid.
+  - Refresh token, verify both old credentials are unusable, and introspect the new access token before revoking it.
   - Revoke refreshed token and verify it is invalid.
+
+- `TestOAuth2AuthorizationCodeBindingFlow`: tests authorization-code client and redirect binding.
+  - Reject another registered client and a mismatched redirect URI.
+  - Verify the original client can still exchange the same code after those rejected requests.
 
 - `TestOAuth2PasswordAndClientCredentialsFlow`: tests additional OAuth2 grants.
   - Password grant returns user token.
@@ -189,11 +201,17 @@ This directory contains HTTP flow tests for `tests/gin_core_app`.
 - `TestMultiAuthIsolationFlow`: tests multiple auth systems.
   - Login the same ID into user-auth and admin-auth.
   - Verify tokens cannot cross auth systems.
-  - Verify permissions and roles are isolated by AuthType.
+  - Read both identities and compare permission and role lists to verify AuthType isolation.
+
+- `TestDecodeFlowData`: rejects missing, null, malformed, and incorrectly typed data; clears stale fields when a destination is reused.
+- `TestFlowClientDefaultsToMemory`: runs a real login and protected HTTP request with the Redis environment variable unset.
+- `TestFlowStorageCleanup`: removes actual fixture keys, checks auth and nonce invalidation, and preserves an unrelated key in the same backend.
 
 ## Run
 
-The automated flow tests use Redis only when `DTOKEN_REDIS_URL` is explicitly configured. This keeps the default test command self-contained while still allowing multi-process storage semantics and Redis scanning/cleanup coverage.
+The automated flow tests run with in-memory storage by default. Set `DTOKEN_REDIS_URL` to run flow scenarios against Redis and exercise its storage and scanning behavior. The default command executes the flows without requiring an external service.
+
+Each fixture receives a random `dt-gcf-<hex>:` key prefix, including across independent test processes. Cleanup scans and deletes only that fixture prefix. Use a dedicated test Redis database.
 
 Example Redis URLs:
 
@@ -202,7 +220,7 @@ redis://localhost:6379/0
 redis://:password@localhost:6379/0
 ```
 
-Without `DTOKEN_REDIS_URL`, Redis-backed flow tests are skipped.
+Without `DTOKEN_REDIS_URL`, flows run on memory storage. If Redis is configured but cannot be initialized, or any application setup fails, the test fails instead of silently skipping.
 
 From this directory:
 

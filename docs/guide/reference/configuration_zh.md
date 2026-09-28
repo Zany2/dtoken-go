@@ -62,7 +62,7 @@ mgr, err := defaults.NewBuilder().
 | `ReplacedLoginExitMode` | `config.ReplacedLoginExitMode` | `old_device` | 非并发登录时保留新登录还是拒绝新登录 |
 | `OverflowLogoutMode` | `config.LogoutMode` | `kickout` | 超过最大登录数时旧 Token 的处理方式 |
 | `TokenStyle` | `adapter.TokenStyle` | `uuid` | Token 生成风格 |
-| `JwtSecretKey` | `string` | `dtoken-go` | JWT 风格使用的签名密钥 |
+| `JwtSecretKey` | `string` | `dtoken-go`（占位值） | JWT 模式必须显式配置密钥；默认值、空字符串及纯空白密钥均会被拒绝 |
 | `IsReadHeader` | `bool` | `true` | 是否从 Header 读取 Token |
 | `IsReadCookie` | `bool` | `false` | 是否从 Cookie 读取 Token |
 | `IsReadQuery` | `bool` | `false` | 是否从 Query 参数读取 Token |
@@ -124,6 +124,8 @@ dtoken:admin:session:10001
 | `ActiveTimeout` | `-1` 或 `> 0` |
 
 `MaxLoginCount` 是数量而不是时长，允许 `-1` 表示不限制，或使用大于 `0` 的数量。
+
+正数时间配置不能超过 `9223372036` 秒，这是 `time.Duration` 可表示的最大整秒数。该上限不适用于 `MaxLoginCount`。
 
 不同配置项中 `-1` 的含义如下：
 

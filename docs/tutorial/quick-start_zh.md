@@ -11,7 +11,7 @@
 ### 方式一：核心模块 + 内存存储
 
 ```bash
-go get github.com/Zany2/dtoken-go/core
+go get github.com/Zany2/dtoken-go/defaults
 go get github.com/Zany2/dtoken-go/dtoken
 go get github.com/Zany2/dtoken-go/com/storage/memory
 ```

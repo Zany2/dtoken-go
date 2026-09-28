@@ -2,6 +2,8 @@
 
 本页整理 DToken-Go 在普通登录、登出、权限和角色 API 之外可以直接使用的高级能力。
 
+示例假设已经注册 Manager。Nonce、Ticket 和 ShortKey 为可选模块，应在 Builder 调用 `Build()` 前，按需通过 `EnableNonce()`、`EnableTicket()` 和 `EnableShortKey()` 启用，详见[可选模块](../reference/configuration_zh.md)。Token Introspection 和业务 Refresh Token 无需这些开关。
+
 ## Token Introspection
 
 Token Introspection 用来无续期副作用地检查 token 当前是否活跃，并返回归属信息、TTL、权限、角色、扩展数据和非活跃原因。

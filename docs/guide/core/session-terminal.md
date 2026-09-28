@@ -121,7 +121,9 @@ A token can become invalid because:
 3. logout deletes it
 4. kickout marks it
 5. replace marks it
-6. account, device, or service disable makes validation fail
+6. account or device disable makes login validation fail
+
+Service disable only blocks the corresponding explicit service checks; it does not invalidate the general login state.
 
 ## Test Coverage
 

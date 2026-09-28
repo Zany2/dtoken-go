@@ -13,8 +13,9 @@ import (
 
 // Storage is the built-in in-memory SSO storage. Storage 是 SSO 内置内存存储。
 type Storage struct {
-	mu     sync.RWMutex
-	values map[string]item
+	mu          sync.RWMutex
+	values      map[string]item
+	nextCleanup time.Time // nextCleanup limits expiration scans during writes. nextCleanup 限制写入时的过期扫描频率。
 }
 
 // Verify Storage implements adapter.Storage at compile time. 编译期确认 Storage 实现 adapter.Storage。
@@ -45,9 +46,13 @@ func (s *Storage) Set(ctx context.Context, key string, value any, expiration tim
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Reclaim expired keys even when their values are never read again. 即使旧键不再被读取，也要回收过期数据。
+	now := time.Now()
+	s.cleanupExpired(now)
+
 	stored := item{value: value}
 	if expiration > 0 {
-		stored.expireAt = time.Now().Add(expiration)
+		stored.expireAt = now.Add(expiration)
 	}
 	s.values[key] = stored
 	return nil
@@ -109,13 +114,16 @@ func (s *Storage) SetIfAbsent(ctx context.Context, key string, value any, expira
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	now := time.Now()
+	s.cleanupExpired(now)
+
 	stored, ok := s.values[key]
-	if ok && (stored.expireAt.IsZero() || time.Now().Before(stored.expireAt)) {
+	if ok && (stored.expireAt.IsZero() || now.Before(stored.expireAt)) {
 		return false, nil
 	}
 	next := item{value: value}
 	if expiration > 0 {
-		next.expireAt = time.Now().Add(expiration)
+		next.expireAt = now.Add(expiration)
 	}
 	s.values[key] = next
 	return true, nil
@@ -140,8 +148,8 @@ func (s *Storage) Delete(ctx context.Context, keys ...string) error {
 
 // Exists checks whether key exists. Exists 检查键是否存在。
 func (s *Storage) Exists(ctx context.Context, key string) bool {
-	value, _ := s.Get(ctx, key)
-	return value != nil
+	ttl, err := s.TTL(ctx, key)
+	return err == nil && ttl != adapter.TTLNotFound
 }
 
 // Expire sets key expiration and returns an error when the key is missing. Expire 设置键过期时间，键不存在时返回错误。
@@ -183,18 +191,32 @@ func (s *Storage) TTL(ctx context.Context, key string) (time.Duration, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	stored := s.values[key]
-	if stored.value == nil {
-		return adapter.TTLNotFound, nil
-	}
-	if !stored.expireAt.IsZero() && time.Now().After(stored.expireAt) {
-		delete(s.values, key)
+	stored, ok := s.values[key]
+	if !ok {
 		return adapter.TTLNotFound, nil
 	}
 	if stored.expireAt.IsZero() {
 		return adapter.TTLNoExpire, nil
 	}
-	return time.Until(stored.expireAt), nil
+	ttl := time.Until(stored.expireAt)
+	if ttl <= 0 {
+		delete(s.values, key)
+		return adapter.TTLNotFound, nil
+	}
+	return ttl, nil
+}
+
+// cleanupExpired periodically reclaims expired entries while the caller holds mu. cleanupExpired 在调用方持有 mu 时按间隔回收过期条目。
+func (s *Storage) cleanupExpired(now time.Time) {
+	if now.Before(s.nextCleanup) {
+		return
+	}
+	for key, stored := range s.values {
+		if !stored.expireAt.IsZero() && !now.Before(stored.expireAt) {
+			delete(s.values, key)
+		}
+	}
+	s.nextCleanup = now.Add(time.Minute)
 }
 
 // Ping checks whether storage is reachable. Ping 检查存储是否可达。

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Zany2/dtoken-go/sso"
 	"github.com/gin-gonic/gin"
@@ -16,8 +17,7 @@ import (
 func TestProtectedRedirectAndLocalSession(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	resetGinClientSessions(t)
-	router := gin.New()
-	router.GET("/protected", protected)
+	router := newDemoRouter()
 
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/protected", nil))
@@ -52,9 +52,7 @@ func TestProtectedRedirectAndLocalSession(t *testing.T) {
 func TestHome(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
-	context, _ := gin.CreateTestContext(recorder)
-	context.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-	home(context)
+	newDemoRouter().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "Gin SSO Client") {
 		t.Fatalf("home status=%d body=%q, want Gin client landing page", recorder.Code, recorder.Body.String())
 	}
@@ -66,7 +64,9 @@ func TestCallbackAndSingleLogout(t *testing.T) {
 	resetGinClientSessions(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/sso/token" {
-			t.Fatalf("token request path = %q, want /sso/token", r.URL.Path)
+			t.Errorf("token request path = %q, want /sso/token", r.URL.Path)
+			http.NotFound(w, r)
+			return
 		}
 		_ = r.ParseForm()
 		_ = json.NewEncoder(w).Encode(sso.OKResponse(sso.TicketExchangeResult{LoginID: "user-1001"}))
@@ -85,9 +85,7 @@ func TestCallbackAndSingleLogout(t *testing.T) {
 	})
 	t.Cleanup(func() { clientApp = previous })
 
-	router := gin.New()
-	router.GET("/sso/callback", callback)
-	router.POST("/sso/logout-callback", ginWrap(clientApp.LogoutCallbackHandler(logoutCallback)))
+	router := newDemoRouter()
 
 	missing := httptest.NewRecorder()
 	router.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "/sso/callback", nil))
@@ -96,20 +94,29 @@ func TestCallbackAndSingleLogout(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/sso/callback?ticket=ticket-value", nil))
+	router.ServeHTTP(recorder, newCallbackRequest(t, "ticket-value"))
 	if recorder.Code != http.StatusFound {
 		t.Fatalf("callback status = %d, want %d", recorder.Code, http.StatusFound)
 	}
-	cookies := recorder.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].Name != localCookie || cookies[0].Value == "" {
-		t.Fatalf("callback cookies = %+v, want local session cookie", cookies)
+	var sessionCookie *http.Cookie
+	for _, cookie := range recorder.Result().Cookies() {
+		if cookie.Name == localCookie {
+			sessionCookie = cookie
+		}
+	}
+	if sessionCookie == nil || sessionCookie.Value == "" {
+		t.Fatalf("callback cookies = %+v, want local session cookie", recorder.Result().Cookies())
 	}
 
 	second, err := newLocalSession("user-1001")
 	if err != nil {
 		t.Fatalf("newLocalSession(second) error = %v", err)
 	}
-	form := url.Values{"loginId": {"user-1001"}}
+	other, err := newLocalSession("user-2002")
+	if err != nil {
+		t.Fatalf("newLocalSession(other) error = %v", err)
+	}
+	form := url.Values{"loginId": {"user-1001"}, "client": {clientID}, "timestamp": {time.Now().Format(time.RFC3339)}}
 	logoutRequest := httptest.NewRequest(http.MethodPost, "/sso/logout-callback", strings.NewReader(form.Encode()))
 	logoutRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	logoutRecorder := httptest.NewRecorder()
@@ -117,12 +124,17 @@ func TestCallbackAndSingleLogout(t *testing.T) {
 	if logoutRecorder.Code != http.StatusOK {
 		t.Fatalf("logout callback status = %d, want %d", logoutRecorder.Code, http.StatusOK)
 	}
-	for _, sessionID := range []string{cookies[0].Value, second} {
+	for _, sessionID := range []string{sessionCookie.Value, second} {
 		request := httptest.NewRequest(http.MethodGet, "/", nil)
 		request.AddCookie(&http.Cookie{Name: localCookie, Value: sessionID})
 		if _, ok := localLoginID(request); ok {
 			t.Fatalf("session %q remains after logout callback", sessionID)
 		}
+	}
+	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	request.AddCookie(&http.Cookie{Name: localCookie, Value: other})
+	if loginID, ok := localLoginID(request); !ok || loginID != "user-2002" {
+		t.Fatalf("other session = %q, %v, want user-2002 true", loginID, ok)
 	}
 }
 
@@ -135,8 +147,7 @@ func TestLogoutClearsLocalSession(t *testing.T) {
 		t.Fatalf("newLocalSession() error = %v", err)
 	}
 
-	router := gin.New()
-	router.GET("/logout", logout)
+	router := newDemoRouter()
 	request := httptest.NewRequest(http.MethodGet, "/logout", nil)
 	request.AddCookie(&http.Cookie{Name: localCookie, Value: sessionID})
 	recorder := httptest.NewRecorder()
@@ -172,10 +183,9 @@ func TestCallbackRejectsIncompleteSSOResponse(t *testing.T) {
 	})
 	t.Cleanup(func() { clientApp = previous })
 
-	router := gin.New()
-	router.GET("/sso/callback", callback)
+	router := newDemoRouter()
 	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/sso/callback?ticket=ticket-value", nil))
+	router.ServeHTTP(recorder, newCallbackRequest(t, "ticket-value"))
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("empty login ID status = %d, want %d", recorder.Code, http.StatusBadGateway)
 	}
@@ -200,10 +210,9 @@ func TestCallbackHandlesExchangeFailure(t *testing.T) {
 	})
 	t.Cleanup(func() { clientApp = previous })
 
-	router := gin.New()
-	router.GET("/sso/callback", callback)
+	router := newDemoRouter()
 	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/sso/callback?ticket=ticket-value", nil))
+	router.ServeHTTP(recorder, newCallbackRequest(t, "ticket-value"))
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("exchange failure status = %d, want %d", recorder.Code, http.StatusBadGateway)
 	}
@@ -217,14 +226,39 @@ func TestNewLocalSessionRejectsEmptyLoginID(t *testing.T) {
 	}
 }
 
+// newCallbackRequest starts authorization through the actual Gin router. newCallbackRequest 通过实际 Gin 路由发起授权。
+func newCallbackRequest(t *testing.T, ticket string) *http.Request {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	newDemoRouter().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/protected", nil))
+	location, err := url.Parse(recorder.Header().Get("Location"))
+	if err != nil || recorder.Code != http.StatusFound {
+		t.Fatalf("start authorization: status=%d error=%v", recorder.Code, err)
+	}
+	state := location.Query().Get(clientApp.Config().Params.Back)
+	if state == "" {
+		t.Fatal("authorization is missing browser state")
+	}
+	query := url.Values{"ticket": {ticket}, clientApp.Config().Params.Back: {state}}
+	request := httptest.NewRequest(http.MethodGet, "/sso/callback?"+query.Encode(), nil)
+	for _, cookie := range recorder.Result().Cookies() {
+		request.AddCookie(cookie)
+	}
+	if cookie, err := request.Cookie(loginStateCookie.Name); err != nil || cookie.Value == "" {
+		t.Fatal("authorization is missing the browser state Cookie")
+	}
+	return request
+}
+
+// resetGinClientSessions isolates local session state between tests. resetGinClientSessions 隔离各测试的本地会话状态。
 func resetGinClientSessions(t *testing.T) {
 	t.Helper()
 	localSessions.mu.Lock()
-	localSessions.values = make(map[string]string)
+	localSessions.values = make(map[string]localSession)
 	localSessions.mu.Unlock()
 	t.Cleanup(func() {
 		localSessions.mu.Lock()
-		localSessions.values = make(map[string]string)
+		localSessions.values = make(map[string]localSession)
 		localSessions.mu.Unlock()
 	})
 }

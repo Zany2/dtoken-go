@@ -94,6 +94,8 @@ if _, err := dtoken.BuildAndSetManager(
 }
 ```
 
+`NewStorageFromClient` 包装传入的客户端，不改变其连接配置。`Storage.Close()` 会关闭该客户端，Manager 默认也会接管注入的存储。若客户端还被其他业务共享，应通过 `ComponentOwnership{Storage: false, Logger: true, Pool: true}` 将存储设为调用方持有，待所有使用者停止后统一关闭，详见[多认证体系](../core/multi-auth_zh.md)。
+
 ## Config 字段
 
 当前 `redis.Config` 支持：
@@ -133,14 +135,14 @@ if _, err = dtoken.BuildAndSetManager(
 }
 ```
 
-这时登录态、Session、权限、角色、Nonce、OAuth2 Token 等数据都会走 Redis。
+这时登录态、Session、权限和角色数据使用 Redis。Nonce、OAuth2 在启用相应可选模块后也会使用该后端。
 
 ## Redis Key 结构
 
-核心存储 key 使用统一格式：
+核心存储 key 使用统一格式，命名空间各部分会独立转义，详见[命名空间规则](../reference/configuration_zh.md)：
 
 ```text
-KeyPrefix + AuthType + 业务前缀 + 业务标识
+编码后的 KeyPrefix + 编码后的 AuthType + 业务前缀 + 业务标识
 ```
 
 默认配置下：
@@ -179,17 +181,16 @@ dtoken:admin-auth:session:{loginID}
 
 ### 测试前缀
 
-`tests/gin_core_flow` 为了避免污染 Redis，会使用短前缀：
+`tests/gin_core_flow` 为每个测试实例生成随机前缀，不同测试进程之间也保持隔离：
 
 ```text
-dt:gcf:1:
-dt:gcf:2:
+dt-gcf-<32 位十六进制字符串>:
 ```
 
 测试清理时只删除当前前缀下的 key，例如：
 
 ```text
-dt:gcf:1:*
+dt-gcf-<当前实例的 32 位十六进制字符串>:*
 ```
 
 不会执行全库清空。

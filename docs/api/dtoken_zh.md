@@ -94,8 +94,19 @@ func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...st
 **示例**：
 ```go
 nextPair, err := dtoken.RefreshToken(ctx, pair.RefreshToken)
+if err != nil {
+    return err
+}
+
 ttl, err := dtoken.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
-_ = dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
+if err != nil {
+    return err
+}
+fmt.Println(ttl)
+
+if err := dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken); err != nil {
+    return err
+}
 ```
 
 ### IntrospectToken
@@ -422,15 +433,17 @@ func GetSessionByToken(ctx context.Context, tokenValue string, authType ...strin
 
 **示例**：
 ```go
-sess, _ := dtoken.GetSession(ctx, "1000")
-sessByToken, _ := dtoken.GetSessionByToken(ctx, token)
-
-sess.Set("nickname", "张三")
-nickname := sess.GetString("nickname")
-
-_ = sessByToken
-_ = nickname
+if err := dtoken.SetSessionValue(ctx, "1000", "nickname", "张三"); err != nil {
+    return err
+}
+nickname, found, err := dtoken.GetSessionValue(ctx, "1000", "nickname")
+if err != nil {
+    return err
+}
+fmt.Println(nickname, found)
 ```
+
+`GetSession` 和 `GetSessionByToken` 返回解码后的快照，调用 `sess.Set(...)` 只修改本地值。应使用 `SetSessionValue` 或 `SetSessionValueByToken` 持久化账号数据，同时保留 Session 的有效期。
 
 ### 常用扩展方法
 
@@ -479,6 +492,8 @@ type TokenInfo struct {
 
 ### Nonce API
 
+构建并注册 Manager 前，先调用 `EnableNonce()` 启用该可选模块。
+
 ```go
 func GenerateNonce(ctx context.Context, authType ...string) (string, error)
 func GenerateNonceWithTimeout(ctx context.Context, timeout time.Duration, authType ...string) (string, error)
@@ -489,6 +504,8 @@ func GetNonceTTL(ctx context.Context, nonce string, authType ...string) (int64, 
 ```
 
 ### OAuth2 API
+
+构建并注册 Manager 前，先调用 `EnableOAuth2()` 启用该可选模块。
 
 ```go
 func RegisterOAuth2Client(client *oauth2.Client, authType ...string) error
