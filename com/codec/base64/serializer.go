@@ -50,31 +50,36 @@ func (s *Base64Serializer) Encode(v any) ([]byte, error) {
 
 // Decode decodes Base64 data and then deserializes JSON 先做 Base64 解码再从 JSON 反序列化
 func (s *Base64Serializer) Decode(data []byte, v any) error {
-	// Release scratch space after JSON decoding, including error paths. JSON 解码结束后释放临时空间，同时覆盖错误路径。
-	buffer := decodeBufferPool.Get().(*decodeBuffer)
-	defer func() {
-		if cap(buffer.data) <= maxDecodeBufferCapacity {
+	// Bypass the pool for oversized payloads to avoid allocating and discarding its initial buffer. 超大载荷绕过池，避免分配后立即丢弃池的初始缓冲区。
+	needed := base64.StdEncoding.DecodedLen(len(data))
+	var jsonBytes []byte
+	if needed > maxDecodeBufferCapacity {
+		jsonBytes = make([]byte, needed)
+	} else {
+		// Release pooled scratch space after JSON decoding, including error paths. JSON 解码结束后归还池内临时空间，同时覆盖错误路径。
+		buffer := decodeBufferPool.Get().(*decodeBuffer)
+		defer func() {
 			buffer.data = buffer.data[:0]
 			decodeBufferPool.Put(buffer)
-		}
-	}()
+		}()
 
-	// Grow to the required destination length without retaining oversized allocations. 按目标长度扩容，超大分配不保留在池中。
-	needed := base64.StdEncoding.DecodedLen(len(data))
-	if cap(buffer.data) < needed {
-		buffer.data = make([]byte, needed)
-	} else {
-		buffer.data = buffer.data[:needed]
+		// Grow only within the pool's retained capacity limit. 仅在池的保留容量上限内扩容。
+		if cap(buffer.data) < needed {
+			buffer.data = make([]byte, needed)
+		} else {
+			buffer.data = buffer.data[:needed]
+		}
+		jsonBytes = buffer.data
 	}
 
 	// Decode directly from the input bytes. 直接从输入字节解码。
-	n, err := base64.StdEncoding.Decode(buffer.data, data)
+	n, err := base64.StdEncoding.Decode(jsonBytes, data)
 	if err != nil {
 		return err
 	}
 
 	// Deserialize the decoded bytes from JSON 再用 JSON 反序列化
-	return json.Unmarshal(buffer.data[:n], v)
+	return json.Unmarshal(jsonBytes[:n], v)
 }
 
 // Name returns the serializer name 返回序列化器名称
