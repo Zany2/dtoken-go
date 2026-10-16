@@ -4,9 +4,29 @@ package base64
 import (
 	"encoding/base64"
 	"encoding/json"
+	"sync"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
 )
+
+const (
+	// initialDecodeBufferCapacity avoids reallocating small JSON payloads. initialDecodeBufferCapacity 为小型 JSON 载荷预留缓冲容量。
+	initialDecodeBufferCapacity = 4 * 1024
+	// maxDecodeBufferCapacity limits retained capacity per buffer, not payload size. maxDecodeBufferCapacity 限制单个缓冲区保留容量，不限制载荷大小。
+	maxDecodeBufferCapacity = 64 * 1024
+)
+
+// decodeBuffer keeps the slice header in a reusable pointer-owned object. decodeBuffer 用可复用的指针对象保存切片头。
+type decodeBuffer struct {
+	data []byte
+}
+
+// decodeBufferPool reuses scratch space only for the duration of Decode. decodeBufferPool 仅复用 Decode 调用期间使用的临时空间。
+var decodeBufferPool = sync.Pool{
+	New: func() any {
+		return &decodeBuffer{data: make([]byte, 0, initialDecodeBufferCapacity)}
+	},
+}
 
 // Base64Serializer implements a Base64 JSON serializer Base64 JSON 序列化器实现
 type Base64Serializer struct{}
@@ -30,15 +50,31 @@ func (s *Base64Serializer) Encode(v any) ([]byte, error) {
 
 // Decode decodes Base64 data and then deserializes JSON 先做 Base64 解码再从 JSON 反序列化
 func (s *Base64Serializer) Decode(data []byte, v any) error {
+	// Release scratch space after JSON decoding, including error paths. JSON 解码结束后释放临时空间，同时覆盖错误路径。
+	buffer := decodeBufferPool.Get().(*decodeBuffer)
+	defer func() {
+		if cap(buffer.data) <= maxDecodeBufferCapacity {
+			buffer.data = buffer.data[:0]
+			decodeBufferPool.Put(buffer)
+		}
+	}()
+
+	// Grow to the required destination length without retaining oversized allocations. 按目标长度扩容，超大分配不保留在池中。
+	needed := base64.StdEncoding.DecodedLen(len(data))
+	if cap(buffer.data) < needed {
+		buffer.data = make([]byte, needed)
+	} else {
+		buffer.data = buffer.data[:needed]
+	}
+
 	// Decode directly from the input bytes. 直接从输入字节解码。
-	jsonBytes := make([]byte, base64.StdEncoding.DecodedLen(len(data)))
-	n, err := base64.StdEncoding.Decode(jsonBytes, data)
+	n, err := base64.StdEncoding.Decode(buffer.data, data)
 	if err != nil {
 		return err
 	}
 
 	// Deserialize the decoded bytes from JSON 再用 JSON 反序列化
-	return json.Unmarshal(jsonBytes[:n], v)
+	return json.Unmarshal(buffer.data[:n], v)
 }
 
 // Name returns the serializer name 返回序列化器名称

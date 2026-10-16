@@ -3,7 +3,9 @@ package base64
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -15,6 +17,92 @@ func TestBase64SerializerName(t *testing.T) {
 	}
 	if got := s.Name(); got != "base64" {
 		t.Fatalf("Name() = %q, want %q", got, "base64")
+	}
+}
+
+// TestBase64SerializerDecodeBufferLifetime checks parallel decoding, capacity boundaries and retained JSON values. TestBase64SerializerDecodeBufferLifetime 验证并发解码、容量边界和 JSON 结果的独立生命周期。
+func TestBase64SerializerDecodeBufferLifetime(t *testing.T) {
+	s := NewBase64Serializer()
+	for _, tc := range []struct {
+		name string
+		size int
+	}{
+		{"empty_string", 0},
+		{"below_initial_capacity", 4096 - 3},
+		{"above_initial_capacity", 4096},
+		{"below_retained_capacity", 65536 - 3},
+		{"oversized", 128 * 1024},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			want := strings.Repeat("x", tc.size)
+			data, err := s.Encode(want)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var retained json.RawMessage
+			if err := s.Decode(data, &retained); err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < 8; i++ {
+				var got string
+				if err := s.Decode(data, &got); err != nil || got != want {
+					t.Fatalf("Decode() error=%v, decoded length=%d, want length=%d", err, len(got), len(want))
+				}
+
+				// A smaller value must not include bytes left by an earlier payload. 较小载荷不得混入先前载荷留下的字节。
+				if err := s.Decode([]byte("e30="), &map[string]any{}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if string(retained) != `"`+want+`"` {
+				t.Fatal("later decodes changed the retained JSON value")
+			}
+		})
+	}
+}
+
+// BenchmarkBase64SerializerDecode compares pooled scratch space with the previous allocation path. BenchmarkBase64SerializerDecode 比较临时缓冲池与原有逐次分配路径。
+func BenchmarkBase64SerializerDecode(b *testing.B) {
+	s := NewBase64Serializer()
+	for _, payload := range []struct {
+		name string
+		size int
+	}{
+		{"1KB", 1024},
+		{"4KB", 4096},
+		{"16KB", 16 * 1024},
+		{"128KB", 128 * 1024},
+	} {
+		data, err := s.Encode(strings.Repeat("x", payload.size))
+		if err != nil {
+			b.Fatal(err)
+		}
+		for _, variant := range []struct {
+			name   string
+			decode func([]byte, any) error
+		}{
+			{"pooled", s.Decode},
+			{"unpooled", func(data []byte, v any) error {
+				buffer := make([]byte, base64.StdEncoding.DecodedLen(len(data)))
+				n, err := base64.StdEncoding.Decode(buffer, data)
+				if err != nil {
+					return err
+				}
+				return json.Unmarshal(buffer[:n], v)
+			}},
+		} {
+			b.Run(payload.name+"/"+variant.name, func(b *testing.B) {
+				b.ReportAllocs()
+				b.SetBytes(int64(len(data)))
+				for b.Loop() {
+					var got string
+					if err := variant.decode(data, &got); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
 	}
 }
 
