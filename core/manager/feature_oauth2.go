@@ -30,8 +30,9 @@ func (m *Manager) UnregisterOAuth2Client(clientID string) error {
 	if m.oauth2Manager == nil {
 		return derror.ErrModuleNotEnabled
 	}
+	client, getErr := m.oauth2Manager.GetClient(clientID)
 	err := m.oauth2Manager.UnregisterClient(clientID)
-	if err == nil {
+	if err == nil && getErr == nil && client != nil {
 		m.triggerEvent(listener.EventOAuth2ClientUnregister, "", "", "", "", map[string]any{
 			listener.ExtraKeyAction:   listener.ActionUnregister,
 			listener.ExtraKeyClientID: clientID,
@@ -58,14 +59,16 @@ func (m *Manager) OAuth2Token(ctx context.Context, req *oauth2.TokenRequest, val
 		return nil, err
 	}
 	event := listener.EventOAuth2TokenIssue
+	action := listener.ActionIssue
 	grantType := ""
 	if req != nil {
 		grantType = string(req.GrantType)
 		if req.GrantType == oauth2.GrantTypeRefreshToken {
 			event = listener.EventOAuth2TokenRefresh
+			action = listener.ActionRefresh
 		}
 	}
-	m.triggerOAuth2TokenEvent(event, token, listener.ActionIssue, grantType)
+	m.triggerOAuth2TokenEvent(event, token, action, grantType)
 	return token, nil
 }
 
@@ -165,11 +168,9 @@ func (m *Manager) ValidateOAuth2AccessToken(ctx context.Context, accessToken str
 	if m.oauth2Manager == nil {
 		return false
 	}
-	ok := m.oauth2Manager.ValidateAccessToken(ctx, accessToken)
-	m.triggerEvent(listener.EventOAuth2TokenValidate, "", "", "", accessToken, map[string]any{
-		listener.ExtraKeyAction: listener.ActionValidate,
-		listener.ExtraKeyResult: ok,
-	})
+	token, err := m.oauth2Manager.ValidateAccessTokenAndGetInfo(ctx, accessToken)
+	ok := err == nil
+	m.triggerOAuth2TokenValidateEvent(accessToken, token, ok)
 	return ok
 }
 
@@ -179,9 +180,7 @@ func (m *Manager) ValidateOAuth2AccessTokenAndGetInfo(ctx context.Context, acces
 		return nil, derror.ErrModuleNotEnabled
 	}
 	token, err := m.oauth2Manager.ValidateAccessTokenAndGetInfo(ctx, accessToken)
-	if token != nil {
-		m.triggerOAuth2TokenEvent(listener.EventOAuth2TokenValidate, token, listener.ActionValidate, "")
-	}
+	m.triggerOAuth2TokenValidateEvent(accessToken, token, err == nil)
 	return token, err
 }
 
@@ -195,15 +194,12 @@ func (m *Manager) RevokeOAuth2Token(ctx context.Context, accessToken string) err
 	if err == nil {
 		if token != nil {
 			m.triggerOAuth2TokenEvent(listener.EventOAuth2TokenRevoke, token, listener.ActionRevoke, "")
-		} else {
-			m.triggerEvent(listener.EventOAuth2TokenRevoke, "", "", "", accessToken, map[string]any{
-				listener.ExtraKeyAction: listener.ActionRevoke,
-			})
 		}
 	}
 	return err
 }
 
+// triggerOAuth2CodeEvent emits OAuth2 authorization code events. triggerOAuth2CodeEvent 触发 OAuth2 授权码事件。
 func (m *Manager) triggerOAuth2CodeEvent(code *oauth2.AuthorizationCode) {
 	if code == nil {
 		return
@@ -217,6 +213,27 @@ func (m *Manager) triggerOAuth2CodeEvent(code *oauth2.AuthorizationCode) {
 	})
 }
 
+// triggerOAuth2TokenValidateEvent emits a complete validation result. triggerOAuth2TokenValidateEvent 触发完整的 OAuth2 令牌校验结果事件。
+func (m *Manager) triggerOAuth2TokenValidateEvent(accessToken string, token *oauth2.AccessToken, result bool) {
+	extra := map[string]any{
+		listener.ExtraKeyAction: listener.ActionValidate,
+		listener.ExtraKeyResult: result,
+	}
+	loginID := ""
+	if token != nil {
+		loginID = token.UserID
+		extra[listener.ExtraKeyClientID] = token.ClientID
+		extra[listener.ExtraKeyUserID] = token.UserID
+		extra[listener.ExtraKeyScopes] = token.Scopes
+		extra[listener.ExtraKeyTokenType] = token.TokenType
+		extra[listener.ExtraKeyTTL] = token.ExpiresIn
+		extra[listener.ExtraKeyRefreshToken] = token.RefreshToken
+		extra[listener.ExtraKeyGrantType] = ""
+	}
+	m.triggerEvent(listener.EventOAuth2TokenValidate, loginID, "", "", accessToken, extra)
+}
+
+// triggerOAuth2TokenEvent emits OAuth2 token lifecycle events. triggerOAuth2TokenEvent 触发 OAuth2 令牌生命周期事件。
 func (m *Manager) triggerOAuth2TokenEvent(event listener.Event, token *oauth2.AccessToken, action, grantType string) {
 	if token == nil {
 		return

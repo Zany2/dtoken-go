@@ -1,4 +1,4 @@
-﻿[English](architecture.md) | 中文文档
+[English](architecture.md) | 中文文档
 
 # 架构设计
 
@@ -69,18 +69,31 @@
 - 以 `context.Context` 为统一入口
 - 内部通过全局 `Manager` 映射管理不同认证体系
 
-### 3. 组件实现层 (com/)
+### 3. SSO 层 (sso/)
+
+**职责**：提供跨服务单点登录流程，同时不让核心 Manager 依赖具体 Web 框架。
+
+**主要能力**：
+- 服务端签发登录 Ticket 和一次性 OAuth2 Code
+- 客户端注册与单点登出回调
+- 可插拔存储，多实例部署可使用 Redis
+
+**依赖特点**：
+- 依赖核心认证契约和 Storage 适配器
+- 由 `sso.Server` 管理 SSO 生命周期和存储所有权
+
+### 4. 组件实现层 (com/)
 
 **职责**：提供可替换组件实现。
 
 **当前模块**：
 - `com/storage/*` - 存储实现
 - `com/codec/*` - 编解码实现
-- `com/generator/sgenerator` - Token 生成器
+- `com/generator/dgenerator` - Token 生成器
 - `com/log/*` - 日志实现
 - `com/pool/ants` - 续期协程池实现
 
-### 4. 框架集成层 (integrations/)
+### 5. 框架集成层 (integrations/)
 
 **职责**：提供 Web 框架适配。
 
@@ -92,6 +105,7 @@
 - `chi`
 - `hertz`
 - `kratos`
+- `beego`
 
 **主要功能**：
 - 请求上下文适配
@@ -104,11 +118,14 @@
 ### 1. Builder 模式
 
 ```go
-mgr := defaults.NewBuilder().
+mgr, err := defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     TokenName("Authorization").
     Timeout(86400).
     Build()
+if err != nil {
+    panic(err)
+}
 ```
 
 **优势**：
@@ -124,7 +141,9 @@ type Storage interface {
     Get(ctx context.Context, key string) (any, error)
     Delete(ctx context.Context, keys ...string) error
     Exists(ctx context.Context, key string) bool
+    Expire(ctx context.Context, key string, expiration time.Duration) error
     TTL(ctx context.Context, key string) (time.Duration, error)
+    Ping(ctx context.Context) error
 }
 ```
 
@@ -166,13 +185,13 @@ mgr, err := dtoken.GetManager()
   ↓
 dtoken.Login(ctx, loginID, ...)
   ↓
-1. 解析 device / deviceId / authType
+1. 解析 device / deviceID / authType
   ↓
 2. 生成 Token
   ↓
-3. 保存 TokenInfo
+3. 保存 Session，保留已有的更长 TTL
   ↓
-4. 保存 Session
+4. 保存 TokenInfo
   ↓
 5. 初始化续期 / 活跃状态
   ↓
@@ -186,15 +205,15 @@ dtoken.Login(ctx, loginID, ...)
   ↓
 dtoken.IsLogin(ctx, token)
   ↓
-1. 读取 TokenInfo
+1. 校验 TokenInfo 及其 Session、终端绑定
   ↓
-2. 检查账号封禁状态
+2. 检查账号和设备封禁状态
   ↓
 3. 检查 ActiveTimeout
   ↓
-4. 满足条件时触发异步续期
+4. 按需调度合并的续期和活跃维护任务
   ↓
-5. 异步更新活跃时间
+5. 任务写入前复核生命周期，活跃时间采用请求时间
   ↓
 6. 返回校验结果
 ```
@@ -208,7 +227,7 @@ CheckPermissionMiddleware / HasPermission
   ↓
 1. 获取 Token 或 loginID
   ↓
-2. 检查登录状态
+2. 中间件和基于 Token 的接口校验登录状态
   ↓
 3. 获取权限列表
   ↓
@@ -218,6 +237,8 @@ CheckPermissionMiddleware / HasPermission
   ↓
 6. 返回结果
 ```
+
+按账号调用的 `HasPermission(ctx, loginID, ...)` 从账号或 AccessProvider 解析权限，不代表调用者持有有效登录 Token。请求处理应搭配认证中间件或基于 Token 的校验。
 
 ## 自动续签设计
 
@@ -246,12 +267,14 @@ CheckPermissionMiddleware / HasPermission
 
 当前 Key 由：
 
-`KeyPrefix + AuthType + 业务前缀 + 业务标识`
+`编码后的 KeyPrefix + 编码后的 AuthType + 业务前缀 + 业务标识`
+
+命名空间各部分会独立转义内部分隔符。分析包含内部冒号或反斜杠的键之前，请参阅[命名空间规则](../guide/reference/configuration_zh.md)。
 
 组成，默认前缀示例如下：
 
 ```text
-dtoken:auth:{tokenValue}                    -> TokenInfo
+dtoken:auth:token:{tokenValue}              -> TokenInfo
 dtoken:auth:session:{loginID}              -> Session
 dtoken:auth:renew:{tokenValue}             -> 续期节流标记
 dtoken:auth:active:{tokenValue}            -> 最近活跃时间
@@ -263,11 +286,14 @@ dtoken:auth:disable:service:{loginID}:{service} -> 服务封禁信息
 
 ```go
 type TokenInfo struct {
-    AuthType   string
-    LoginID    string
-    Device     string
-    DeviceId   string
-    CreateTime int64
+    AuthType      string
+    LoginID       string
+    Device        string
+    DeviceID      string
+    CreateTime    int64
+    Timeout       int64
+    ActiveTimeout int64
+    Extra         map[string]any
 }
 ```
 
@@ -281,6 +307,7 @@ type Session struct {
     TerminalInfos        []TerminalInfo
     Permissions          []string
     Roles                []string
+    Data                 map[string]any
     HistoryTerminalCount int64
 }
 ```

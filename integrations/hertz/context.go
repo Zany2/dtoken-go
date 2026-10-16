@@ -2,10 +2,11 @@
 package hertz
 
 import (
-	"strings"
+	"net/url"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/network"
 	"github.com/cloudwego/hertz/pkg/protocol"
 )
 
@@ -63,7 +64,12 @@ func (h *HertzContext) GetPostForm(key string) string {
 
 // GetCookie implements adapter.RequestContext GetCookie 实现 Cookie 读取
 func (h *HertzContext) GetCookie(key string) string {
-	return string(h.ctx.Cookie(key))
+	// Match Hertz's QueryEscape when writing cookies. 与 Hertz 写入 Cookie 时的 QueryEscape 配对。
+	value := string(h.ctx.Cookie(key))
+	if decoded, err := url.QueryUnescape(value); err == nil {
+		return decoded
+	}
+	return value
 }
 
 // GetBody implements adapter.RequestContext GetBody 实现请求体读取
@@ -98,7 +104,9 @@ func (h *HertzContext) GetUserAgent() string {
 
 // IsTLS implements adapter.RequestContext IsTLS 实现 TLS 状态读取
 func (h *HertzContext) IsTLS() bool {
-	return strings.EqualFold(string(h.ctx.URI().Scheme()), "https")
+	// An absolute request URI can claim HTTPS over a plain connection. 绝对请求 URI 可伪称 HTTPS，需依据实际连接判断。
+	_, ok := h.ctx.GetConn().(network.ConnTLSer)
+	return ok
 }
 
 // SetStatusCode implements adapter.RequestContext SetStatusCode 实现状态码写入

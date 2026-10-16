@@ -8,7 +8,7 @@ import (
 	echo4 "github.com/labstack/echo/v4"
 )
 
-// CreateShortKeyByContext creates short key CreateShortKeyByContext 鍒涘缓鐭?Key
+// CreateShortKeyByContext creates short key CreateShortKeyByContext 创建 ShortKey
 func CreateShortKeyByContext(c echo4.Context, opts shortkey.CreateOptions) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -17,7 +17,7 @@ func CreateShortKeyByContext(c echo4.Context, opts shortkey.CreateOptions) (*sho
 	return dCtx.ShortKey().Create(requestContext(c), opts)
 }
 
-// CreateShortKeyWithTimeoutByContext creates short key with timeout CreateShortKeyWithTimeoutByContext 浣跨敤鎸囧畾鏈夋晥鏈熷垱寤虹煭 Key
+// CreateShortKeyWithTimeoutByContext creates short key with timeout CreateShortKeyWithTimeoutByContext 使用指定有效期创建 ShortKey
 func CreateShortKeyWithTimeoutByContext(c echo4.Context, opts shortkey.CreateOptions, timeout time.Duration) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -26,7 +26,7 @@ func CreateShortKeyWithTimeoutByContext(c echo4.Context, opts shortkey.CreateOpt
 	return dCtx.ShortKey().CreateWithTimeout(requestContext(c), opts, timeout)
 }
 
-// ConfirmShortKeyByContext confirms short key ConfirmShortKeyByContext 纭鐭?Key
+// ConfirmShortKeyByContext confirms short key ConfirmShortKeyByContext 确认短 Key
 func ConfirmShortKeyByContext(c echo4.Context, key string, opts shortkey.ConfirmOptions) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -44,7 +44,7 @@ func ConfirmShortKeyForCurrentLoginByContext(c echo4.Context, key string, opts s
 	return dCtx.ShortKey().ConfirmForCurrentLogin(requestContext(c), key, opts)
 }
 
-// ValidateShortKeyByContext validates short key ValidateShortKeyByContext 鏍￠獙鐭?Key
+// ValidateShortKeyByContext validates short key ValidateShortKeyByContext 校验 ShortKey
 func ValidateShortKeyByContext(c echo4.Context, key string, opts ...shortkey.ValidateOptions) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -53,7 +53,7 @@ func ValidateShortKeyByContext(c echo4.Context, key string, opts ...shortkey.Val
 	return dCtx.ShortKey().Validate(requestContext(c), key, opts...)
 }
 
-// ConsumeShortKeyByContext consumes short key ConsumeShortKeyByContext 娑堣垂鐭?Key
+// ConsumeShortKeyByContext consumes short key ConsumeShortKeyByContext 消费短 Key
 func ConsumeShortKeyByContext(c echo4.Context, key string, opts ...shortkey.ValidateOptions) (*shortkey.ConsumeResult, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -62,7 +62,7 @@ func ConsumeShortKeyByContext(c echo4.Context, key string, opts ...shortkey.Vali
 	return dCtx.ShortKey().Consume(requestContext(c), key, opts...)
 }
 
-// RevokeShortKeyByContext revokes short key RevokeShortKeyByContext 鎾ら攢鐭?Key
+// RevokeShortKeyByContext revokes short key RevokeShortKeyByContext 撤销短 Key
 func RevokeShortKeyByContext(c echo4.Context, key string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -71,7 +71,7 @@ func RevokeShortKeyByContext(c echo4.Context, key string) error {
 	return dCtx.ShortKey().Revoke(requestContext(c), key)
 }
 
-// GetShortKeyStatusByContext gets short key status GetShortKeyStatusByContext 鑾峰彇鐭?Key 鐘舵€?
+// GetShortKeyStatusByContext gets short key status GetShortKeyStatusByContext 获取 ShortKey 状态
 func GetShortKeyStatusByContext(c echo4.Context, key string) (shortkey.Status, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -80,7 +80,7 @@ func GetShortKeyStatusByContext(c echo4.Context, key string) (shortkey.Status, e
 	return dCtx.ShortKey().GetStatus(requestContext(c), key)
 }
 
-// GetShortKeyTTLByContext gets short key TTL GetShortKeyTTLByContext 鑾峰彇鐭?Key 鍓╀綑鏈夋晥鏈?
+// GetShortKeyTTLByContext gets short key TTL GetShortKeyTTLByContext 获取 ShortKey 剩余有效期
 func GetShortKeyTTLByContext(c echo4.Context, key string) (int64, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

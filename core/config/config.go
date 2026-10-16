@@ -3,11 +3,18 @@ package config
 
 import (
 	"fmt"
+	"math"
+	"net/http"
 	"strings"
+	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
 )
+
+// maxDurationSeconds is the largest whole-second value safely representable by time.Duration. maxDurationSeconds 是 time.Duration 可安全表示的最大整秒数。
+const maxDurationSeconds = math.MaxInt64 / int64(time.Second)
 
 // Config defines runtime config Config 定义运行时配置
 type Config struct {
@@ -167,8 +174,15 @@ func (c *Config) Validate() error {
 	if hasWhitespace(c.TokenName) {
 		return fmt.Errorf("Config.TokenName must not contain whitespace: %q", c.TokenName)
 	}
-	if len(c.TokenName) > 64 {
-		return fmt.Errorf("Config.TokenName length must not exceed 64 characters: %d", len(c.TokenName))
+	if length := utf8.RuneCountInString(c.TokenName); length > 64 {
+		return fmt.Errorf("Config.TokenName length must not exceed 64 characters: %d", length)
+	}
+
+	// Header and cookie names share HTTP token syntax; query/body-only names remain unrestricted by it. Header 和 Cookie 名称遵循 HTTP token 语法，仅用于 Query/Body 的名称不受该语法限制。
+	if c.IsReadHeader || c.IsReadCookie {
+		if err := (&http.Cookie{Name: c.TokenName}).Valid(); err != nil {
+			return fmt.Errorf("Config.TokenName must be a valid HTTP token when IsReadHeader or IsReadCookie is true: %q", c.TokenName)
+		}
 	}
 
 	if c.AuthType == "" {
@@ -180,8 +194,8 @@ func (c *Config) Validate() error {
 	if !hasNamespaceContent(c.AuthType) {
 		return fmt.Errorf("Config.AuthType must contain non-separator content: %q", c.AuthType)
 	}
-	if len(c.AuthType) > 64 {
-		return fmt.Errorf("Config.AuthType length must not exceed 64 characters: %d", len(c.AuthType))
+	if length := utf8.RuneCountInString(c.AuthType); length > 64 {
+		return fmt.Errorf("Config.AuthType length must not exceed 64 characters: %d", length)
 	}
 	if c.KeyPrefix == "" {
 		return fmt.Errorf("Config.KeyPrefix must not be empty")
@@ -192,8 +206,8 @@ func (c *Config) Validate() error {
 	if !hasNamespaceContent(c.KeyPrefix) {
 		return fmt.Errorf("Config.KeyPrefix must contain non-separator content: %q", c.KeyPrefix)
 	}
-	if len(c.KeyPrefix) > 64 {
-		return fmt.Errorf("Config.KeyPrefix length must not exceed 64 characters: %d", len(c.KeyPrefix))
+	if length := utf8.RuneCountInString(c.KeyPrefix); length > 64 {
+		return fmt.Errorf("Config.KeyPrefix length must not exceed 64 characters: %d", length)
 	}
 
 	// Validate numeric range 验证数值范围
@@ -239,8 +253,11 @@ func (c *Config) Validate() error {
 	default:
 		return fmt.Errorf("Config.TokenStyle is invalid: %q", c.TokenStyle)
 	}
-	if c.TokenStyle == adapter.TokenStyleJWT && strings.TrimSpace(c.JwtSecretKey) == "" {
-		return fmt.Errorf("Config.JwtSecretKey must not be empty when Config.TokenStyle is JWT")
+	if c.TokenStyle == adapter.TokenStyleJWT {
+		secret := strings.TrimSpace(c.JwtSecretKey)
+		if secret == "" || secret == DefaultJWTSecretKey {
+			return fmt.Errorf("Config.JwtSecretKey must not be blank or the public default when Config.TokenStyle is JWT")
+		}
 	}
 
 	// Validate time relation 验证时间关系
@@ -291,6 +308,15 @@ func (c *Config) validateCookieConfig() error {
 	if cc.MaxAge < 0 {
 		return fmt.Errorf("CookieConfig.MaxAge must not be negative: %d", cc.MaxAge)
 	}
+	if cc.MaxAge > int64(math.MaxInt) {
+		return fmt.Errorf("CookieConfig.MaxAge must not exceed %d seconds on this platform: %d", math.MaxInt, cc.MaxAge)
+	}
+
+	// Reject attributes that net/http would drop or sanitize; use a fixed name for query/body-only configs. 拒绝 net/http 会丢弃或改写的属性，使用固定名称以兼容仅从 Query/Body 读取的配置。
+	cookie := &http.Cookie{Name: DefaultTokenName, Domain: cc.Domain, Path: cc.Path}
+	if err := cookie.Valid(); err != nil {
+		return fmt.Errorf("CookieConfig is invalid: %w", err)
+	}
 
 	switch cc.SameSite {
 	case SameSiteLax, SameSiteStrict, SameSiteNone, "":
@@ -307,11 +333,20 @@ func (c *Config) validateCookieConfig() error {
 
 // Clone clones config Clone 克隆配置
 func (c *Config) Clone() *Config {
+	// Keep nil config nil 保持 nil 配置仍为 nil
+	if c == nil {
+		return nil
+	}
+
+	// Copy top-level config 复制顶层配置
 	newConfig := *c
+
+	// Deep copy nested cookie config 深拷贝嵌套 Cookie 配置
 	if c.CookieConfig != nil {
 		cookieConfig := *c.CookieConfig
 		newConfig.CookieConfig = &cookieConfig
 	}
+
 	return &newConfig
 }
 
@@ -461,20 +496,26 @@ func (c *Config) SetCookieConfig(cookieConfig *CookieConfig) *Config {
 
 // checkNoLimits validates no limit fields checkNoLimits 验证无限制数值字段
 func (c *Config) checkNoLimits() error {
-	fields := map[string]int64{
-		"Timeout":             c.Timeout,
-		"RefreshTokenTimeout": c.RefreshTokenTimeout,
-		"RenewMaxRefresh":     c.RenewMaxRefresh,
-		"RenewInterval":       c.RenewInterval,
-		"ActiveTimeout":       c.ActiveTimeout,
-		"MaxLoginCount":       c.MaxLoginCount,
+	fields := []struct {
+		name       string
+		value      int64
+		isDuration bool
+	}{
+		{name: "Timeout", value: c.Timeout, isDuration: true},
+		{name: "RefreshTokenTimeout", value: c.RefreshTokenTimeout, isDuration: true},
+		{name: "RenewMaxRefresh", value: c.RenewMaxRefresh, isDuration: true},
+		{name: "RenewInterval", value: c.RenewInterval, isDuration: true},
+		{name: "ActiveTimeout", value: c.ActiveTimeout, isDuration: true},
+		{name: "MaxLoginCount", value: c.MaxLoginCount},
 	}
 
-	for name, value := range fields {
-		if value == -1 || value > 0 {
-			continue
+	for _, field := range fields {
+		if field.value != NoLimit && field.value <= 0 {
+			return fmt.Errorf("Config.%s must be -1 (unlimited) or greater than 0: %d", field.name, field.value)
 		}
-		return fmt.Errorf("Config.%s must be -1 (unlimited) or greater than 0: %d", name, value)
+		if field.isDuration && field.value > maxDurationSeconds {
+			return fmt.Errorf("Config.%s must not exceed %d seconds: %d", field.name, maxDurationSeconds, field.value)
+		}
 	}
 	return nil
 }

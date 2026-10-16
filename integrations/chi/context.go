@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"strings"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
 )
@@ -64,7 +63,7 @@ func (c *ChiContext) GetQueryAll() map[string][]string {
 
 // GetPostForm implements adapter.RequestContext GetPostForm 实现 adapter.RequestContext 接口
 func (c *ChiContext) GetPostForm(key string) string {
-	return c.r.FormValue(key)
+	return c.r.PostFormValue(key)
 }
 
 // GetCookie implements adapter.RequestContext GetCookie 实现 adapter.RequestContext 接口
@@ -88,15 +87,7 @@ func (c *ChiContext) GetBody() ([]byte, error) {
 
 // GetClientIP implements adapter.RequestContext GetClientIP 实现 adapter.RequestContext 接口
 func (c *ChiContext) GetClientIP() string {
-	if ip := strings.TrimSpace(c.r.Header.Get("X-Real-IP")); ip != "" {
-		return ip
-	}
-	if forwarded := strings.TrimSpace(c.r.Header.Get("X-Forwarded-For")); forwarded != "" {
-		parts := strings.Split(forwarded, ",")
-		if len(parts) > 0 {
-			return strings.TrimSpace(parts[0])
-		}
-	}
+	// Trusted proxy middleware must normalize RemoteAddr before adaptation. 可信代理中间件应在适配前规范化 RemoteAddr，避免信任客户端伪造的请求头。
 	host, _, err := net.SplitHostPort(c.r.RemoteAddr)
 	if err == nil {
 		return host

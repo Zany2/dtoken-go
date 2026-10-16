@@ -21,6 +21,14 @@ The server listens on `http://localhost:8080`.
 
 The example uses bundled memory storage through `defaults.NewBuilder()`, so no Redis service is required.
 
+Tokens have a two-hour timeout and a one-hour automatic-renewal threshold. Login requires a single JSON object; additional values or trailing non-whitespace content are rejected before login state changes.
+
+Any non-empty username can log in with the fixed demo password. Every successful demo login receives the `admin` role and `article:read` permission; this demonstrates the DToken APIs rather than a real account database. In an application, verify the account credentials and load its own access rules before granting access. Restarting this example clears its in-memory login state.
+
+Protected routes read the raw token from `Authorization: <token>`; this example does not parse the `Bearer` prefix or read tokens from cookies, query parameters, or request bodies. The custom middleware uses each HTTP request's context. Missing or invalid login credentials return HTTP 401; a logged-in user without the required role or permission receives HTTP 403.
+
+Account/device restrictions also return HTTP 403. Backend and Manager failures return HTTP 500 with a fixed message; internal errors are recorded in Gin's request error log. Managers are released when `main` returns or unwinds after a startup error.
+
 ## Try
 
 ```bash
@@ -47,11 +55,13 @@ curl -X POST http://localhost:8080/logout \
 mgr, err := defaults.NewBuilder().
 	TokenName("Authorization").
 	Timeout(7200).
+	RenewMaxRefresh(3600).
 	Build()
 if err != nil {
 	panic(err)
 }
 dtoken.SetManager(mgr)
+defer dtoken.DeleteAllManager()
 
 token, err := dtoken.Login(ctx, loginID)
 err = dtoken.CheckLogin(ctx, token)

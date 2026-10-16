@@ -4,7 +4,6 @@ package dtoken
 import (
 	"context"
 
-	"github.com/Zany2/dtoken-go/core/derror"
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
@@ -19,7 +18,7 @@ func Default() (*Auth, error) {
 
 // NewByAuthType returns an auth instance by auth type. NewByAuthType 根据认证类型返回鉴权实例。
 func NewByAuthType(authType string) (*Auth, error) {
-	mgr, err := GetManager(authType)
+	mgr, err := getManagerAuto(authType)
 	if err != nil {
 		return nil, err
 	}
@@ -192,12 +191,13 @@ func CheckRolesOrWithOptions(ctx context.Context, opts RoleOptions, authType ...
 func MustDefault() *Auth {
 	auth, err := Default()
 	if err != nil {
-		panic(derror.ErrManagerNotFound)
+		panic(err)
 	}
 	return auth
 }
 
 // resolveAuthType keeps global helper signatures explicit. resolveAuthType 保持全局辅助函数的认证类型解析显式。
+// The explicit authType parameter takes priority over optionAuthType. 显式传入的 authType 参数优先级高于 optionAuthType。
 func resolveAuthType(optionAuthType string, authType ...string) string {
 	if len(authType) == 0 {
 		return optionAuthType

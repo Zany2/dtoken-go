@@ -11,7 +11,7 @@ import (
 	beegocontext "github.com/beego/beego/v2/server/web/context"
 )
 
-// GetTokenValueByContext gets token value from current Beego context GetTokenValueByContext 从当前 Beego 上下文获取 token 值
+// GetTokenValueByContext gets token value from current Beego context GetTokenValueByContext 从当前 Beego 上下文获取 Token。
 func GetTokenValueByContext(c *beegocontext.Context) (string, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -25,7 +25,7 @@ func GetTokenValueByContext(c *beegocontext.Context) (string, error) {
 	return tokenValue, nil
 }
 
-// GetRequestContextByContext gets raw request context GetRequestContextByContext 获取原始请求上下文
+// GetRequestContextByContext gets raw request context GetRequestContextByContext 获取原始请求上下文。
 func GetRequestContextByContext(c *beegocontext.Context) (adapter.RequestContext, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -34,7 +34,7 @@ func GetRequestContextByContext(c *beegocontext.Context) (adapter.RequestContext
 	return dCtx.GetRequestContext(), nil
 }
 
-// GetManagerByContext gets current DToken manager GetManagerByContext 获取当前 DToken 管理器
+// GetManagerByContext gets current DToken manager GetManagerByContext 获取当前 DToken 管理。
 func GetManagerByContext(c *beegocontext.Context) (*manager.Manager, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -43,7 +43,7 @@ func GetManagerByContext(c *beegocontext.Context) (*manager.Manager, error) {
 	return dCtx.GetManager(), nil
 }
 
-// IsLoginByContext checks current request login state IsLoginByContext 检查当前请求登录状态
+// IsLoginByContext checks current request login state IsLoginByContext 检查当前请求登录状态。
 func IsLoginByContext(c *beegocontext.Context) bool {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -52,7 +52,7 @@ func IsLoginByContext(c *beegocontext.Context) bool {
 	return dCtx.Auth().IsLogin(requestContext(c))
 }
 
-// CheckLoginByContext checks current request login state CheckLoginByContext 校验当前请求登录状态
+// CheckLoginByContext checks current request login state CheckLoginByContext 校验当前请求登录状态。
 func CheckLoginByContext(c *beegocontext.Context) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -70,7 +70,7 @@ func GetLoginIDByContext(c *beegocontext.Context) (string, error) {
 	return dCtx.Auth().GetLoginID(requestContext(c))
 }
 
-// LoginByTokenByContext renews current token login state LoginByTokenByContext 使用当前 token 续期登录状态
+// LoginByTokenByContext renews current token login state LoginByTokenByContext 使用当前 Token 续期登录状态。
 func LoginByTokenByContext(c *beegocontext.Context) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -115,7 +115,7 @@ func GetTokenInfoByContext(c *beegocontext.Context) (*manager.TokenInfo, error) 
 	return dCtx.Auth().GetTokenInfo(requestContext(c))
 }
 
-// IntrospectTokenByContext inspects current token without renewal side effects IntrospectTokenByContext 无续期副作用地检查当前 token 状态
+// IntrospectTokenByContext inspects current token without renewal side effects IntrospectTokenByContext 无续期副作用地检查当前 Token 状态。
 func IntrospectTokenByContext(c *beegocontext.Context) (*manager.TokenIntrospection, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -139,10 +139,10 @@ func GetDeviceIDByContext(c *beegocontext.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return dCtx.Auth().GetDeviceId(requestContext(c))
+	return dCtx.Auth().GetDeviceID(requestContext(c))
 }
 
-// GetTokenTTLByContext gets current token TTL GetTokenTTLByContext 获取当前 token 剩余有效期
+// GetTokenTTLByContext gets current token TTL GetTokenTTLByContext 获取当前 token 剩余有效。
 func GetTokenTTLByContext(c *beegocontext.Context) (int64, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -162,14 +162,14 @@ func GetTokenCreateTimeByContext(c *beegocontext.Context) (int64, error) {
 
 // RenewTimeoutByContext renews current token timeout RenewTimeoutByContext 续期当前 token 过期时间
 func RenewTimeoutByContext(c *beegocontext.Context, timeout time.Duration) error {
-	tokenValue, err := GetTokenValueByContext(c)
+	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return err
 	}
-	return RenewTimeout(requestContext(c), tokenValue, timeout)
+	return dCtx.Auth().RenewTimeout(requestContext(c), timeout)
 }
 
-// requestContext gets standard context from Beego request requestContext 从 Beego 请求获取标准上下文
+// requestContext gets standard context from Beego request requestContext 从 Beego 请求获取标准上下文。
 func requestContext(c *beegocontext.Context) context.Context {
 	if c != nil && c.Request != nil {
 		return c.Request.Context()
@@ -177,7 +177,7 @@ func requestContext(c *beegocontext.Context) context.Context {
 	return context.Background()
 }
 
-// requireDTokenContextByContext gets required DToken context requireDTokenContextByContext 获取必需的 DToken 上下文
+// requireDTokenContextByContext gets required DToken context requireDTokenContextByContext 获取必需的 DToken 上下文。
 func requireDTokenContextByContext(c *beegocontext.Context) (*DTokenContext, error) {
 	dCtx, ok := GetDTokenContext(c)
 	if !ok {
@@ -189,6 +189,9 @@ func requireDTokenContextByContext(c *beegocontext.Context) (*DTokenContext, err
 			return nil, err
 		}
 		return getDContext(c, mgr), nil
+	}
+	if mgr := dCtx.GetManager(); mgr == nil || mgr.IsClosed() {
+		return nil, ErrManagerNotFound
 	}
 	return dCtx, nil
 }

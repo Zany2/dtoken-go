@@ -6,7 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
@@ -17,7 +19,7 @@ import (
 
 // Generator implements token generation. Generator 实现 Token 生成器。
 type Generator struct {
-	timeout      int64              // timeout stores token ttl in seconds for JWT exp claims. timeout 存储 JWT exp 使用的 Token 有效秒数。
+	timeout      int64              // timeout stores token ttl in seconds for JWT exp claims. timeout 存储 JWT exp 使用 Token 有效秒数。
 	jwtSecretKey string             // jwtSecretKey stores JWT signing secret. jwtSecretKey 存储 JWT 签名密钥。
 	tokenStyle   adapter.TokenStyle // tokenStyle stores token generation style. tokenStyle 存储 Token 生成风格。
 }
@@ -26,6 +28,7 @@ type Generator struct {
 var _ adapter.Generator = (*Generator)(nil)
 
 // NewGenerator creates a token generator. NewGenerator 创建新的 Token 生成器。
+// JWT operations require a non-blank, non-default secret. JWT 操作要求配置非空白且非默认的密钥。
 func NewGenerator(timeout int64, jwtSecretKey string, tokenStyle adapter.TokenStyle) *Generator {
 	return &Generator{
 		timeout:      timeout,
@@ -44,7 +47,7 @@ func NewDefaultGenerator() *Generator {
 }
 
 // Generate creates a token by configured style. Generate 根据配置的风格生成 Token。
-func (g *Generator) Generate(loginID, device, deviceId string) (string, error) {
+func (g *Generator) Generate(loginID, device, deviceID string) (string, error) {
 	if loginID == "" {
 		return "", derror.ErrEmptyLoginID
 	}
@@ -61,9 +64,9 @@ func (g *Generator) Generate(loginID, device, deviceId string) (string, error) {
 	case adapter.TokenStyleRandom128:
 		return g.generateSimple(128)
 	case adapter.TokenStyleJWT:
-		return g.generateJWT(loginID, device, deviceId)
+		return g.generateJWT(loginID, device, deviceID)
 	case adapter.TokenStyleHash:
-		return g.generateHash(loginID, device, deviceId)
+		return g.generateHash(loginID, device, deviceID)
 	case adapter.TokenStyleTimestamp:
 		return g.generateTimestamp(loginID)
 	case adapter.TokenStyleTik:
@@ -79,7 +82,10 @@ func (g *Generator) ParseJWT(tokenStr string) (jwt.MapClaims, error) {
 		return nil, fmt.Errorf("token string cannot be empty")
 	}
 
-	secretKey := g.getJWTSecret()
+	secretKey, err := g.getJWTSecret()
+	if err != nil {
+		return nil, err
+	}
 
 	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (any, error) {
 		// Verify the signing method. 验证签名方法。
@@ -87,7 +93,7 @@ func (g *Generator) ParseJWT(tokenStr string) (jwt.MapClaims, error) {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return []byte(secretKey), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse JWT: %w", err)
@@ -106,22 +112,33 @@ func (g *Generator) ValidateJWT(tokenStr string) error {
 	return err
 }
 
-// GetLoginInfoFromJWT extracts loginID, device, and deviceId from a JWT token. GetLoginInfoFromJWT 从 JWT Token 中提取登录 ID、设备和设备 ID。
-func (g *Generator) GetLoginInfoFromJWT(tokenStr string) (loginID, device, deviceId string, err error) {
+// GetLoginInfoFromJWT extracts loginID, device, and deviceID from a JWT token. GetLoginInfoFromJWT 从 JWT Token 中提取登录 ID、设备和设备 ID。
+func (g *Generator) GetLoginInfoFromJWT(tokenStr string) (loginID, device, deviceID string, err error) {
 	claims, err := g.ParseJWT(tokenStr)
 	if err != nil {
 		return "", "", "", err
 	}
 
 	loginID, ok := claims["loginId"].(string)
-	if !ok {
-		return "", "", "", fmt.Errorf("loginId not found in token claims")
+	if !ok || loginID == "" {
+		return "", "", "", fmt.Errorf("loginId must be a non-empty string in token claims")
 	}
 
-	device, _ = claims["device"].(string)
-	deviceId, _ = claims["deviceId"].(string)
+	// Missing device claims remain compatible with older tokens; malformed values do not. 兼容旧 Token 缺失设备声明，但拒绝类型错误的值。
+	if value, exists := claims["device"]; exists {
+		device, ok = value.(string)
+		if !ok {
+			return "", "", "", fmt.Errorf("device must be a string in token claims")
+		}
+	}
+	if value, exists := claims["deviceId"]; exists {
+		deviceID, ok = value.(string)
+		if !ok {
+			return "", "", "", fmt.Errorf("deviceId must be a string in token claims")
+		}
+	}
 
-	return loginID, device, deviceId, nil
+	return loginID, device, deviceID, nil
 }
 
 // generateUUID creates a UUID token. generateUUID 生成 UUID Token。
@@ -142,14 +159,32 @@ func (g *Generator) generateSimple(length int) (string, error) {
 }
 
 // generateJWT creates a JWT token. generateJWT 生成 JWT Token。
-func (g *Generator) generateJWT(loginID, device, deviceId string) (string, error) {
+func (g *Generator) generateJWT(loginID, device, deviceID string) (string, error) {
+	// Direct generator use must also reject second-to-duration overflow. 直接使用生成器时也必须拒绝秒数转换为时长的溢出。
+	const maxTimeoutSeconds = math.MaxInt64 / int64(time.Second)
+	if g.timeout > maxTimeoutSeconds {
+		return "", fmt.Errorf("%w: JWT timeout must not exceed %d seconds", derror.ErrInvalidParam, maxTimeoutSeconds)
+	}
+
+	// Validate the secret before generating signing data. 生成签名数据前校验密钥。
+	secretKey, err := g.getJWTSecret()
+	if err != nil {
+		return "", err
+	}
+
+	// Distinguish independent issuances even when identity and second-level timestamps match. 即使身份与秒级时间戳相同，也区分独立签发。
+	tokenID, err := g.generateUUID()
+	if err != nil {
+		return "", err
+	}
 	now := time.Now()
 
 	claims := jwt.MapClaims{
 		"loginId":  loginID,
 		"device":   device,
-		"deviceId": deviceId,
+		"deviceId": deviceID,
 		"iat":      now.Unix(),
+		"jti":      tokenID,
 	}
 
 	// Add expiration when timeout is configured. 配置超时时间时添加过期时间。
@@ -158,7 +193,6 @@ func (g *Generator) generateJWT(loginID, device, deviceId string) (string, error
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	secretKey := g.getJWTSecret()
 
 	signedToken, err := token.SignedString([]byte(secretKey))
 	if err != nil {
@@ -168,16 +202,17 @@ func (g *Generator) generateJWT(loginID, device, deviceId string) (string, error
 	return signedToken, nil
 }
 
-// getJWTSecret returns the JWT secret with fallback. getJWTSecret 获取 JWT 密钥，空值时使用默认密钥。
-func (g *Generator) getJWTSecret() string {
-	if g.jwtSecretKey != "" {
-		return g.jwtSecretKey
+// getJWTSecret validates the configured secret without changing its bytes. getJWTSecret 校验配置的密钥，保留其原始字节。
+func (g *Generator) getJWTSecret() (string, error) {
+	secret := strings.TrimSpace(g.jwtSecretKey)
+	if secret == "" || secret == DefaultJWTSecret {
+		return "", fmt.Errorf("%w: JWT secret must not be blank or the public default", derror.ErrInvalidParam)
 	}
-	return DefaultJWTSecret
+	return g.jwtSecretKey, nil
 }
 
 // generateHash creates a SHA256 hash style token. generateHash 生成 SHA256 哈希风格 Token。
-func (g *Generator) generateHash(loginID, device, deviceId string) (string, error) {
+func (g *Generator) generateHash(loginID, device, deviceID string) (string, error) {
 	randomBytes := make([]byte, HashRandomBytesLen)
 	if _, err := rand.Read(randomBytes); err != nil {
 		return "", fmt.Errorf("failed to generate random bytes: %w", err)
@@ -188,7 +223,7 @@ func (g *Generator) generateHash(loginID, device, deviceId string) (string, erro
 		"%s:%s:%s:%d:%s",
 		loginID,
 		device,
-		deviceId,
+		deviceID,
 		time.Now().UnixNano(),
 		hex.EncodeToString(randomBytes),
 	)

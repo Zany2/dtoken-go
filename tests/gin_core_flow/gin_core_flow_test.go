@@ -3,16 +3,17 @@ package gin_core_flow_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,20 +24,17 @@ import (
 	gincoreapp "github.com/Zany2/dtoken-go/tests/gin_core_app"
 )
 
-const flowRedisURL = "redis://:root@192.168.19.104:6379/0"
-
-var (
-	flowAppSeq        uint64
-	flowRedisCheckErr error
-	flowRedisCheck    sync.Once
-)
-
+// apiResponse decodes the unified test application response. apiResponse 解码测试应用的统一响应。
 type apiResponse struct {
-	Code    int             `json:"code"`
-	Message string          `json:"message"`
-	Data    json.RawMessage `json:"data"`
+	// Code stores the business response code. Code 保存业务响应码。
+	Code *int `json:"code"`
+	// Message stores the response message. Message 保存响应消息。
+	Message string `json:"message"`
+	// Data stores the raw response payload. Data 保存原始响应数据。
+	Data json.RawMessage `json:"data"`
 }
 
+// flowClient owns the test application, HTTP server, and current token. flowClient 持有测试应用、HTTP 服务端和当前 Token。
 type flowClient struct {
 	t      *testing.T
 	app    *gincoreapp.App
@@ -44,63 +42,61 @@ type flowClient struct {
 	token  string
 }
 
+// newFlowClient creates an isolated HTTP client for a flow test. newFlowClient 为流程测试创建隔离的 HTTP 客户端。
 func newFlowClient(t *testing.T, cfg gincoreapp.Config) *flowClient {
 	t.Helper()
 
-	skipFlowRedisUnavailable(t)
-	cfg.RedisURL = flowRedisURL
+	if cfg.RedisURL == "" {
+		cfg.RedisURL = strings.TrimSpace(os.Getenv("DTOKEN_REDIS_URL"))
+	}
 	keyPrefix := flowKeyPrefix(t)
 	cfg.KeyPrefix = keyPrefix
 	app, err := gincoreapp.NewApp(cfg)
 	if err != nil {
-		t.Skipf("skip gin core flow test: %v", err)
+		t.Fatalf("create gin core flow app: %v", err)
 	}
+
+	// Always release the app, including when storage cleanup fails. 即使存储清理失败，也始终释放应用资源。
+	t.Cleanup(app.Close)
 	server := httptest.NewServer(app.Router())
+	server.Client().Timeout = 5 * time.Second
+	server.Client().CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	t.Cleanup(func() {
 		server.Close()
 		clearFlowStorage(t, app.Manager().GetStorage(), keyPrefix)
-		app.Close()
 	})
 
 	return &flowClient{t: t, app: app, server: server}
 }
 
-func skipFlowRedisUnavailable(t *testing.T) {
-	t.Helper()
-
-	flowRedisCheck.Do(func() {
-		conn, err := net.DialTimeout("tcp", "192.168.19.104:6379", 300*time.Millisecond)
-		if err != nil {
-			flowRedisCheckErr = err
-			return
-		}
-		flowRedisCheckErr = conn.Close()
-	})
-	if flowRedisCheckErr != nil {
-		t.Skipf("skip gin core flow test: redis unavailable: %v", flowRedisCheckErr)
-	}
-}
-
+// flowKeyPrefix creates a unique storage prefix for a flow test. flowKeyPrefix 为流程测试创建唯一存储前缀。
 func flowKeyPrefix(t *testing.T) string {
 	t.Helper()
-	seq := atomic.AddUint64(&flowAppSeq, 1)
-	return fmt.Sprintf("dt:gcf:%d:", seq)
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		t.Fatalf("generate flow storage prefix: %v", err)
+	}
+	// Avoid separators that StorageNamespace escapes and isolate independent test processes. 避开 StorageNamespace 会转义的分隔符，并隔离独立测试进程。
+	return fmt.Sprintf("dt-gcf-%x:", id)
 }
 
+// clearFlowStorage removes storage keys created by a flow test. clearFlowStorage 删除流程测试创建的存储键。
 func clearFlowStorage(t *testing.T, storage adapter.Storage, keyPrefix string) {
 	t.Helper()
 	scanner, ok := storage.(adapter.ScannerStorage)
 	if storage == nil || !ok || keyPrefix == "" {
 		return
 	}
-	keys, err := scanner.Keys(context.Background(), keyPrefix+"*")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	keys, err := scanner.Keys(ctx, keyPrefix+"*")
 	if err != nil {
 		t.Fatalf("scan flow storage keys error = %v", err)
 	}
 	if len(keys) == 0 {
 		return
 	}
-	if err = storage.Delete(context.Background(), keys...); err != nil {
+	if err = storage.Delete(ctx, keys...); err != nil {
 		t.Fatalf("delete flow storage keys error = %v", err)
 	}
 }
@@ -122,7 +118,7 @@ func TestAuthFlow(t *testing.T) {
 		t.Fatalf("loginId = %q, want alice", me.LoginID)
 	}
 
-	// Step 3: logout and verify the old token can no longer access protected APIs. 步骤 3：登出后再次使用旧 Token，预期鉴权失败。
+	// Step 3: logout and verify the old token can no longer access protected APIs. 步骤 3：登出后再次使用 Token，预期鉴权失败。
 	c.expect("POST", "/api/logout", nil, token, http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/api/me", nil, token, http.StatusUnauthorized, derror.CodeNotLogin, nil)
 }
@@ -145,7 +141,7 @@ func TestTokenMetadataAndStatusFlow(t *testing.T) {
 		t.Fatal("valid token isLogin = false, want true")
 	}
 
-	// Step 2: query token metadata from GetTokenInfo/GetDevice/GetDeviceId/GetTokenCreateTime. 步骤 2：通过核心元信息接口读取 Token 绑定信息。
+	// Step 2: query token metadata from GetTokenInfo/GetDevice/GetDeviceID/GetTokenCreateTime. 步骤 2：通过核心元信息接口读取 Token 绑定信息。
 	var info struct {
 		LoginID    string `json:"loginId"`
 		Device     string `json:"device"`
@@ -217,7 +213,7 @@ func TestPermissionMutationAndLogicFlow(t *testing.T) {
 	c.expect("POST", "/api/permissions", map[string]any{"value": "article:write"}, token, http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/api/article/manage", nil, token, http.StatusOK, derror.CodeSuccess, nil)
 
-	// Step 3: remove article:read; both single and AND checks fail again. 步骤 3：移除 article:read；单权限与 AND 组合校验重新失败。
+	// Step 3: remove article:read; both single and AND checks fail again. 步骤 3：移除 article:read；单权限和 AND 组合校验重新失败。
 	c.expect("DELETE", "/api/permissions", map[string]any{"value": "article:read"}, token, http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/api/articles", nil, token, http.StatusForbidden, derror.CodePermissionDenied, nil)
 	c.expect("GET", "/api/article/manage", nil, token, http.StatusForbidden, derror.CodePermissionDenied, nil)
@@ -227,7 +223,7 @@ func TestPermissionMutationAndLogicFlow(t *testing.T) {
 	c.expect("GET", "/api/content", nil, token, http.StatusOK, derror.CodeSuccess, nil)
 }
 
-// TestAccessStatusFlow verifies HasPermission and HasRole variants by login ID and token. TestAccessStatusFlow 验证按 loginID 与 Token 判断权限和角色的布尔接口。
+// TestAccessStatusFlow verifies HasPermission and HasRole variants by login ID and token. TestAccessStatusFlow 验证按 loginID 和 Token 判断权限与角色的布尔接口。
 func TestAccessStatusFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 	token := c.login("access-status-user")
@@ -252,7 +248,7 @@ func TestAccessStatusFlow(t *testing.T) {
 	}
 }
 
-// TestAccessListFlow verifies permission and role list APIs by login ID and token. TestAccessListFlow 验证按 loginID 与 Token 获取权限和角色列表。
+// TestAccessListFlow verifies permission and role list APIs by login ID and token. TestAccessListFlow 验证按 loginID 和 Token 获取权限与角色列表。
 func TestAccessListFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 	token := c.login("access-list-user")
@@ -347,29 +343,21 @@ func TestRoleMutationAndLogicFlow(t *testing.T) {
 
 // TestRenewFlow verifies a token can be extended through the HTTP flow. TestRenewFlow 验证续期流程：短 TTL 登录、等待 TTL 下降、手动续期后 TTL 变长。
 func TestRenewFlow(t *testing.T) {
-	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 2 * time.Second, ActiveTimeout: -1})
+	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 5 * time.Second, ActiveTimeout: -1})
 	token := c.login("dave")
-
-	// Step 1: read initial TTL from token info API. 步骤 1：通过 Token TTL 接口读取初始有效期。
 	before := c.ttl(token)
-	if before <= 0 || before > 2 {
-		t.Fatalf("initial ttl = %d, want 1..2", before)
+	if before <= 0 || before > 5 {
+		t.Fatalf("initial ttl = %d, want 1..5", before)
 	}
 
-	// Step 2: wait for TTL to decrease, proving the token is actually time-bound. 步骤 2：等待 TTL 下降，确认 Token 确实存在过期时间。
-	time.Sleep(1100 * time.Millisecond)
-	mid := c.ttl(token)
-	if mid >= before {
-		t.Fatalf("ttl before renew = %d, initial = %d, want decreased", mid, before)
-	}
-
-	// Step 3: renew token to five seconds and verify TTL is extended. 步骤 3：把 Token 续期到 5 秒，并验证 TTL 已变长。
+	// Observe countdown without risking a fixed sleep beyond expiration. 观察倒计时，避免固定等待越过过期时间。
+	mid := c.waitTokenTTL(token, before-1)
 	var renewed struct {
 		TTL int64 `json:"ttl"`
 	}
-	c.expect("POST", "/api/token/renew", map[string]any{"seconds": 5}, token, http.StatusOK, derror.CodeSuccess, &renewed)
-	if renewed.TTL < 4 || renewed.TTL > 5 {
-		t.Fatalf("renewed ttl = %d, want 4..5", renewed.TTL)
+	c.expect("POST", "/api/token/renew", map[string]any{"seconds": 10}, token, http.StatusOK, derror.CodeSuccess, &renewed)
+	if renewed.TTL <= mid || renewed.TTL > 10 {
+		t.Fatalf("renewed ttl = %d, previous = %d, want growth within 10 seconds", renewed.TTL, mid)
 	}
 }
 
@@ -377,31 +365,32 @@ func TestRenewFlow(t *testing.T) {
 func TestAutoRenewFlow(t *testing.T) {
 	autoRenew := true
 	c := newFlowClient(t, gincoreapp.Config{
-		TokenTimeout:    3 * time.Second,
-		ActiveTimeout:   -1,
-		AutoRenew:       &autoRenew,
-		RenewMaxRefresh: 2,
-		RenewInterval:   1,
+		TokenTimeout: 8 * time.Second, ActiveTimeout: -1, AutoRenew: &autoRenew,
+		RenewMaxRefresh: 8, RenewInterval: 3,
 	})
+	events := c.app.Manager().GetEventManager()
+	events.EnableStats(true)
 	token := c.login("auto-renew-user")
 
-	time.Sleep(1200 * time.Millisecond)
-	before := c.ttl(token)
-	if before <= 0 || before > 3 {
-		t.Fatalf("ttl before auto renew = %d, want 1..3", before)
+	// TTL is already eligible; the login interval must independently block renewal. TTL 已满足阈值，登录时设置的间隔必须独立阻止续期。
+	c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+	c.waitTokenTTL(token, 6)
+	if count := events.GetStats().EventCounts[listener.EventRenew]; count != 0 {
+		t.Fatalf("renewals during initial interval = %d, want 0", count)
 	}
 
+	// Wait past the initial interval, then observe the asynchronous renewal itself. 等待初始间隔结束，再观察异步续期本身。
+	before := c.waitTokenTTL(token, 3)
 	c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
-	time.Sleep(300 * time.Millisecond)
-	after := c.ttl(token)
-	if after < 2 || after > 3 {
-		t.Fatalf("ttl after auto renew = %d, want 2..3", after)
-	}
+	after := c.waitTokenRenewed(token, before)
+	waitForFlow(t, 5*time.Second, "renewal event", func() bool {
+		return events.GetStats().EventCounts[listener.EventRenew] > 0
+	})
 
 	c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
-	immediate := c.ttl(token)
-	if immediate > after {
-		t.Fatalf("ttl after immediate second check = %d, previous = %d, want renew interval to block growth", immediate, after)
+	c.waitTokenTTL(token, after-1)
+	if count := events.GetStats().EventCounts[listener.EventRenew]; count != 1 {
+		t.Fatalf("renewals after immediate recheck = %d, want 1", count)
 	}
 }
 
@@ -409,86 +398,62 @@ func TestAutoRenewFlow(t *testing.T) {
 func TestRenewConfigurationMatrixFlow(t *testing.T) {
 	t.Run("auto-renew-disabled-keeps-counting-down", func(t *testing.T) {
 		autoRenew := false
-		c := newFlowClient(t, gincoreapp.Config{
-			TokenTimeout:  4 * time.Second,
-			ActiveTimeout: -1,
-			AutoRenew:     &autoRenew,
-		})
+		c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 8 * time.Second, ActiveTimeout: -1, AutoRenew: &autoRenew})
+		events := c.app.Manager().GetEventManager()
+		events.EnableStats(true)
 		token := c.login("renew-disabled-user")
-
-		time.Sleep(1200 * time.Millisecond)
-		before := c.ttl(token)
-		if before <= 0 || before > 4 {
-			t.Fatalf("ttl before disabled auto renew check = %d, want 1..4", before)
-		}
-
+		before := c.waitTokenTTL(token, 5)
 		c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
-		time.Sleep(300 * time.Millisecond)
-		after := c.ttl(token)
-		if after > before {
-			t.Fatalf("ttl after disabled auto renew check = %d, previous = %d, want no growth", after, before)
+		if after := c.storedTTL(token); after > before {
+			t.Fatalf("disabled auto-renew grew ttl from %d to %d", before, after)
+		}
+		if count := events.GetStats().EventCounts[listener.EventRenew]; count != 0 {
+			t.Fatalf("disabled auto-renew emitted %d renewal events", count)
 		}
 	})
 
 	t.Run("auto-renew-waits-for-threshold", func(t *testing.T) {
 		autoRenew := true
 		c := newFlowClient(t, gincoreapp.Config{
-			TokenTimeout:    6 * time.Second,
-			ActiveTimeout:   -1,
-			AutoRenew:       &autoRenew,
-			RenewMaxRefresh: 3,
-			RenewInterval:   -1,
+			TokenTimeout: 8 * time.Second, ActiveTimeout: -1, AutoRenew: &autoRenew,
+			RenewMaxRefresh: 5, RenewInterval: -1,
 		})
+		events := c.app.Manager().GetEventManager()
+		events.EnableStats(true)
 		token := c.login("renew-threshold-user")
-
+		if ttl := c.storedTTL(token); ttl <= 5 {
+			t.Fatalf("initial ttl = %d, want above renewal threshold", ttl)
+		}
 		c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
-		time.Sleep(300 * time.Millisecond)
-		early := c.ttl(token)
-		if early < 4 || early > 6 {
-			t.Fatalf("ttl after early check = %d, want 4..6 before threshold", early)
+		c.waitTokenTTL(token, 6)
+		if count := events.GetStats().EventCounts[listener.EventRenew]; count != 0 {
+			t.Fatalf("renewals above threshold = %d, want 0", count)
 		}
 
-		time.Sleep(3200 * time.Millisecond)
+		// Integer TTL rounds down; stay one second below the configured threshold. 整数 TTL 向下取整，因此等待到比配置阈值低一秒。
+		before := c.waitTokenTTL(token, 4)
 		c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
-		time.Sleep(300 * time.Millisecond)
-		after := c.ttl(token)
-		if after < 4 || after > 6 {
-			t.Fatalf("ttl after threshold renew = %d, want 4..6", after)
-		}
+		c.waitTokenRenewed(token, before)
 	})
 
 	t.Run("auto-renew-without-interval-can-refresh-repeatedly", func(t *testing.T) {
 		autoRenew := true
 		c := newFlowClient(t, gincoreapp.Config{
-			TokenTimeout:    3 * time.Second,
-			ActiveTimeout:   -1,
-			AutoRenew:       &autoRenew,
-			RenewMaxRefresh: 3,
-			RenewInterval:   -1,
+			TokenTimeout: 8 * time.Second, ActiveTimeout: -1, AutoRenew: &autoRenew,
+			RenewMaxRefresh: 8, RenewInterval: -1,
 		})
 		token := c.login("renew-no-interval-user")
-
-		time.Sleep(1200 * time.Millisecond)
-		c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
-		time.Sleep(300 * time.Millisecond)
-		first := c.ttl(token)
-		if first < 2 || first > 3 {
-			t.Fatalf("ttl after first no-interval renew = %d, want 2..3", first)
-		}
-
-		time.Sleep(1200 * time.Millisecond)
-		c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
-		time.Sleep(300 * time.Millisecond)
-		second := c.ttl(token)
-		if second < 2 || second > 3 {
-			t.Fatalf("ttl after second no-interval renew = %d, want 2..3", second)
+		for i := 0; i < 2; i++ {
+			before := c.waitTokenTTL(token, 5)
+			c.expect("GET", "/api/me", nil, token, http.StatusOK, derror.CodeSuccess, nil)
+			c.waitTokenRenewed(token, before)
 		}
 	})
 }
 
 // TestRenewBoundaryFlow verifies invalid and valid manual renewal behavior. TestRenewBoundaryFlow 验证手动续期的非法参数和有效续期行为。
 func TestRenewBoundaryFlow(t *testing.T) {
-	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 2 * time.Second, ActiveTimeout: -1})
+	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 	token := c.login("renew-boundary-user")
 
 	c.expect("POST", "/api/token/renew", map[string]any{"seconds": 0}, token, http.StatusBadRequest, derror.CodeBadRequest, nil)
@@ -506,8 +471,8 @@ func TestTokenExpiredFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: time.Second, ActiveTimeout: -1})
 	token := c.login("expired-user")
 
-	// Step 1: wait longer than the configured token timeout. 步骤 1：等待超过 Token 有效期。
-	time.Sleep(2200 * time.Millisecond)
+	// Step 1: observe storage expiry without refreshing the token. 步骤 1：在不刷新 Token 的前提下观察存储过期。
+	waitForFlow(t, 5*time.Second, "token expiration", func() bool { return c.storedTTL(token) == -2 })
 
 	// Step 2: use expired token to access protected API, expect unauthorized. 步骤 2：使用过期 Token 访问受保护接口，预期未登录。
 	c.expect("GET", "/api/me", nil, token, http.StatusUnauthorized, derror.CodeNotLogin, nil)
@@ -518,7 +483,7 @@ func TestActiveTimeoutFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: 1})
 	token := c.login("inactive-user")
 
-	// Step 1: wait longer than active timeout while absolute TTL is still valid. 步骤 1：等待超过不活跃超时，但不超过 Token 总 TTL。
+	// Step 1: wait longer than active timeout while absolute TTL is still valid. 步骤 1：等待超过不活跃超时，但不超过 Token TTL。
 	time.Sleep(2200 * time.Millisecond)
 
 	// Step 2: request protected API, expect active-timeout code. 步骤 2：访问受保护接口，预期活跃超时错误码。
@@ -579,7 +544,7 @@ func TestMultiTerminalSessionFlow(t *testing.T) {
 	webToken := c.loginWithDevice("multi-user", "web", "browser-1")
 	mobileToken := c.loginWithDevice("multi-user", "mobile", "phone-1")
 
-	// Step 2: query session with either token and expect two terminals. 步骤 2：使用任一 Token 查询会话，预期在线终端数为 2。
+	// Step 2: query session with either token and expect two terminals. 步骤 2：使用任一 Token 查询会话，预期在线终端数。2。
 	var session struct {
 		LoginID       string `json:"loginId"`
 		TerminalCount int    `json:"terminalCount"`
@@ -707,7 +672,7 @@ func TestSessionQueryFlow(t *testing.T) {
 	}
 }
 
-// TestSessionAliveFilterFlow verifies token list alive filtering after a terminal is marked offline. TestSessionAliveFilterFlow 验证终端下线标记后 Token 列表的 alive 过滤行为。
+// TestSessionAliveFilterFlow verifies token list alive filtering after a terminal is marked offline. TestSessionAliveFilterFlow 验证终端下线标记后的 Token 列表 alive 过滤行为。
 func TestSessionAliveFilterFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 	web := c.loginWithDevice("session-alive-user", "web", "browser-1")
@@ -729,6 +694,36 @@ func TestSessionAliveFilterFlow(t *testing.T) {
 	webResp := c.expectResponse("GET", "/api/me", nil, web, http.StatusUnauthorized, derror.CodeNotLogin)
 	if webResp.Message != derror.ErrTokenKickout.Error() {
 		t.Fatalf("kicked token message = %q, want token kicked out", webResp.Message)
+	}
+}
+
+// TestSessionExpiredTokenFilterFlow distinguishes retained terminal metadata from live tokens. TestSessionExpiredTokenFilterFlow 区分保留的终端元数据和存活 Token。
+func TestSessionExpiredTokenFilterFlow(t *testing.T) {
+	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
+	mobile := c.loginWithDevice("session-expiry-user", "mobile", "phone-1")
+	var web struct {
+		Token string `json:"token"`
+	}
+	c.expect("POST", "/login/timeout", map[string]any{
+		"username": "session-expiry-user", "password": "123456",
+		"device": "web", "deviceId": "browser-1", "seconds": 1,
+	}, "", http.StatusOK, derror.CodeSuccess, &web)
+	if web.Token == "" || web.Token == mobile {
+		t.Fatal("custom-timeout login must return a separate web token")
+	}
+
+	// Expire only the token mapping; retain the account session through the mobile login. 仅等待 Token 映射过期，使用移动端登录保持账号会话。
+	waitForFlow(t, 5*time.Second, "web token expiration", func() bool { return c.storedTTL(web.Token) == -2 })
+	var result struct {
+		Tokens []string `json:"tokens"`
+	}
+	c.expect("GET", "/api/session/tokens?alive=false", nil, mobile, http.StatusOK, derror.CodeSuccess, &result)
+	if !sameStringSet(result.Tokens, []string{web.Token, mobile}) {
+		t.Fatalf("unfiltered tokens = %v, want retained web and mobile entries", result.Tokens)
+	}
+	c.expect("GET", "/api/session/tokens?alive=true", nil, mobile, http.StatusOK, derror.CodeSuccess, &result)
+	if !sameStringSet(result.Tokens, []string{mobile}) {
+		t.Fatalf("alive tokens = %v, want only mobile", result.Tokens)
 	}
 }
 
@@ -1505,7 +1500,7 @@ func TestServiceDisableLevelFlow(t *testing.T) {
 	if status.Disabled {
 		t.Fatalf("service level after untie = %+v, want not disabled", status)
 	}
-	c.expect("GET", "/operator/disable/service/service-level-user/payment", nil, "", http.StatusInternalServerError, derror.CodeServerError, nil)
+	c.expect("GET", "/operator/disable/service/service-level-user/payment", nil, "", http.StatusNotFound, derror.CodeNotFound, nil)
 }
 
 // TestUntieFlow verifies account, service, and device disable states can be removed. TestUntieFlow 验证账号、服务和设备封禁状态可以被解除。
@@ -1675,15 +1670,14 @@ func TestNonceTimeoutFlow(t *testing.T) {
 		t.Fatalf("custom nonce status = %+v, want valid ttl 0..1", status)
 	}
 
-	time.Sleep(2200 * time.Millisecond)
-	c.expect("GET", "/nonce/status/"+generated.Nonce, nil, "", http.StatusOK, derror.CodeSuccess, &status)
-	if status.Valid {
-		t.Fatalf("custom nonce status after expiration = %+v, want invalid", status)
-	}
+	waitForFlow(t, 5*time.Second, "nonce expiration", func() bool {
+		c.expect("GET", "/nonce/status/"+generated.Nonce, nil, "", http.StatusOK, derror.CodeSuccess, &status)
+		return !status.Valid && status.TTL == -2
+	})
 	c.expect("POST", "/nonce/verify", map[string]any{"nonce": generated.Nonce}, "", http.StatusBadRequest, derror.CodeBadRequest, nil)
 }
 
-// TestOAuth2AuthorizationCodeFlow verifies code exchange, introspection, refresh, and revoke. TestOAuth2AuthorizationCodeFlow 验证 OAuth2 授权码流程：生成 code、换 token、查询 token、刷新、撤销。
+// TestOAuth2AuthorizationCodeFlow verifies code exchange, introspection, refresh, and revoke. TestOAuth2AuthorizationCodeFlow 验证 OAuth2 授权码流程：生成 Code、换取 Token、检查 Token、刷新和撤销。
 func TestOAuth2AuthorizationCodeFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 
@@ -1740,14 +1734,62 @@ func TestOAuth2AuthorizationCodeFlow(t *testing.T) {
 		"clientSecret": "demo-secret",
 		"refreshToken": token.RefreshToken,
 	})
-	if refreshed.AccessToken == token.AccessToken || refreshed.RefreshToken == token.RefreshToken {
+	if refreshed.AccessToken == token.AccessToken || refreshed.RefreshToken == "" || refreshed.RefreshToken == token.RefreshToken ||
+		refreshed.UserID != token.UserID || refreshed.ClientID != token.ClientID || !sameStringSet(refreshed.Scopes, token.Scopes) {
 		t.Fatalf("refreshed token = %+v, want rotated token values", refreshed)
 	}
 	c.expect("GET", "/oauth2/introspect", nil, token.AccessToken, http.StatusUnauthorized, derror.CodeNotLogin, nil)
+	c.expect("POST", "/oauth2/token", map[string]any{
+		"grantType": "refresh_token", "clientId": "demo-client", "clientSecret": "demo-secret",
+		"refreshToken": token.RefreshToken,
+	}, "", http.StatusBadRequest, derror.CodeBadRequest, nil)
+	c.expect("GET", "/oauth2/introspect", nil, refreshed.AccessToken, http.StatusOK, derror.CodeSuccess, &info)
+	if !info.Active || info.UserID != "oauth-user" || info.ClientID != "demo-client" {
+		t.Fatalf("refreshed token introspection = %+v, want active oauth-user/demo-client", info)
+	}
 
 	// Step 6: revoke refreshed token and verify it is no longer active. 步骤 6：撤销刷新后的访问令牌，并验证它已失效。
 	c.expect("POST", "/oauth2/revoke", map[string]any{"token": refreshed.AccessToken}, "", http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/oauth2/introspect", nil, refreshed.AccessToken, http.StatusUnauthorized, derror.CodeNotLogin, nil)
+}
+
+// TestOAuth2AuthorizationCodeBindingFlow rejects mismatched clients and redirects without consuming the code. TestOAuth2AuthorizationCodeBindingFlow 拒绝不匹配的客户端和回调地址，且不消耗授权码。
+func TestOAuth2AuthorizationCodeBindingFlow(t *testing.T) {
+	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
+	c.expect("POST", "/oauth2/clients", map[string]any{
+		"clientId": "other-client", "clientSecret": "other-secret",
+		"redirectUris": []string{"https://client.example/callback"},
+		"grantTypes":   []string{"authorization_code"}, "scopes": []string{"read"},
+	}, "", http.StatusOK, derror.CodeSuccess, nil)
+	var code struct {
+		Code string `json:"code"`
+	}
+	c.expect("POST", "/oauth2/authorize", map[string]any{
+		"clientId": "demo-client", "userId": "bound-user",
+		"redirectUri": "https://client.example/callback", "scopes": []string{"read"},
+	}, "", http.StatusOK, derror.CodeSuccess, &code)
+	if code.Code == "" {
+		t.Fatal("authorization code is empty")
+	}
+
+	// Use valid alternate credentials so this reaches the authorization-code binding check. 使用另一个客户端的有效凭证，确保请求进入授权码绑定校验。
+	c.expect("POST", "/oauth2/token", map[string]any{
+		"grantType": "authorization_code", "clientId": "other-client", "clientSecret": "other-secret",
+		"code": code.Code, "redirectUri": "https://client.example/callback",
+	}, "", http.StatusBadRequest, derror.CodeBadRequest, nil)
+	c.expect("POST", "/oauth2/token", map[string]any{
+		"grantType": "authorization_code", "clientId": "demo-client", "clientSecret": "demo-secret",
+		"code": code.Code, "redirectUri": "https://client.example/wrong-callback",
+	}, "", http.StatusBadRequest, derror.CodeBadRequest, nil)
+
+	// A valid exchange must still succeed after both rejected requests. 两次错误请求后，合法换码仍必须成功。
+	token := c.oauth2Token(map[string]any{
+		"grantType": "authorization_code", "clientId": "demo-client", "clientSecret": "demo-secret",
+		"code": code.Code, "redirectUri": "https://client.example/callback",
+	})
+	if token.UserID != "bound-user" || token.ClientID != "demo-client" || !sameStringSet(token.Scopes, []string{"read"}) {
+		t.Fatalf("bound token = %+v, want bound-user/demo-client/read", token)
+	}
 }
 
 // TestOAuth2PasswordAndClientCredentialsFlow verifies additional OAuth2 grant types. TestOAuth2PasswordAndClientCredentialsFlow 验证 OAuth2 密码模式和客户端凭证模式。
@@ -1843,7 +1885,7 @@ func TestOAuth2ClientManagementFlow(t *testing.T) {
 func TestOAuth2ErrorBoundaryFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 
-	// Step 1: authorization rejects unregistered redirect URI and scope. Step 1：授权端点拒绝未注册回调地址和越权 scope。
+	// Step 1: authorization rejects unregistered redirect URI and scope. Step 1：授权端点拒绝未注册回调地址和越权 Scope。
 	c.expect("POST", "/oauth2/authorize", map[string]any{
 		"clientId":    "demo-client",
 		"userId":      "oauth-user",
@@ -2053,7 +2095,7 @@ func TestTokenStyleFlow(t *testing.T) {
 func TestMultiAuthIsolationFlow(t *testing.T) {
 	c := newFlowClient(t, gincoreapp.Config{TokenTimeout: 30 * time.Second, ActiveTimeout: -1})
 
-	// Step 1: login same loginID into user-auth and admin-auth systems. 步骤 1：同一个 loginID 分别登录 user-auth 和 admin-auth 两个认证体系。
+	// Step 1: login same loginID into user-auth and admin-auth systems. 步骤 1：同一 loginID 分别登录 user-auth 和 admin-auth 两个认证体系。
 	userToken := c.multiAuthLogin("/multi-auth/user/login", "same-id", "web", "user-browser")
 	adminToken := c.multiAuthLogin("/multi-auth/admin/login", "same-id", "web", "admin-browser")
 	if userToken == adminToken {
@@ -2071,17 +2113,35 @@ func TestMultiAuthIsolationFlow(t *testing.T) {
 	c.expect("GET", "/multi-auth/user/profile", nil, userToken, http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/multi-auth/admin/dashboard", nil, adminToken, http.StatusForbidden, derror.CodePermissionDenied, nil)
 
-	// Step 4: admin-auth role does not grant user-auth token access. 步骤 4：admin-auth 的角色只在 admin-auth 内生效，不会让 adminToken 访问 user-auth。
+	// Step 4: admin-auth role does not grant user-auth token access. 步骤 4：admin-auth 的角色只在 admin-auth 内生效，不会允许 adminToken 访问 user-auth。
 	c.expect("POST", "/multi-auth/admin/roles", map[string]any{"value": "admin"}, adminToken, http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/multi-auth/admin/dashboard", nil, adminToken, http.StatusOK, derror.CodeSuccess, nil)
 	c.expect("GET", "/multi-auth/user/profile", nil, adminToken, http.StatusUnauthorized, derror.CodeNotLogin, nil)
+
+	// Compare identical access fields across namespaces, not unrelated permission and role checks. 对比不同命名空间的相同权限字段，避免仅比较无关的权限与角色校验。
+	var me struct {
+		Auth        string   `json:"auth"`
+		LoginID     string   `json:"loginId"`
+		Permissions []string `json:"permissions"`
+		Roles       []string `json:"roles"`
+	}
+	c.expect("GET", "/multi-auth/user/me", nil, userToken, http.StatusOK, derror.CodeSuccess, &me)
+	if me.Auth != "user" || me.LoginID != "same-id" || !sameStringSet(me.Permissions, []string{"profile:read"}) || len(me.Roles) != 0 {
+		t.Fatalf("user access namespace leaked: %+v", me)
+	}
+	c.expect("GET", "/multi-auth/admin/me", nil, adminToken, http.StatusOK, derror.CodeSuccess, &me)
+	if me.Auth != "admin" || me.LoginID != "same-id" || !sameStringSet(me.Roles, []string{"admin"}) || len(me.Permissions) != 0 {
+		t.Fatalf("admin access namespace leaked: %+v", me)
+	}
 }
 
+// login logs in and stores the returned token. login 登录并保存返回的 Token。
 func (c *flowClient) login(username string) string {
 	c.t.Helper()
 	return c.loginWithDevice(username, "web", username+"-browser")
 }
 
+// loginWithDevice logs in on a concrete device and stores the token. loginWithDevice 在具体设备上登录并保存 Token。
 func (c *flowClient) loginWithDevice(username, device, deviceID string) string {
 	c.t.Helper()
 
@@ -2101,6 +2161,7 @@ func (c *flowClient) loginWithDevice(username, device, deviceID string) string {
 	return data.Token
 }
 
+// multiAuthLogin logs in through a selected auth-system endpoint. multiAuthLogin 通过指定认证体系端点登录。
 func (c *flowClient) multiAuthLogin(path, username, device, deviceID string) string {
 	c.t.Helper()
 
@@ -2120,6 +2181,62 @@ func (c *flowClient) multiAuthLogin(path, username, device, deviceID string) str
 	return data.Token
 }
 
+// waitForFlow waits for an observable result with a bounded deadline. waitForFlow 在有限期限内等待可观察的结果。
+func waitForFlow(t *testing.T, timeout time.Duration, description string, ready func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		if ready() {
+			return
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatalf("timed out waiting for %s after %s", description, timeout)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// storedTTL reads lifetime without HTTP authentication renewal side effects. storedTTL 读取有效期，不触发 HTTP 鉴权的续期副作用。
+func (c *flowClient) storedTTL(token string) int64 {
+	c.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ttl, err := c.app.Manager().GetTokenTTL(ctx, token)
+	if err != nil {
+		c.t.Fatalf("read stored token TTL: %v", err)
+	}
+	return ttl
+}
+
+// waitTokenTTL waits for countdown without extending the observed token. waitTokenTTL 等待倒计时，不延长被观察的 Token。
+func (c *flowClient) waitTokenTTL(token string, maximum int64) int64 {
+	c.t.Helper()
+	var ttl int64
+	waitForFlow(c.t, 10*time.Second, fmt.Sprintf("token TTL <= %d", maximum), func() bool {
+		ttl = c.storedTTL(token)
+		if ttl <= 0 {
+			c.t.Fatalf("token TTL = %d before reaching the requested live-token window", ttl)
+		}
+		return ttl <= maximum
+	})
+	return ttl
+}
+
+// waitTokenRenewed requires actual TTL growth after one protected request. waitTokenRenewed 要求一次受保护请求后 TTL 确实增长。
+func (c *flowClient) waitTokenRenewed(token string, before int64) int64 {
+	c.t.Helper()
+	var ttl int64
+	waitForFlow(c.t, 5*time.Second, "token renewal", func() bool {
+		ttl = c.storedTTL(token)
+		if ttl <= 0 || ttl > c.app.Manager().GetConfig().Timeout {
+			c.t.Fatalf("unexpected token TTL while waiting for renewal: %d", ttl)
+		}
+		return ttl > before
+	})
+	return ttl
+}
+
+// ttl returns the current token lifetime through a protected HTTP route. ttl 通过受保护 HTTP 路由返回当前 Token 有效期。
 func (c *flowClient) ttl(token string) int64 {
 	c.t.Helper()
 
@@ -2130,24 +2247,37 @@ func (c *flowClient) ttl(token string) int64 {
 	return data.TTL
 }
 
+// oauth2TokenData decodes OAuth2 token endpoint responses. oauth2TokenData 解码 OAuth2 Token 端点响应。
 type oauth2TokenData struct {
-	AccessToken  string   `json:"accessToken"`
-	TokenType    string   `json:"tokenType"`
-	ExpiresIn    int64    `json:"expiresIn"`
-	RefreshToken string   `json:"refreshToken"`
-	Scopes       []string `json:"scopes"`
-	UserID       string   `json:"userId"`
-	ClientID     string   `json:"clientId"`
+	// AccessToken stores the issued access token. AccessToken 保存签发的访问 Token。
+	AccessToken string `json:"accessToken"`
+	// TokenType stores the token type. TokenType 保存 Token 类型。
+	TokenType string `json:"tokenType"`
+	// ExpiresIn stores the access token lifetime in seconds. ExpiresIn 保存访问 Token 有效秒数。
+	ExpiresIn int64 `json:"expiresIn"`
+	// RefreshToken stores the issued refresh token. RefreshToken 保存签发的刷新 Token。
+	RefreshToken string `json:"refreshToken"`
+	// Scopes stores granted scopes. Scopes 保存已授予的权限范围。
+	Scopes []string `json:"scopes"`
+	// UserID stores the authenticated user ID. UserID 保存已认证用户 ID。
+	UserID string `json:"userId"`
+	// ClientID stores the OAuth2 client ID. ClientID 保存 OAuth2 客户端 ID。
+	ClientID string `json:"clientId"`
 }
 
+// oauth2Token requests and decodes an OAuth2 token response. oauth2Token 请求并解码 OAuth2 Token 响应。
 func (c *flowClient) oauth2Token(body map[string]any) oauth2TokenData {
 	c.t.Helper()
 
 	var data oauth2TokenData
 	c.expect("POST", "/oauth2/token", body, "", http.StatusOK, derror.CodeSuccess, &data)
+	if data.AccessToken == "" || data.TokenType != "Bearer" || data.ExpiresIn <= 0 {
+		c.t.Fatalf("incomplete oauth2 token response: %+v", data)
+	}
 	return data
 }
 
+// sameStringSet compares two string slices as sets. sameStringSet 按集合比较两个字符串切片。
 func sameStringSet(got, want []string) bool {
 	got = append([]string(nil), got...)
 	want = append([]string(nil), want...)
@@ -2156,6 +2286,7 @@ func sameStringSet(got, want []string) bool {
 	return slices.Equal(got, want)
 }
 
+// containsEvent reports whether an event list contains a target event. containsEvent 判断事件列表是否包含目标事件。
 func containsEvent(events []listener.Event, want listener.Event) bool {
 	for _, event := range events {
 		if event == want {
@@ -2165,17 +2296,36 @@ func containsEvent(events []listener.Event, want listener.Event) bool {
 	return false
 }
 
+// expect executes a request and optionally decodes response data. expect 执行请求并按需解码响应数据。
 func (c *flowClient) expect(method, path string, body any, token string, wantStatus, wantCode int, data any) {
 	c.t.Helper()
 
 	decoded := c.expectResponse(method, path, body, token, wantStatus, wantCode)
-	if data != nil && len(decoded.Data) > 0 && string(decoded.Data) != "null" {
-		if err := json.Unmarshal(decoded.Data, data); err != nil {
+	if data != nil {
+		if err := decodeFlowData(decoded.Data, data); err != nil {
 			c.t.Fatalf("%s %s decode data error = %v, data=%s", method, path, err, decoded.Data)
 		}
 	}
 }
 
+// decodeFlowData requires data and decodes into a fresh value to avoid stale fields. decodeFlowData 要求响应包含数据，并使用全新值解码，避免保留旧字段。
+func decodeFlowData(raw json.RawMessage, data any) error {
+	if len(bytes.TrimSpace(raw)) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return fmt.Errorf("response data is missing or null")
+	}
+	dst := reflect.ValueOf(data)
+	if dst.Kind() != reflect.Pointer || dst.IsNil() {
+		return fmt.Errorf("response destination must be a non-nil pointer")
+	}
+	value := reflect.New(dst.Elem().Type())
+	if err := json.Unmarshal(raw, value.Interface()); err != nil {
+		return err
+	}
+	dst.Elem().Set(value.Elem())
+	return nil
+}
+
+// expectResponse executes a request and validates its unified response. expectResponse 执行请求并校验统一响应。
 func (c *flowClient) expectResponse(method, path string, body any, token string, wantStatus, wantCode int) apiResponse {
 	c.t.Helper()
 
@@ -2193,12 +2343,16 @@ func (c *flowClient) expectResponse(method, path string, body any, token string,
 	if err = json.Unmarshal(raw, &decoded); err != nil {
 		c.t.Fatalf("%s %s decode response error = %v, body=%s", method, path, err, raw)
 	}
-	if decoded.Code != wantCode {
-		c.t.Fatalf("%s %s code = %d, want %d, body=%s", method, path, decoded.Code, wantCode, raw)
+	if decoded.Code == nil || *decoded.Code != wantCode {
+		c.t.Fatalf("%s %s missing or unexpected code, want %d, body=%s", method, path, wantCode, raw)
+	}
+	if wantStatus >= http.StatusBadRequest && len(decoded.Data) > 0 && !bytes.Equal(bytes.TrimSpace(decoded.Data), []byte("null")) {
+		c.t.Fatalf("%s %s error response contains success data: %s", method, path, decoded.Data)
 	}
 	return decoded
 }
 
+// do builds and sends one HTTP test request. do 构建并发送一次 HTTP 测试请求。
 func (c *flowClient) do(method, path string, body any, token string) *http.Response {
 	c.t.Helper()
 

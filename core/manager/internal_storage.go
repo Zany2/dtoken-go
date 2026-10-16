@@ -4,24 +4,28 @@ package manager
 import (
 	"context"
 	"fmt"
+	"math"
+	"sort"
+	"strings"
+	"time"
+
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
-	"strings"
-	"time"
 )
 
 // getExpiration calculates token expiration duration from configuration. getExpiration 从配置中计算 Token 过期时长。
 func (m *Manager) getExpiration() time.Duration {
 	// Use configured timeout when limited 配置有限超时时使用配置值。
 	if m.config.Timeout > 0 {
-		return time.Duration(m.config.Timeout) * time.Second
+		return secondsToDuration(m.config.Timeout)
 	}
+
 	// Return no expiration 返回不过期。
 	return 0
 }
 
-// timeoutToSeconds converts duration to storage seconds timeoutToSeconds 将时长转换为存储层秒数
+// timeoutToSeconds converts duration to storage seconds timeoutToSeconds 将时长转换为存储层秒。
 func (m *Manager) timeoutToSeconds(timeout time.Duration) int64 {
 	// Map non-positive duration to no limit 非正时长映射为无限制。
 	if timeout <= 0 {
@@ -30,10 +34,12 @@ func (m *Manager) timeoutToSeconds(timeout time.Duration) int64 {
 
 	// Convert duration to whole seconds 转换为整秒。
 	seconds := int64(timeout / time.Second)
+
 	// Round up partial second 不足一秒向上取整。
 	if timeout%time.Second != 0 {
 		seconds++
 	}
+
 	// Ensure positive second 保证至少一秒。
 	if seconds <= 0 {
 		return 1
@@ -49,11 +55,26 @@ func (m *Manager) resolveTokenExpiration(tokenInfo *TokenInfo) time.Duration {
 		case tokenInfo.Timeout == config.NoLimit:
 			return 0
 		case tokenInfo.Timeout > 0:
-			return time.Duration(tokenInfo.Timeout) * time.Second
+			return secondsToDuration(tokenInfo.Timeout)
 		}
 	}
+
 	// Fallback to global expiration 回退到全局过期时间。
 	return m.getExpiration()
+}
+
+// secondsToDuration saturates positive seconds instead of overflowing into an unlimited duration. secondsToDuration 对超出上界的正秒数取最大时长，避免溢出为无限有效期。
+func secondsToDuration(seconds int64) time.Duration {
+	if seconds == config.NoLimit {
+		return -1
+	}
+	if seconds <= 0 {
+		return 0
+	}
+	if seconds > math.MaxInt64/int64(time.Second) {
+		return time.Duration(math.MaxInt64)
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 // saveSessionWithMinTTL saves session while keeping the longer existing TTL saveSessionWithMinTTL 保存 session，并保留更长的现有 TTL
@@ -65,6 +86,7 @@ func (m *Manager) saveSessionWithMinTTL(
 ) error {
 	// Start with requested expiration 先使用请求的过期时间。
 	finalExpiration := expiration
+
 	// Preserve longer existing TTL 保留更长的已有 TTL。
 	if expiration > 0 {
 		currentTTL, err := m.storage.TTL(ctx, key)
@@ -82,24 +104,24 @@ func (m *Manager) saveSessionWithMinTTL(
 	return m.saveToStorage(ctx, key, value, finalExpiration)
 }
 
-// getDeviceAndDeviceId extracts device type and device ID from parameters. getDeviceAndDeviceId 获取设备类型和设备 ID。 规则：device 和 deviceId 是两个独立的过滤维度，互不影响
-func (m *Manager) getDeviceAndDeviceId(deviceAndDeviceId ...string) (string, string) {
+// getDeviceAndDeviceID extracts independent device and device ID filters. getDeviceAndDeviceID 提取相互独立的设备类型和设备 ID 过滤维度。
+func (m *Manager) getDeviceAndDeviceID(deviceAndDeviceID ...string) (string, string) {
 	// Initialize empty device fields 初始化空设备字段。
 	device := ""
-	deviceId := ""
+	deviceID := ""
 
 	// Read device type 读取设备类型。
-	if len(deviceAndDeviceId) > 0 {
-		device = strings.TrimSpace(deviceAndDeviceId[0])
+	if len(deviceAndDeviceID) > 0 {
+		device = strings.TrimSpace(deviceAndDeviceID[0])
 	}
 
 	// Read device ID 读取设备 ID。
-	if len(deviceAndDeviceId) > 1 {
-		deviceId = strings.TrimSpace(deviceAndDeviceId[1])
+	if len(deviceAndDeviceID) > 1 {
+		deviceID = strings.TrimSpace(deviceAndDeviceID[1])
 	}
 
 	// Return normalized device fields 返回规范化设备字段。
-	return device, deviceId
+	return device, deviceID
 }
 
 // saveToStorage serializes and saves data to storage backend. saveToStorage 将指定类型的数据序列化并存储到存储后端。
@@ -109,7 +131,6 @@ func (m *Manager) saveToStorage(
 	value any,
 	expiration ...time.Duration,
 ) error {
-
 	// Serialize to bytes 序列化为字节
 	bytesData, err := m.serializer.Encode(value)
 	if err != nil {
@@ -118,6 +139,7 @@ func (m *Manager) saveToStorage(
 
 	// Build expiration duration 构建过期时长
 	duration := m.getExpiration()
+
 	// Use explicit expiration when provided 存在显式过期时间时优先使用。
 	if len(expiration) > 0 {
 		duration = expiration[0]
@@ -134,7 +156,7 @@ func (m *Manager) saveToStorage(
 		}
 	}
 
-	// Persist to storage 存储到后端
+	// Persist to storage 存储到后。
 	if err = m.storage.Set(ctx, key, bytesData, duration); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
@@ -143,8 +165,83 @@ func (m *Manager) saveToStorage(
 	return nil
 }
 
+// saveToStorageIfAbsent serializes and saves data only when key is absent. saveToStorageIfAbsent 仅当键不存在时序列化并保存数据。
+func (m *Manager) saveToStorageIfAbsent(
+	ctx context.Context,
+	key string,
+	value any,
+	expiration time.Duration,
+) (bool, error) {
+	// Serialize to bytes 序列化为字节。
+	bytesData, err := m.serializer.Encode(value)
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+	}
+
+	if atomicStorage, ok := m.storage.(adapter.AtomicStorage); ok {
+		ok, err := atomicStorage.SetIfAbsent(ctx, key, bytesData, expiration)
+		if err != nil {
+			return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
+		return ok, nil
+	}
+	if m.storage.Exists(ctx, key) {
+		return false, nil
+	}
+	if err = m.storage.Set(ctx, key, bytesData, expiration); err != nil {
+		return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+
+	return true, nil
+}
+
+// deleteWithLegacyKey removes current and legacy keys and reports whether either existed. deleteWithLegacyKey 删除当前键和旧键，并报告是否存在实际删除。
+func (m *Manager) deleteWithLegacyKey(ctx context.Context, key, legacyKey string) (bool, error) {
+	keys := []string{key}
+	if legacyKey != key {
+		keys = append(keys, legacyKey)
+	}
+
+	// Prefer atomic read-delete when the storage supports it. 存储支持时优先使用原子读取删除。
+	if atomicStorage, ok := m.storage.(adapter.AtomicStorage); ok {
+		deleted := false
+		for _, storageKey := range keys {
+			value, err := atomicStorage.GetAndDelete(ctx, storageKey)
+			if err != nil {
+				return false, err
+			}
+			deleted = deleted || value != nil
+		}
+		return deleted, nil
+	}
+
+	// Discover existing keys before the ordinary-storage fallback delete. 普通存储回退删除前先确定实际存在的键。
+	existingKeys := make([]string, 0, len(keys))
+	for _, storageKey := range keys {
+		value, err := m.storage.Get(ctx, storageKey)
+		if err != nil {
+			return false, err
+		}
+		if value != nil {
+			existingKeys = append(existingKeys, storageKey)
+		}
+	}
+	if len(existingKeys) == 0 {
+		return false, nil
+	}
+	if err := m.storage.Delete(ctx, existingKeys...); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // searchKeys searches storage keys by pattern with pagination. searchKeys 根据模式搜索存储键并分页。
 func (m *Manager) searchKeys(ctx context.Context, pattern string, start, size int) ([]string, error) {
+	// Reject negative sizes other than the documented all-results sentinel. 拒绝除全量查询哨兵值以外的负数分页大小。
+	if size < -1 {
+		return nil, derror.ErrInvalidParam
+	}
+
 	// Require scanner storage capability 要求存储支持扫描能力。
 	scanner, ok := m.storage.(adapter.ScannerStorage)
 	if !ok {
@@ -156,12 +253,15 @@ func (m *Manager) searchKeys(ctx context.Context, pattern string, start, size in
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
+	// Stabilize pagination across unordered storage scanners. 对无序存储扫描结果排序以稳定分页。
+	sort.Strings(keys)
 
 	// Normalize pagination start 规范化分页起点。
 	total := len(keys)
 	if start < 0 {
 		start = 0
 	}
+
 	// Return empty when start exceeds total 起点超过总数时返回空列表。
 	if start >= total {
 		return []string{}, nil
@@ -171,9 +271,10 @@ func (m *Manager) searchKeys(ctx context.Context, pattern string, start, size in
 	// Calculate pagination end 计算分页终点。
 	end := total
 	if size >= 0 {
-		end = start + size
-		if end > total {
+		if size >= total-start {
 			end = total
+		} else {
+			end = start + size
 		}
 	}
 
@@ -188,11 +289,13 @@ func (m *Manager) searchValues(ctx context.Context, pattern, prefix string, star
 	if err != nil {
 		return nil, err
 	}
+
 	// Strip prefix from keys 从键中裁剪前缀。
 	values := make([]string, len(keys))
 	for i, key := range keys {
 		values[i] = strings.TrimPrefix(key, prefix)
 	}
+
 	// Return business values 返回业务值。
 	return values, nil
 }

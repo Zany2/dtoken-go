@@ -8,7 +8,7 @@ import (
 	beegocontext "github.com/beego/beego/v2/server/web/context"
 )
 
-// CreateShortKeyByContext creates short key CreateShortKeyByContext 创建短 Key
+// CreateShortKeyByContext creates short key CreateShortKeyByContext 创建 ShortKey
 func CreateShortKeyByContext(c *beegocontext.Context, opts shortkey.CreateOptions) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -17,7 +17,7 @@ func CreateShortKeyByContext(c *beegocontext.Context, opts shortkey.CreateOption
 	return dCtx.ShortKey().Create(requestContext(c), opts)
 }
 
-// CreateShortKeyWithTimeoutByContext creates short key with timeout CreateShortKeyWithTimeoutByContext 使用指定有效期创建短 Key
+// CreateShortKeyWithTimeoutByContext creates short key with timeout CreateShortKeyWithTimeoutByContext 使用指定有效期创建 ShortKey
 func CreateShortKeyWithTimeoutByContext(c *beegocontext.Context, opts shortkey.CreateOptions, timeout time.Duration) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -35,7 +35,7 @@ func ConfirmShortKeyByContext(c *beegocontext.Context, key string, opts shortkey
 	return dCtx.ShortKey().Confirm(requestContext(c), key, opts)
 }
 
-// ConfirmShortKeyForCurrentLoginByContext confirms short key for current user ConfirmShortKeyForCurrentLoginByContext 为当前登录用户确认短 Key
+// ConfirmShortKeyForCurrentLoginByContext confirms short key for current user ConfirmShortKeyForCurrentLoginByContext 使用当前用户确认 ShortKey
 func ConfirmShortKeyForCurrentLoginByContext(c *beegocontext.Context, key string, opts shortkey.ConfirmOptions) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -44,7 +44,7 @@ func ConfirmShortKeyForCurrentLoginByContext(c *beegocontext.Context, key string
 	return dCtx.ShortKey().ConfirmForCurrentLogin(requestContext(c), key, opts)
 }
 
-// ValidateShortKeyByContext validates short key ValidateShortKeyByContext 校验短 Key
+// ValidateShortKeyByContext validates short key ValidateShortKeyByContext 校验 ShortKey
 func ValidateShortKeyByContext(c *beegocontext.Context, key string, opts ...shortkey.ValidateOptions) (*shortkey.ShortKey, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -71,7 +71,7 @@ func RevokeShortKeyByContext(c *beegocontext.Context, key string) error {
 	return dCtx.ShortKey().Revoke(requestContext(c), key)
 }
 
-// GetShortKeyStatusByContext gets short key status GetShortKeyStatusByContext 获取短 Key 状态
+// GetShortKeyStatusByContext gets short key status GetShortKeyStatusByContext 获取 ShortKey 状态
 func GetShortKeyStatusByContext(c *beegocontext.Context, key string) (shortkey.Status, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -80,7 +80,7 @@ func GetShortKeyStatusByContext(c *beegocontext.Context, key string) (shortkey.S
 	return dCtx.ShortKey().GetStatus(requestContext(c), key)
 }
 
-// GetShortKeyTTLByContext gets short key TTL GetShortKeyTTLByContext 获取短 Key 剩余有效期
+// GetShortKeyTTLByContext gets short key TTL GetShortKeyTTLByContext 获取 ShortKey 剩余有效期
 func GetShortKeyTTLByContext(c *beegocontext.Context, key string) (int64, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

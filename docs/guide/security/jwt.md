@@ -36,10 +36,13 @@ The current generator writes claims like:
   "loginId": "10001",
   "device": "web",
   "deviceId": "chrome-mac",
+  "jti": "93a9f2b4-a7ea-4f71-a8f1-679f2c20b249",
   "iat": 1710000000,
   "exp": 1710003600
 }
 ```
+
+Each independent issuance includes a random `jti` to distinguish tokens generated within the same second. Older tokens without `jti` remain readable.
 
 ## Basic Usage
 
@@ -56,17 +59,21 @@ import (
 )
 
 func initDToken() {
-    dtoken.SetManager(
+    if _, err := dtoken.BuildAndSetManager(
         defaults.NewBuilder().
             SetStorage(memory.NewStorage()).
             TokenStyle(adapter.TokenStyleJWT).
             JwtSecretKey("your-very-strong-secret-key").
-            Timeout(2 * 60 * 60).
-            Build(),
-    )
+            Timeout(2 * 60 * 60),
+    ); err != nil {
+        panic(err)
+    }
 }
 
 func main() {
+    initDToken()
+    defer dtoken.DeleteAllManager()
+
     ctx := context.Background()
     token, _ := dtoken.Login(ctx, "10001", "web", "chrome-mac")
     _ = token
@@ -103,12 +110,12 @@ The usage is the same as with UUID or random token styles.
 ## Generator APIs
 
 ```go
-generator := sgenerator.NewGenerator(7200, "your-secret", adapter.TokenStyleJWT)
+generator := dgenerator.NewGenerator(7200, "your-secret", adapter.TokenStyleJWT)
 
 token, err := generator.Generate("10001", "web", "chrome-mac")
 claims, err := generator.ParseJWT(token)
 err = generator.ValidateJWT(token)
-loginID, err := generator.GetLoginIDFromJWT(token)
+loginID, device, deviceID, err := generator.GetLoginInfoFromJWT(token)
 ```
 
 ## Configuration
@@ -121,11 +128,17 @@ loginID, err := generator.GetLoginIDFromJWT(token)
 | `Timeout(seconds)` | controls both `exp` and server-side TTL |
 | `AutoRenew(true)` | controls server-side renew behavior |
 
+`exp` is fixed at issuance. Server-side renewal does not rewrite the signed token, so `ParseJWT` / `ValidateJWT` still check its original expiration claim. Issue a new token when the JWT claim lifetime must be extended.
+
 ## Security Notes
 
 ### Use a Strong Secret
 
-When `TokenStyleJWT` is enabled, `JwtSecretKey` must not be empty. Use a long, random secret in production.
+When `TokenStyleJWT` is enabled, explicitly configure `JwtSecretKey`. Empty or whitespace-only keys and the public default `dtoken-go` (including surrounding whitespace) are rejected. Use a long, random secret in production. Valid custom keys are used byte-for-byte without trimming whitespace.
+
+The builder rejects these invalid keys during configuration validation. Direct JWT generation, parsing, and validation through `dgenerator` also return parameter errors. Tokens previously signed with the default key no longer pass JWT validation; configure a new key and log in again.
+
+The generator only signs and accepts `HS256`, rejecting `HS384`, `HS512`, and other algorithms. `GetLoginInfoFromJWT` accepts older tokens without `device` or `deviceId` and returns empty strings for missing fields. Present fields must be strings; `null` and other types return errors.
 
 ### Do Not Treat It As Fully Stateless
 

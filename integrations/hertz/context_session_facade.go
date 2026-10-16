@@ -5,7 +5,7 @@ import (
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 )
 
-// SetSessionValueByContext sets current session value SetSessionValueByContext ?
+// SetSessionValueByContext sets current session value SetSessionValueByContext 设置当前会话值
 func SetSessionValueByContext(ctx *hertzapp.RequestContext, key string, value any) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -14,7 +14,7 @@ func SetSessionValueByContext(ctx *hertzapp.RequestContext, key string, value an
 	return dCtx.Session().SetValue(requestContext(ctx), key, value)
 }
 
-// GetSessionValueByContext gets current session value GetSessionValueByContext ?
+// GetSessionValueByContext gets current session value GetSessionValueByContext 获取当前会话值
 func GetSessionValueByContext(ctx *hertzapp.RequestContext, key string) (any, bool, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -23,7 +23,7 @@ func GetSessionValueByContext(ctx *hertzapp.RequestContext, key string) (any, bo
 	return dCtx.Session().GetValue(requestContext(ctx), key)
 }
 
-// DeleteSessionValueByContext deletes current session value DeleteSessionValueByContext ?
+// DeleteSessionValueByContext deletes current session value DeleteSessionValueByContext 删除当前会话值
 func DeleteSessionValueByContext(ctx *hertzapp.RequestContext, key string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {

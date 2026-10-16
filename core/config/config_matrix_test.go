@@ -46,7 +46,12 @@ func TestValidateTokenStyleAndJWTSecretMatrix(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "jwt with secret", style: adapter.TokenStyleJWT, secret: "secret"},
+		{name: "jwt with padded custom secret", style: adapter.TokenStyleJWT, secret: " custom-secret "},
+		{name: "jwt with empty secret", style: adapter.TokenStyleJWT, secret: "", wantErr: true},
 		{name: "jwt with blank secret", style: adapter.TokenStyleJWT, secret: "   ", wantErr: true},
+		{name: "jwt with default secret", style: adapter.TokenStyleJWT, secret: DefaultJWTSecretKey, wantErr: true},
+		{name: "jwt with padded default secret", style: adapter.TokenStyleJWT, secret: " " + DefaultJWTSecretKey + "\t", wantErr: true},
+		{name: "uuid with default secret", style: adapter.TokenStyleUUID, secret: DefaultJWTSecretKey},
 		{name: "uuid with blank secret", style: adapter.TokenStyleUUID, secret: "   "},
 		{name: "hash with blank secret", style: adapter.TokenStyleHash, secret: "   "},
 		{name: "invalid style", style: adapter.TokenStyle("bad-style"), secret: "secret", wantErr: true},
@@ -194,6 +199,19 @@ func TestValidateCookieConfigMatrix(t *testing.T) {
 		{name: "path without slash", readCookie: true, cookie: &CookieConfig{Path: "api", SameSite: SameSiteLax}, wantErr: true},
 		{name: "blank path", readCookie: true, cookie: &CookieConfig{Path: "   ", SameSite: SameSiteLax}, wantErr: true},
 		{name: "domain with whitespace", readCookie: true, cookie: &CookieConfig{Domain: "example .com", Path: "/", SameSite: SameSiteLax}, wantErr: true},
+		{name: "domain with scheme", readCookie: true, cookie: &CookieConfig{Domain: "https://example.com", Path: "/"}, wantErr: true},
+		{name: "domain with port", readCookie: true, cookie: &CookieConfig{Domain: "example.com:8080", Path: "/"}, wantErr: true},
+		{name: "domain with empty label", readCookie: true, cookie: &CookieConfig{Domain: "example..com", Path: "/"}, wantErr: true},
+		{name: "valid domain", readCookie: true, cookie: &CookieConfig{Domain: "example.com", Path: "/api"}},
+		{name: "domain with leading dot", readCookie: true, cookie: &CookieConfig{Domain: ".example.com", Path: "/"}},
+		{name: "ipv4 domain", readCookie: true, cookie: &CookieConfig{Domain: "127.0.0.1", Path: "/"}},
+		{name: "path with semicolon", readCookie: true, cookie: &CookieConfig{Path: "/api;v1"}, wantErr: true},
+		{name: "path with newline", readCookie: true, cookie: &CookieConfig{Path: "/api\nv1"}, wantErr: true},
+		{name: "path with null byte", readCookie: true, cookie: &CookieConfig{Path: "/api\x00"}, wantErr: true},
+		{name: "path with delete byte", readCookie: true, cookie: &CookieConfig{Path: "/api\x7f"}, wantErr: true},
+		{name: "unicode path", readCookie: true, cookie: &CookieConfig{Path: "/登录"}, wantErr: true},
+		{name: "escaped unicode path", readCookie: true, cookie: &CookieConfig{Path: "/%E7%99%BB%E5%BD%95"}},
+		{name: "cookie disabled invalid attributes", cookie: &CookieConfig{Path: "/api;v1"}, wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -252,6 +270,40 @@ func TestValidateNumericBoundaryMatrix(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestValidateDurationUpperBoundMatrix verifies duration-like seconds cannot overflow time.Duration. TestValidateDurationUpperBoundMatrix 验证时长秒数不会溢出 time.Duration。
+func TestValidateDurationUpperBoundMatrix(t *testing.T) {
+	fields := []struct {
+		name string
+		set  func(cfg *Config, value int64)
+	}{
+		{name: "Timeout", set: func(cfg *Config, value int64) { cfg.Timeout = value }},
+		{name: "RefreshTokenTimeout", set: func(cfg *Config, value int64) { cfg.RefreshTokenTimeout = value }},
+		{name: "RenewMaxRefresh", set: func(cfg *Config, value int64) { cfg.RenewMaxRefresh = value }},
+		{name: "RenewInterval", set: func(cfg *Config, value int64) { cfg.RenewInterval = value }},
+		{name: "ActiveTimeout", set: func(cfg *Config, value int64) { cfg.ActiveTimeout = value }},
+	}
+
+	for _, field := range fields {
+		t.Run(field.name+"/max", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.AutoRenew = false
+			field.set(cfg, maxDurationSeconds)
+			if err := cfg.Validate(); err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+		})
+
+		t.Run(field.name+"/overflow", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.AutoRenew = false
+			field.set(cfg, maxDurationSeconds+1)
+			if err := cfg.Validate(); err == nil {
+				t.Fatal("Validate() error = nil, want duration overflow error")
+			}
+		})
 	}
 }
 
@@ -343,24 +395,46 @@ func TestValidateNameAndNamespaceBoundaryMatrix(t *testing.T) {
 		afterFunc func(t *testing.T, cfg *Config)
 		wantErr   bool
 	}{
-		{name: "auth type trims and appends separator", mutate: func(cfg *Config) { cfg.AuthType = " user " }, afterFunc: func(t *testing.T, cfg *Config) {
-			t.Helper()
-			if cfg.AuthType != "user:" {
-				t.Fatalf("AuthType = %q, want user:", cfg.AuthType)
-			}
-		}},
-		{name: "key prefix trims and appends separator", mutate: func(cfg *Config) { cfg.KeyPrefix = " app " }, afterFunc: func(t *testing.T, cfg *Config) {
-			t.Helper()
-			if cfg.KeyPrefix != "app:" {
-				t.Fatalf("KeyPrefix = %q, want app:", cfg.KeyPrefix)
-			}
-		}},
+		{
+			name:   "auth type trims and appends separator",
+			mutate: func(cfg *Config) { cfg.AuthType = " user " },
+			afterFunc: func(t *testing.T, cfg *Config) {
+				t.Helper()
+				if cfg.AuthType != "user:" {
+					t.Fatalf("AuthType = %q, want user:", cfg.AuthType)
+				}
+			},
+		},
+		{
+			name:   "key prefix trims and appends separator",
+			mutate: func(cfg *Config) { cfg.KeyPrefix = " app " },
+			afterFunc: func(t *testing.T, cfg *Config) {
+				t.Helper()
+				if cfg.KeyPrefix != "app:" {
+					t.Fatalf("KeyPrefix = %q, want app:", cfg.KeyPrefix)
+				}
+			},
+		},
 		{name: "token name max length", mutate: func(cfg *Config) { cfg.TokenName = strings.Repeat("a", 64) }},
 		{name: "auth type max length with separator", mutate: func(cfg *Config) { cfg.AuthType = strings.Repeat("a", 63) }},
 		{name: "key prefix max length with separator", mutate: func(cfg *Config) { cfg.KeyPrefix = strings.Repeat("a", 63) }},
+		{name: "unicode query token name max character length", mutate: func(cfg *Config) {
+			cfg.IsReadHeader = false
+			cfg.IsReadQuery = true
+			cfg.TokenName = strings.Repeat("令", 64)
+		}},
+		{name: "unicode auth type max character length", mutate: func(cfg *Config) { cfg.AuthType = strings.Repeat("认", 63) }},
+		{name: "unicode key prefix max character length", mutate: func(cfg *Config) { cfg.KeyPrefix = strings.Repeat("键", 63) }},
 		{name: "token name too long", mutate: func(cfg *Config) { cfg.TokenName = strings.Repeat("a", 65) }, wantErr: true},
 		{name: "auth type too long after normalization", mutate: func(cfg *Config) { cfg.AuthType = strings.Repeat("a", 64) }, wantErr: true},
 		{name: "key prefix too long after normalization", mutate: func(cfg *Config) { cfg.KeyPrefix = strings.Repeat("a", 64) }, wantErr: true},
+		{name: "unicode query token name too long", mutate: func(cfg *Config) {
+			cfg.IsReadHeader = false
+			cfg.IsReadQuery = true
+			cfg.TokenName = strings.Repeat("令", 65)
+		}, wantErr: true},
+		{name: "unicode auth type too long after normalization", mutate: func(cfg *Config) { cfg.AuthType = strings.Repeat("认", 64) }, wantErr: true},
+		{name: "unicode key prefix too long after normalization", mutate: func(cfg *Config) { cfg.KeyPrefix = strings.Repeat("键", 64) }, wantErr: true},
 		{name: "token name whitespace", mutate: func(cfg *Config) { cfg.TokenName = "dt token" }, wantErr: true},
 		{name: "auth type whitespace", mutate: func(cfg *Config) { cfg.AuthType = "auth type" }, wantErr: true},
 		{name: "key prefix whitespace", mutate: func(cfg *Config) { cfg.KeyPrefix = "key prefix" }, wantErr: true},
@@ -455,6 +529,7 @@ func TestConfigSetterChainMatrix(t *testing.T) {
 	}
 }
 
+// boolName formats bool value for test names boolName 格式化测试名称中的布尔值
 func boolName(v bool) string {
 	if v {
 		return "true"
@@ -462,6 +537,7 @@ func boolName(v bool) string {
 	return "false"
 }
 
+// int64Name formats int64 value for test names int64Name 格式化测试名称中的 int64 值
 func int64Name(v int64) string {
 	if v == NoLimit {
 		return "nolimit"

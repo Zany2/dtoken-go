@@ -186,8 +186,8 @@ func TestGlobalTypedOptionFacades(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("DisableDeviceWithOptions() error = %v", err)
 	}
-	if !IsDisableDeviceAndDeviceId(ctx, "typed-user", "web", "browser", "typed") {
-		t.Fatal("IsDisableDeviceAndDeviceId() = false, want true")
+	if !IsDisableDeviceAndDeviceID(ctx, "typed-user", "web", "browser", "typed") {
+		t.Fatal("IsDisableDeviceAndDeviceID() = false, want true")
 	}
 	if err = LogoutWithOptions(ctx, LogoutOptions{AuthType: "typed", Token: token}); err != nil {
 		t.Fatalf("LogoutWithOptions() error = %v", err)

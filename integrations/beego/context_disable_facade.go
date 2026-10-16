@@ -98,7 +98,7 @@ func IsDisableServiceByContext(c *beegocontext.Context, service string) bool {
 	return dCtx.Disable().IsService(requestContext(c), service)
 }
 
-// IsDisableServiceLevelByContext checks current account service level disable state IsDisableServiceLevelByContext 检查当前账号服务封禁等级
+// IsDisableServiceLevelByContext checks current account service level disable state IsDisableServiceLevelByContext 检查当前账号服务等级封禁状态
 func IsDisableServiceLevelByContext(c *beegocontext.Context, service string, level int) bool {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -116,7 +116,7 @@ func CheckDisableServiceByContext(c *beegocontext.Context, services ...string) e
 	return dCtx.Disable().CheckService(requestContext(c), services...)
 }
 
-// CheckDisableServiceLevelByContext checks current account service level disable state CheckDisableServiceLevelByContext 校验当前账号服务封禁等级
+// CheckDisableServiceLevelByContext checks current account service level disable state CheckDisableServiceLevelByContext 校验当前账号服务等级封禁状态
 func CheckDisableServiceLevelByContext(c *beegocontext.Context, service string, level int) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -152,13 +152,13 @@ func DisableDeviceByContext(c *beegocontext.Context, device string, duration tim
 	return dCtx.Disable().Device(requestContext(c), device, duration, reason...)
 }
 
-// DisableDeviceAndDeviceIDByContext disables current account device ID DisableDeviceAndDeviceIDByContext 封禁当前账号指定设备 ID
-func DisableDeviceAndDeviceIDByContext(c *beegocontext.Context, device, deviceId string, duration time.Duration, reason ...string) error {
+// DisableDeviceAndDeviceIDByContext disables current account device ID DisableDeviceAndDeviceIDByContext 按设备和设备 ID 封禁当前账号
+func DisableDeviceAndDeviceIDByContext(c *beegocontext.Context, device, deviceID string, duration time.Duration, reason ...string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return err
 	}
-	return dCtx.Disable().DeviceAndDeviceId(requestContext(c), device, deviceId, duration, reason...)
+	return dCtx.Disable().DeviceAndDeviceID(requestContext(c), device, deviceID, duration, reason...)
 }
 
 // UntieDeviceByContext removes current account device disable state UntieDeviceByContext 解封当前账号设备
@@ -171,12 +171,12 @@ func UntieDeviceByContext(c *beegocontext.Context, device string) error {
 }
 
 // UntieDeviceAndDeviceIDByContext removes current account device ID disable state UntieDeviceAndDeviceIDByContext 解封当前账号指定设备 ID
-func UntieDeviceAndDeviceIDByContext(c *beegocontext.Context, device, deviceId string) error {
+func UntieDeviceAndDeviceIDByContext(c *beegocontext.Context, device, deviceID string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return err
 	}
-	return dCtx.Disable().UntieDeviceAndDeviceId(requestContext(c), device, deviceId)
+	return dCtx.Disable().UntieDeviceAndDeviceID(requestContext(c), device, deviceID)
 }
 
 // IsDisableDeviceByContext checks current account device disable state IsDisableDeviceByContext 检查当前账号设备封禁状态
@@ -188,13 +188,13 @@ func IsDisableDeviceByContext(c *beegocontext.Context, device string) bool {
 	return dCtx.Disable().IsDevice(requestContext(c), device)
 }
 
-// IsDisableDeviceAndDeviceIDByContext checks current account device ID disable state IsDisableDeviceAndDeviceIDByContext 检查当前账号指定设备 ID 封禁状态
-func IsDisableDeviceAndDeviceIDByContext(c *beegocontext.Context, device, deviceId string) bool {
+// IsDisableDeviceAndDeviceIDByContext checks current account device ID disable state IsDisableDeviceAndDeviceIDByContext 检查当前账号设备 ID 封禁状态
+func IsDisableDeviceAndDeviceIDByContext(c *beegocontext.Context, device, deviceID string) bool {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return false
 	}
-	return dCtx.Disable().IsDeviceAndDeviceId(requestContext(c), device, deviceId)
+	return dCtx.Disable().IsDeviceAndDeviceID(requestContext(c), device, deviceID)
 }
 
 // CheckDisableDeviceByContext checks current account device disable state CheckDisableDeviceByContext 校验当前账号设备封禁状态
@@ -206,13 +206,13 @@ func CheckDisableDeviceByContext(c *beegocontext.Context, device string) error {
 	return dCtx.Disable().CheckDevice(requestContext(c), device)
 }
 
-// CheckDisableDeviceAndDeviceIDByContext checks current account device ID disable state CheckDisableDeviceAndDeviceIDByContext 校验当前账号指定设备 ID 封禁状态
-func CheckDisableDeviceAndDeviceIDByContext(c *beegocontext.Context, device, deviceId string) error {
+// CheckDisableDeviceAndDeviceIDByContext checks current account device ID disable state CheckDisableDeviceAndDeviceIDByContext 校验当前账号设备 ID 封禁状态
+func CheckDisableDeviceAndDeviceIDByContext(c *beegocontext.Context, device, deviceID string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return err
 	}
-	return dCtx.Disable().CheckDeviceAndDeviceId(requestContext(c), device, deviceId)
+	return dCtx.Disable().CheckDeviceAndDeviceID(requestContext(c), device, deviceID)
 }
 
 // GetDisableDeviceInfoByContext gets current account device disable info GetDisableDeviceInfoByContext 获取当前账号设备封禁信息
@@ -224,13 +224,13 @@ func GetDisableDeviceInfoByContext(c *beegocontext.Context, device string) (*man
 	return dCtx.Disable().GetDeviceInfo(requestContext(c), device)
 }
 
-// GetDisableDeviceAndDeviceIDInfoByContext gets current account device ID disable info GetDisableDeviceAndDeviceIDInfoByContext 获取当前账号指定设备 ID 封禁信息
-func GetDisableDeviceAndDeviceIDInfoByContext(c *beegocontext.Context, device, deviceId string) (*manager.DeviceDisableInfo, error) {
+// GetDisableDeviceAndDeviceIDInfoByContext gets current account device ID disable info GetDisableDeviceAndDeviceIDInfoByContext 获取当前账号设备 ID 封禁信息
+func GetDisableDeviceAndDeviceIDInfoByContext(c *beegocontext.Context, device, deviceID string) (*manager.DeviceDisableInfo, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return nil, err
 	}
-	return dCtx.Disable().GetDeviceAndDeviceIdInfo(requestContext(c), device, deviceId)
+	return dCtx.Disable().GetDeviceAndDeviceIDInfo(requestContext(c), device, deviceID)
 }
 
 // GetDisableDeviceTTLByContext gets current account device disable TTL GetDisableDeviceTTLByContext 获取当前账号设备封禁剩余时间
@@ -242,11 +242,11 @@ func GetDisableDeviceTTLByContext(c *beegocontext.Context, device string) (int64
 	return dCtx.Disable().GetDeviceTTL(requestContext(c), device)
 }
 
-// GetDisableDeviceAndDeviceIDTTLByContext gets current account device ID disable TTL GetDisableDeviceAndDeviceIDTTLByContext 获取当前账号指定设备 ID 封禁剩余时间
-func GetDisableDeviceAndDeviceIDTTLByContext(c *beegocontext.Context, device, deviceId string) (int64, error) {
+// GetDisableDeviceAndDeviceIDTTLByContext gets current account device ID disable TTL GetDisableDeviceAndDeviceIDTTLByContext 获取当前账号设备 ID 封禁剩余时间
+func GetDisableDeviceAndDeviceIDTTLByContext(c *beegocontext.Context, device, deviceID string) (int64, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return 0, err
 	}
-	return dCtx.Disable().GetDeviceAndDeviceIdTTL(requestContext(c), device, deviceId)
+	return dCtx.Disable().GetDeviceAndDeviceIDTTL(requestContext(c), device, deviceID)
 }

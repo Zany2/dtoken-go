@@ -7,12 +7,12 @@ import (
 )
 
 // LoginWithRefreshTokenByContext logs in and issues refresh token LoginWithRefreshTokenByContext 登录并签发刷新 Token
-func LoginWithRefreshTokenByContext(c *beegocontext.Context, loginID string, deviceAndDeviceId ...string) (*manager.RefreshTokenPair, error) {
+func LoginWithRefreshTokenByContext(c *beegocontext.Context, loginID string, deviceAndDeviceID ...string) (*manager.RefreshTokenPair, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return nil, err
 	}
-	return dCtx.Refresh().Login(requestContext(c), loginID, deviceAndDeviceId...)
+	return dCtx.Refresh().Login(requestContext(c), loginID, deviceAndDeviceID...)
 }
 
 // LoginWithRefreshTokenOptionsByContext logs in with refresh token options LoginWithRefreshTokenOptionsByContext 使用刷新 Token 选项登录

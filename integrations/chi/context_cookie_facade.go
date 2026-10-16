@@ -8,7 +8,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
-// SetTokenCookieByCtx writes token cookie SetTokenCookieByCtx ?Token Cookie
+// SetTokenCookieByCtx writes token cookie SetTokenCookieByCtx 写入 Token Cookie
 func SetTokenCookieByCtx(ctx context.Context, token string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -18,7 +18,7 @@ func SetTokenCookieByCtx(ctx context.Context, token string) error {
 	return nil
 }
 
-// ClearTokenCookieByCtx clears token cookie ClearTokenCookieByCtx ?Token Cookie
+// ClearTokenCookieByCtx clears token cookie ClearTokenCookieByCtx 清理 Token Cookie
 func ClearTokenCookieByCtx(ctx context.Context) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -28,25 +28,25 @@ func ClearTokenCookieByCtx(ctx context.Context) error {
 	return nil
 }
 
-// LoginWithCookieByCtx logs in and writes token cookie LoginWithCookieByCtx ?Token Cookie
-func LoginWithCookieByCtx(ctx context.Context, loginID string, deviceAndDeviceId ...string) (string, error) {
+// LoginWithCookieByCtx logs in and writes token cookie LoginWithCookieByCtx 登录并写入 Token Cookie
+func LoginWithCookieByCtx(ctx context.Context, loginID string, deviceAndDeviceID ...string) (string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
 		return "", err
 	}
-	return dCtx.Cookie().Login(ctx, loginID, deviceAndDeviceId...)
+	return dCtx.Cookie().Login(ctx, loginID, deviceAndDeviceID...)
 }
 
-// LoginWithCookieTimeoutByCtx logs in with timeout and writes token cookie LoginWithCookieTimeoutByCtx  Token Cookie
-func LoginWithCookieTimeoutByCtx(ctx context.Context, loginID string, timeout time.Duration, deviceAndDeviceId ...string) (string, error) {
+// LoginWithCookieTimeoutByCtx logs in with timeout and writes token cookie LoginWithCookieTimeoutByCtx 使用指定有效期登录并写入 Token Cookie
+func LoginWithCookieTimeoutByCtx(ctx context.Context, loginID string, timeout time.Duration, deviceAndDeviceID ...string) (string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
 		return "", err
 	}
-	return dCtx.Cookie().LoginWithTimeout(ctx, loginID, timeout, deviceAndDeviceId...)
+	return dCtx.Cookie().LoginWithTimeout(ctx, loginID, timeout, deviceAndDeviceID...)
 }
 
-// LoginWithCookieOptionsByCtx logs in with options and writes token cookie LoginWithCookieOptionsByCtx ?Token Cookie
+// LoginWithCookieOptionsByCtx logs in with options and writes token cookie LoginWithCookieOptionsByCtx 使用登录选项登录并写入 Token Cookie
 func LoginWithCookieOptionsByCtx(ctx context.Context, opts manager.LoginOptions) (string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -55,7 +55,7 @@ func LoginWithCookieOptionsByCtx(ctx context.Context, opts manager.LoginOptions)
 	return dCtx.Cookie().LoginWithOptions(ctx, opts)
 }
 
-// LogoutWithCookieByCtx logs out and clears token cookie LogoutWithCookieByCtx ?Token Cookie
+// LogoutWithCookieByCtx logs out and clears token cookie LogoutWithCookieByCtx 登出并清理 Token Cookie
 func LogoutWithCookieByCtx(ctx context.Context) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {

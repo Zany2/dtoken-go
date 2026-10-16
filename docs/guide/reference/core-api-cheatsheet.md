@@ -6,14 +6,14 @@ This page lists common `dtoken` global API calls. It is intended for quick looku
 
 ```go
 token, err := dtoken.Login(ctx, "user-1001")
-token, err = dtoken.Login(ctx, "user-1001", "web", "browser-001", "user")
+token, err = dtoken.Login(ctx, "user-1001", "web", "browser-001")
 
 isLogin := dtoken.IsLogin(ctx, token)
 loginID, err := dtoken.GetLoginID(ctx, token)
 tokenInfo, err := dtoken.GetTokenInfo(ctx, token)
 ttl, err := dtoken.GetTokenTTL(ctx, token)
 
-err = dtoken.RenewTimeout(ctx, token, 7200)
+err = dtoken.RenewTimeout(ctx, token, 2*time.Hour)
 err = dtoken.Logout(ctx, token)
 err = dtoken.LogoutByLoginID(ctx, "user-1001")
 ```
@@ -44,7 +44,7 @@ _ = dtoken.ReplaceByLoginID(ctx, "user-1001")
 ## Ban Control
 
 ```go
-_ = dtoken.Disable(ctx, "user-1001", 3600, "risk_control")
+_ = dtoken.Disable(ctx, "user-1001", time.Hour, "risk_control")
 disabled := dtoken.IsDisable(ctx, "user-1001")
 disableInfo, err := dtoken.GetDisableInfo(ctx, "user-1001")
 _ = dtoken.Untie(ctx, "user-1001")

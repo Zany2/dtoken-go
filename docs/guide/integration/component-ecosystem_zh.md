@@ -12,7 +12,7 @@ DToken-Go 将核心认证逻辑和组件实现解耦。核心只依赖接口，�
 | 原子存储 | `adapter.AtomicStorage` | Redis、Memory | Nonce 一次性消费等需要原子读删的场景 |
 | 扫描存储 | `adapter.ScannerStorage` | Redis、Memory | 搜索 Token、Session ID |
 | 管理存储 | `adapter.AdminStorage` | Redis、Memory | 测试清理或管理性清空 |
-| 编解码 | `adapter.Codec` | JSON、JSON v2、MessagePack、Base64 | 序列化存储结构 |
+| 编解码 | `adapter.Codec` | JSON、MessagePack、Base64 | 序列化存储结构 |
 | 日志 | `adapter.Log` | DLog、GoFrame、Nop | 运行日志、错误日志 |
 | Token 生成器 | `adapter.Generator` | `dgenerator` | 生成 UUID、随机串、JWT 等 Token |
 | 异步任务池 | `adapter.Pool` | Ants | 自动续期、异步事件等后台任务 |
@@ -27,7 +27,7 @@ mgr, err := defaults.NewBuilder().
     Build()
 ```
 
-通常只需要显式设置存储。其他组件没有特殊诉求时，可以继续使用默认实现。
+默认已经提供内存存储；使用 Redis 或其他后端时再显式设置存储。其他组件没有特殊诉求时，可以继续使用默认实现。
 
 ## 替换具体组件
 
@@ -53,6 +53,8 @@ mgr, err := defaults.NewBuilder().
 
 工厂适合组件依赖配置项的场景，例如根据 `AuthType`、`KeyPrefix` 或部署环境创建不同实例。
 
+`com/codec/jsonv2` 提供基于 Go 1.27 标准库 `encoding/json/v2` 的适配器，需要启用 `GOEXPERIMENT=jsonv2`。如果不需要 JSON v2 的实验特性，可继续使用 JSON、MessagePack、Base64，或自行实现 `adapter.Codec`。
+
 ## 存储组件建议
 
 - 单进程测试、示例项目、本地开发：使用 Memory Storage。
@@ -76,10 +78,19 @@ mgr, err := defaults.NewBuilder().
 如果需要完全自定义生成规则，实现 `adapter.Generator` 即可：
 
 ```go
+import (
+    "crypto/rand"
+    "encoding/hex"
+)
+
 type MyGenerator struct{}
 
 func (MyGenerator) Generate(loginID, device, deviceID string) (string, error) {
-    return "my-token-value", nil
+    var value [32]byte
+    if _, err := rand.Read(value[:]); err != nil {
+        return "", err
+    }
+    return hex.EncodeToString(value[:]), nil
 }
 ```
 

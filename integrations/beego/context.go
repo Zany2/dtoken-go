@@ -4,6 +4,7 @@ package beego
 import (
 	"bytes"
 	"io"
+	"net"
 	"net/http"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
@@ -12,12 +13,14 @@ import (
 
 // BeegoContext adapts Beego request context BeegoContext 适配 Beego 请求上下文
 type BeegoContext struct {
-	c       *beegocontext.Context
-	aborted bool
+	c *beegocontext.Context
 }
 
-// Interface assertion keeps request context contract checked at compile time 接口断言在编译期检查请求上下文契约
-var _ adapter.RequestContext = (*BeegoContext)(nil)
+// Interface assertions keep request context contracts checked at compile time 接口断言在编译期检查请求上下文契约。
+var (
+	_ adapter.RequestContext    = (*BeegoContext)(nil)
+	_ adapter.RequestContextExt = (*BeegoContext)(nil)
+)
 
 // NewBeegoContext creates request context adapter NewBeegoContext 创建请求上下文适配器
 func NewBeegoContext(c *beegocontext.Context) adapter.RequestContext {
@@ -32,7 +35,12 @@ func (b *BeegoContext) Get(key string) (interface{}, bool) {
 
 // GetClientIP implements adapter.RequestContext GetClientIP 实现 adapter.RequestContext 接口
 func (b *BeegoContext) GetClientIP() string {
-	return b.c.Input.IP()
+	// Trusted proxy middleware must normalize RemoteAddr before adaptation. 可信代理中间件应在适配前规范化 RemoteAddr，避免信任伪造的转发头。
+	host, _, err := net.SplitHostPort(b.c.Request.RemoteAddr)
+	if err == nil {
+		return host
+	}
+	return b.c.Request.RemoteAddr
 }
 
 // GetCookie implements adapter.RequestContext GetCookie 实现 adapter.RequestContext 接口
@@ -57,7 +65,7 @@ func (b *BeegoContext) GetPath() string {
 
 // GetQuery implements adapter.RequestContext GetQuery 实现 adapter.RequestContext 接口
 func (b *BeegoContext) GetQuery(key string) string {
-	return b.c.Input.Query(key)
+	return b.c.Request.URL.Query().Get(key)
 }
 
 // Set implements adapter.RequestContext Set 实现 adapter.RequestContext 接口
@@ -96,7 +104,7 @@ func (b *BeegoContext) GetQueryAll() map[string][]string {
 
 // GetPostForm implements adapter.RequestContext GetPostForm 实现 adapter.RequestContext 接口
 func (b *BeegoContext) GetPostForm(key string) string {
-	return b.c.Request.FormValue(key)
+	return b.c.Request.PostFormValue(key)
 }
 
 // GetBody implements adapter.RequestContext GetBody 实现 adapter.RequestContext 接口
@@ -168,12 +176,12 @@ func (b *BeegoContext) MustGet(key string) any {
 
 // Abort implements adapter.RequestContext Abort 实现 adapter.RequestContext 接口
 func (b *BeegoContext) Abort() {
-	b.aborted = true
+	markAborted(b.c)
 }
 
 // IsAborted implements adapter.RequestContext IsAborted 实现 adapter.RequestContext 接口
 func (b *BeegoContext) IsAborted() bool {
-	return b.aborted
+	return b.c != nil && b.c.ResponseWriter != nil && b.c.ResponseWriter.Started
 }
 
 // IsTLS implements adapter.RequestContext IsTLS 实现 adapter.RequestContext 接口
@@ -188,6 +196,11 @@ func (b *BeegoContext) SetStatusCode(code int) {
 
 // Write implements adapter.RequestContext Write 实现 adapter.RequestContext 接口
 func (b *BeegoContext) Write(data []byte) (int, error) {
+	// Flush Beego's pending status before bypassing Output.Body. 绕过 Output.Body 直接写入时，先提交 Beego 暂存的状态码。
+	if b.c.Output.Status != 0 {
+		b.c.ResponseWriter.WriteHeader(b.c.Output.Status)
+		b.c.Output.Status = 0
+	}
 	return b.c.ResponseWriter.Write(data)
 }
 

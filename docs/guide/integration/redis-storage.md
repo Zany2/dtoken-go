@@ -40,11 +40,12 @@ func initDToken() {
         panic(err)
     }
 
-    dtoken.SetManager(
+    if _, err = dtoken.BuildAndSetManager(
         defaults.NewBuilder().
-            SetStorage(storage).
-            Build(),
-    )
+            SetStorage(storage),
+    ); err != nil {
+        panic(err)
+    }
 }
 ```
 
@@ -66,11 +67,12 @@ if err != nil {
     panic(err)
 }
 
-dtoken.SetManager(
+if _, err = dtoken.BuildAndSetManager(
     defaults.NewBuilder().
-        SetStorage(storage).
-        Build(),
-)
+        SetStorage(storage),
+); err != nil {
+    panic(err)
+}
 ```
 
 ### Option 3: Reuse an Existing go-redis Client
@@ -84,12 +86,15 @@ rdb := goredis.NewClient(&goredis.Options{
 
 storage := redis.NewStorageFromClient(rdb)
 
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
-        SetStorage(storage).
-        Build(),
-)
+        SetStorage(storage),
+); err != nil {
+    panic(err)
+}
 ```
+
+`NewStorageFromClient` wraps the supplied client without changing its connection settings. `Storage.Close()` closes that client, and a Manager owns injected storage by default. For a client shared elsewhere, use caller-owned storage through `ComponentOwnership{Storage: false, Logger: true, Pool: true}` and close it once after all users stop; see [Multi-Auth Systems](../core/multi-auth.md).
 
 ## Config Fields
 
@@ -102,36 +107,42 @@ Current `redis.Config` fields:
 | `Password` | Redis password |
 | `Database` | DB index |
 | `PoolSize` | pool size |
-| `DialTimeout` | dial timeout |
-| `ReadTimeout` | read timeout |
-| `WriteTimeout` | write timeout |
-| `PoolTimeout` | pool acquisition timeout |
-| `OperationTimeout` | reserved field; not applied per operation by the current storage implementation |
+| `DialTimeout` | TCP dial timeout (`time.Duration`) |
+| `ReadTimeout` | Redis read timeout (`time.Duration`) |
+| `WriteTimeout` | Redis write timeout (`time.Duration`) |
+| `PoolTimeout` | connection-pool acquisition timeout (`time.Duration`) |
+| `OperationTimeout` | per-operation context timeout (`time.Duration`); values `<= 0` use the 3-second default in `NewStorageFromConfig` |
+
+`NewStorage` also uses a 3-second per-operation timeout. `NewStorageFromClient` leaves this wrapper disabled, so the caller's context controls each operation.
 
 ## Using It With DToken
 
 ```go
-storage, _ := redis.NewStorage("redis://localhost:6379/0")
+storage, err := redis.NewStorage("redis://localhost:6379/0")
+if err != nil {
+    panic(err)
+}
 
-dtoken.SetManager(
+if _, err = dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(storage).
         TokenName("dtoken").
         Timeout(2 * 60 * 60).
         ActiveTimeout(30 * 60).
-        AutoRenew(true).
-        Build(),
-)
+        AutoRenew(true),
+); err != nil {
+    panic(err)
+}
 ```
 
-Login state, session data, permissions, roles, nonce data, and OAuth2 tokens will then all use Redis.
+Login state, session data, permissions, and roles use Redis. Nonce and OAuth2 use the same backend after their optional modules are enabled.
 
 ## Redis Key Structure
 
-Core storage keys use a unified format:
+Core storage keys use a unified format. Namespace components are escaped independently; see [Namespace Rules](../reference/configuration.md#namespace-rules).
 
 ```text
-KeyPrefix + AuthType + businessPrefix + businessID
+encoded KeyPrefix + encoded AuthType + businessPrefix + businessID
 ```
 
 With default configuration:
@@ -170,17 +181,16 @@ The same `loginID` under different `AuthType` values is independent. Tokens, ses
 
 ### Test Prefix
 
-`tests/gin_core_flow` uses short prefixes to avoid polluting Redis:
+`tests/gin_core_flow` uses a random prefix for each fixture, isolating independent test processes:
 
 ```text
-dt:gcf:1:
-dt:gcf:2:
+dt-gcf-<32 hexadecimal characters>:
 ```
 
 During cleanup, it deletes only keys under the current prefix:
 
 ```text
-dt:gcf:1:*
+dt-gcf-<this fixture's 32 hexadecimal characters>:*
 ```
 
 It does not clear the whole Redis DB.
@@ -192,6 +202,7 @@ The Redis adapter currently implements:
 - `Set`
 - `Get`
 - `GetAndDelete`
+- `SetIfAbsent`
 - `Delete`
 - `Exists`
 - `Keys`

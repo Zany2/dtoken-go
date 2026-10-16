@@ -5,7 +5,7 @@ import (
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 )
 
-// CheckRoleByContext checks current user role CheckRoleByContext
+// CheckRoleByContext checks current user role CheckRoleByContext 校验当前用户角色
 func CheckRoleByContext(ctx *hertzapp.RequestContext, role string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -14,7 +14,7 @@ func CheckRoleByContext(ctx *hertzapp.RequestContext, role string) error {
 	return dCtx.Access().CheckRole(requestContext(ctx), role)
 }
 
-// CheckRolesAndByContext delegates to DToken context CheckRolesAndByContext 转发到 DToken 上下文。
+// CheckRolesAndByContext checks all current user roles CheckRolesAndByContext 校验当前用户是否拥有全部角色
 func CheckRolesAndByContext(ctx *hertzapp.RequestContext, roles []string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -23,7 +23,7 @@ func CheckRolesAndByContext(ctx *hertzapp.RequestContext, roles []string) error 
 	return dCtx.Access().CheckRolesAnd(requestContext(ctx), roles)
 }
 
-// CheckRolesOrByContext delegates to DToken context CheckRolesOrByContext 转发到 DToken 上下文。
+// CheckRolesOrByContext checks any current user role CheckRolesOrByContext 校验当前用户是否拥有任一角色
 func CheckRolesOrByContext(ctx *hertzapp.RequestContext, roles []string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -32,7 +32,7 @@ func CheckRolesOrByContext(ctx *hertzapp.RequestContext, roles []string) error {
 	return dCtx.Access().CheckRolesOr(requestContext(ctx), roles)
 }
 
-// CheckPermissionByContext checks current user permission CheckPermissionByContext
+// CheckPermissionByContext checks current user permission CheckPermissionByContext 校验当前用户权限
 func CheckPermissionByContext(ctx *hertzapp.RequestContext, permission string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -41,7 +41,7 @@ func CheckPermissionByContext(ctx *hertzapp.RequestContext, permission string) e
 	return dCtx.Access().CheckPermission(requestContext(ctx), permission)
 }
 
-// CheckPermissionsAndByContext delegates to DToken context CheckPermissionsAndByContext 转发到 DToken 上下文。
+// CheckPermissionsAndByContext checks all current user permissions CheckPermissionsAndByContext 校验当前用户是否拥有全部权限
 func CheckPermissionsAndByContext(ctx *hertzapp.RequestContext, permissions []string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -50,7 +50,7 @@ func CheckPermissionsAndByContext(ctx *hertzapp.RequestContext, permissions []st
 	return dCtx.Access().CheckPermissionsAnd(requestContext(ctx), permissions)
 }
 
-// CheckPermissionsOrByContext delegates to DToken context CheckPermissionsOrByContext 转发到 DToken 上下文。
+// CheckPermissionsOrByContext checks any current user permission CheckPermissionsOrByContext 校验当前用户是否拥有任一权限
 func CheckPermissionsOrByContext(ctx *hertzapp.RequestContext, permissions []string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {

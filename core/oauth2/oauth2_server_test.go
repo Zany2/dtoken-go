@@ -134,6 +134,12 @@ func TestOAuth2ClientRegistrationBoundaries(t *testing.T) {
 	if _, err = server.GetClient(client.ClientID); !errors.Is(err, derror.ErrClientNotFound) {
 		t.Fatalf("GetClient(after unregister) error = %v, want ErrClientNotFound", err)
 	}
+	if _, err = server.GetClient(""); !errors.Is(err, derror.ErrClientOrClientIDEmpty) {
+		t.Fatalf("GetClient(empty) error = %v, want ErrClientOrClientIDEmpty", err)
+	}
+	if err = server.UnregisterClient(""); !errors.Is(err, derror.ErrClientOrClientIDEmpty) {
+		t.Fatalf("UnregisterClient(empty) error = %v, want ErrClientOrClientIDEmpty", err)
+	}
 }
 
 // TestOAuth2TokenEndpointBoundaries verifies token endpoint invalid requests TestOAuth2TokenEndpointBoundaries 验证令牌端点非法请求
@@ -184,6 +190,15 @@ func TestOAuth2AuthorizationCodeBoundaries(t *testing.T) {
 	if _, err := server.GenerateAuthorizationCode(ctx, client.ClientID, "user-1", client.RedirectURIs[0], []string{"admin"}); !errors.Is(err, derror.ErrInvalidScope) {
 		t.Fatalf("GenerateAuthorizationCode(invalid scope) error = %v, want ErrInvalidScope", err)
 	}
+	limited := oauth2TestClient()
+	limited.ClientID = "client-no-code"
+	limited.GrantTypes = []GrantType{GrantTypeClientCredentials}
+	if err := server.RegisterClient(limited); err != nil {
+		t.Fatalf("RegisterClient(limited) error = %v", err)
+	}
+	if _, err := server.GenerateAuthorizationCode(ctx, limited.ClientID, "user-1", limited.RedirectURIs[0], nil); !errors.Is(err, derror.ErrInvalidGrantType) {
+		t.Fatalf("GenerateAuthorizationCode(disallowed grant) error = %v, want ErrInvalidGrantType", err)
+	}
 }
 
 // TestOAuth2ScopesAreDefensivelyCopied verifies scope slices are copied. TestOAuth2ScopesAreDefensivelyCopied 验证 scopes 切片会被防御性复制。
@@ -216,7 +231,7 @@ func TestOAuth2ScopesAreDefensivelyCopied(t *testing.T) {
 	}
 }
 
-// TestOAuth2PKCES256Flow verifies S256 PKCE challenge verification. TestOAuth2PKCES256Flow verifies S256 PKCE challenge verification.
+// TestOAuth2PKCES256Flow verifies S256 PKCE challenge verification. TestOAuth2PKCES256Flow 验证 S256 PKCE 挑战校验流程。
 func TestOAuth2PKCES256Flow(t *testing.T) {
 	ctx := context.Background()
 	server := newOAuth2TestServer()
@@ -245,7 +260,7 @@ func TestOAuth2PKCES256Flow(t *testing.T) {
 	}
 }
 
-// TestOAuth2PKCEPlainDefault verifies empty method defaults to plain. TestOAuth2PKCEPlainDefault verifies empty method defaults to plain.
+// TestOAuth2PKCEPlainDefault verifies an empty PKCE method defaults to plain. TestOAuth2PKCEPlainDefault 验证空 PKCE 方法默认使用 plain。
 func TestOAuth2PKCEPlainDefault(t *testing.T) {
 	ctx := context.Background()
 	server := newOAuth2TestServer()
@@ -254,7 +269,7 @@ func TestOAuth2PKCEPlainDefault(t *testing.T) {
 		t.Fatalf("RegisterClient() error = %v", err)
 	}
 
-	verifier := "plain-verifier"
+	verifier := strings.Repeat("v", 43)
 	code, err := server.GenerateAuthorizationCodeWithPKCE(ctx, client.ClientID, "user-1", client.RedirectURIs[0], []string{"read"}, verifier, "")
 	if err != nil {
 		t.Fatalf("GenerateAuthorizationCodeWithPKCE() error = %v", err)
@@ -271,7 +286,58 @@ func TestOAuth2PKCEPlainDefault(t *testing.T) {
 	}
 }
 
-// TestOAuth2TokenEndpointPKCE verifies token endpoint passes code verifier. TestOAuth2TokenEndpointPKCE verifies token endpoint passes code verifier.
+// TestOAuth2ConfigFallbacksAndDurationRounding verifies constructor defaults and sub-second metadata rounding. TestOAuth2ConfigFallbacksAndDurationRounding 验证构造器默认值和亚秒元数据取整。
+func TestOAuth2ConfigFallbacksAndDurationRounding(t *testing.T) {
+	storage := newOAuth2TestStorage()
+	server := NewOAuth2ServerWithConfig("auth:", "dt:", storage, oauth2TestCodec{}, &Config{
+		CodeExpiration:    500 * time.Millisecond,
+		TokenExpiration:   500 * time.Millisecond,
+		RefreshExpiration: 1500 * time.Millisecond,
+	})
+	if server.codeExpiration != 500*time.Millisecond || server.tokenExpiration != 500*time.Millisecond || server.refreshExpiration != 1500*time.Millisecond {
+		t.Fatalf("constructor changed configured durations: %+v", server)
+	}
+	if got := durationSeconds(500 * time.Millisecond); got != 1 {
+		t.Fatalf("durationSeconds(500ms) = %d, want 1", got)
+	}
+	if got := durationSeconds(2 * time.Second); got != 2 {
+		t.Fatalf("durationSeconds(2s) = %d, want 2", got)
+	}
+
+	defaulted := NewOAuth2ServerWithConfig("auth:", "dt:", storage, oauth2TestCodec{}, &Config{})
+	if defaulted.codeExpiration != DefaultCodeExpiration || defaulted.tokenExpiration != DefaultTokenExpiration || defaulted.refreshExpiration != DefaultRefreshTTL {
+		t.Fatalf("constructor fallback durations = %v/%v/%v, want defaults", defaulted.codeExpiration, defaulted.tokenExpiration, defaulted.refreshExpiration)
+	}
+}
+
+// TestOAuth2PKCEValidationBoundaries verifies PKCE normalization and verifier rejection rules. TestOAuth2PKCEValidationBoundaries 验证 PKCE 规范化和校验器拒绝规则。
+func TestOAuth2PKCEValidationBoundaries(t *testing.T) {
+	verifier := strings.Repeat("v", 43)
+	if method, err := normalizeCodeChallengeMethod("", ""); err != nil || method != "" {
+		t.Fatalf("normalizeCodeChallengeMethod(no challenge) = %q, %v, want empty and nil", method, err)
+	}
+	if method, err := normalizeCodeChallengeMethod(verifier, " "); err != nil || method != CodeChallengeMethodPlain {
+		t.Fatalf("normalizeCodeChallengeMethod(default) = %q, %v, want plain", method, err)
+	}
+	if _, err := normalizeCodeChallengeMethod("challenge", "MD5"); !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("normalizeCodeChallengeMethod(unsupported) error = %v, want ErrInvalidParam", err)
+	}
+
+	if err := verifyCodeChallenge("", "", ""); err != nil {
+		t.Fatalf("verifyCodeChallenge(no challenge) error = %v, want nil", err)
+	}
+	if err := verifyCodeChallenge(verifier, CodeChallengeMethodPlain, verifier); err != nil {
+		t.Fatalf("verifyCodeChallenge(plain) error = %v, want nil", err)
+	}
+	if !errors.Is(verifyCodeChallenge(verifier, CodeChallengeMethodPlain, "wrong"), derror.ErrInvalidCodeVerifier) {
+		t.Fatal("verifyCodeChallenge(wrong plain verifier) did not reject")
+	}
+	if !errors.Is(verifyCodeChallenge("challenge", "unknown", "value"), derror.ErrInvalidParam) {
+		t.Fatal("verifyCodeChallenge(unknown method) did not reject")
+	}
+}
+
+// TestOAuth2TokenEndpointPKCE verifies the token endpoint forwards the code verifier. TestOAuth2TokenEndpointPKCE 验证令牌端点会传递 PKCE 校验器。
 func TestOAuth2TokenEndpointPKCE(t *testing.T) {
 	ctx := context.Background()
 	server := newOAuth2TestServer()
@@ -280,7 +346,7 @@ func TestOAuth2TokenEndpointPKCE(t *testing.T) {
 		t.Fatalf("RegisterClient() error = %v", err)
 	}
 
-	verifier := "token-endpoint-verifier"
+	verifier := strings.Repeat("v", 43)
 	code, err := server.GenerateAuthorizationCodeWithPKCE(ctx, client.ClientID, "user-1", client.RedirectURIs[0], []string{"read"}, verifier, CodeChallengeMethodPlain)
 	if err != nil {
 		t.Fatalf("GenerateAuthorizationCodeWithPKCE() error = %v", err)

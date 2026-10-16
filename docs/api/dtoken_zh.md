@@ -1,4 +1,4 @@
-﻿[English](dtoken.md) | 中文文档
+[English](dtoken.md) | 中文文档
 
 # DToken API 文档
 
@@ -22,11 +22,13 @@ import (
 var ctx = context.Background()
 
 func init() {
-    dtoken.SetManager(
-        defaults.NewBuilder().
-            SetStorage(memory.NewStorage()).
-            Build(),
-    )
+    mgr, err := defaults.NewBuilder().
+        SetStorage(memory.NewStorage()).
+        Build()
+    if err != nil {
+        panic(err)
+    }
+    dtoken.SetManager(mgr)
 }
 ```
 
@@ -44,7 +46,7 @@ func Login(ctx context.Context, loginID string, params ...string) (string, error
 **参数**：
 - `ctx` - 请求上下文
 - `loginID` - 登录 ID
-- `params` - 可选参数，顺序为 `[device, deviceId, authType]`
+- `params` - 可选参数，顺序为 `[device, deviceID, authType]`
 
 **返回**：
 - `string` - Token 值
@@ -92,8 +94,19 @@ func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...st
 **示例**：
 ```go
 nextPair, err := dtoken.RefreshToken(ctx, pair.RefreshToken)
+if err != nil {
+    return err
+}
+
 ttl, err := dtoken.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
-_ = dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
+if err != nil {
+    return err
+}
+fmt.Println(ttl)
+
+if err := dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken); err != nil {
+    return err
+}
 ```
 
 ### IntrospectToken
@@ -187,18 +200,18 @@ func IntrospectToken(ctx context.Context, tokenValue string, authType ...string)
 func LoginByToken(ctx context.Context, tokenValue string, authType ...string) error
 func CheckLogin(ctx context.Context, tokenValue string, authType ...string) error
 func LogoutByDevice(ctx context.Context, loginID string, device string, authType ...string) error
-func LogoutByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error
+func LogoutByDeviceAndDeviceID(ctx context.Context, loginID string, params ...string) error
 func LogoutByLoginID(ctx context.Context, loginID string, authType ...string) error
 func KickoutByDevice(ctx context.Context, loginID string, device string, authType ...string) error
-func KickoutByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error
+func KickoutByDeviceAndDeviceID(ctx context.Context, loginID string, params ...string) error
 func KickoutByLoginID(ctx context.Context, loginID string, authType ...string) error
 func Replace(ctx context.Context, tokenValue string, authType ...string) error
 func ReplaceByDevice(ctx context.Context, loginID string, device string, authType ...string) error
-func ReplaceByDeviceAndDeviceId(ctx context.Context, loginID string, params ...string) error
+func ReplaceByDeviceAndDeviceID(ctx context.Context, loginID string, params ...string) error
 func ReplaceByLoginID(ctx context.Context, loginID string, authType ...string) error
 func GetTokenInfo(ctx context.Context, tokenValue string, authType ...string) (*manager.TokenInfo, error)
 func GetDevice(ctx context.Context, tokenValue string, authType ...string) (string, error)
-func GetDeviceId(ctx context.Context, tokenValue string, authType ...string) (string, error)
+func GetDeviceID(ctx context.Context, tokenValue string, authType ...string) (string, error)
 func GetTokenCreateTime(ctx context.Context, tokenValue string, authType ...string) (int64, error)
 func GetTokenTTL(ctx context.Context, tokenValue string, authType ...string) (int64, error)
 func RenewTimeout(ctx context.Context, tokenValue string, timeout time.Duration, authType ...string) error
@@ -420,26 +433,28 @@ func GetSessionByToken(ctx context.Context, tokenValue string, authType ...strin
 
 **示例**：
 ```go
-sess, _ := dtoken.GetSession(ctx, "1000")
-sessByToken, _ := dtoken.GetSessionByToken(ctx, token)
-
-sess.Set("nickname", "张三")
-nickname := sess.GetString("nickname")
-
-_ = sessByToken
-_ = nickname
+if err := dtoken.SetSessionValue(ctx, "1000", "nickname", "张三"); err != nil {
+    return err
+}
+nickname, found, err := dtoken.GetSessionValue(ctx, "1000", "nickname")
+if err != nil {
+    return err
+}
+fmt.Println(nickname, found)
 ```
+
+`GetSession` 和 `GetSessionByToken` 返回解码后的快照，调用 `sess.Set(...)` 只修改本地值。应使用 `SetSessionValue` 或 `SetSessionValueByToken` 持久化账号数据，同时保留 Session 的有效期。
 
 ### 常用扩展方法
 
 ```go
 func GetOnlineTerminalCount(ctx context.Context, loginID string, authType ...string) (int, error)
 func GetOnlineTerminalCountByDevice(ctx context.Context, loginID string, device string, authType ...string) (int, error)
-func GetOnlineTerminalCountByDeviceAndDeviceId(ctx context.Context, loginID string, device string, deviceId string, authType ...string) (int, error)
+func GetOnlineTerminalCountByDeviceAndDeviceID(ctx context.Context, loginID string, device string, deviceID string, authType ...string) (int, error)
 func ForEachTerminal(ctx context.Context, loginID string, visitor manager.TerminalVisitor, authType ...string) error
 func ForEachTerminalByDevice(ctx context.Context, loginID, device string, visitor manager.TerminalVisitor, authType ...string) error
 func GetTokenValueListByLoginID(ctx context.Context, loginID string, checkAlive bool, authType ...string) ([]string, error)
-func GetTokenValueListByDeviceAndDeviceId(ctx context.Context, loginID string, device string, deviceId string, checkAlive bool, authType ...string) ([]string, error)
+func GetTokenValueListByDeviceAndDeviceID(ctx context.Context, loginID string, device string, deviceID string, checkAlive bool, authType ...string) ([]string, error)
 func GetTokenValueListByDevice(ctx context.Context, loginID string, device string, checkAlive bool, authType ...string) ([]string, error)
 func GetTerminalListByLoginID(ctx context.Context, loginID string, authType ...string) ([]manager.TerminalInfo, error)
 func GetTerminalListByLoginIDAndDevice(ctx context.Context, loginID string, device string, authType ...string) ([]manager.TerminalInfo, error)
@@ -464,15 +479,20 @@ func GetTokenInfo(ctx context.Context, tokenValue string, authType ...string) (*
 **返回**：
 ```go
 type TokenInfo struct {
-    AuthType   string `json:"authType"`
-    LoginID    string `json:"loginId"`
-    Device     string `json:"device"`
-    DeviceId   string `json:"deviceId"`
-    CreateTime int64  `json:"createTime"`
+    AuthType      string         `json:"authType"`
+    LoginID       string         `json:"loginId"`
+    Device        string         `json:"device"`
+    DeviceID      string         `json:"deviceId"`
+    CreateTime    int64          `json:"createTime"`
+    Timeout       int64          `json:"timeout"`
+    ActiveTimeout int64          `json:"activeTimeout,omitempty"`
+    Extra         map[string]any `json:"extra,omitempty"`
 }
 ```
 
 ### Nonce API
+
+构建并注册 Manager 前，先调用 `EnableNonce()` 启用该可选模块。
 
 ```go
 func GenerateNonce(ctx context.Context, authType ...string) (string, error)
@@ -484,6 +504,8 @@ func GetNonceTTL(ctx context.Context, nonce string, authType ...string) (int64, 
 ```
 
 ### OAuth2 API
+
+构建并注册 Manager 前，先调用 `EnableOAuth2()` 启用该可选模块。
 
 ```go
 func RegisterOAuth2Client(client *oauth2.Client, authType ...string) error
@@ -511,6 +533,8 @@ func DeleteManager(authType ...string) error
 func DeleteAllManager()
 ```
 
+`SetManager` 会替换并立即关闭相同认证类型的旧 Manager。运行期替换前应先确保旧 Manager 不再接收新请求且没有正在执行的请求；Manager 被替换或关闭后不得再次注册。`DeleteManager` 和 `DeleteAllManager` 会先从注册表移除 Manager，再释放其资源。多个 Manager 共享 Storage、Logger 或 Pool 时，应使用 `manager.WithComponentOwnership` 将共享组件标记为调用方持有。
+
 ## 完整方法列表
 
 ### Manager 生命周期
@@ -530,15 +554,15 @@ func DeleteAllManager()
 - `IntrospectToken`
 - `LoginByToken`
 - `Logout`
-- `LogoutByDeviceAndDeviceId`
+- `LogoutByDeviceAndDeviceID`
 - `LogoutByDevice`
 - `LogoutByLoginID`
 - `Kickout`
 - `Replace`
-- `KickoutByDeviceAndDeviceId`
+- `KickoutByDeviceAndDeviceID`
 - `KickoutByDevice`
 - `KickoutByLoginID`
-- `ReplaceByDeviceAndDeviceId`
+- `ReplaceByDeviceAndDeviceID`
 - `ReplaceByDevice`
 - `ReplaceByLoginID`
 - `IsLogin`
@@ -546,7 +570,7 @@ func DeleteAllManager()
 - `GetLoginID`
 - `GetTokenInfo`
 - `GetDevice`
-- `GetDeviceId`
+- `GetDeviceID`
 - `GetTokenCreateTime`
 - `GetTokenTTL`
 - `RenewTimeout`
@@ -554,13 +578,13 @@ func DeleteAllManager()
 ### 在线终端 / Session
 - `GetOnlineTerminalCount`
 - `GetOnlineTerminalCountByDevice`
-- `GetOnlineTerminalCountByDeviceAndDeviceId`
+- `GetOnlineTerminalCountByDeviceAndDeviceID`
 - `ForEachTerminal`
 - `ForEachTerminalByDevice`
 - `GetSession`
 - `GetSessionByToken`
 - `GetTokenValueListByLoginID`
-- `GetTokenValueListByDeviceAndDeviceId`
+- `GetTokenValueListByDeviceAndDeviceID`
 - `GetTokenValueListByDevice`
 - `GetTerminalListByLoginID`
 - `GetTerminalListByLoginIDAndDevice`

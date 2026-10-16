@@ -17,7 +17,7 @@ type RenewPoolConfig struct {
 	Expiry              time.Duration // Idle worker expiry duration 空闲协程过期时间
 	PrintStatusInterval time.Duration // Interval for periodic status printing 定时打印池状态的间隔
 	PreAlloc            bool          // Whether to pre-allocate memory, disables dynamic scaling 是否预分配内存，会禁用动态扩缩容
-	NonBlocking         bool          // Whether to use non-blocking mode 是否为非阻塞模式
+	NonBlocking         bool          // Use true for Manager async events to avoid nested submission deadlocks Manager 异步事件应设为 true，避免嵌套提交死锁
 }
 
 // DefaultRenewPoolConfig returns the default renew pool config 返回默认续期池配置
@@ -48,6 +48,11 @@ func (c *RenewPoolConfig) Validate() error {
 	}
 	if c.MaxSize < c.MinSize {
 		return fmt.Errorf("RenewPoolConfig.MaxSize must be >= RenewPoolConfig.MinSize")
+	}
+
+	// ants stores capacity as int32 even on 64-bit platforms. ants 在 64 位平台也使用 int32 存储容量。
+	if c.MaxSize > math.MaxInt32 {
+		return fmt.Errorf("RenewPoolConfig.MaxSize must not exceed %d", math.MaxInt32)
 	}
 
 	if math.IsNaN(c.ScaleUpRate) || math.IsInf(c.ScaleUpRate, 0) || c.ScaleUpRate <= 0 || c.ScaleUpRate > 1 {

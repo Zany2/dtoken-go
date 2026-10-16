@@ -11,18 +11,29 @@ import (
 
 // Annotation describes declarative auth requirements for a handler Annotation 描述处理器的声明式认证要求。
 type Annotation struct {
-	AuthType        string
-	CheckLogin      bool
-	CheckRole       []string
-	CheckPermission []string
-	CheckDisable    bool
-	Ignore          bool
-	LogicType       LogicType
+	AuthType        string    // Optional: specify auth type 可选：指定认证类型
+	CheckLogin      bool      // Check login 检查登录
+	CheckRole       []string  // Check roles 检查角色
+	CheckPermission []string  // Check permissions 检查权限
+	CheckDisable    bool      // Check disable status 检查封禁状态
+	Ignore          bool      // Ignore authentication 忽略认证
+	LogicType       LogicType // OR or AND logic (default: OR) OR 或 AND 逻辑（默认：OR）
 }
 
 // GetHandler wraps Fiber handler with annotation-based auth checks GetHandler 为 Fiber 处理器包裹基于注解的认证校验。
 func GetHandler(ctx context.Context, handler gofiber.Handler, failFunc func(c *gofiber.Ctx, err error), annotations ...*Annotation) gofiber.Handler {
 	return func(c *gofiber.Ctx) error {
+		if isRequestAborted(c) {
+			return nil
+		}
+
+		if len(annotations) > 0 && annotations[0] == nil {
+			if failFunc != nil {
+				failFunc(c, derror.ErrInvalidParam)
+				return nil
+			}
+			return writeErrorResponse(c, derror.ErrInvalidParam)
+		}
 		if len(annotations) > 0 && annotations[0].Ignore {
 			if handler != nil {
 				return handler(c)
@@ -43,7 +54,8 @@ func GetHandler(ctx context.Context, handler gofiber.Handler, failFunc func(c *g
 			return c.Next()
 		}
 
-		mgr, err := authcheck.GetManager(ann.AuthType)
+		cached, _ := GetDTokenContext(c)
+		mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached)
 		if err != nil {
 			if failFunc != nil {
 				failFunc(c, err)
@@ -56,7 +68,7 @@ func GetHandler(ctx context.Context, handler gofiber.Handler, failFunc func(c *g
 		dCtx := getDTokenContext(c, mgr)
 		token := dCtx.GetTokenValue()
 
-		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
 			TokenValue:   token,
 			CheckLogin:   true,
 			CheckDisable: ann.CheckDisable,

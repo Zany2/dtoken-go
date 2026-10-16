@@ -3,6 +3,7 @@ package manager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/Zany2/dtoken-go/core/derror"
@@ -16,8 +17,17 @@ func (m *Manager) AddPermissions(ctx context.Context, loginID string, permission
 		return derror.ErrIDIsEmpty
 	}
 
+	// Normalize permission values 规范化权限值。
+	permissions = normalizeAccessValues(permissions)
+
+	// Return early when nothing to change 无变更时直接返回。
+	if len(permissions) == 0 {
+		return nil
+	}
+
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(loginID)
+
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
@@ -27,8 +37,12 @@ func (m *Manager) AddPermissions(ctx context.Context, loginID string, permission
 		return err
 	}
 
-	// Add permissions to session 向会话追加权限。
-	sess.addPermissions(permissions...)
+	// Skip persistence and events when permissions are unchanged. 权限未变化时跳过持久化与事件。
+	added := sess.addPermissions(permissions...)
+	if len(added) == 0 {
+		return nil
+	}
+
 	// Persist updated session 持久化更新后的会话。
 	if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
 		return err
@@ -40,7 +54,7 @@ func (m *Manager) AddPermissions(ctx context.Context, loginID string, permission
 
 	// Trigger permission change event 触发权限变更事件。
 	m.triggerEvent(listener.EventPermissionChange, loginID, "", "", "", map[string]any{
-		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyPermissions: added,
 		listener.ExtraKeyAction:      listener.ActionAdd,
 	})
 	return nil
@@ -48,29 +62,54 @@ func (m *Manager) AddPermissions(ctx context.Context, loginID string, permission
 
 // AddPermissionsByToken adds permissions to a user by token. AddPermissionsByToken 根据 Token 为用户添加权限。
 func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, permissions []string) error {
-	// Validate token and load context 校验 Token 并加载上下文。
-	_, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	// Normalize permission values 规范化权限值。
+	permissions = normalizeAccessValues(permissions)
+
+	// Capture the token lifecycle before choosing its account lock. 选择账号锁前捕获 Token 生命周期。
+	expectedRecord, err := m.getTokenRecord(ctx, tokenValue)
 	if err != nil {
 		return err
 	}
 
 	// Lock account writes 锁定账号写操作。
-	unlock := m.lockLoginWrite(tokenInfo.LoginID)
-	// Release lock on function exit 函数退出时释放锁。
-	defer func() { unlock() }()
+	unlock := m.lockLoginWrite(expectedRecord.LoginID)
 
-	// Ensure token is still alive 确认 Token 仍然有效。
-	if err = m.ensureTerminalTokenAlive(ctx, tokenValue); err != nil {
-		return err
-	}
-	// Load session by token 根据 Token 加载会话。
-	sess, err := m.GetSessionByToken(ctx, tokenValue)
+	// Submit prepared maintenance only after releasing the account lock, including no-op writes. 包括无效写入在内，均在释放账号锁后提交已准备的维护任务。
+	var submitMaintenance func()
+	defer func() {
+		unlock()
+		if submitMaintenance != nil {
+			submitMaintenance()
+		}
+	}()
+
+	// Revalidate without reentering the lock or submitting an inline worker. 重新校验时不重复加锁，也不提交内联任务。
+	sess, tokenInfo, err := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue, expectedRecord)
 	if err != nil {
+		if errors.Is(err, derror.ErrActiveTimeout) && tokenInfo != nil {
+			unlock()
+			unlock = func() {}
+			if sess != nil && len(sess.TerminalInfos) == 0 {
+				m.triggerEvent(listener.EventDestroySession, tokenInfo.LoginID, "", "", "", nil)
+			}
+			m.triggerEvent(listener.EventActiveTimeout, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID, tokenValue, nil)
+		}
 		return err
 	}
 
-	// Add permissions to session 向会话追加权限。
-	sess.addPermissions(permissions...)
+	// Empty changes still require a valid login, but do not schedule maintenance. 空变更仍需有效登录，但不安排维护任务。
+	if len(permissions) == 0 {
+		return nil
+	}
+
+	submitMaintenance = m.prepareLoginMaintenance(ctx, tokenValue, expectedRecord, m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout))
+
+	// Skip persistence and events when permissions are unchanged. 权限未变化时跳过持久化与事件。
+	added := sess.addPermissions(permissions...)
+	if len(added) == 0 {
+		return nil
+	}
+
 	// Persist updated session 持久化更新后的会话。
 	if err = m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
 		return err
@@ -81,8 +120,8 @@ func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, 
 	unlock = func() {}
 
 	// Trigger permission change event 触发权限变更事件。
-	m.triggerEvent(listener.EventPermissionChange, sess.LoginID, tokenInfo.Device, tokenInfo.DeviceId, tokenValue, map[string]any{
-		listener.ExtraKeyPermissions: permissions,
+	m.triggerEvent(listener.EventPermissionChange, sess.LoginID, tokenInfo.Device, tokenInfo.DeviceID, tokenValue, map[string]any{
+		listener.ExtraKeyPermissions: added,
 		listener.ExtraKeyAction:      listener.ActionAdd,
 	})
 	return nil
@@ -95,8 +134,17 @@ func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permiss
 		return derror.ErrIDIsEmpty
 	}
 
+	// Normalize permission values 规范化权限值。
+	permissions = normalizeAccessValues(permissions)
+
+	// Return early when nothing to change 无变更时直接返回。
+	if len(permissions) == 0 {
+		return nil
+	}
+
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(loginID)
+
 	// Release lock on function exit 函数退出时释放锁。
 	defer func() { unlock() }()
 
@@ -106,8 +154,12 @@ func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permiss
 		return err
 	}
 
-	// Remove permissions from session 从会话移除权限。
-	sess.removePermissions(permissions...)
+	// Skip persistence and events when permissions are unchanged. 权限未变化时跳过持久化与事件。
+	removed := sess.removePermissions(permissions...)
+	if len(removed) == 0 {
+		return nil
+	}
+
 	// Persist updated session 持久化更新后的会话。
 	if err = m.saveToStorage(ctx, m.getSessionKey(loginID), *sess); err != nil {
 		return err
@@ -119,7 +171,7 @@ func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permiss
 
 	// Trigger permission change event 触发权限变更事件。
 	m.triggerEvent(listener.EventPermissionChange, loginID, "", "", "", map[string]any{
-		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyPermissions: removed,
 		listener.ExtraKeyAction:      listener.ActionRemove,
 	})
 	return nil
@@ -127,29 +179,54 @@ func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permiss
 
 // RemovePermissionsByToken removes permissions from a user by token. RemovePermissionsByToken 根据 Token 删除用户的指定权限。
 func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue string, permissions []string) error {
-	// Validate token and load context 校验 Token 并加载上下文。
-	_, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	// Normalize permission values 规范化权限值。
+	permissions = normalizeAccessValues(permissions)
+
+	// Capture the token lifecycle before choosing its account lock. 选择账号锁前捕获 Token 生命周期。
+	expectedRecord, err := m.getTokenRecord(ctx, tokenValue)
 	if err != nil {
 		return err
 	}
 
 	// Lock account writes 锁定账号写操作。
-	unlock := m.lockLoginWrite(tokenInfo.LoginID)
-	// Release lock on function exit 函数退出时释放锁。
-	defer func() { unlock() }()
+	unlock := m.lockLoginWrite(expectedRecord.LoginID)
 
-	// Ensure token is still alive 确认 Token 仍然有效。
-	if err = m.ensureTerminalTokenAlive(ctx, tokenValue); err != nil {
-		return err
-	}
-	// Load session by token 根据 Token 加载会话。
-	sess, err := m.GetSessionByToken(ctx, tokenValue)
+	// Submit prepared maintenance only after releasing the account lock, including no-op writes. 包括无效写入在内，均在释放账号锁后提交已准备的维护任务。
+	var submitMaintenance func()
+	defer func() {
+		unlock()
+		if submitMaintenance != nil {
+			submitMaintenance()
+		}
+	}()
+
+	// Revalidate without reentering the lock or submitting an inline worker. 重新校验时不重复加锁，也不提交内联任务。
+	sess, tokenInfo, err := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue, expectedRecord)
 	if err != nil {
+		if errors.Is(err, derror.ErrActiveTimeout) && tokenInfo != nil {
+			unlock()
+			unlock = func() {}
+			if sess != nil && len(sess.TerminalInfos) == 0 {
+				m.triggerEvent(listener.EventDestroySession, tokenInfo.LoginID, "", "", "", nil)
+			}
+			m.triggerEvent(listener.EventActiveTimeout, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID, tokenValue, nil)
+		}
 		return err
 	}
 
-	// Remove permissions from session 从会话移除权限。
-	sess.removePermissions(permissions...)
+	// Empty changes still require a valid login, but do not schedule maintenance. 空变更仍需有效登录，但不安排维护任务。
+	if len(permissions) == 0 {
+		return nil
+	}
+
+	submitMaintenance = m.prepareLoginMaintenance(ctx, tokenValue, expectedRecord, m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout))
+
+	// Skip persistence and events when permissions are unchanged. 权限未变化时跳过持久化与事件。
+	removed := sess.removePermissions(permissions...)
+	if len(removed) == 0 {
+		return nil
+	}
+
 	// Persist updated session 持久化更新后的会话。
 	if err = m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
 		return err
@@ -160,8 +237,8 @@ func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue strin
 	unlock = func() {}
 
 	// Trigger permission change event 触发权限变更事件。
-	m.triggerEvent(listener.EventPermissionChange, sess.LoginID, tokenInfo.Device, tokenInfo.DeviceId, tokenValue, map[string]any{
-		listener.ExtraKeyPermissions: permissions,
+	m.triggerEvent(listener.EventPermissionChange, sess.LoginID, tokenInfo.Device, tokenInfo.DeviceID, tokenValue, map[string]any{
+		listener.ExtraKeyPermissions: removed,
 		listener.ExtraKeyAction:      listener.ActionRemove,
 	})
 	return nil
@@ -173,6 +250,7 @@ func (m *Manager) GetPermissions(ctx context.Context, loginID string) ([]string,
 	if loginID == "" {
 		return nil, derror.ErrIDIsEmpty
 	}
+
 	// Load permissions by login ID 按登录 ID 加载权限。
 	return m.loadPermissionsByLoginID(ctx, loginID)
 }
@@ -185,11 +263,11 @@ func (m *Manager) GetPermissionsByToken(ctx context.Context, tokenValue string) 
 		return nil, err
 	}
 
-	// Resolve permissions by token 按 Token 解析权限。
+	// Resolve permissions by token 根据 Token 解析权限。
 	return m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   tokenInfo.Device,
-		DeviceID: tokenInfo.DeviceId,
+		DeviceID: tokenInfo.DeviceID,
 		Token:    tokenValue,
 	})
 }
@@ -207,6 +285,7 @@ func (m *Manager) HasPermission(ctx context.Context, loginID string, permission 
 		m.logger.Errorf("manager.HasPermission: failed to load permissions, loginID=%s, error=%v", loginID, err)
 		return false
 	}
+
 	// Calculate permission result 计算权限结果。
 	hasPermission := m.hasPermissionInList(permissions, permission)
 
@@ -234,19 +313,25 @@ func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, p
 	}
 
 	// Build access subject 构建访问主体。
-	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
-	// Resolve permissions by token 按 Token 解析权限。
-	permissions := m.resolvePermissions(ctx, sess.Permissions, AccessSubject{
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
+	// Load permissions by token 根据 Token 加载权限。
+	permissions, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
-		DeviceID: deviceId,
+		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
+	if err != nil {
+		m.logger.Errorf("manager.HasPermissionByToken: failed to load permissions, loginID=%s, error=%v", sess.LoginID, err)
+		return false
+	}
+
 	// Calculate permission result 计算权限结果。
 	hasPermission := m.hasPermissionInList(permissions, permission)
 
 	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermission: permission,
 		listener.ExtraKeyResult:     hasPermission,
 	})
@@ -267,6 +352,7 @@ func (m *Manager) HasPermissionsAnd(ctx context.Context, loginID string, permiss
 		m.logger.Errorf("manager.HasPermissionsAnd: failed to load permissions, loginID=%s, error=%v", loginID, err)
 		return false
 	}
+
 	// Calculate AND result 计算 AND 结果。
 	hasAll := m.hasAllPermissions(permList, permissions)
 
@@ -290,19 +376,25 @@ func (m *Manager) HasPermissionsAndByToken(ctx context.Context, tokenValue strin
 	}
 
 	// Build access subject 构建访问主体。
-	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
-	// Resolve permissions by token 按 Token 解析权限。
-	permList := m.resolvePermissions(ctx, sess.Permissions, AccessSubject{
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
+	// Load permissions by token 根据 Token 加载权限。
+	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
-		DeviceID: deviceId,
+		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
+	if err != nil {
+		m.logger.Errorf("manager.HasPermissionsAndByToken: failed to load permissions, loginID=%s, error=%v", sess.LoginID, err)
+		return false
+	}
+
 	// Calculate AND result 计算 AND 结果。
 	hasAll := m.hasAllPermissions(permList, permissions)
 
 	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermissions: permissions,
 		listener.ExtraKeyLogic:       listener.LogicAnd,
 		listener.ExtraKeyResult:      hasAll,
@@ -324,6 +416,7 @@ func (m *Manager) HasPermissionsOr(ctx context.Context, loginID string, permissi
 		m.logger.Errorf("manager.HasPermissionsOr: failed to load permissions, loginID=%s, error=%v", loginID, err)
 		return false
 	}
+
 	// Calculate OR result 计算 OR 结果。
 	hasAny := m.hasAnyPermission(permList, permissions)
 
@@ -347,19 +440,25 @@ func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string
 	}
 
 	// Build access subject 构建访问主体。
-	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
-	// Resolve permissions by token 按 Token 解析权限。
-	permList := m.resolvePermissions(ctx, sess.Permissions, AccessSubject{
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
+	// Load permissions by token 根据 Token 加载权限。
+	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
-		DeviceID: deviceId,
+		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
+	if err != nil {
+		m.logger.Errorf("manager.HasPermissionsOrByToken: failed to load permissions, loginID=%s, error=%v", sess.LoginID, err)
+		return false
+	}
+
 	// Calculate OR result 计算 OR 结果。
 	hasAny := m.hasAnyPermission(permList, permissions)
 
 	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermissions: permissions,
 		listener.ExtraKeyLogic:       listener.LogicOr,
 		listener.ExtraKeyResult:      hasAny,
@@ -375,13 +474,19 @@ func (m *Manager) CheckPermission(ctx context.Context, loginID string, permissio
 		return derror.ErrIDIsEmpty
 	}
 
+	// Validate permission is not empty 校验权限不为空。
+	if permission == "" {
+		return derror.ErrInvalidParam
+	}
+
 	// Load permissions 加载权限。
 	permissions, err := m.loadPermissionsByLoginID(ctx, loginID)
 	if err != nil {
 		return err
 	}
+
 	// Calculate permission result 计算权限结果。
-	hasPermission := permission != "" && m.hasPermissionInList(permissions, permission)
+	hasPermission := m.hasPermissionInList(permissions, permission)
 
 	// Trigger permission check event 触发权限校验事件。
 	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
@@ -397,28 +502,36 @@ func (m *Manager) CheckPermission(ctx context.Context, loginID string, permissio
 
 // CheckPermissionByToken checks if a token user has a specific permission. CheckPermissionByToken 根据 Token 校验用户是否拥有指定权限。
 func (m *Manager) CheckPermissionByToken(ctx context.Context, tokenValue string, permission string) error {
+	// Validate permission is not empty 校验权限不为空。
+	if permission == "" {
+		return derror.ErrInvalidParam
+	}
+
 	// Validate token and load context 校验 Token 并加载上下文。
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
 		return err
 	}
+
 	// Build access subject 构建访问主体。
-	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
-	// Load permissions by token 按 Token 加载权限。
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
+	// Load permissions by token 根据 Token 加载权限。
 	permissions, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
-		DeviceID: deviceId,
+		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
 	if err != nil {
 		return err
 	}
+
 	// Calculate permission result 计算权限结果。
-	hasPermission := permission != "" && m.hasPermissionInList(permissions, permission)
+	hasPermission := m.hasPermissionInList(permissions, permission)
 
 	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermission: permission,
 		listener.ExtraKeyResult:     hasPermission,
 	})
@@ -441,6 +554,7 @@ func (m *Manager) CheckPermissionAnd(ctx context.Context, loginID string, permis
 	if err != nil {
 		return err
 	}
+
 	// Calculate AND result 计算 AND 结果。
 	hasAll := m.hasAllPermissions(permList, permissions)
 
@@ -464,23 +578,26 @@ func (m *Manager) CheckPermissionAndByToken(ctx context.Context, tokenValue stri
 	if err != nil {
 		return err
 	}
+
 	// Build access subject 构建访问主体。
-	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
-	// Load permissions by token 按 Token 加载权限。
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
+	// Load permissions by token 根据 Token 加载权限。
 	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
-		DeviceID: deviceId,
+		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
 	if err != nil {
 		return err
 	}
+
 	// Calculate AND result 计算 AND 结果。
 	hasAll := m.hasAllPermissions(permList, permissions)
 
 	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermissions: permissions,
 		listener.ExtraKeyLogic:       listener.LogicAnd,
 		listener.ExtraKeyResult:      hasAll,
@@ -504,6 +621,7 @@ func (m *Manager) CheckPermissionOr(ctx context.Context, loginID string, permiss
 	if err != nil {
 		return err
 	}
+
 	// Calculate OR result 计算 OR 结果。
 	hasAny := m.hasAnyPermission(permList, permissions)
 
@@ -527,23 +645,26 @@ func (m *Manager) CheckPermissionOrByToken(ctx context.Context, tokenValue strin
 	if err != nil {
 		return err
 	}
+
 	// Build access subject 构建访问主体。
-	device, deviceId := tokenInfo.Device, tokenInfo.DeviceId
-	// Load permissions by token 按 Token 加载权限。
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
+	// Load permissions by token 根据 Token 加载权限。
 	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
 		LoginID:  sess.LoginID,
 		Device:   device,
-		DeviceID: deviceId,
+		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
 	if err != nil {
 		return err
 	}
+
 	// Calculate OR result 计算 OR 结果。
 	hasAny := m.hasAnyPermission(permList, permissions)
 
 	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceId, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermissions: permissions,
 		listener.ExtraKeyLogic:       listener.LogicOr,
 		listener.ExtraKeyResult:      hasAny,
@@ -555,16 +676,13 @@ func (m *Manager) CheckPermissionOrByToken(ctx context.Context, tokenValue strin
 	return nil
 }
 
-// matchPermission matches permission with wildcard support. matchPermission 支持通配符权限匹配。
-func (m *Manager) matchPermission(pattern, permission string) bool {
-	return m.strategy.normalize().PermissionMatcher(pattern, permission)
-}
-
 // hasPermissionInList checks if permission exists in permission list. hasPermissionInList 判断权限是否存在。
 func (m *Manager) hasPermissionInList(perms []string, permission string) bool {
+	matcher := m.strategy.normalize().PermissionMatcher
+
 	// Check each permission 逐个检查权限。
 	for _, p := range perms {
-		if m.matchPermission(p, permission) {
+		if matcher(p, permission) {
 			return true
 		}
 	}
@@ -577,6 +695,7 @@ func (m *Manager) hasAllPermissions(perms []string, required []string) bool {
 	if len(required) == 0 {
 		return false
 	}
+
 	// Check each required permission 逐个检查必需权限。
 	for _, need := range required {
 		if need == "" {

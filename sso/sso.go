@@ -4,10 +4,13 @@ package sso
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
@@ -20,7 +23,8 @@ var (
 	ErrSerializeFailed = errors.New("serialize failed")
 	// ErrTypeConvert indicates stored payload cannot be converted to bytes. ErrTypeConvert 表示存储载荷无法转换为字节。
 	ErrTypeConvert = errors.New("type conversion failed")
-	// ErrStorageCapabilityUnsupported indicates required storage capability is missing. ErrStorageCapabilityUnsupported 表示存储缺少必要能力。
+	// ErrStorageCapabilityUnsupported is kept for compatibility; one-time credentials now fall back to ordinary Storage. ErrStorageCapabilityUnsupported 为兼容保留；一次性凭证现已支持普通 Storage 回退。
+	// Deprecated: consumption no longer requires AtomicStorage. Deprecated：消费流程不再强制要求 AtomicStorage。
 	ErrStorageCapabilityUnsupported = errors.New("storage capability unsupported")
 	// ErrServerNotInitialized indicates the SSO server is not initialized. ErrServerNotInitialized 表示 SSO 服务端未初始化。
 	ErrServerNotInitialized = errors.New("SSO server not initialized")
@@ -64,8 +68,14 @@ var (
 	ErrOAuth2CodeExpired = errors.New("SSO OAuth2 code has expired")
 	// ErrClientSessionNotFound indicates there is no SSO client session record. ErrClientSessionNotFound 表示 SSO 客户端会话记录不存在。
 	ErrClientSessionNotFound = errors.New("client session not found")
+	// ErrClientSessionLimit indicates the account has reached its registered-client limit. ErrClientSessionLimit 表示账号已达到客户端会话注册上限。
+	ErrClientSessionLimit = errors.New("registered client session limit reached")
 	// ErrInvalidSign indicates the request signature is invalid. ErrInvalidSign 表示请求签名无效。
 	ErrInvalidSign = errors.New("invalid sign")
+	// ErrInvalidRequest indicates conflicting or ambiguous protocol parameters. ErrInvalidRequest 表示协议参数冲突或存在歧义。
+	ErrInvalidRequest = errors.New("invalid SSO request parameters")
+	// ErrSignSecretRequired indicates signing is enabled without a secret. ErrSignSecretRequired 表示已启用签名但未配置密钥。
+	ErrSignSecretRequired = errors.New("signing secret is required")
 	// ErrMethodNotAllowed indicates the request method is not allowed. ErrMethodNotAllowed 表示请求方法不允许。
 	ErrMethodNotAllowed = errors.New("method not allowed")
 	// ErrInvalidCallbackURL indicates logout callback URL is not allowed. ErrInvalidCallbackURL 表示注销回调地址不被允许。
@@ -149,6 +159,9 @@ type Ticket struct {
 	ExpiresIn   int64          `json:"expiresIn"`        // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
 	Used        bool           `json:"used"`             // Used stores consume state after successful exchange. Used 存储成功换票后的消费状态。
 	Extra       map[string]any `json:"extra,omitempty"`  // Extra stores extension data. Extra 存储扩展数据。
+
+	// ExpiresAt stores the precise deadline; zero supports legacy records. ExpiresAt 存储精确截止时间；零值兼容旧记录。
+	ExpiresAt time.Time `json:"expiresAt,omitempty"`
 }
 
 // SharedToken defines a reusable SSO token shared by trusted apps. SharedToken 定义可信应用间共享复用的 SSO Token。
@@ -161,6 +174,9 @@ type SharedToken struct {
 	CreateTime int64          `json:"createTime"`       // CreateTime stores creation unix time. CreateTime 存储创建时间戳。
 	ExpiresIn  int64          `json:"expiresIn"`        // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
 	Extra      map[string]any `json:"extra,omitempty"`  // Extra stores extension data. Extra 存储扩展数据。
+
+	// ExpiresAt stores the precise deadline; zero supports legacy records. ExpiresAt 存储精确截止时间；零值兼容旧记录。
+	ExpiresAt time.Time `json:"expiresAt,omitempty"`
 }
 
 // RemoteSession defines a centralized SSO session checked by client apps remotely. RemoteSession 定义由子应用远程校验的中心化 SSO 会话。
@@ -173,6 +189,9 @@ type RemoteSession struct {
 	CreateTime int64          `json:"createTime"`       // CreateTime stores creation unix time. CreateTime 存储创建时间戳。
 	ExpiresIn  int64          `json:"expiresIn"`        // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
 	Extra      map[string]any `json:"extra,omitempty"`  // Extra stores extension data. Extra 存储扩展数据。
+
+	// ExpiresAt stores the precise deadline; zero supports legacy records. ExpiresAt 存储精确截止时间；零值兼容旧记录。
+	ExpiresAt time.Time `json:"expiresAt,omitempty"`
 }
 
 // OAuth2Code defines an SSO OAuth2 authorization code. OAuth2Code 定义 SSO OAuth2 授权码。
@@ -187,6 +206,9 @@ type OAuth2Code struct {
 	ExpiresIn   int64          `json:"expiresIn"`        // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
 	Used        bool           `json:"used"`             // Used stores consume state after exchange. Used 存储换取后的消费状态。
 	Extra       map[string]any `json:"extra,omitempty"`  // Extra stores extension data. Extra 存储扩展数据。
+
+	// ExpiresAt stores the precise deadline; zero supports legacy records. ExpiresAt 存储精确截止时间；零值兼容旧记录。
+	ExpiresAt time.Time `json:"expiresAt,omitempty"`
 }
 
 // ClientSession stores one client login binding for single logout. ClientSession 存储用于单点注销的客户端登录绑定。
@@ -207,7 +229,12 @@ type Server struct {
 	remoteSessionExpiration time.Duration   // remoteSessionExpiration stores default remote session ttl. remoteSessionExpiration 存储默认远程会话有效期。
 	oauth2CodeExpiration    time.Duration   // oauth2CodeExpiration stores default OAuth2 code ttl. oauth2CodeExpiration 存储默认 OAuth2 授权码有效期。
 	storage                 adapter.Storage // storage stores clients and SSO credentials. storage 存储客户端和 SSO 凭证。
+	storageOwned            bool            // storageOwned controls whether Server closes storage. storageOwned 控制 Server 是否关闭存储。
 	serializer              adapter.Codec   // serializer encodes clients and credentials before storage. serializer 在存储前编解码客户端和凭证。
+	credentialConsumeMu     sync.Mutex      // credentialConsumeMu serializes non-atomic one-time credential consumption. credentialConsumeMu 串行化非原子存储的一次性凭证消费。
+	clientSessionMu         sync.Mutex      // clientSessionMu serializes local client-session index updates. clientSessionMu 串行化当前实例的客户端会话索引更新。
+	closeOnce               sync.Once       // closeOnce makes Server.Close idempotent. closeOnce 确保 Server.Close 幂等。
+	closeErr                error           // closeErr stores the first storage close error. closeErr 存储首次关闭存储时的错误。
 }
 
 // NewDefaultServer creates SSO server with default config. NewDefaultServer 使用默认配置创建 SSO 服务端。
@@ -217,11 +244,17 @@ func NewDefaultServer(authType, prefix string, storage adapter.Storage, serializ
 
 // NewServerWithConfig creates SSO server with config and falls back to defaults for invalid ttl. NewServerWithConfig 使用配置创建 SSO 服务端，并在有效期无效时回退默认值。
 func NewServerWithConfig(authType, prefix string, storage adapter.Storage, serializer adapter.Codec, cfg *Config) *Server {
+	return newServerWithConfig(authType, prefix, storage, serializer, cfg, storage == nil)
+}
+
+// newServerWithConfig creates a server with an explicit storage ownership policy. newServerWithConfig 使用明确的存储所有权策略创建 Server。
+func newServerWithConfig(authType, prefix string, storage adapter.Storage, serializer adapter.Codec, cfg *Config, storageOwned bool) *Server {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
 	if storage == nil {
 		storage = NewMemoryStorage()
+		storageOwned = true
 	}
 	if serializer == nil {
 		serializer = JSONCodec{}
@@ -250,8 +283,25 @@ func NewServerWithConfig(authType, prefix string, storage adapter.Storage, seria
 		remoteSessionExpiration: remoteSessionExpiration,
 		oauth2CodeExpiration:    oauth2CodeExpiration,
 		storage:                 storage,
+		storageOwned:            storageOwned,
 		serializer:              serializer,
 	}
+}
+
+// Close releases the server-owned storage adapter once. Close 仅关闭 Server 持有的存储适配器，并且保证幂等。
+func (s *Server) Close() error {
+	if s == nil {
+		return nil
+	}
+	s.closeOnce.Do(func() {
+		if !s.storageOwned || s.storage == nil {
+			return
+		}
+		if closer, ok := s.storage.(interface{ Close() error }); ok {
+			s.closeErr = closer.Close()
+		}
+	})
+	return s.closeErr
 }
 
 // RegisterClient registers an SSO client. RegisterClient 注册 SSO 客户端。
@@ -316,6 +366,7 @@ func (s *Server) GenerateTicketWithTimeout(ctx context.Context, clientID, loginI
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
 	ticket := &Ticket{
 		Ticket:      ticketValue,
 		Mode:        ModeTicket,
@@ -323,14 +374,15 @@ func (s *Server) GenerateTicketWithTimeout(ctx context.Context, clientID, loginI
 		ClientID:    clientID,
 		RedirectURI: redirectURI,
 		Scopes:      scopes,
-		CreateTime:  time.Now().Unix(),
-		ExpiresIn:   int64(timeout.Seconds()),
+		CreateTime:  now.Unix(),
+		ExpiresIn:   durationSeconds(timeout),
+		ExpiresAt:   now.Add(timeout),
 		Used:        false,
 		Extra:       extra,
 	}
 
 	// Persist the ticket with TTL so storage can expire unused callbacks automatically. 写入带 TTL 的 Ticket，让未使用回调自动过期。
-	if err = s.saveTicket(ctx, ticket, timeout); err != nil {
+	if err = s.saveTicket(ctx, ticket); err != nil {
 		return nil, err
 	}
 	return ticket, nil
@@ -356,65 +408,72 @@ func (s *Server) ConsumeTicket(ctx context.Context, ticketValue, clientID, clien
 	if err != nil {
 		return nil, err
 	}
-	if client.ClientSecret != "" && client.ClientSecret != clientSecret {
+	if !clientSecretMatches(client.ClientSecret, clientSecret) {
 		return nil, ErrInvalidClientCredentials
 	}
 	if !s.isModeAllowed(client, ModeTicket) {
 		return nil, ErrModeUnsupported
 	}
 
+	// Validate the binding before deleting anything so a bad request cannot destroy a valid ticket. 删除前先校验绑定关系，避免错误请求销毁有效 Ticket。
+	ticket, err := s.getTicket(ctx, ticketValue)
+	if err != nil {
+		return nil, err
+	}
+	if err = s.validateTicketExchange(ticket, clientID, redirectURI); err != nil {
+		return nil, err
+	}
+
 	key := s.getTicketKey(ticketValue)
-	// Pre-check all deterministic constraints before atomic deletion so a wrong redirect URI does not consume a valid ticket. 原子删除前先校验确定性约束，避免错误回调地址消耗合法 Ticket。
-	current, err := s.getTicket(ctx, ticketValue)
-	if err != nil {
-		return nil, err
-	}
-	if current.ClientID != clientID {
-		return nil, ErrClientMismatch
-	}
-	if current.RedirectURI != redirectURI {
-		return nil, ErrRedirectURIMismatch
-	}
-	if err = s.checkTicketAlive(current); err != nil {
-		return nil, err
-	}
-
-	// Consumption requires atomic get-and-delete to keep the one-time guarantee under concurrency. 消费必须使用原子读删，保证并发下的一次性语义。
-	atomicStorage, ok := s.storage.(adapter.AtomicStorage)
-	if !ok {
-		return nil, ErrStorageCapabilityUnsupported
-	}
-
-	// Another request may have consumed the ticket between the pre-check and this atomic operation. 预校验到原子操作之间可能已有其它请求消费了 Ticket。
-	value, err := atomicStorage.GetAndDelete(ctx, key)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
-	}
-	if value == nil {
-		return nil, ErrInvalidTicket
-	}
-
-	ticket, err := s.decodeTicket(value)
-	if err != nil {
-		return nil, err
-	}
-	// Re-validate the deleted payload because storage is the final source of truth. 对原子删除得到的载荷再次校验，因为存储中的值才是最终事实。
-	if ticket.Used {
-		return nil, ErrTicketUsed
-	}
-	if ticket.ClientID != clientID {
-		return nil, ErrClientMismatch
-	}
-	if ticket.RedirectURI != redirectURI {
-		return nil, ErrRedirectURIMismatch
-	}
-	if err = s.checkTicketAlive(ticket); err != nil {
-		return nil, err
+	if atomicStorage, ok := s.storage.(adapter.AtomicStorage); ok {
+		// Atomically take the validated ticket and revalidate the consumed payload. 原子获取已校验 Ticket，并再次校验实际消费载荷。
+		value, takeErr := atomicStorage.GetAndDelete(ctx, key)
+		if takeErr != nil {
+			return nil, fmt.Errorf("%w: %v", ErrStorageUnavailable, takeErr)
+		}
+		if value == nil {
+			return nil, ErrInvalidTicket
+		}
+		ticket, err = s.decodeTicket(value)
+		if err != nil {
+			return nil, err
+		}
+		if err = s.validateTicketExchange(ticket, clientID, redirectURI); err != nil {
+			return nil, err
+		}
+	} else {
+		// Serialize the ordinary Get/Delete fallback within this Server instance. 在当前 Server 实例内串行化普通 Get/Delete 回退流程。
+		s.credentialConsumeMu.Lock()
+		defer s.credentialConsumeMu.Unlock()
+		ticket, err = s.getTicket(ctx, ticketValue)
+		if err != nil {
+			return nil, err
+		}
+		if err = s.validateTicketExchange(ticket, clientID, redirectURI); err != nil {
+			return nil, err
+		}
+		if err = s.storage.Delete(ctx, key); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
+		}
 	}
 
 	// Mark the returned payload as consumed for callers; the stored copy has already been removed. 返回给调用方时标记已消费，存储中的副本已经被删除。
 	ticket.Used = true
 	return ticket, nil
+}
+
+// validateTicketExchange validates ticket state and client binding before consumption. validateTicketExchange 在消费前校验 Ticket 状态和客户端绑定。
+func (s *Server) validateTicketExchange(ticket *Ticket, clientID, redirectURI string) error {
+	if err := s.checkTicketAlive(ticket); err != nil {
+		return err
+	}
+	if ticket.ClientID != clientID {
+		return ErrClientMismatch
+	}
+	if ticket.RedirectURI != redirectURI {
+		return ErrRedirectURIMismatch
+	}
+	return nil
 }
 
 // RevokeTicket revokes an SSO ticket. RevokeTicket 撤销 SSO Ticket。
@@ -480,17 +539,19 @@ func (s *Server) GenerateSharedTokenWithTimeout(ctx context.Context, clientID, l
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
 	token := &SharedToken{
 		Token:      tokenValue,
 		Mode:       ModeSharedToken,
 		LoginID:    loginID,
 		ClientID:   clientID,
 		Scopes:     scopes,
-		CreateTime: time.Now().Unix(),
-		ExpiresIn:  int64(timeout.Seconds()),
+		CreateTime: now.Unix(),
+		ExpiresIn:  durationSeconds(timeout),
+		ExpiresAt:  now.Add(timeout),
 		Extra:      extra,
 	}
-	if err = s.saveSharedToken(ctx, token, timeout); err != nil {
+	if err = s.saveSharedToken(ctx, token); err != nil {
 		return nil, err
 	}
 	return token, nil
@@ -498,6 +559,9 @@ func (s *Server) GenerateSharedTokenWithTimeout(ctx context.Context, clientID, l
 
 // ValidateSharedToken validates an SSO shared token. ValidateSharedToken 校验 SSO 共享 Token。
 func (s *Server) ValidateSharedToken(ctx context.Context, tokenValue, clientID string) (*SharedToken, error) {
+	if clientID == "" {
+		return nil, ErrClientOrClientIDEmpty
+	}
 	token, err := s.getSharedToken(ctx, tokenValue)
 	if err != nil {
 		return nil, err
@@ -506,6 +570,9 @@ func (s *Server) ValidateSharedToken(ctx context.Context, tokenValue, clientID s
 		return nil, ErrClientMismatch
 	}
 	if err = s.checkSharedTokenAlive(token); err != nil {
+		return nil, err
+	}
+	if err = s.checkClientMode(ctx, clientID, ModeSharedToken); err != nil {
 		return nil, err
 	}
 	return token, nil
@@ -556,17 +623,19 @@ func (s *Server) CreateRemoteSessionWithTimeout(ctx context.Context, clientID, l
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
 	session := &RemoteSession{
 		SessionID:  sessionID,
 		Mode:       ModeRemoteSession,
 		LoginID:    loginID,
 		ClientID:   clientID,
 		Scopes:     scopes,
-		CreateTime: time.Now().Unix(),
-		ExpiresIn:  int64(timeout.Seconds()),
+		CreateTime: now.Unix(),
+		ExpiresIn:  durationSeconds(timeout),
+		ExpiresAt:  now.Add(timeout),
 		Extra:      extra,
 	}
-	if err = s.saveRemoteSession(ctx, session, timeout); err != nil {
+	if err = s.saveRemoteSession(ctx, session); err != nil {
 		return nil, err
 	}
 	return session, nil
@@ -574,6 +643,9 @@ func (s *Server) CreateRemoteSessionWithTimeout(ctx context.Context, clientID, l
 
 // ValidateRemoteSession validates a centralized SSO session. ValidateRemoteSession 校验中心化 SSO 会话。
 func (s *Server) ValidateRemoteSession(ctx context.Context, sessionID, clientID string) (*RemoteSession, error) {
+	if clientID == "" {
+		return nil, ErrClientOrClientIDEmpty
+	}
 	session, err := s.getRemoteSession(ctx, sessionID)
 	if err != nil {
 		return nil, err
@@ -582,6 +654,9 @@ func (s *Server) ValidateRemoteSession(ctx context.Context, sessionID, clientID 
 		return nil, ErrClientMismatch
 	}
 	if err = s.checkRemoteSessionAlive(session); err != nil {
+		return nil, err
+	}
+	if err = s.checkClientMode(ctx, clientID, ModeRemoteSession); err != nil {
 		return nil, err
 	}
 	return session, nil
@@ -595,10 +670,23 @@ func (s *Server) RenewRemoteSession(ctx context.Context, sessionID string, timeo
 	if timeout <= 0 {
 		timeout = s.remoteSessionExpiration
 	}
-	if err := s.storage.Expire(ctx, s.getRemoteSessionKey(sessionID), timeout); err != nil {
-		return fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
+	session, err := s.getRemoteSession(ctx, sessionID)
+	if err != nil {
+		return err
 	}
-	return nil
+	if err = s.checkRemoteSessionAlive(session); err != nil {
+		return err
+	}
+	if err = s.checkClientMode(ctx, session.ClientID, ModeRemoteSession); err != nil {
+		return err
+	}
+
+	// Refresh both metadata and the stored deadline together. 同步更新元数据与存储截止时间。
+	now := time.Now()
+	session.CreateTime = now.Unix()
+	session.ExpiresIn = durationSeconds(timeout)
+	session.ExpiresAt = now.Add(timeout)
+	return s.saveRemoteSession(ctx, session)
 }
 
 // RevokeRemoteSession revokes a centralized SSO session. RevokeRemoteSession 撤销中心化 SSO 会话。
@@ -649,6 +737,7 @@ func (s *Server) GenerateOAuth2CodeWithTimeout(ctx context.Context, clientID, lo
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
 	code := &OAuth2Code{
 		Code:        codeValue,
 		Mode:        ModeOAuth2,
@@ -656,12 +745,13 @@ func (s *Server) GenerateOAuth2CodeWithTimeout(ctx context.Context, clientID, lo
 		ClientID:    clientID,
 		RedirectURI: redirectURI,
 		Scopes:      scopes,
-		CreateTime:  time.Now().Unix(),
-		ExpiresIn:   int64(timeout.Seconds()),
+		CreateTime:  now.Unix(),
+		ExpiresIn:   durationSeconds(timeout),
+		ExpiresAt:   now.Add(timeout),
 		Used:        false,
 		Extra:       extra,
 	}
-	if err = s.saveOAuth2Code(ctx, code, timeout); err != nil {
+	if err = s.saveOAuth2Code(ctx, code); err != nil {
 		return nil, err
 	}
 	return code, nil
@@ -673,54 +763,69 @@ func (s *Server) ConsumeOAuth2Code(ctx context.Context, codeValue, clientID, cli
 	if err != nil {
 		return nil, err
 	}
-	if client.ClientSecret != "" && client.ClientSecret != clientSecret {
+	if !clientSecretMatches(client.ClientSecret, clientSecret) {
 		return nil, ErrInvalidClientCredentials
 	}
 	if !s.isModeAllowed(client, ModeOAuth2) {
 		return nil, ErrModeUnsupported
 	}
 
-	current, err := s.getOAuth2Code(ctx, codeValue)
+	// Validate the binding before deleting anything so a bad request cannot destroy a valid code. 删除前先校验绑定关系，避免错误请求销毁有效授权码。
+	code, err := s.getOAuth2Code(ctx, codeValue)
 	if err != nil {
 		return nil, err
 	}
-	if current.ClientID != clientID {
-		return nil, ErrClientMismatch
-	}
-	if current.RedirectURI != redirectURI {
-		return nil, ErrRedirectURIMismatch
-	}
-	if err = s.checkOAuth2CodeAlive(current); err != nil {
+	if err = s.validateOAuth2CodeExchange(code, clientID, redirectURI); err != nil {
 		return nil, err
 	}
 
-	atomicStorage, ok := s.storage.(adapter.AtomicStorage)
-	if !ok {
-		return nil, ErrStorageCapabilityUnsupported
-	}
-	value, err := atomicStorage.GetAndDelete(ctx, s.getOAuth2CodeKey(codeValue))
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
-	}
-	if value == nil {
-		return nil, ErrInvalidOAuth2Code
-	}
-
-	code, err := s.decodeOAuth2Code(value)
-	if err != nil {
-		return nil, err
-	}
-	if code.ClientID != clientID {
-		return nil, ErrClientMismatch
-	}
-	if code.RedirectURI != redirectURI {
-		return nil, ErrRedirectURIMismatch
-	}
-	if err = s.checkOAuth2CodeAlive(code); err != nil {
-		return nil, err
+	key := s.getOAuth2CodeKey(codeValue)
+	if atomicStorage, ok := s.storage.(adapter.AtomicStorage); ok {
+		value, takeErr := atomicStorage.GetAndDelete(ctx, key)
+		if takeErr != nil {
+			return nil, fmt.Errorf("%w: %v", ErrStorageUnavailable, takeErr)
+		}
+		if value == nil {
+			return nil, ErrInvalidOAuth2Code
+		}
+		code, err = s.decodeOAuth2Code(value)
+		if err != nil {
+			return nil, err
+		}
+		if err = s.validateOAuth2CodeExchange(code, clientID, redirectURI); err != nil {
+			return nil, err
+		}
+	} else {
+		// Serialize the ordinary Get/Delete fallback within this Server instance. 在当前 Server 实例内串行化普通 Get/Delete 回退流程。
+		s.credentialConsumeMu.Lock()
+		defer s.credentialConsumeMu.Unlock()
+		code, err = s.getOAuth2Code(ctx, codeValue)
+		if err != nil {
+			return nil, err
+		}
+		if err = s.validateOAuth2CodeExchange(code, clientID, redirectURI); err != nil {
+			return nil, err
+		}
+		if err = s.storage.Delete(ctx, key); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
+		}
 	}
 	code.Used = true
 	return code, nil
+}
+
+// validateOAuth2CodeExchange validates code state and client binding before consumption. validateOAuth2CodeExchange 在消费前校验授权码状态和客户端绑定。
+func (s *Server) validateOAuth2CodeExchange(code *OAuth2Code, clientID, redirectURI string) error {
+	if err := s.checkOAuth2CodeAlive(code); err != nil {
+		return err
+	}
+	if code.ClientID != clientID {
+		return ErrClientMismatch
+	}
+	if code.RedirectURI != redirectURI {
+		return ErrRedirectURIMismatch
+	}
+	return nil
 }
 
 // RevokeOAuth2Code revokes an SSO OAuth2 authorization code. RevokeOAuth2Code 撤销 SSO OAuth2 授权码。
@@ -754,6 +859,11 @@ func (s *Server) RegisterClientSession(ctx context.Context, loginID, clientID, l
 	if !s.isValidLogoutCallbackURL(client, logoutCallbackURL) {
 		return nil, ErrInvalidCallbackURL
 	}
+
+	// Serialize the index read-modify-write sequence within one server instance. 在单个 Server 实例内串行化索引读改写流程。
+	s.clientSessionMu.Lock()
+	defer s.clientSessionMu.Unlock()
+
 	now := time.Now().Unix()
 	session := &ClientSession{
 		LoginID:           loginID,
@@ -762,8 +872,14 @@ func (s *Server) RegisterClientSession(ctx context.Context, loginID, clientID, l
 		CreateTime:        now,
 		UpdateTime:        now,
 	}
-	if existing, err := s.getClientSession(ctx, loginID, clientID); err == nil && existing != nil {
+	existing, err := s.getClientSession(ctx, loginID, clientID)
+	switch {
+	case err == nil && existing != nil:
 		session.CreateTime = existing.CreateTime
+	case errors.Is(err, ErrClientSessionNotFound):
+		// A missing client binding is the normal first-registration case. 首次登记时不存在客户端绑定是正常情况。
+	case err != nil:
+		return nil, err
 	}
 	if err := s.saveClientSession(ctx, session); err != nil {
 		return nil, err
@@ -799,6 +915,11 @@ func (s *Server) ClearClientSessions(ctx context.Context, loginID string) error 
 	if loginID == "" {
 		return ErrUserIDEmpty
 	}
+
+	// Keep clear ordered with registrations on this server instance. 保证当前 Server 实例内清理与注册操作有序。
+	s.clientSessionMu.Lock()
+	defer s.clientSessionMu.Unlock()
+
 	return s.deleteClientSessionIndex(ctx, loginID)
 }
 
@@ -854,6 +975,9 @@ func (s *Server) deleteClient(ctx context.Context, clientID string) error {
 
 // getClient loads and decodes a registered client from storage. getClient 从存储加载并解码已注册客户端。
 func (s *Server) getClient(ctx context.Context, clientID string) (*Client, error) {
+	if clientID == "" {
+		return nil, ErrClientOrClientIDEmpty
+	}
 	data, err := s.storage.Get(ctx, s.getClientKey(clientID))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
@@ -872,17 +996,17 @@ func (s *Server) getClient(ctx context.Context, clientID string) (*Client, error
 	return &client, nil
 }
 
-// hasClient checks whether a client is registered. hasClient 检查客户端是否已经注册。
-func (s *Server) hasClient(clientID string) bool {
-	_, err := s.getClient(context.Background(), clientID)
-	return err == nil
-}
-
-// saveTicket serializes and persists a ticket with the supplied ttl. saveTicket 按指定有效期序列化并保存 Ticket。
-func (s *Server) saveTicket(ctx context.Context, ticket *Ticket, timeout time.Duration) error {
+// saveTicket serializes and persists a ticket until its deadline. saveTicket 按截止时间序列化并保存 Ticket。
+func (s *Server) saveTicket(ctx context.Context, ticket *Ticket) error {
 	encodeData, err := s.serializer.Encode(ticket)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrSerializeFailed, err)
+	}
+
+	// Use the remaining lifetime after encoding; non-positive storage TTL means no expiry. 编码后使用剩余有效期；存储的非正 TTL 表示永不过期。
+	timeout := remainingCredentialDuration(ticket.CreateTime, ticket.ExpiresIn, ticket.ExpiresAt)
+	if timeout <= 0 {
+		return ErrTicketExpired
 	}
 	if err = s.storage.Set(ctx, s.getTicketKey(ticket.Ticket), encodeData, timeout); err != nil {
 		return fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
@@ -890,11 +1014,17 @@ func (s *Server) saveTicket(ctx context.Context, ticket *Ticket, timeout time.Du
 	return nil
 }
 
-// saveSharedToken serializes and persists a shared token with the supplied ttl. saveSharedToken 按指定有效期序列化并保存共享 Token。
-func (s *Server) saveSharedToken(ctx context.Context, token *SharedToken, timeout time.Duration) error {
+// saveSharedToken serializes and persists a shared token until its deadline. saveSharedToken 按截止时间序列化并保存共享 Token。
+func (s *Server) saveSharedToken(ctx context.Context, token *SharedToken) error {
 	encodeData, err := s.serializer.Encode(token)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrSerializeFailed, err)
+	}
+
+	// Use the remaining lifetime after encoding; non-positive storage TTL means no expiry. 编码后使用剩余有效期；存储的非正 TTL 表示永不过期。
+	timeout := remainingCredentialDuration(token.CreateTime, token.ExpiresIn, token.ExpiresAt)
+	if timeout <= 0 {
+		return ErrSharedTokenExpired
 	}
 	if err = s.storage.Set(ctx, s.getSharedTokenKey(token.Token), encodeData, timeout); err != nil {
 		return fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
@@ -902,11 +1032,17 @@ func (s *Server) saveSharedToken(ctx context.Context, token *SharedToken, timeou
 	return nil
 }
 
-// saveRemoteSession serializes and persists a remote session with the supplied ttl. saveRemoteSession 按指定有效期序列化并保存远程会话。
-func (s *Server) saveRemoteSession(ctx context.Context, session *RemoteSession, timeout time.Duration) error {
+// saveRemoteSession serializes and persists a remote session until its deadline. saveRemoteSession 按截止时间序列化并保存远程会话。
+func (s *Server) saveRemoteSession(ctx context.Context, session *RemoteSession) error {
 	encodeData, err := s.serializer.Encode(session)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrSerializeFailed, err)
+	}
+
+	// Use the remaining lifetime after encoding; non-positive storage TTL means no expiry. 编码后使用剩余有效期；存储的非正 TTL 表示永不过期。
+	timeout := remainingCredentialDuration(session.CreateTime, session.ExpiresIn, session.ExpiresAt)
+	if timeout <= 0 {
+		return ErrRemoteSessionExpired
 	}
 	if err = s.storage.Set(ctx, s.getRemoteSessionKey(session.SessionID), encodeData, timeout); err != nil {
 		return fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
@@ -914,11 +1050,17 @@ func (s *Server) saveRemoteSession(ctx context.Context, session *RemoteSession, 
 	return nil
 }
 
-// saveOAuth2Code serializes and persists an OAuth2 code with the supplied ttl. saveOAuth2Code 按指定有效期序列化并保存 OAuth2 授权码。
-func (s *Server) saveOAuth2Code(ctx context.Context, code *OAuth2Code, timeout time.Duration) error {
+// saveOAuth2Code serializes and persists an OAuth2 code until its deadline. saveOAuth2Code 按截止时间序列化并保存 OAuth2 授权码。
+func (s *Server) saveOAuth2Code(ctx context.Context, code *OAuth2Code) error {
 	encodeData, err := s.serializer.Encode(code)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrSerializeFailed, err)
+	}
+
+	// Use the remaining lifetime after encoding; non-positive storage TTL means no expiry. 编码后使用剩余有效期；存储的非正 TTL 表示永不过期。
+	timeout := remainingCredentialDuration(code.CreateTime, code.ExpiresIn, code.ExpiresAt)
+	if timeout <= 0 {
+		return ErrOAuth2CodeExpired
 	}
 	if err = s.storage.Set(ctx, s.getOAuth2CodeKey(code.Code), encodeData, timeout); err != nil {
 		return fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
@@ -927,6 +1069,7 @@ func (s *Server) saveOAuth2Code(ctx context.Context, code *OAuth2Code, timeout t
 }
 
 // saveClientSession serializes and stores a client session in the login index. saveClientSession 将客户端会话序列化并保存到登录索引。
+// Note: the server lock protects one process; concurrent registrations across server instances still need storage-level atomic merge support. 注意：Server 锁只保护单进程；跨实例并发注册仍需要存储层提供原子合并能力。
 func (s *Server) saveClientSession(ctx context.Context, session *ClientSession) error {
 	sessions, err := s.GetClientSessions(ctx, session.LoginID)
 	if err != nil {
@@ -1111,7 +1254,7 @@ func (s *Server) checkTicketAlive(ticket *Ticket) error {
 	if ticket.Used {
 		return ErrTicketUsed
 	}
-	if ticket.ExpiresIn > 0 && time.Now().Unix() > ticket.CreateTime+ticket.ExpiresIn {
+	if remainingCredentialDuration(ticket.CreateTime, ticket.ExpiresIn, ticket.ExpiresAt) <= 0 {
 		return ErrTicketExpired
 	}
 	return nil
@@ -1122,7 +1265,7 @@ func (s *Server) checkSharedTokenAlive(token *SharedToken) error {
 	if token == nil || token.Token == "" {
 		return ErrInvalidSharedToken
 	}
-	if token.ExpiresIn > 0 && time.Now().Unix() > token.CreateTime+token.ExpiresIn {
+	if remainingCredentialDuration(token.CreateTime, token.ExpiresIn, token.ExpiresAt) <= 0 {
 		return ErrSharedTokenExpired
 	}
 	return nil
@@ -1133,7 +1276,7 @@ func (s *Server) checkRemoteSessionAlive(session *RemoteSession) error {
 	if session == nil || session.SessionID == "" {
 		return ErrInvalidRemoteSession
 	}
-	if session.ExpiresIn > 0 && time.Now().Unix() > session.CreateTime+session.ExpiresIn {
+	if remainingCredentialDuration(session.CreateTime, session.ExpiresIn, session.ExpiresAt) <= 0 {
 		return ErrRemoteSessionExpired
 	}
 	return nil
@@ -1147,8 +1290,38 @@ func (s *Server) checkOAuth2CodeAlive(code *OAuth2Code) error {
 	if code.Used {
 		return ErrOAuth2CodeUsed
 	}
-	if code.ExpiresIn > 0 && time.Now().Unix() > code.CreateTime+code.ExpiresIn {
+	if remainingCredentialDuration(code.CreateTime, code.ExpiresIn, code.ExpiresAt) <= 0 {
 		return ErrOAuth2CodeExpired
+	}
+	return nil
+}
+
+// remainingCredentialDuration uses precise deadlines and safely reads legacy second-based records. remainingCredentialDuration 使用精确截止时间并安全读取旧版秒级记录。
+func remainingCredentialDuration(createTime, expiresIn int64, expiresAt time.Time) time.Duration {
+	if expiresIn <= 0 {
+		return 0
+	}
+	if expiresAt.IsZero() {
+		if createTime > math.MaxInt64-expiresIn {
+			return 0
+		}
+		expiresAt = time.Unix(createTime+expiresIn, 0)
+	}
+	ttl := time.Until(expiresAt)
+	if ttl <= 0 {
+		return 0
+	}
+	return ttl
+}
+
+// checkClientMode rejects credentials for unregistered clients or disabled modes. checkClientMode 拒绝已注销客户端或已禁用模式的凭证。
+func (s *Server) checkClientMode(ctx context.Context, clientID string, mode Mode) error {
+	client, err := s.getClient(ctx, clientID)
+	if err != nil {
+		return err
+	}
+	if !s.isModeAllowed(client, mode) {
+		return ErrModeUnsupported
 	}
 	return nil
 }
@@ -1165,6 +1338,26 @@ func (s *Server) generateRandomValue(length int, label string) (string, error) {
 		return "", fmt.Errorf("failed to generate %s: %w", label, err)
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+// durationSeconds rounds a positive duration up to whole seconds. durationSeconds 将正时长向上取整为秒。
+func durationSeconds(duration time.Duration) int64 {
+	seconds := duration / time.Second
+	if duration%time.Second != 0 {
+		seconds++
+	}
+	if seconds <= 0 {
+		return 1
+	}
+	return int64(seconds)
+}
+
+// clientSecretMatches compares configured client secrets in constant time. clientSecretMatches 以常量时间比较已配置的客户端密钥。
+func clientSecretMatches(expected, actual string) bool {
+	if expected == "" {
+		return true
+	}
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(actual)) == 1
 }
 
 // getTTLSeconds normalizes storage TTL sentinel values to seconds. getTTLSeconds 将存储 TTL 哨兵值统一转换为秒。
@@ -1206,12 +1399,12 @@ func (s *Server) isValidLogoutCallbackURL(client *Client, callbackURL string) bo
 	if client == nil || callbackURL == "" {
 		return false
 	}
+	callback, err := url.Parse(callbackURL)
+	if err != nil || (callback.Scheme != "http" && callback.Scheme != "https") || callback.Hostname() == "" || callback.User != nil || callback.Fragment != "" {
+		return false
+	}
 	if s.isValidRedirectURI(client, callbackURL) {
 		return true
-	}
-	callback, err := url.Parse(callbackURL)
-	if err != nil || callback.Scheme == "" || callback.Host == "" {
-		return false
 	}
 	for _, origin := range client.AllowOrigins {
 		if originMatchesURL(origin, callback) {
@@ -1227,6 +1420,7 @@ func (s *Server) isValidLogoutCallbackURL(client *Client, callbackURL string) bo
 	return false
 }
 
+// originMatchesURL checks whether an origin matches a target URL. originMatchesURL 检查 Origin 是否匹配目标 URL。
 func originMatchesURL(origin string, target *url.URL) bool {
 	parsed, err := url.Parse(origin)
 	if err != nil {
@@ -1235,6 +1429,7 @@ func originMatchesURL(origin string, target *url.URL) bool {
 	return sameURLOrigin(parsed, target)
 }
 
+// sameURLOrigin checks whether two URLs share an origin. sameURLOrigin 检查两个 URL 是否同源。
 func sameURLOrigin(a, b *url.URL) bool {
 	if a == nil || b == nil {
 		return false

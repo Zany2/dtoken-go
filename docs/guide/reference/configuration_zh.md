@@ -12,7 +12,7 @@ mgr, err := defaults.NewBuilder().
     AuthType("user").
     // KeyPrefix 是存储层 key 的公共前缀，用于区分项目或环境。
     KeyPrefix("dtoken").
-    // TokenName 是从 Header、Cookie 或 Body 读取 Token 时使用的名称。
+    // TokenName 是从 Header、Cookie、Query 或 Body 读取 Token 时使用的名称。
     TokenName("Authorization").
     // Timeout 是 Token 绝对有效期，单位是秒。
     Timeout(7200).
@@ -30,9 +30,10 @@ mgr, err := defaults.NewBuilder().
     IsShare(false).
     // MaxLoginCount 表示同一作用域下最多保留多少个在线终端。
     MaxLoginCount(5).
-    // Token 默认从 Header 读取，也可以开启 Cookie 或 Body 读取。
+    // Token 默认从 Header 读取，也可以开启 Cookie、Query 或 Body 读取。
     IsReadHeader(true).
     IsReadCookie(false).
+    IsReadQuery(false).
     IsReadBody(false).
     // 生产环境一般建议关闭 Banner，日志按业务需要开启。
     IsLog(false).
@@ -43,31 +44,32 @@ mgr, err := defaults.NewBuilder().
 
 ## 常用配置
 
-| 配置 | 默认值 | 说明 |
-| --- | --- | --- |
-| `AuthType` | `auth:` | 认证体系标识，用于隔离多套 Manager、Token、Session、权限和角色 |
-| `KeyPrefix` | `dtoken:` | 存储 key 前缀，建议按项目或环境区分 |
-| `TokenName` | `dtoken` | 读取 Token 时使用的 Header、Cookie 或 Body 字段名 |
-| `Timeout` | `2592000` | Token 绝对过期时间，单位秒 |
-| `RefreshTokenTimeout` | `2592000` | Refresh Token 绝对过期时间，单位秒 |
-| `AutoRenew` | `true` | 是否在登录态校验时自动续期 |
-| `RenewMaxRefresh` | `Timeout / 2` | 自动续期触发阈值 |
-| `RenewInterval` | `-1` | 同一 Token 最小续期间隔，`-1` 表示不限制 |
-| `ActiveTimeout` | `-1` | 最大不活跃时长，`-1` 表示不限制 |
-| `ConcurrencyScope` | `account` | 并发控制作用域，支持账号级和设备级 |
-| `IsConcurrent` | `true` | 是否允许同一账号并发登录 |
-| `IsShare` | `true` | 并发登录时是否复用已有 Token |
-| `MaxLoginCount` | `12` | 最大在线终端数量 |
-| `ReplacedLoginExitMode` | `old_device` | 非并发登录时保留新登录还是拒绝新登录 |
-| `OverflowLogoutMode` | `kickout` | 超过最大登录数时旧 Token 的处理方式 |
-| `TokenStyle` | `uuid` | Token 生成风格 |
-| `JwtSecretKey` | `dtoken-go` | JWT 风格使用的签名密钥 |
-| `IsReadHeader` | `true` | 是否从 Header 读取 Token |
-| `IsReadCookie` | `false` | 是否从 Cookie 读取 Token |
-| `IsReadBody` | `false` | 是否从请求体读取 Token |
-| `AsyncEvent` | `true` | 是否异步触发事件监听 |
-| `IsLog` | `false` | 是否启用日志组件 |
-| `IsPrintBanner` | `true` | 是否打印启动 Banner |
+| 配置 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `AuthType` | `string` | `auth:` | 认证体系标识，用于隔离多套 Manager、Token、Session、权限和角色 |
+| `KeyPrefix` | `string` | `dtoken:` | 存储 key 前缀，建议按项目或环境区分 |
+| `TokenName` | `string` | `dtoken` | 读取 Token 时使用的 Header、Cookie、Query 或 Body 字段名 |
+| `Timeout` | `int64`（秒） | `2592000` | Token 绝对过期时间 |
+| `RefreshTokenTimeout` | `int64`（秒） | `2592000` | Refresh Token 绝对过期时间 |
+| `AutoRenew` | `bool` | `true` | 是否在登录态校验时自动续期 |
+| `RenewMaxRefresh` | `int64`（秒） | `Timeout / 2` | 自动续期触发阈值；剩余 TTL 小于等于该值时才考虑续期 |
+| `RenewInterval` | `int64`（秒） | `-1` | 同一 Token 最小续期间隔；`-1` 表示不启用节流 |
+| `ActiveTimeout` | `int64`（秒） | `-1` | 最大不活跃时长；`-1` 表示不启用不活跃检查 |
+| `ConcurrencyScope` | `config.ConcurrencyScope` | `account` | 并发控制作用域，支持账号级和设备级 |
+| `IsConcurrent` | `bool` | `true` | 是否允许同一账号并发登录 |
+| `IsShare` | `bool` | `true` | 并发登录时是否复用已有 Token |
+| `MaxLoginCount` | `int64`（数量） | `12` | 最大在线终端数量 |
+| `ReplacedLoginExitMode` | `config.ReplacedLoginExitMode` | `old_device` | 非并发登录时保留新登录还是拒绝新登录 |
+| `OverflowLogoutMode` | `config.LogoutMode` | `kickout` | 超过最大登录数时旧 Token 的处理方式 |
+| `TokenStyle` | `adapter.TokenStyle` | `uuid` | Token 生成风格 |
+| `JwtSecretKey` | `string` | `dtoken-go`（占位值） | JWT 模式必须显式配置密钥；默认值、空字符串及纯空白密钥均会被拒绝 |
+| `IsReadHeader` | `bool` | `true` | 是否从 Header 读取 Token |
+| `IsReadCookie` | `bool` | `false` | 是否从 Cookie 读取 Token |
+| `IsReadQuery` | `bool` | `false` | 是否从 Query 参数读取 Token |
+| `IsReadBody` | `bool` | `false` | 是否从请求体读取 Token |
+| `AsyncEvent` | `bool` | `true` | 是否异步触发事件监听 |
+| `IsLog` | `bool` | `false` | 是否启用日志组件 |
+| `IsPrintBanner` | `bool` | `true` | 是否打印启动 Banner |
 
 ## 命名空间规则
 
@@ -89,7 +91,7 @@ KeyPrefix = "dtoken:"
 存储 key 通常会组合为：
 
 ```text
-{KeyPrefix}{AuthType}{业务前缀}{业务值}
+{编码后的 KeyPrefix}{编码后的 AuthType}{业务前缀}{业务值}
 ```
 
 例如：
@@ -99,9 +101,17 @@ dtoken:admin:token:xxx
 dtoken:admin:session:10001
 ```
 
+两个命名空间分别编码：移除一个末尾分隔符，将内部 `\` 转为 `\\`、内部 `:` 转为 `\:`，再补上末尾 `:`。例如 `AuthType = "admin:token:"` 的存储片段为 `admin\:token:`，不会与 `admin:` 下的 Token 键混淆。普通名称的键格式不变；Manager、Nonce、OAuth2、Ticket、ShortKey 共用此规则。自定义存储操作可调用 `utils.StorageNamespace(keyPrefix, authType)` 获取命名空间前缀。
+
+升级已有部署时，含内部冒号或反斜杠的命名空间，以及直接使用未带末尾分隔符的旧扩展模块构造器所产生的键，需要显式迁移；不会自动回退读取有歧义的旧命名空间。应先停止旧版本写入，核对数据归属后迁移相关键并保留剩余 TTL，再启用新版本。不要只迁移 Token 而遗漏 Session、封禁及刷新凭证；若重新建立登录态，也仍须保留原封禁策略。
+
+封禁记录新增内部 `loginId`、`kind`（`account`、`service`、`device`）字段，公开返回结构不变。账号封禁的 `loginID` 同样转义。归属明确的旧标记继续兼容；业务键中含反斜杠且没有账号归属的旧标记无法可靠区分原始和转义账号，`Check`、读取详情、TTL 和解封操作会返回 `ErrInvalidParam`，不会覆盖或删除该记录。此类数据需依据可信账号资料确认归属，补齐内部字段并迁移到对应键；不能仅凭旧键猜测账号。布尔查询仍沿用出错返回 `false` 的约定，需要错误信息时使用对应的 `Check` 或 `Get` 方法。
+
 `AuthType`、`KeyPrefix`、`TokenName` 不能包含空白字符，并且长度不能超过 `64` 个字符。
 
-## 时间配置约束
+启用 `IsReadHeader` 或 `IsReadCookie` 时，`TokenName` 还必须符合 HTTP token 语法：ASCII 字母、数字，以及 `!#$%&'*+-.^_`、反引号、`|`、`~` 这些标点。仅启用 Query/Body 来源时，仍支持 Unicode 名称。
+
+## 数值配置约束
 
 时间类配置使用秒数，支持 `-1` 表示不限制：
 
@@ -112,7 +122,17 @@ dtoken:admin:session:10001
 | `RenewMaxRefresh` | `-1` 或 `> 0` |
 | `RenewInterval` | `-1` 或 `> 0` |
 | `ActiveTimeout` | `-1` 或 `> 0` |
-| `MaxLoginCount` | `-1` 或 `> 0` |
+
+`MaxLoginCount` 是数量而不是时长，允许 `-1` 表示不限制，或使用大于 `0` 的数量。
+
+正数时间配置不能超过 `9223372036` 秒，这是 `time.Duration` 可表示的最大整秒数。该上限不适用于 `MaxLoginCount`。
+
+不同配置项中 `-1` 的含义如下：
+
+- `Timeout` 和 `RefreshTokenTimeout`：永不过期。
+- `RenewMaxRefresh`：不设置 TTL 阈值，任意正数 TTL 都可以进入续期判断。
+- `RenewInterval`：不启用续期节流。
+- `ActiveTimeout`：不启用不活跃检查。
 
 自动续期有额外约束：
 
@@ -121,14 +141,17 @@ dtoken:admin:session:10001
 - `RenewInterval` 必须小于 `Timeout`。
 - 如果启用了 `ActiveTimeout`，`RenewInterval` 也必须小于 `ActiveTimeout`。
 
-Refresh Token 有效期也可以使用 `time.Duration` 配置：
+Token 和 Refresh Token 有效期也可以使用 `time.Duration` 配置，正数时长会向上取整到整秒：
 
 ```go
 defaults.NewBuilder().
+    TimeoutDuration(2 * time.Hour).
     RefreshTokenTimeoutDuration(30 * 24 * time.Hour)
 ```
 
 ## Token 读取来源
+
+已启用来源按以下顺序读取：`TokenName` 指定的 Header、`Authorization`、Cookie、Query、表单 Body。Header 支持原始 Token 和 `Bearer` 前缀。空值或无法解析的 Header 会被跳过，`TokenName` 为 `Authorization` 时也遵循此规则。一旦提取出 Token，认证失败不会回退到其他来源。
 
 DToken-Go 至少需要开启一个 Token 来源：
 
@@ -136,10 +159,11 @@ DToken-Go 至少需要开启一个 Token 来源：
 defaults.NewBuilder().
     IsReadHeader(true).
     IsReadCookie(false).
+    IsReadQuery(false).
     IsReadBody(false)
 ```
 
-如果三者都关闭，构建 Manager 会失败。
+如果四种来源都关闭，构建 Manager 会失败。
 
 ## 可选模块
 
@@ -164,6 +188,7 @@ mgr, err := defaults.NewBuilder().
 ```
 
 调用某个模块的专属配置方法时，会自动启用对应模块。Refresh Token 属于核心 Manager 能力，需要时直接使用 `LoginWithRefreshToken` 即可。
+
 ## Cookie 配置
 
 开启 Cookie 读取时，可以配置 Cookie 属性：
@@ -185,9 +210,21 @@ mgr, err := defaults.NewBuilder().
 Cookie 配置约束：
 
 - `CookieConfig` 不能为 `nil`，除非没有开启 `IsReadCookie`。
-- `CookiePath` 不能为空，并且必须以 `/` 开头。
-- `CookieMaxAge` 不能小于 `0`。
+- `CookieDomain` 可以为空；非空时必须是合法的 Cookie 域名，不能包含协议或端口，允许以点开头。
+- `CookiePath` 不能为空，必须以 `/` 开头，且不能包含控制字符、分号或非 ASCII 字符。Unicode 路径应使用百分号编码。
+- `CookieMaxAge` 必须在 `0` 到当前平台 `int` 最大值之间（32 位平台为 `2147483647`，64 位平台为 `9223372036854775807`）。
 - `SameSiteNone` 必须搭配 `CookieSecure(true)`。
+
+Cookie 默认属性如下：
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `Domain` | `string` | `""` | 仅作用于当前主机 |
+| `Path` | `string` | `/` | Cookie 路径 |
+| `Secure` | `bool` | `false` | 允许通过 HTTP 发送 |
+| `HttpOnly` | `bool` | `true` | JavaScript 不可读取 Cookie |
+| `SameSite` | `config.SameSiteMode` | `Lax` | SameSite 策略 |
+| `MaxAge` | `int64`（秒） | `0` | 会话 Cookie，不设置显式最大存活时间 |
 
 ## 配置组合建议
 

@@ -55,10 +55,15 @@ func (m *Manager) ValidateShortKey(ctx context.Context, key string, opts ...shor
 		return nil, derror.ErrModuleNotEnabled
 	}
 	value, err := m.shortKeyManager.Validate(ctx, key, opts...)
-	if value != nil {
-		m.triggerShortKeyEvent(listener.EventShortKeyValidate, value, listener.ActionValidate)
+	if err != nil {
+		m.triggerEvent(listener.EventShortKeyValidate, "", "", "", key, map[string]any{
+			listener.ExtraKeyAction: listener.ActionValidate,
+			listener.ExtraKeyResult: false,
+		})
+		return value, err
 	}
-	return value, err
+	m.triggerShortKeyEvent(listener.EventShortKeyValidate, value, listener.ActionValidate)
+	return value, nil
 }
 
 // ConsumeShortKey validates and consumes a short key. ConsumeShortKey 校验并消费短 Key。
@@ -78,16 +83,17 @@ func (m *Manager) RevokeShortKey(ctx context.Context, key string) error {
 	if m.shortKeyManager == nil {
 		return derror.ErrModuleNotEnabled
 	}
-	value, _ := m.shortKeyManager.Validate(ctx, key)
+	value, validateErr := m.shortKeyManager.Validate(ctx, key)
+	status, statusErr := m.shortKeyManager.Status(ctx, key)
 	err := m.shortKeyManager.Revoke(ctx, key)
-	if err == nil {
-		if value != nil {
-			m.triggerShortKeyEvent(listener.EventShortKeyRevoke, value, listener.ActionRevoke)
-		} else if key != "" {
-			m.triggerEvent(listener.EventShortKeyRevoke, "", "", "", key, map[string]any{
-				listener.ExtraKeyAction: listener.ActionRevoke,
-			})
-		}
+	if err == nil && validateErr == nil && value != nil {
+		value.Status = shortkey.StatusRevoked
+		m.triggerShortKeyEvent(listener.EventShortKeyRevoke, value, listener.ActionRevoke)
+	} else if err == nil && statusErr == nil && status == shortkey.StatusPending && key != "" {
+		m.triggerEvent(listener.EventShortKeyRevoke, "", "", "", key, map[string]any{
+			listener.ExtraKeyAction: listener.ActionRevoke,
+			listener.ExtraKeyStatus: shortkey.StatusRevoked,
+		})
 	}
 	return err
 }
@@ -108,17 +114,44 @@ func (m *Manager) GetShortKeyTTL(ctx context.Context, key string) (int64, error)
 	return m.shortKeyManager.GetTTL(ctx, key)
 }
 
+// triggerShortKeyEvent emits short key lifecycle events. triggerShortKeyEvent 触发短 Key 生命周期事件。
 func (m *Manager) triggerShortKeyEvent(event listener.Event, value *shortkey.ShortKey, action string) {
 	if value == nil {
 		return
 	}
-	m.triggerEvent(event, value.LoginID, value.Device, value.DeviceId, value.Key, map[string]any{
+	extra := map[string]any{
 		listener.ExtraKeyAction:    action,
 		listener.ExtraKeyScene:     value.Scene,
 		listener.ExtraKeySourceApp: value.SourceApp,
 		listener.ExtraKeyTargetApp: value.TargetApp,
 		listener.ExtraKeyScopes:    value.Scopes,
 		listener.ExtraKeyStatus:    value.Status,
-		listener.ExtraKeyTTL:       value.ExpiresIn,
-	})
+		listener.ExtraKeyTTL:       remainingShortKeyTTLSeconds(value),
+	}
+	if event == listener.EventShortKeyValidate {
+		extra[listener.ExtraKeyResult] = true
+	}
+	m.triggerEvent(event, value.LoginID, value.Device, value.DeviceID, value.Key, extra)
+}
+
+// remainingShortKeyTTLSeconds calculates remaining short key seconds for event data. remainingShortKeyTTLSeconds 计算事件数据中的短 Key 剩余秒数。
+func remainingShortKeyTTLSeconds(value *shortkey.ShortKey) int64 {
+	if value == nil {
+		return 0
+	}
+
+	// Prefer the same precise deadline used by short-key validation. 优先使用与短 Key 校验一致的精确截止时间。
+	if !value.ExpiresAt.IsZero() {
+		return durationSecondsCeil(time.Until(value.ExpiresAt))
+	}
+
+	// Preserve compatibility with records created before precise deadlines were stored. 兼容尚未存储精确截止时间的旧记录。
+	if value.ExpiresIn <= 0 {
+		return 0
+	}
+	remaining := value.CreateTime + value.ExpiresIn - time.Now().Unix()
+	if remaining <= 0 {
+		return 0
+	}
+	return remaining
 }

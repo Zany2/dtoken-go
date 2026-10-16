@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Zany2/dtoken-go"><img src="https://img.shields.io/badge/Go-1.20+-00ADD8?style=flat-square&logo=go" alt="Go"></a>
+  <a href="https://github.com/Zany2/dtoken-go"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat-square&logo=go" alt="Go"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue?style=flat-square" alt="License"></a>
   <a href="docs/README_zh.md"><img src="https://img.shields.io/badge/Docs-中文文档-brightgreen?style=flat-square" alt="Docs"></a>
   <a href="https://pkg.go.dev/github.com/Zany2/dtoken-go/dtoken"><img src="https://img.shields.io/badge/pkg.go.dev-dtoken-007D9C?style=flat-square&logo=go" alt="pkg.go.dev"></a>
@@ -23,12 +23,12 @@
 
 ## DToken-Go 是什么
 
-DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，已提供登录认证、Token 管理、Session 管理、终端管理、角色权限校验、账号与设备封禁、Nonce 防重放、OAuth2 服务端、SSO 单点登录、事件监听、Ticket 临时凭证、短 Key 访问凭证、Token Introspection 和独立 Refresh Token 等核心能力。框架支持插件化组件替换与自定义扩展，并适配主流 Go Web 框架，既可以作为独立认证核心使用，也可以快速接入现有业务项目。
+DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，已提供登录认证、Token 管理、Session 管理、终端管理、角色权限校验、账号与设备封禁、Nonce 防重放、OAuth2 服务端、事件监听、Ticket 临时凭证、短 Key 访问凭证、Token Introspection 和独立 Refresh Token 等核心能力，SSO 单点登录模块仍在开发中。框架支持插件化组件替换与自定义扩展，并适配主流 Go Web 框架，既可以作为独立认证核心使用，也可以快速接入现有业务项目。
 
 你可以把它用于：
 
 - 后台管理系统、用户中心、开放平台等需要统一认证授权的业务系统。
-- Gin、Echo、Fiber、Chi、GoFrame、Hertz、Kratos 等 Go Web 项目的登录与权限接入。
+- Gin、Echo、Fiber、Chi、GoFrame、Hertz、Kratos、Beego 等 Go Web 项目的登录与权限接入。
 - 微服务网关、统一认证中心、跨系统单点登录和统一登出场景。
 - App、小程序、Web、多设备、多终端的登录态与会话管理。
 - 扫码确认、一次性访问、临时授权、短链接凭证和第三方系统 Token 校验。
@@ -49,13 +49,15 @@ DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，已提供登
 | 事件系统 | 登录、登出、续期、权限、角色、封禁、解封等核心生命周期事件监听 |
 | 可插拔组件 | 存储、编解码、日志、Token 生成器、协程池等组件可替换 |
 | 多框架集成 | 为主流 Go Web 框架提供中间件、上下文适配和 API 导出 |
-| SSO 单点登录 | 统一登录、票据交换、跨系统登录态共享、统一登出、应用维度管理 |
+| SSO 单点登录（开发中） | 统一登录、票据交换、跨系统登录态共享、统一登出、应用维度管理 |
 | Ticket 临时凭证 | Ticket 创建、校验、一次性消费、撤销、TTL 查询和状态识别 |
 | 短 Key 访问凭证 | 生成随机短 Key，用于短链接访问、扫码确认、临时授权和系统间换票 |
 | Token Introspection | 标准化查询 Token 是否有效、归属信息、TTL 和失效原因 |
 | Refresh Token | 独立刷新令牌签发、刷新、撤销、过期、轮换和安全校验 |
 
 ## 安装
+
+核心模块要求 Go 1.25 或更高版本。使用当前仓库的 `go.work` 本地开发时，需要 Go 1.27 或更高版本；可选的 `com/codec/jsonv2` 模块还需要启用 `GOEXPERIMENT=jsonv2`。
 
 ### 使用默认核心能力
 
@@ -81,6 +83,7 @@ go get github.com/Zany2/dtoken-go/integrations/chi
 go get github.com/Zany2/dtoken-go/integrations/gf
 go get github.com/Zany2/dtoken-go/integrations/hertz
 go get github.com/Zany2/dtoken-go/integrations/kratos
+go get github.com/Zany2/dtoken-go/integrations/beego
 ```
 
 ### 使用可插拔组件
@@ -213,7 +216,7 @@ func main() {
 	user.GET("/me", func(c *gin.Context) {
 		// 从请求上下文中获取当前 Token 对应的登录账号。
 		dCtx, _ := gindt.GetDTokenContext(c)
-		loginID, _ := dCtx.GetLoginID(c.Request.Context())
+		loginID, _ := dCtx.Auth().GetLoginID(c.Request.Context())
 		c.JSON(http.StatusOK, gin.H{"loginId": loginID})
 	})
 
@@ -238,6 +241,7 @@ func main() {
 | GoFrame | [examples/gf](examples/gf/) | `github.com/Zany2/dtoken-go/integrations/gf` |
 | Hertz | [examples/hertz](examples/hertz/) | `github.com/Zany2/dtoken-go/integrations/hertz` |
 | Kratos | [examples/kratos](examples/kratos/) | `github.com/Zany2/dtoken-go/integrations/kratos` |
+| Beego | [examples/beego](examples/beego/) | `github.com/Zany2/dtoken-go/integrations/beego` |
 
 ## 深入阅读
 
@@ -256,7 +260,7 @@ README 只保留最小上手路径，更多 API、配置和组件说明可以查
 
 ```text
 dtoken-go/
-├── core/                         # 框架核心模块，按能力拆分为独立 Go module
+├── core/                         # 单个 Go module，内部按能力组织 package
 │   ├── adapter/                  # 存储、编解码、日志、Token 生成器、请求上下文等接口契约
 │   ├── builder/                  # Manager 构建器、组件装配和配置校验入口
 │   ├── config/                   # 核心配置项、默认值和配置校验
@@ -283,7 +287,8 @@ dtoken-go/
 │   ├── chi/                      # Chi 中间件、上下文适配和 API 导出
 │   ├── gf/                       # GoFrame 中间件、上下文适配和 API 导出
 │   ├── hertz/                    # Hertz 中间件、上下文适配和 API 导出
-│   └── kratos/                   # Kratos 中间件、上下文适配和 API 导出
+│   ├── kratos/                   # Kratos 中间件、上下文适配和 API 导出
+│   └── beego/                    # Beego 过滤器、上下文适配和 API 导出
 ├── examples/                     # 快速开始与框架接入示例
 │   ├── quick_start/              # 默认 Builder + 全局 API 最小示例
 │   ├── gin/                      # Gin 示例
@@ -296,7 +301,8 @@ dtoken-go/
 │   ├── chi/                      # Chi 示例
 │   ├── gf/                       # GoFrame 示例
 │   ├── hertz/                    # Hertz 示例
-│   └── kratos/                   # Kratos 示例
+│   ├── kratos/                   # Kratos 示例
+│   └── beego/                    # Beego 示例
 ├── tests/                        # 流程测试与测试应用
 │   ├── gin_core_app/             # Gin 核心流程测试应用
 │   └── gin_core_flow/            # 基于 HTTP 流程的核心功能测试
@@ -354,6 +360,7 @@ dtoken-go/
 | [examples/gf](examples/gf/) | GoFrame 框架接入示例 |
 | [examples/hertz](examples/hertz/) | Hertz 框架接入示例 |
 | [examples/kratos](examples/kratos/) | Kratos 框架接入示例 |
+| [examples/beego](examples/beego/) | Beego 框架接入示例 |
 
 ## 贡献
 

@@ -36,6 +36,7 @@
   "loginId": "10001",
   "device": "web",
   "deviceId": "chrome-mac",
+  "jti": "93a9f2b4-a7ea-4f71-a8f1-679f2c20b249",
   "iat": 1710000000,
   "exp": 1710003600
 }
@@ -46,6 +47,7 @@
 - `loginId`
 - `device`
 - `deviceId`
+- `jti`：每次独立签发的随机标识，避免同一秒内生成相同 Token；旧 Token 不含此字段仍可解析
 - `iat`
 - `exp`：只有配置了超时时才会写入
 
@@ -64,17 +66,21 @@ import (
 )
 
 func initDToken() {
-    dtoken.SetManager(
+    if _, err := dtoken.BuildAndSetManager(
         defaults.NewBuilder().
             SetStorage(memory.NewStorage()).
             TokenStyle(adapter.TokenStyleJWT).
             JwtSecretKey("your-very-strong-secret-key").
-            Timeout(2 * 60 * 60).
-            Build(),
-    )
+            Timeout(2 * 60 * 60),
+    ); err != nil {
+        panic(err)
+    }
 }
 
 func main() {
+    initDToken()
+    defer dtoken.DeleteAllManager()
+
     ctx := context.Background()
     token, _ := dtoken.Login(ctx, "10001", "web", "chrome-mac")
     _ = token
@@ -111,12 +117,12 @@ ttl, err := dtoken.GetTokenTTL(ctx, token)
 ## 生成器能力
 
 ```go
-generator := sgenerator.NewGenerator(7200, "your-secret", adapter.TokenStyleJWT)
+generator := dgenerator.NewGenerator(7200, "your-secret", adapter.TokenStyleJWT)
 
 token, err := generator.Generate("10001", "web", "chrome-mac")
 claims, err := generator.ParseJWT(token)
 err = generator.ValidateJWT(token)
-loginID, err := generator.GetLoginIDFromJWT(token)
+loginID, device, deviceID, err := generator.GetLoginInfoFromJWT(token)
 ```
 
 ## 配置项
@@ -129,11 +135,17 @@ loginID, err := generator.GetLoginIDFromJWT(token)
 | `Timeout(seconds)` | 控制 `exp` 与服务端存储 TTL |
 | `AutoRenew(true)` | 控制服务端续期逻辑 |
 
+`exp` 在签发时确定。服务端续期不会重写已签名 Token 的 `exp`，因此 `ParseJWT` / `ValidateJWT` 仍按原始声明检查过期时间；需要延长 JWT 声明有效期时，应重新签发 Token。
+
 ## 安全建议
 
 ### 使用强密钥
 
-`TokenStyleJWT` 开启时，`JwtSecretKey` 不能为空。建议使用足够长、足够随机的密钥。
+`TokenStyleJWT` 开启时，`JwtSecretKey` 必须显式设置，不能是空字符串、纯空白或公开默认值 `dtoken-go`（包括首尾带空白的默认值）。建议使用足够长、足够随机的密钥。有效自定义密钥按原始字节使用，不会自动裁剪空白。
+
+Builder 会在配置校验阶段拒绝这些无效密钥；直接使用 `dgenerator` 签发、解析或校验 JWT 时也会返回参数错误。此前使用默认密钥签发的 Token 将无法通过 JWT 校验，需要配置新密钥并重新登录。
+
+生成器签发和校验只允许 `HS256`，不接受 `HS384`、`HS512` 或其他算法。`GetLoginInfoFromJWT` 允许旧 Token 缺少 `device`、`deviceId`，此时返回空字符串；字段存在时必须是字符串，`null` 或其他类型会返回错误。
 
 ### 不要误以为它是纯无状态方案
 

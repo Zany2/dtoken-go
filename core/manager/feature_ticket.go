@@ -42,10 +42,15 @@ func (m *Manager) ValidateTicket(ctx context.Context, ticketValue string, opts .
 		return nil, derror.ErrModuleNotEnabled
 	}
 	value, err := m.ticketManager.Validate(ctx, ticketValue, opts...)
-	if value != nil {
-		m.triggerTicketEvent(listener.EventTicketValidate, value, listener.ActionValidate)
+	if err != nil {
+		m.triggerEvent(listener.EventTicketValidate, "", "", "", ticketValue, map[string]any{
+			listener.ExtraKeyAction: listener.ActionValidate,
+			listener.ExtraKeyResult: false,
+		})
+		return value, err
 	}
-	return value, err
+	m.triggerTicketEvent(listener.EventTicketValidate, value, listener.ActionValidate)
+	return value, nil
 }
 
 // ConsumeTicket validates and consumes a ticket. ConsumeTicket 校验并消费 Ticket。
@@ -65,16 +70,11 @@ func (m *Manager) RevokeTicket(ctx context.Context, ticketValue string) error {
 	if m.ticketManager == nil {
 		return derror.ErrModuleNotEnabled
 	}
-	value, _ := m.ticketManager.Validate(ctx, ticketValue)
+	value, validateErr := m.ticketManager.Validate(ctx, ticketValue)
 	err := m.ticketManager.Revoke(ctx, ticketValue)
-	if err == nil {
-		if value != nil {
-			m.triggerTicketEvent(listener.EventTicketRevoke, value, listener.ActionRevoke)
-		} else if ticketValue != "" {
-			m.triggerEvent(listener.EventTicketRevoke, "", "", "", ticketValue, map[string]any{
-				listener.ExtraKeyAction: listener.ActionRevoke,
-			})
-		}
+	if err == nil && validateErr == nil && value != nil {
+		value.Status = ticket.StatusRevoked
+		m.triggerTicketEvent(listener.EventTicketRevoke, value, listener.ActionRevoke)
 	}
 	return err
 }
@@ -95,17 +95,44 @@ func (m *Manager) GetTicketTTL(ctx context.Context, ticketValue string) (int64, 
 	return m.ticketManager.GetTTL(ctx, ticketValue)
 }
 
+// triggerTicketEvent emits ticket lifecycle events. triggerTicketEvent 触发 Ticket 生命周期事件。
 func (m *Manager) triggerTicketEvent(event listener.Event, value *ticket.Ticket, action string) {
 	if value == nil {
 		return
 	}
-	m.triggerEvent(event, value.LoginID, value.Device, value.DeviceId, value.Ticket, map[string]any{
+	extra := map[string]any{
 		listener.ExtraKeyAction:    action,
 		listener.ExtraKeySource:    value.Source,
 		listener.ExtraKeySourceApp: value.SourceApp,
 		listener.ExtraKeyTargetApp: value.TargetApp,
 		listener.ExtraKeyScopes:    value.Scopes,
 		listener.ExtraKeyStatus:    value.Status,
-		listener.ExtraKeyTTL:       value.ExpiresIn,
-	})
+		listener.ExtraKeyTTL:       remainingTicketTTLSeconds(value),
+	}
+	if event == listener.EventTicketValidate {
+		extra[listener.ExtraKeyResult] = true
+	}
+	m.triggerEvent(event, value.LoginID, value.Device, value.DeviceID, value.Ticket, extra)
+}
+
+// remainingTicketTTLSeconds calculates remaining ticket seconds for event data. remainingTicketTTLSeconds 计算事件数据中的 Ticket 剩余秒数。
+func remainingTicketTTLSeconds(value *ticket.Ticket) int64 {
+	if value == nil {
+		return 0
+	}
+
+	// Prefer the same precise deadline used by ticket validation. 优先使用与 Ticket 校验一致的精确截止时间。
+	if !value.ExpiresAt.IsZero() {
+		return durationSecondsCeil(time.Until(value.ExpiresAt))
+	}
+
+	// Preserve compatibility with records created before precise deadlines were stored. 兼容尚未存储精确截止时间的旧记录。
+	if value.ExpiresIn <= 0 {
+		return 0
+	}
+	remaining := value.CreateTime + value.ExpiresIn - time.Now().Unix()
+	if remaining <= 0 {
+		return 0
+	}
+	return remaining
 }

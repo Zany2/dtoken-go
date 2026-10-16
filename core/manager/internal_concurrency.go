@@ -3,21 +3,26 @@ package manager
 
 import (
 	"context"
+	"fmt"
+	"time"
+
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
-	"time"
 )
 
 // handleConcurrency handles login concurrency strategy. handleConcurrency 处理登录并发策略。
 func (m *Manager) handleConcurrency(
 	ctx context.Context,
 	sess *Session,
-	loginID, device, deviceId string,
+	loginID, device, deviceID string,
 	policy loginPolicy,
-) (reuseToken string, handled bool, destroyedSession bool, err error) {
+) (concurrencyResult, error) {
 	// Clean expired tokens 清理已过期的 token
-	if err = m.cleanExpiredTerminals(ctx, sess); err != nil {
-		return "", false, false, err
+	destroyedByClean, activeTimeoutTerminals, err := m.cleanExpiredTerminals(ctx, sess)
+	result := concurrencyResult{destroyedSession: destroyedByClean}
+	addTerminalLifecycleEvents(&result, activeTimeoutTerminals, TokenStateActiveTimeout)
+	if err != nil {
+		return result, err
 	}
 
 	// Handle non-concurrent login 处理不允许并发登录。
@@ -32,42 +37,54 @@ func (m *Manager) handleConcurrency(
 			} else if m.config.ConcurrencyScope == config.ConcurrencyScopeDevice {
 				terminals = sess.getTerminalsByDevice(device)
 			}
+
 			// Check active terminal 检查是否存在活跃终端。
-			hasActiveTerminal, activeErr := m.hasActiveTerminal(ctx, terminals)
+			hasActiveTerminal, activeErr := m.hasActiveTerminal(ctx, terminals, sess)
 			if activeErr != nil {
-				return "", false, false, activeErr
+				return result, activeErr
 			}
+
 			// Reject login when active terminal exists 存在活跃终端时拒绝登录。
 			if hasActiveTerminal {
-				return "", false, false, derror.ErrLoginLimitExceeded
+				return result, derror.ErrLoginLimitExceeded
 			}
+
 			// Allow login when no active terminal 无活跃终端时允许继续登录。
-			return "", false, false, nil
+			return result, nil
 		}
 
-		// Replace old sessions when concurrency is disabled 不允许并发：顶掉旧会话
+		// Replace old sessions when concurrency is disabled 不允许并发：顶掉旧会话。
 		// Replace terminals by configured scope 按配置作用域顶掉旧终端。
 		if m.config.ConcurrencyScope == config.ConcurrencyScopeAccount {
-			if destroyedSession, err = m.removeTerminalInfosAndTokens(ctx, sess, config.LogoutModeReplaced); err != nil {
-				return "", false, false, err
+			if destroyedByReplace, removed, err := m.removeTerminalInfosAndTokens(ctx, sess, config.LogoutModeReplaced); err != nil {
+				return result, err
+			} else {
+				result.destroyedSession = result.destroyedSession || destroyedByReplace
+				addTerminalLifecycleEvents(&result, removed, TokenStateReplaced)
 			}
 		} else if m.config.ConcurrencyScope == config.ConcurrencyScopeDevice {
-			if destroyedSession, err = m.removeTerminalInfosAndTokens(ctx, sess, config.LogoutModeReplaced, device); err != nil {
-				return "", false, false, err
+			if destroyedByReplace, removed, err := m.removeTerminalInfosAndTokens(ctx, sess, config.LogoutModeReplaced, device); err != nil {
+				return result, err
+			} else {
+				result.destroyedSession = result.destroyedSession || destroyedByReplace
+				addTerminalLifecycleEvents(&result, removed, TokenStateReplaced)
 			}
 		}
-		return "", true, destroyedSession, nil
+		result.handled = true
+		return result, nil
 	}
 
 	// Try token sharing when enabled 开启共享时尝试复用 Token。
 	if policy.isShare {
 		// Try token sharing reuse only within the same device dimension. 仅在相同设备维度内尝试复用 Token。
-		token, shareErr := m.getTokenAndShare(ctx, sess, device, deviceId)
+		token, shareErr := m.getTokenAndShare(ctx, sess, device, deviceID)
 		if shareErr != nil {
-			return "", false, false, shareErr
+			return result, shareErr
 		}
 		if token != "" {
-			return token, true, false, nil
+			result.reuseToken = token
+			result.handled = true
+			return result, nil
 		}
 	}
 
@@ -75,48 +92,92 @@ func (m *Manager) handleConcurrency(
 	if m.config.ConcurrencyScope == config.ConcurrencyScopeAccount {
 		removedOverflow := false
 		for policy.maxLoginCount > 0 && int64(len(sess.TerminalInfos)) >= policy.maxLoginCount {
-			if err := m.removeOldestTerminalInfoAndToken(ctx, sess, policy.overflowLogoutMode); err != nil {
-				return "", false, false, err
+			terminal, removed, err := m.removeOldestTerminalInfoAndToken(ctx, sess, policy.overflowLogoutMode)
+			if err != nil {
+				return result, err
 			}
+			if !removed {
+				return result, derror.ErrLoginLimitExceeded
+			}
+			addTerminalLifecycleEvents(&result, []TerminalInfo{terminal}, tokenStateFromLogoutMode(policy.overflowLogoutMode))
 			removedOverflow = true
 		}
 		if removedOverflow {
-			return "", true, false, nil
+			result.handled = true
+			return result, nil
 		}
 	} else if m.config.ConcurrencyScope == config.ConcurrencyScopeDevice {
 		// Enforce device-level max login count 执行设备级最大登录数限制。
 		removedOverflow := false
 		for policy.maxLoginCount > 0 && int64(len(sess.getTerminalsByDevice(device))) >= policy.maxLoginCount {
-			if err := m.removeOldestTerminalInfoAndToken(ctx, sess, policy.overflowLogoutMode, device); err != nil {
-				return "", false, false, err
+			terminal, removed, err := m.removeOldestTerminalInfoAndToken(ctx, sess, policy.overflowLogoutMode, device)
+			if err != nil {
+				return result, err
 			}
+			if !removed {
+				return result, derror.ErrLoginLimitExceeded
+			}
+			addTerminalLifecycleEvents(&result, []TerminalInfo{terminal}, tokenStateFromLogoutMode(policy.overflowLogoutMode))
 			removedOverflow = true
 		}
 		if removedOverflow {
-			return "", true, false, nil
+			result.handled = true
+			return result, nil
 		}
 	}
 
 	// No concurrency action needed 无需并发处理。
-	return "", false, false, nil
+	return result, nil
+}
+
+// addTerminalLifecycleEvents appends terminal state changes to a concurrency result. addTerminalLifecycleEvents 向并发结果追加终端状态事件。
+func addTerminalLifecycleEvents(result *concurrencyResult, terminals []TerminalInfo, state TokenState) {
+	if result == nil || state == "" {
+		return
+	}
+	for _, terminal := range terminals {
+		if terminal.Token == "" {
+			continue
+		}
+		result.terminalEvents = append(result.terminalEvents, terminalLifecycleEvent{terminal: terminal, state: state})
+	}
+}
+
+// tokenStateFromLogoutMode maps overflow handling mode to terminal state. tokenStateFromLogoutMode 将超限处理模式映射为终端状态。
+func tokenStateFromLogoutMode(mode config.LogoutMode) TokenState {
+	switch mode {
+	case config.LogoutModeLogout:
+		return TokenStateLogout
+	case config.LogoutModeKickout:
+		return TokenStateKickOut
+	case config.LogoutModeReplaced:
+		return TokenStateReplaced
+	default:
+		return ""
+	}
 }
 
 // getTokenAndShare retrieves and shares a token within one device dimension. getTokenAndShare 在同一设备维度内获取并共享 token。
-func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, deviceId string) (string, error) {
+func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, deviceID string) (string, error) {
 	// Return when no terminals exist 没有终端时直接返回。
-	if len(sess.TerminalInfos) == 0 {
+	if sess == nil || len(sess.TerminalInfos) == 0 {
 		return "", nil
 	}
 
-	// Get candidate terminals 获取候选 terminals。
+	// Get candidate terminals 获取候选终端
 	var candidates []TerminalInfo
 	switch {
-	case device != "" && deviceId != "":
+	case device != "" && deviceID != "":
 		// Prefer concrete device matches when device ID exists. 存在设备 ID 时优先按具体设备匹配。
-		candidates = sess.getTerminalsByDeviceAndDeviceId(device, deviceId)
+		candidates = sess.getTerminalsByDeviceAndDeviceID(device, deviceID)
 	case device != "":
 		// Fall back to device type matching when no device ID exists. 没有设备 ID 时按设备类型匹配。
 		candidates = sess.getTerminalsByDevice(device)
+	case deviceID != "":
+		// Respect an independent device ID filter when the device type is omitted. 省略设备类型时仍按独立的设备 ID 过滤。
+		candidates = sess.filterTerminals(func(terminal TerminalInfo) bool {
+			return terminal.DeviceID == deviceID
+		})
 	default:
 		// Reuse by account only when caller supplied no device dimension. 调用方未提供设备维度时才按账号复用。
 		candidates = sess.TerminalInfos
@@ -129,13 +190,32 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 	// Reuse latest alive token 复用最后一个仍在线的 token
 	// Scan candidates from newest to oldest 从新到旧扫描候选终端。
 	var terminalInfo TerminalInfo
+	var tokenInfo *TokenInfo
+	var record *tokenRecord
 	for i := len(candidates) - 1; i >= 0; i-- {
-		alive, err := m.checkTerminalTokenAlive(ctx, candidates[i].Token)
+		candidate := candidates[i]
+		candidateRecord, err := m.getTokenRecord(ctx, candidate.Token)
+		if err != nil {
+			if isTokenInactiveError(err) {
+				continue
+			}
+			return "", err
+		}
+		candidateInfo := &candidateRecord.TokenInfo
+
+		// Require the session terminal and token mapping to describe the same lifecycle. 要求 Session 终端与 Token 映射描述同一生命周期。
+		if candidateRecord.Revoked || !terminalMatchesTokenRecord(sess.LoginID, candidate, candidateRecord) {
+			continue
+		}
+
+		alive, err := m.checkTerminalTokenAliveWithContext(ctx, candidate.Token, candidateInfo, sess)
 		if err != nil {
 			return "", err
 		}
 		if alive {
-			terminalInfo = candidates[i]
+			terminalInfo = candidate
+			tokenInfo = candidateInfo
+			record = candidateRecord
 			break
 		}
 	}
@@ -143,50 +223,35 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 		return "", nil
 	}
 
-	// Load reused token info 加载复用 Token 信息。
-	tokenInfo, err := m.getTokenInfo(ctx, terminalInfo.Token)
-	if err != nil {
-		return "", err
-	}
 	// Resolve reused token expiration 解析复用 Token 过期时间。
 	expiration := m.resolveTokenExpiration(tokenInfo)
-	// Preserve original timeout 保留原始过期秒数。
-	tokenTimeout := tokenInfo.Timeout
 
 	// Renew session without shortening existing TTL 续期 session，避免缩短已有 TTL
-	if err := m.saveSessionWithMinTTL(ctx, m.getSessionKey(terminalInfo.LoginID), *sess, expiration); err != nil {
-		m.logger.Errorf("manager.getTokenAndShare: failed to save session, loginID=%s, error=%v", terminalInfo.LoginID, err)
-	}
-
-	// Renew token by original timeout 按原始有效期续期 Token
-	// Rebuild token info 重建 Token 信息。
-	updatedTokenInfo := TokenInfo{
-		AuthType:      m.config.AuthType,
-		LoginID:       terminalInfo.LoginID,
-		Device:        terminalInfo.Device,
-		DeviceId:      terminalInfo.DeviceId,
-		CreateTime:    terminalInfo.CreateTime,
-		Timeout:       tokenTimeout,
-		ActiveTimeout: tokenInfo.ActiveTimeout,
-		Extra:         tokenInfo.Extra,
-	}
-	// Persist reused token info 持久化复用 Token 信息。
-	if err := m.saveToStorage(ctx, m.getTokenKey(terminalInfo.Token), updatedTokenInfo, expiration); err != nil {
+	if err := m.saveSessionWithMinTTL(ctx, m.getSessionKey(tokenInfo.LoginID), *sess, expiration); err != nil {
 		return "", err
 	}
 
-	// Renew or reset metadata 续期或重新设置 metadata
+	// Renew the original token mapping without rebuilding identity from session metadata. 续期原 Token 映射，不使用 Session 元数据重建身份。
+	if err := m.saveToStorage(ctx, m.getTokenKey(terminalInfo.Token), *record, expiration); err != nil {
+		return "", err
+	}
+
+	// Shared login supersedes activity captured by older queued validation tasks. 共享登录取代旧校验任务捕获的活跃时间，避免后续回写倒退。
+	m.cancelLoginMaintenance(terminalInfo.Token)
+
+	// Renew or reset metadata 续期或重置元数据
 	if m.config.RenewInterval > 0 {
 		// Refresh renew marker 刷新续期标记。
 		if err := m.storage.Set(ctx, m.getRenewKey(terminalInfo.Token), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {
-			m.logger.Errorf("manager.getTokenAndShare: failed to set renew key, token=%s, error=%v", terminalInfo.Token, err)
+			return "", fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
 	}
+
 	// Set active timeout 设置最大不活跃时长
-	if m.config.ActiveTimeout > 0 {
+	if m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout) > 0 {
 		// Refresh active marker 刷新活跃标记。
 		if err := m.storage.Set(ctx, m.getActiveKey(terminalInfo.Token), time.Now().Unix(), expiration); err != nil {
-			m.logger.Errorf("manager.getTokenAndShare: failed to set active key, token=%s, error=%v", terminalInfo.Token, err)
+			return "", fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
 	}
 

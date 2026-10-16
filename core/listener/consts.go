@@ -4,6 +4,7 @@ package listener
 // Event defines authentication event type. Event 定义认证事件类型。
 type Event string
 
+// Built-in event names 内置事件名称。
 const (
 	// EventLogin indicates login event. EventLogin 表示用户登录事件。
 	EventLogin Event = "login"
@@ -11,6 +12,8 @@ const (
 	EventLogout Event = "logout"
 	// EventKickout indicates kickout event. EventKickout 表示用户被踢下线事件。
 	EventKickout Event = "kickout"
+	// EventActiveTimeout indicates inactive timeout event. EventActiveTimeout 表示用户不活跃超时事件。
+	EventActiveTimeout Event = "activeTimeout"
 	// EventReplace indicates replace event. EventReplace 表示用户被顶下线事件。
 	EventReplace Event = "replace"
 	// EventDisable indicates account disable event. EventDisable 表示账号被禁用事件。
@@ -90,6 +93,7 @@ var KnownEvents = []Event{
 	EventLogin,
 	EventLogout,
 	EventKickout,
+	EventActiveTimeout,
 	EventReplace,
 	EventDisable,
 	EventUntie,
@@ -127,6 +131,7 @@ var KnownEvents = []Event{
 	EventOAuth2TokenRevoke,
 }
 
+// Extra data keys for event payloads 事件载荷扩展字段名。
 const (
 	// ExtraKeyPermission stores permission key. ExtraKeyPermission 存储单个权限字段。
 	ExtraKeyPermission = "permission"
@@ -174,6 +179,7 @@ const (
 	ExtraKeyGrantType = "grantType"
 )
 
+// Event logic labels 事件逻辑标签。
 const (
 	// LogicAnd indicates AND logic. LogicAnd 表示需要满足所有条件的 AND 逻辑。
 	LogicAnd = "AND"
@@ -181,6 +187,7 @@ const (
 	LogicOr = "OR"
 )
 
+// Event action labels 事件动作标签。
 const (
 	// ActionAdd indicates add mutation. ActionAdd 表示添加动作。
 	ActionAdd = "add"

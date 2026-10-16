@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/config"
+	"github.com/Zany2/dtoken-go/core/listener"
 	"github.com/Zany2/dtoken-go/core/ticket"
 )
 
+// TestManagerTicketCreateValidateConsume verifies Manager ticket lifecycle operations. TestManagerTicketCreateValidateConsume 验证 Manager 的 Ticket 生命周期操作。
 func TestManagerTicketCreateValidateConsume(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithTicket(t, nil)
@@ -17,7 +19,7 @@ func TestManagerTicketCreateValidateConsume(t *testing.T) {
 	created, err := mgr.CreateTicket(ctx, ticket.CreateOptions{
 		LoginID:   "user-1001",
 		Device:    "web",
-		DeviceId:  "browser-1",
+		DeviceID:  "browser-1",
 		Source:    "scan",
 		SourceApp: "portal",
 		TargetApp: "admin",
@@ -65,6 +67,7 @@ func TestManagerTicketCreateValidateConsume(t *testing.T) {
 	}
 }
 
+// TestManagerTicketBoundaries verifies Manager ticket validation and state boundaries. TestManagerTicketBoundaries 验证 Manager 的 Ticket 校验与状态边界。
 func TestManagerTicketBoundaries(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithTicket(t, nil)
@@ -112,6 +115,25 @@ func TestManagerTicketBoundaries(t *testing.T) {
 	}
 	if ttl != -2 {
 		t.Fatalf("GetTicketTTL() = %d, want -2", ttl)
+	}
+}
+
+// TestManagerRevokeMissingTicketDoesNotTriggerEvent verifies missing-ticket revocation remains an event-free no-op. TestManagerRevokeMissingTicketDoesNotTriggerEvent 验证撤销不存在的 Ticket 是不触发事件的空操作。
+func TestManagerRevokeMissingTicketDoesNotTriggerEvent(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManagerWithTicket(t, nil)
+
+	var events []*listener.EventData
+	mgr.GetEventManager().RegisterFuncWithConfig(listener.EventTicketRevoke, func(data *listener.EventData) {
+		copyData := *data
+		events = append(events, &copyData)
+	}, listener.ListenerConfig{Async: false})
+
+	if err := mgr.RevokeTicket(ctx, "missing-ticket"); err != nil {
+		t.Fatalf("RevokeTicket(missing) error = %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("RevokeTicket(missing) events = %d, want 0", len(events))
 	}
 }
 

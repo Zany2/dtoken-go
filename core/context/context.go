@@ -10,6 +10,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/manager"
 )
 
+// Request token extraction constants 请求 Token 提取常量。
 const (
 	bearerPrefix = "Bearer "
 	authHeader   = "Authorization"
@@ -34,8 +35,9 @@ func (c *DTokenContext) GetTokenValue() string {
 	cfg := c.manager.GetConfig()
 
 	if cfg.IsReadHeader {
-		if token := strings.TrimSpace(c.reqCtx.GetHeader(cfg.TokenName)); token != "" {
-			return extractBearerToken(token)
+		// Continue source lookup when the configured header contains no usable token. 配置请求头无法解析出 Token 时继续查找后续来源。
+		if token := extractBearerToken(c.reqCtx.GetHeader(cfg.TokenName)); token != "" {
+			return token
 		}
 		if auth := c.reqCtx.GetHeader(authHeader); auth != "" {
 			if token := extractBearerToken(auth); token != "" {
@@ -138,11 +140,19 @@ func extractBearerToken(auth string) string {
 	if auth == "" {
 		return ""
 	}
-	if strings.EqualFold(auth, strings.TrimSpace(bearerPrefix)) {
+	parts := strings.Fields(auth)
+	if len(parts) == 0 {
 		return ""
 	}
-	if len(auth) > len(bearerPrefix) && strings.EqualFold(auth[:len(bearerPrefix)], bearerPrefix) {
-		return strings.TrimSpace(auth[len(bearerPrefix):])
+	if strings.EqualFold(parts[0], strings.TrimSpace(bearerPrefix)) {
+		if len(parts) != 2 {
+			return ""
+		}
+		return parts[1]
 	}
-	return auth
+	// Reject values containing whitespace (likely non-Bearer schemes like Basic, Digest) 含空白的非 Bearer 格式视为其他认证方案，返回空
+	if len(parts) != 1 {
+		return ""
+	}
+	return parts[0]
 }

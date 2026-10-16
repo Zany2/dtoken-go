@@ -18,9 +18,7 @@ func (m *Manager) GenerateNonce(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	m.triggerEvent(listener.EventNonceGenerate, "", "", "", value, map[string]any{
-		listener.ExtraKeyAction: listener.ActionCreate,
-	})
+	m.triggerNonceGenerateEvent(value, m.nonceManager.TTL())
 	return value, nil
 }
 
@@ -33,17 +31,11 @@ func (m *Manager) GenerateNonceWithTimeout(ctx context.Context, timeout time.Dur
 	if err != nil {
 		return "", err
 	}
-	extra := map[string]any{
-		listener.ExtraKeyAction: listener.ActionCreate,
-	}
-	if timeout > 0 {
-		extra[listener.ExtraKeyTTL] = int64(timeout.Seconds())
-	}
-	m.triggerEvent(listener.EventNonceGenerate, "", "", "", value, extra)
+	m.triggerNonceGenerateEvent(value, m.resolveNonceEventTTL(timeout))
 	return value, nil
 }
 
-// VerifyNonce verifies and consumes nonce. VerifyNonce 校验并消费一次 nonce。
+// VerifyNonce verifies and consumes nonce. VerifyNonce 验证并消费一次 nonce。
 func (m *Manager) VerifyNonce(ctx context.Context, nonce string) bool {
 	if m.nonceManager == nil {
 		return false
@@ -56,7 +48,7 @@ func (m *Manager) VerifyNonce(ctx context.Context, nonce string) bool {
 	return ok
 }
 
-// VerifyAndConsumeNonce verifies and consumes nonce with error detail. VerifyAndConsumeNonce 校验并消费 nonce，失败时返回错误。
+// VerifyAndConsumeNonce verifies and consumes nonce with error detail. VerifyAndConsumeNonce 验证并消费 nonce，失败时返回错误。
 func (m *Manager) VerifyAndConsumeNonce(ctx context.Context, nonce string) error {
 	if m.nonceManager == nil {
 		return derror.ErrModuleNotEnabled
@@ -83,4 +75,41 @@ func (m *Manager) GetNonceTTL(ctx context.Context, nonce string) (int64, error) 
 		return 0, derror.ErrModuleNotEnabled
 	}
 	return m.nonceManager.GetTTL(ctx, nonce)
+}
+
+// triggerNonceGenerateEvent triggers nonce creation event. triggerNonceGenerateEvent 触发 Nonce 创建事件。
+func (m *Manager) triggerNonceGenerateEvent(value string, ttl time.Duration) {
+	extra := map[string]any{
+		listener.ExtraKeyAction: listener.ActionCreate,
+	}
+	if ttl > 0 {
+		extra[listener.ExtraKeyTTL] = durationSecondsCeil(ttl)
+	}
+	m.triggerEvent(listener.EventNonceGenerate, "", "", "", value, extra)
+}
+
+// resolveNonceEventTTL resolves the effective nonce ttl for event data. resolveNonceEventTTL 解析事件数据中的实际 Nonce 有效期。
+func (m *Manager) resolveNonceEventTTL(timeout time.Duration) time.Duration {
+	if timeout > 0 {
+		return timeout
+	}
+	if m.nonceManager == nil {
+		return 0
+	}
+	return m.nonceManager.TTL()
+}
+
+// durationSecondsCeil converts duration to seconds and rounds up. durationSecondsCeil 将时长转换为秒并向上取整。
+func durationSecondsCeil(duration time.Duration) int64 {
+	if duration <= 0 {
+		return 0
+	}
+	seconds := int64(duration / time.Second)
+	if duration%time.Second != 0 {
+		seconds++
+	}
+	if seconds <= 0 {
+		return 1
+	}
+	return seconds
 }

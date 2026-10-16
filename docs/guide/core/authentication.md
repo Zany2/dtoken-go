@@ -18,14 +18,18 @@ import (
 )
 
 func initDToken() {
-    dtoken.SetManager(
+    if _, err := dtoken.BuildAndSetManager(
         defaults.NewBuilder().
-            SetStorage(memory.NewStorage()).
-            Build(),
-    )
+            SetStorage(memory.NewStorage()),
+    ); err != nil {
+        panic(err)
+    }
 }
 
 func main() {
+    initDToken()
+    defer dtoken.DeleteAllManager()
+
     ctx := context.Background()
     token, _ := dtoken.Login(ctx, "10001")
     _ = token
@@ -69,6 +73,8 @@ err := dtoken.LoginByToken(ctx, token)
 
 `LoginByToken()` renews token, session, and activity metadata asynchronously when the token is still valid.
 
+Automatic renewal compares the storage TTL against its threshold without rounding to whole seconds; an unexpired token with less than one second remaining can still renew. Shared login invalidates older queued maintenance so it cannot overwrite newer activity. A limited token that expires before renewal does not emit a successful renewal event.
+
 ## Check Login Status
 
 ```go
@@ -93,6 +99,8 @@ loginID, err := dtoken.GetLoginID(ctx, token)
 
 ### Get Token Info
 
+`GetTokenInfo` reads stored metadata; success does not prove the token is logged in. It does not check account/device bans, inactivity timeout, or session validity. Use `CheckLogin` or `IntrospectToken` for login validation. Identity queries such as `GetLoginID` validate both the token and the account session.
+
 ```go
 ctx := context.Background()
 
@@ -101,8 +109,11 @@ if err == nil {
     fmt.Println("Auth Type:", info.AuthType)
     fmt.Println("Login ID:", info.LoginID)
     fmt.Println("Device:", info.Device)
-    fmt.Println("Device ID:", info.DeviceId)
+    fmt.Println("Device ID:", info.DeviceID)
     fmt.Println("Create Time:", info.CreateTime)
+    fmt.Println("Timeout:", info.Timeout)
+    fmt.Println("Active Timeout:", info.ActiveTimeout)
+    fmt.Println("Extra:", info.Extra)
 }
 ```
 
@@ -111,8 +122,11 @@ Current `TokenInfo` includes:
 - `AuthType`
 - `LoginID`
 - `Device`
-- `DeviceId`
+- `DeviceID`
 - `CreateTime`
+- `Timeout` (seconds)
+- `ActiveTimeout` (seconds; `0` means inherit the manager setting)
+- `Extra`
 
 ### Get Additional Token Fields
 
@@ -120,7 +134,7 @@ Current `TokenInfo` includes:
 ctx := context.Background()
 
 device, err := dtoken.GetDevice(ctx, token)
-deviceId, err := dtoken.GetDeviceId(ctx, token)
+deviceID, err := dtoken.GetDeviceID(ctx, token)
 createTime, err := dtoken.GetTokenCreateTime(ctx, token)
 ttl, err := dtoken.GetTokenTTL(ctx, token)
 ```
@@ -147,7 +161,7 @@ err := dtoken.LogoutByLoginID(ctx, "10001")
 err = dtoken.LogoutByDevice(ctx, "10001", "web")
 
 // Logout a single terminal by device type + device ID
-err = dtoken.LogoutByDeviceAndDeviceId(ctx, "10001", "app", "ios-iphone-15")
+err = dtoken.LogoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ## Kickout
@@ -167,7 +181,7 @@ ctx := context.Background()
 
 err := dtoken.KickoutByLoginID(ctx, "10001")
 err = dtoken.KickoutByDevice(ctx, "10001", "web")
-err = dtoken.KickoutByDeviceAndDeviceId(ctx, "10001", "app", "ios-iphone-15")
+err = dtoken.KickoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 Kicked tokens are not deleted immediately. They are marked with the `kickout` state and will fail later checks with the corresponding error.
@@ -189,7 +203,7 @@ ctx := context.Background()
 
 err := dtoken.ReplaceByLoginID(ctx, "10001")
 err = dtoken.ReplaceByDevice(ctx, "10001", "web")
-err = dtoken.ReplaceByDeviceAndDeviceId(ctx, "10001", "app", "ios-iphone-15")
+err = dtoken.ReplaceByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 Replaced tokens are marked with the `replaced` state, which is useful for "new login overrides old login" scenarios.
@@ -201,7 +215,7 @@ ctx := context.Background()
 
 count, err := dtoken.GetOnlineTerminalCount(ctx, "10001")
 webCount, err := dtoken.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
-singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, "10001", "app", "ios-iphone-15")
+singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ## Login Configuration
@@ -209,12 +223,13 @@ singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, "10001
 ### Concurrent Login
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
-        IsConcurrent(true).
-        Build(),
-)
+        IsConcurrent(true),
+); err != nil {
+    panic(err)
+}
 ```
 
 `IsConcurrent(true)` allows multiple active terminals for the same account.  
@@ -223,13 +238,14 @@ dtoken.SetManager(
 ### Shared Token
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         IsConcurrent(true).
-        IsShare(true).
-        Build(),
-)
+        IsShare(true),
+); err != nil {
+    panic(err)
+}
 ```
 
 `IsShare(true)` reuses an existing token during concurrent login, but only within the same device dimension.  
@@ -238,14 +254,15 @@ When `IsConcurrent(true)` and `IsShare(false)` are both set, each login creates 
 ### Max Login Count
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         IsConcurrent(true).
         IsShare(false).
-        MaxLoginCount(3).
-        Build(),
-)
+        MaxLoginCount(3),
+); err != nil {
+    panic(err)
+}
 ```
 
 When `MaxLoginCount > 0`, older terminals beyond the limit are removed automatically.
@@ -255,15 +272,16 @@ When `MaxLoginCount > 0`, older terminals beyond the limit are removed automatic
 ### Configuration
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         Timeout(24 * 60 * 60).
         AutoRenew(true).
         RenewMaxRefresh(30 * 60).
-        RenewInterval(60).
-        Build(),
-)
+        RenewInterval(60),
+); err != nil {
+    panic(err)
+}
 ```
 
 ### How It Works
@@ -282,13 +300,14 @@ This avoids unnecessary renewals on high-frequency traffic.
 ### Configuration
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         Timeout(24 * 60 * 60).
-        ActiveTimeout(30 * 60).
-        Build(),
-)
+        ActiveTimeout(30 * 60),
+); err != nil {
+    panic(err)
+}
 ```
 
 ### How It Works
@@ -305,7 +324,7 @@ When `ActiveTimeout` is enabled:
 ## Complete Configuration Example
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         TokenName("dtoken").
@@ -317,9 +336,10 @@ dtoken.SetManager(
         IsConcurrent(true).
         IsShare(false).
         MaxLoginCount(3).
-        IsReadHeader(true).
-        Build(),
-)
+        IsReadHeader(true),
+); err != nil {
+    panic(err)
+}
 ```
 
 ## Related Documentation

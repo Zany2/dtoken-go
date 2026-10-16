@@ -40,11 +40,12 @@ func initDToken() {
         panic(err)
     }
 
-    dtoken.SetManager(
+    if _, err = dtoken.BuildAndSetManager(
         defaults.NewBuilder().
-            SetStorage(storage).
-            Build(),
-    )
+            SetStorage(storage),
+    ); err != nil {
+        panic(err)
+    }
 }
 ```
 
@@ -66,11 +67,12 @@ if err != nil {
     panic(err)
 }
 
-dtoken.SetManager(
+if _, err = dtoken.BuildAndSetManager(
     defaults.NewBuilder().
-        SetStorage(storage).
-        Build(),
-)
+        SetStorage(storage),
+); err != nil {
+    panic(err)
+}
 ```
 
 ### 方式三：复用现有 go-redis Client
@@ -84,12 +86,15 @@ rdb := goredis.NewClient(&goredis.Options{
 
 storage := redis.NewStorageFromClient(rdb)
 
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
-        SetStorage(storage).
-        Build(),
-)
+        SetStorage(storage),
+); err != nil {
+    panic(err)
+}
 ```
+
+`NewStorageFromClient` 包装传入的客户端，不改变其连接配置。`Storage.Close()` 会关闭该客户端，Manager 默认也会接管注入的存储。若客户端还被其他业务共享，应通过 `ComponentOwnership{Storage: false, Logger: true, Pool: true}` 将存储设为调用方持有，待所有使用者停止后统一关闭，详见[多认证体系](../core/multi-auth_zh.md)。
 
 ## Config 字段
 
@@ -102,36 +107,42 @@ dtoken.SetManager(
 | `Password` | 密码 |
 | `Database` | 库索引 |
 | `PoolSize` | 连接池大小 |
-| `DialTimeout` | 建连超时 |
-| `ReadTimeout` | 读超时 |
-| `WriteTimeout` | 写超时 |
-| `PoolTimeout` | 取连接超时 |
-| `OperationTimeout` | 预留字段，当前存储实现未在各操作中单独套用 |
+| `DialTimeout` | TCP 建连超时（`time.Duration`） |
+| `ReadTimeout` | Redis 读超时（`time.Duration`） |
+| `WriteTimeout` | Redis 写超时（`time.Duration`） |
+| `PoolTimeout` | 连接池取连接超时（`time.Duration`） |
+| `OperationTimeout` | 每次存储操作的上下文超时（`time.Duration`）；在 `NewStorageFromConfig` 中，`<= 0` 使用 3 秒默认值 |
+
+`NewStorage` 同样使用 3 秒的单次操作超时。`NewStorageFromClient` 不启用这一层包装，每次操作的超时由调用方传入的 context 控制。
 
 ## 和 DToken 搭配使用
 
 ```go
-storage, _ := redis.NewStorage("redis://localhost:6379/0")
+storage, err := redis.NewStorage("redis://localhost:6379/0")
+if err != nil {
+    panic(err)
+}
 
-dtoken.SetManager(
+if _, err = dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(storage).
         TokenName("dtoken").
         Timeout(2 * 60 * 60).
         ActiveTimeout(30 * 60).
-        AutoRenew(true).
-        Build(),
-)
+        AutoRenew(true),
+); err != nil {
+    panic(err)
+}
 ```
 
-这时登录态、Session、权限、角色、Nonce、OAuth2 Token 等数据都会走 Redis。
+这时登录态、Session、权限和角色数据使用 Redis。Nonce、OAuth2 在启用相应可选模块后也会使用该后端。
 
 ## Redis Key 结构
 
-核心存储 key 使用统一格式：
+核心存储 key 使用统一格式，命名空间各部分会独立转义，详见[命名空间规则](../reference/configuration_zh.md)：
 
 ```text
-KeyPrefix + AuthType + 业务前缀 + 业务标识
+编码后的 KeyPrefix + 编码后的 AuthType + 业务前缀 + 业务标识
 ```
 
 默认配置下：
@@ -170,17 +181,16 @@ dtoken:admin-auth:session:{loginID}
 
 ### 测试前缀
 
-`tests/gin_core_flow` 为了避免污染 Redis，会使用短前缀：
+`tests/gin_core_flow` 为每个测试实例生成随机前缀，不同测试进程之间也保持隔离：
 
 ```text
-dt:gcf:1:
-dt:gcf:2:
+dt-gcf-<32 位十六进制字符串>:
 ```
 
 测试清理时只删除当前前缀下的 key，例如：
 
 ```text
-dt:gcf:1:*
+dt-gcf-<当前实例的 32 位十六进制字符串>:*
 ```
 
 不会执行全库清空。
@@ -192,6 +202,7 @@ dt:gcf:1:*
 - `Set`
 - `Get`
 - `GetAndDelete`
+- `SetIfAbsent`
 - `Delete`
 - `Exists`
 - `Keys`

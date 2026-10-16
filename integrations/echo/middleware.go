@@ -36,12 +36,18 @@ type RouteAccessHandler func(ctx context.Context, c echo4.Context, req *RouteAcc
 
 // AuthHandleRequest carries auth check metadata AuthHandleRequest 携带认证校验元数据
 type AuthHandleRequest struct {
-	AuthType     string
-	CheckLogin   bool
+	// AuthType selects the auth type. AuthType 指定认证类型。
+	AuthType string
+	// CheckLogin requires login-state validation. CheckLogin 要求校验登录状态。
+	CheckLogin bool
+	// CheckDisable requires account-disable validation. CheckDisable 要求校验账号封禁状态。
 	CheckDisable bool
-	Permissions  []string
-	Roles        []string
-	LogicType    LogicType
+	// Permissions lists required permissions. Permissions 保存所需权限列表。
+	Permissions []string
+	// Roles lists required roles. Roles 保存所需角色列表。
+	Roles []string
+	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
+	LogicType LogicType
 
 	next    func() error
 	result  error
@@ -50,6 +56,9 @@ type AuthHandleRequest struct {
 
 // Next continues request and stops dtoken checks Next 放行请求并停止 dtoken 校验
 func (req *AuthHandleRequest) Next() {
+	if req.handled {
+		return
+	}
 	req.handled = true
 	if req.next != nil {
 		req.result = req.next()
@@ -68,11 +77,16 @@ func (req *AuthHandleRequest) IsHandled() bool {
 
 // RouteAccessRequest carries route access rules RouteAccessRequest 携带路由访问规则
 type RouteAccessRequest struct {
-	AuthType     string
-	LogicType    LogicType
+	// AuthType selects the auth type. AuthType 指定认证类型。
+	AuthType string
+	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
+	LogicType LogicType
+	// CheckDisable requires account-disable validation. CheckDisable 要求校验账号封禁状态。
 	CheckDisable bool
-	Permissions  []string
-	Roles        []string
+	// Permissions lists route-required permissions. Permissions 保存路由所需权限列表。
+	Permissions []string
+	// Roles lists route-required roles. Roles 保存路由所需角色列表。
+	Roles []string
 
 	skipAuth       bool
 	skipPermission bool
@@ -109,10 +123,17 @@ func (req *RouteAccessRequest) SetLogicType(logicType LogicType) {
 
 // AuthOptions carries middleware auth options AuthOptions 保存中间件认证选项
 type AuthOptions struct {
-	AuthType           string
-	LogicType          LogicType
-	FailFunc           func(c echo4.Context, err error) error
-	BeforeAuthHandler  BeforeAuthHandler
+	// AuthType selects the auth type. AuthType 指定认证类型。
+	AuthType string
+	// Manager selects the manager explicitly. Auth checks otherwise prefer AuthType, the request manager, then the registry. Manager 显式指定 Manager；鉴权未显式指定时依次使用 AuthType、请求 Manager 和全局注册表。
+	Manager *manager.Manager
+	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
+	LogicType LogicType
+	// FailFunc handles authentication failures. FailFunc 处理认证失败。
+	FailFunc func(c echo4.Context, err error) error
+	// BeforeAuthHandler runs before authentication checks. BeforeAuthHandler 在认证校验前执行。
+	BeforeAuthHandler BeforeAuthHandler
+	// RouteAccessHandler resolves route-specific access rules. RouteAccessHandler 解析路由级访问规则。
 	RouteAccessHandler RouteAccessHandler
 }
 
@@ -125,6 +146,15 @@ func defaultAuthOptions() *AuthOptions {
 func WithAuthType(authType string) AuthOption {
 	return func(o *AuthOptions) {
 		o.AuthType = authType
+	}
+}
+
+// WithManager sets the manager used by middleware. WithManager 设置中间件使用的 Manager。
+func WithManager(mgr *manager.Manager) AuthOption {
+	return func(o *AuthOptions) {
+		if mgr != nil {
+			o.Manager = mgr
+		}
 	}
 }
 
@@ -165,7 +195,11 @@ func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) ec
 
 	return func(next echo4.HandlerFunc) echo4.HandlerFunc {
 		return func(c echo4.Context) error {
-			mgr, err := authcheck.GetManager(options.AuthType)
+			if isRequestAborted(c) {
+				return nil
+			}
+
+			mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					return options.FailFunc(c, err)
@@ -188,15 +222,22 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) echo4.MiddlewareFun
 
 	return func(next echo4.HandlerFunc) echo4.HandlerFunc {
 		return func(c echo4.Context) error {
+			if isRequestAborted(c) {
+				return nil
+			}
+
 			authReq := newAuthHandleRequest(options, func() error {
+				if isRequestAborted(c) {
+					return nil
+				}
 				return next(c)
 			})
 			authReq.CheckLogin = true
-			if runBeforeAuthHandler(ctx, c, options, authReq) {
+			if runBeforeAuthHandler(requestContext(c), c, options, authReq) {
 				return authReq.result
 			}
 
-			mgr, err := authcheck.GetManager(options.AuthType)
+			mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					return options.FailFunc(c, err)
@@ -207,7 +248,7 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) echo4.MiddlewareFun
 			dCtx := getDTokenContext(c, mgr)
 			tokenValue := dCtx.GetTokenValue()
 
-			_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+			_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
 				TokenValue: tokenValue,
 				CheckLogin: true,
 				LoginError: derror.ErrTokenExpired,
@@ -233,16 +274,23 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) echo4.MiddlewareF
 
 	return func(next echo4.HandlerFunc) echo4.HandlerFunc {
 		return func(c echo4.Context) error {
+			if isRequestAborted(c) {
+				return nil
+			}
+
 			accessReq := newRouteAccessRequest(options)
 			if options.RouteAccessHandler != nil {
-				options.RouteAccessHandler(ctx, c, accessReq)
+				options.RouteAccessHandler(requestContext(c), c, accessReq)
+			}
+			if isRequestAborted(c) {
+				return nil
 			}
 
 			if accessReq.skipAuth {
 				return next(c)
 			}
 
-			mgr, err := authcheck.GetManager(accessReq.AuthType)
+			mgr, err := resolveRequestManager(c, options.Manager, accessReq.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					return options.FailFunc(c, err)
@@ -266,7 +314,7 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) echo4.MiddlewareF
 				req.LogicType = accessReq.LogicType
 			}
 
-			_, err = authcheck.Check(ctx, mgr, req)
+			_, err = authcheck.Check(requestContext(c), mgr, req)
 			if err != nil {
 				if options.FailFunc != nil {
 					return options.FailFunc(c, err)
@@ -288,11 +336,18 @@ func PermissionMiddleware(ctx context.Context, permissions []string, opts ...Aut
 
 	return func(next echo4.HandlerFunc) echo4.HandlerFunc {
 		return func(c echo4.Context) error {
+			if isRequestAborted(c) {
+				return nil
+			}
+
 			authReq := newAuthHandleRequest(options, func() error {
+				if isRequestAborted(c) {
+					return nil
+				}
 				return next(c)
 			})
 			authReq.Permissions = append([]string{}, permissions...)
-			if runBeforeAuthHandler(ctx, c, options, authReq) {
+			if runBeforeAuthHandler(requestContext(c), c, options, authReq) {
 				return authReq.result
 			}
 
@@ -300,7 +355,7 @@ func PermissionMiddleware(ctx context.Context, permissions []string, opts ...Aut
 				return next(c)
 			}
 
-			mgr, err := authcheck.GetManager(options.AuthType)
+			mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					return options.FailFunc(c, err)
@@ -311,7 +366,7 @@ func PermissionMiddleware(ctx context.Context, permissions []string, opts ...Aut
 			dCtx := getDTokenContext(c, mgr)
 			tokenValue := dCtx.GetTokenValue()
 
-			_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+			_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
 				TokenValue:  tokenValue,
 				Permissions: permissions,
 				LogicType:   options.LogicType,
@@ -337,11 +392,18 @@ func RoleMiddleware(ctx context.Context, roles []string, opts ...AuthOption) ech
 
 	return func(next echo4.HandlerFunc) echo4.HandlerFunc {
 		return func(c echo4.Context) error {
+			if isRequestAborted(c) {
+				return nil
+			}
+
 			authReq := newAuthHandleRequest(options, func() error {
+				if isRequestAborted(c) {
+					return nil
+				}
 				return next(c)
 			})
 			authReq.Roles = append([]string{}, roles...)
-			if runBeforeAuthHandler(ctx, c, options, authReq) {
+			if runBeforeAuthHandler(requestContext(c), c, options, authReq) {
 				return authReq.result
 			}
 
@@ -349,7 +411,7 @@ func RoleMiddleware(ctx context.Context, roles []string, opts ...AuthOption) ech
 				return next(c)
 			}
 
-			mgr, err := authcheck.GetManager(options.AuthType)
+			mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
 			if err != nil {
 				if options.FailFunc != nil {
 					return options.FailFunc(c, err)
@@ -360,7 +422,7 @@ func RoleMiddleware(ctx context.Context, roles []string, opts ...AuthOption) ech
 			dCtx := getDTokenContext(c, mgr)
 			tokenValue := dCtx.GetTokenValue()
 
-			_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+			_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
 				TokenValue: tokenValue,
 				Roles:      roles,
 				LogicType:  options.LogicType,
@@ -401,25 +463,29 @@ func runBeforeAuthHandler(ctx context.Context, c echo4.Context, options *AuthOpt
 	}
 
 	options.BeforeAuthHandler(ctx, c, req)
-	return req.IsHandled()
+	return req.IsHandled() || isRequestAborted(c)
 }
 
 // GetDTokenContext gets cached DToken context from Echo request GetDTokenContext 从 Echo 请求中获取缓存的 DToken 上下文
 func GetDTokenContext(c echo4.Context) (*corecontext.DTokenContext, bool) {
+	if c == nil {
+		return nil, false
+	}
+
 	value := c.Get(DTokenCtxKey)
 	if value == nil {
 		return nil, false
 	}
 
 	dCtx, ok := value.(*corecontext.DTokenContext)
-	return dCtx, ok
+	return dCtx, ok && dCtx != nil
 }
 
 // getDTokenContext gets or creates dtoken context getDTokenContext 获取或创建 DToken 上下文
 func getDTokenContext(c echo4.Context, mgr *manager.Manager) *corecontext.DTokenContext {
 	if value := c.Get(DTokenCtxKey); value != nil {
 		if dCtx, ok := value.(*corecontext.DTokenContext); ok {
-			if dCtx.GetManager() == mgr {
+			if dCtx != nil && dCtx.GetManager() == mgr {
 				return dCtx
 			}
 		}
@@ -428,6 +494,25 @@ func getDTokenContext(c echo4.Context, mgr *manager.Manager) *corecontext.DToken
 	dCtx := corecontext.NewContext(NewEchoContext(c), mgr)
 	c.Set(DTokenCtxKey, dCtx)
 	return dCtx
+}
+
+// resolveRequestManager honors explicit selection before inheriting the request manager. resolveRequestManager 优先使用显式配置，否则继承请求 Manager。
+func resolveRequestManager(c echo4.Context, explicit *manager.Manager, authType string) (*manager.Manager, error) {
+	if explicit != nil {
+		return authcheck.ResolveManager(explicit, authType)
+	}
+	cached, _ := GetDTokenContext(c)
+	return authcheck.ResolveManagerFromContext(authType, cached)
+}
+
+// isRequestAborted checks the shared request adapter before continuing the chain. isRequestAborted 在继续处理链前检查共享请求适配器是否已终止。
+func isRequestAborted(c echo4.Context) bool {
+	if cached, ok := GetDTokenContext(c); ok {
+		if reqCtx := cached.GetRequestContext(); reqCtx != nil {
+			return reqCtx.IsAborted()
+		}
+	}
+	return false
 }
 
 // writeErrorResponse writes standard error response writeErrorResponse 写入标准错误响应

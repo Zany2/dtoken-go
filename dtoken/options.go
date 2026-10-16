@@ -41,6 +41,7 @@ type LoginOptions struct {
 
 // RefreshTokenOptions describes a typed refresh-token login request. RefreshTokenOptions 描述类型化刷新令牌登录请求。
 type RefreshTokenOptions struct {
+	// LoginOptions carries the base login options. LoginOptions 包含基础登录选项。
 	LoginOptions
 	// RefreshTimeout stores custom refresh token timeout. RefreshTimeout 存储自定义刷新令牌超时时间。
 	RefreshTimeout time.Duration

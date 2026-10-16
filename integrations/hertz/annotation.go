@@ -12,13 +12,13 @@ import (
 
 // Annotation defines annotation config Annotation 定义注解配置
 type Annotation struct {
-	AuthType        string
-	CheckLogin      bool
-	CheckRole       []string
-	CheckPermission []string
-	CheckDisable    bool
-	Ignore          bool
-	LogicType       LogicType
+	AuthType        string    // Optional: specify auth type 可选：指定认证类型
+	CheckLogin      bool      // Check login 检查登录
+	CheckRole       []string  // Check roles 检查角色
+	CheckPermission []string  // Check permissions 检查权限
+	CheckDisable    bool      // Check disable status 检查封禁状态
+	Ignore          bool      // Ignore authentication 忽略认证
+	LogicType       LogicType // OR or AND logic (default: OR) OR 或 AND 逻辑（默认：OR）
 }
 
 // GetHandler gets annotation handler GetHandler 获取注解处理器
@@ -29,6 +29,15 @@ func GetHandler(
 	annotations ...*Annotation,
 ) hertzapp.HandlerFunc {
 	return func(c context.Context, reqCtx *hertzapp.RequestContext) {
+		if reqCtx.IsAborted() {
+			return
+		}
+		defer bindRequestContext(c, reqCtx)()
+
+		if len(annotations) > 0 && annotations[0] == nil {
+			failAuthentication(c, reqCtx, derror.ErrInvalidParam, failFunc)
+			return
+		}
 		if len(annotations) > 0 && annotations[0].Ignore {
 			if handler != nil {
 				handler(c, reqCtx)
@@ -53,14 +62,10 @@ func GetHandler(
 			return
 		}
 
-		mgr, err := authcheck.GetManager(ann.AuthType)
+		cached, _ := GetDTokenContext(reqCtx)
+		mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached)
 		if err != nil {
-			if failFunc != nil {
-				failFunc(c, reqCtx, err)
-			} else {
-				writeErrorResponse(reqCtx, err)
-			}
-			reqCtx.Abort()
+			failAuthentication(c, reqCtx, err, failFunc)
 			return
 		}
 
@@ -68,7 +73,7 @@ func GetHandler(
 		dCtx := getDTokenContext(reqCtx, mgr)
 		token := dCtx.GetTokenValue()
 
-		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		_, err = authcheck.Check(c, mgr, authcheck.Request{
 			TokenValue:   token,
 			CheckLogin:   true,
 			CheckDisable: ann.CheckDisable,
@@ -78,12 +83,7 @@ func GetHandler(
 			LoginError:   derror.ErrNotLogin,
 		})
 		if err != nil {
-			if failFunc != nil {
-				failFunc(c, reqCtx, err)
-			} else {
-				writeErrorResponse(reqCtx, err)
-			}
-			reqCtx.Abort()
+			failAuthentication(c, reqCtx, err, failFunc)
 			return
 		}
 

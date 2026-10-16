@@ -9,6 +9,9 @@ import (
 // TestJSONSerializer_Name tests serializer name behavior 测试序列化器名称行为
 func TestJSONSerializer_Name(t *testing.T) {
 	s := NewJSONSerializer()
+	if s == nil {
+		t.Fatal("NewJSONSerializer() returned nil")
+	}
 	if got := s.Name(); got != "json" {
 		t.Errorf("Name() = %q, want %q", got, "json")
 	}
@@ -95,5 +98,63 @@ func TestJSONSerializer_Decode(t *testing.T) {
 				t.Errorf("Decode() got = %v, want %v", tt.targetPtr, tt.want)
 			}
 		})
+	}
+}
+
+// TestJSONSerializer_NilAndInvalidTargets verifies null values and invalid decode targets. TestJSONSerializer_NilAndInvalidTargets 验证 null 值和非法解码目标。
+func TestJSONSerializer_NilAndInvalidTargets(t *testing.T) {
+	s := NewJSONSerializer()
+
+	data, err := s.Encode(nil)
+	if err != nil {
+		t.Fatalf("Encode(nil) error = %v", err)
+	}
+	if string(data) != "null" {
+		t.Fatalf("Encode(nil) = %q, want %q", data, "null")
+	}
+
+	var got any
+	if err := s.Decode(data, &got); err != nil {
+		t.Fatalf("Decode(null) error = %v", err)
+	}
+	if got != nil {
+		t.Fatalf("Decode(null) = %#v, want nil", got)
+	}
+
+	if err := s.Decode([]byte(`{"name":"Alice"}`), map[string]string{}); err == nil {
+		t.Fatal("Decode() should reject a non-pointer target")
+	}
+	var nilTarget *struct{}
+	if err := s.Decode([]byte(`{}`), nilTarget); err == nil {
+		t.Fatal("Decode() should reject a nil pointer target")
+	}
+}
+
+// TestJSONSerializerDecodeBoundaries verifies exactly one complete JSON value is required. TestJSONSerializerDecodeBoundaries 验证输入必须恰好包含一个完整 JSON 值。
+func TestJSONSerializerDecodeBoundaries(t *testing.T) {
+	s := NewJSONSerializer()
+	for _, tt := range []struct {
+		name string
+		data string
+	}{
+		{"empty", ""},
+		{"truncated", `{"name":`},
+		{"second value", `{"name":"alice"}{"name":"bob"}`},
+		{"invalid suffix", `{"name":"alice"}!`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var got map[string]string
+			if err := s.Decode([]byte(tt.data), &got); err == nil {
+				t.Fatal("Decode() accepted incomplete or trailing data")
+			}
+		})
+	}
+
+	var got map[string]string
+	if err := s.Decode([]byte(" \n{\"name\":\"alice\"}\t"), &got); err != nil {
+		t.Fatalf("Decode() rejected trailing whitespace: %v", err)
+	}
+	if got["name"] != "alice" {
+		t.Fatalf("Decode() name = %q, want %q", got["name"], "alice")
 	}
 }

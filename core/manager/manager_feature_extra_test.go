@@ -12,6 +12,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/oauth2"
 )
 
+// TestManagerOAuth2FacadeFlowAndEvents verifies OAuth2 facade operations and emitted events. TestManagerOAuth2FacadeFlowAndEvents 验证 OAuth2 门面操作与事件触发。
 func TestManagerOAuth2FacadeFlowAndEvents(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithOAuth2(t)
@@ -96,11 +97,12 @@ func TestManagerOAuth2FacadeFlowAndEvents(t *testing.T) {
 		t.Fatalf("OAuth2Token(client_credentials) UserID = %q, want client id", clientToken.UserID)
 	}
 
-	pkceCode, err := mgr.GenerateOAuth2AuthorizationCodeWithPKCE(ctx, client.ClientID, "oauth-pkce-user", client.RedirectURIs[0], []string{"read"}, "plain-verifier", oauth2.CodeChallengeMethodPlain)
+	pkceVerifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	pkceCode, err := mgr.GenerateOAuth2AuthorizationCodeWithPKCE(ctx, client.ClientID, "oauth-pkce-user", client.RedirectURIs[0], []string{"read"}, pkceVerifier, oauth2.CodeChallengeMethodPlain)
 	if err != nil {
 		t.Fatalf("GenerateOAuth2AuthorizationCodeWithPKCE() error = %v", err)
 	}
-	pkceToken, err := mgr.ExchangeOAuth2CodeForTokenWithPKCE(ctx, pkceCode.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], "plain-verifier")
+	pkceToken, err := mgr.ExchangeOAuth2CodeForTokenWithPKCE(ctx, pkceCode.Code, client.ClientID, client.ClientSecret, client.RedirectURIs[0], pkceVerifier)
 	if err != nil {
 		t.Fatalf("ExchangeOAuth2CodeForTokenWithPKCE() error = %v", err)
 	}
@@ -156,6 +158,7 @@ func TestManagerOAuth2FacadeFlowAndEvents(t *testing.T) {
 	})
 }
 
+// TestManagerOAuth2TokenEndpointRefreshEvent verifies refresh grants emit the OAuth2 refresh event. TestManagerOAuth2TokenEndpointRefreshEvent 验证刷新授权会触发 OAuth2 刷新事件。
 func TestManagerOAuth2TokenEndpointRefreshEvent(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithOAuth2(t)
@@ -185,11 +188,12 @@ func TestManagerOAuth2TokenEndpointRefreshEvent(t *testing.T) {
 	}
 
 	assertManagerEvent(t, events, listener.EventOAuth2TokenRefresh, client.ClientID, "", "", refreshed.Token, map[string]any{
-		listener.ExtraKeyAction:    listener.ActionIssue,
+		listener.ExtraKeyAction:    listener.ActionRefresh,
 		listener.ExtraKeyGrantType: string(oauth2.GrantTypeRefreshToken),
 	})
 }
 
+// TestManagerNonceEvents verifies nonce generation and verification events. TestManagerNonceEvents 验证 Nonce 生成与校验事件。
 func TestManagerNonceEvents(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithNonce(t)
@@ -200,6 +204,10 @@ func TestManagerNonceEvents(t *testing.T) {
 		events = append(events, &copyData)
 	}, listener.ListenerConfig{Async: false})
 
+	defaultValue, err := mgr.GenerateNonce(ctx)
+	if err != nil {
+		t.Fatalf("GenerateNonce() error = %v", err)
+	}
 	value, err := mgr.GenerateNonceWithTimeout(ctx, time.Minute)
 	if err != nil {
 		t.Fatalf("GenerateNonceWithTimeout() error = %v", err)
@@ -215,6 +223,10 @@ func TestManagerNonceEvents(t *testing.T) {
 		listener.ExtraKeyAction: listener.ActionCreate,
 		listener.ExtraKeyTTL:    int64(60),
 	})
+	assertManagerEvent(t, events, listener.EventNonceGenerate, "", "", "", defaultValue, map[string]any{
+		listener.ExtraKeyAction: listener.ActionCreate,
+		listener.ExtraKeyTTL:    int64(300),
+	})
 	assertManagerEvent(t, events, listener.EventNonceVerify, "", "", "", value, map[string]any{
 		listener.ExtraKeyAction: listener.ActionConsume,
 		listener.ExtraKeyResult: true,
@@ -225,6 +237,7 @@ func TestManagerNonceEvents(t *testing.T) {
 	})
 }
 
+// TestManagerAccessProviderSubjectAndEmptyOverride verifies provider subjects and explicit empty access overrides. TestManagerAccessProviderSubjectAndEmptyOverride 验证访问提供器主体与显式空权限覆盖。
 func TestManagerAccessProviderSubjectAndEmptyOverride(t *testing.T) {
 	ctx := context.Background()
 	var permissionSubjects []AccessSubject
@@ -290,6 +303,7 @@ func TestManagerAccessProviderSubjectAndEmptyOverride(t *testing.T) {
 	}
 }
 
+// TestManagerSessionDataBoundaries verifies session data validation and missing-value boundaries. TestManagerSessionDataBoundaries 验证 Session 数据校验与缺失值边界。
 func TestManagerSessionDataBoundaries(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, nil)
@@ -321,6 +335,37 @@ func TestManagerSessionDataBoundaries(t *testing.T) {
 	}
 	if err := mgr.SetSessionValue(ctx, "session-boundary", "", "dark"); !errors.Is(err, derror.ErrInvalidParam) {
 		t.Fatalf("SetSessionValue(empty key) error = %v, want ErrInvalidParam", err)
+	}
+}
+
+// TestManagerSessionDataByToken validates token-based session data access and logout protection. TestManagerSessionDataByToken 验证基于 Token 的会话数据访问及登出保护。
+func TestManagerSessionDataByToken(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.AutoRenew = false
+	})
+
+	token, err := mgr.Login(ctx, "session-token-user", "web")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if err = mgr.SetSessionValueByToken(ctx, token, " theme ", "dark"); err != nil {
+		t.Fatalf("SetSessionValueByToken() error = %v", err)
+	}
+	if value, ok, err := mgr.GetSessionValueByToken(ctx, token, "theme"); err != nil || !ok || value != "dark" {
+		t.Fatalf("GetSessionValueByToken() = %#v/%v, %v", value, ok, err)
+	}
+	if err = mgr.DeleteSessionValueByToken(ctx, token, "theme"); err != nil {
+		t.Fatalf("DeleteSessionValueByToken() error = %v", err)
+	}
+	if _, ok, err := mgr.GetSessionValueByToken(ctx, token, "theme"); err != nil || ok {
+		t.Fatalf("GetSessionValueByToken(after delete) = ok:%v, err:%v", ok, err)
+	}
+	if err = mgr.Logout(ctx, token); err != nil {
+		t.Fatalf("Logout() error = %v", err)
+	}
+	if err = mgr.SetSessionValueByToken(ctx, token, "theme", "light"); !errors.Is(err, derror.ErrInvalidToken) {
+		t.Fatalf("SetSessionValueByToken(after logout) error = %v, want ErrInvalidToken", err)
 	}
 }
 

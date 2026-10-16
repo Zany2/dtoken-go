@@ -8,7 +8,7 @@ DToken-Go 使用 Session 记录一个登录 ID 下的在线终端列表。每个
 
 - `LoginID`
 - `Device`
-- `DeviceId`
+- `DeviceID`
 - `Token`
 - `Index`
 
@@ -36,7 +36,7 @@ terminal, err := dtoken.GetTerminalInfoByToken(ctx, token)
 ```go
 count, err := dtoken.GetOnlineTerminalCount(ctx, "10001")
 webCount, err := dtoken.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
-deviceCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, "10001", "web", "browser-1")
+deviceCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "web", "browser-1")
 ```
 
 ## 查询 Token 列表
@@ -44,10 +44,12 @@ deviceCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, "10001
 ```go
 tokens, err := dtoken.GetTokenValueListByLoginID(ctx, "10001", true)
 tokens, err = dtoken.GetTokenValueListByDevice(ctx, "10001", "web", true)
-tokens, err = dtoken.GetTokenValueListByDeviceAndDeviceId(ctx, "10001", "web", "browser-1", true)
+tokens, err = dtoken.GetTokenValueListByDeviceAndDeviceID(ctx, "10001", "web", "browser-1", true)
 ```
 
 最后一个布尔参数表示是否只返回仍然有效的 Token。
+
+`checkAlive` 最多提供一个值。开启时，列表、在线计数和最新 Token 查询都会核对终端与 Token 的账号、设备、创建时间及生命周期序号，忽略不匹配的陈旧条目。按 Token 查询终端详情同样执行匹配，不返回旧登录的设备或扩展数据。
 
 ## 查询终端列表
 
@@ -58,6 +60,8 @@ terminals, err = dtoken.GetTerminalListByLoginIDAndDevice(ctx, "10001", "web")
 
 ## 获取最新 Token
 
+Manager 的 `GetTerminalListByLoginID` 和 `GetTokenValueByLoginID` 最多接受一个可选设备类型，多余参数返回错误。
+
 ```go
 token, err := dtoken.GetTokenValueByLoginID(ctx, "10001")
 token, err = dtoken.GetTokenValueByLoginIDAndDevice(ctx, "10001", "web")
@@ -67,7 +71,7 @@ token, err = dtoken.GetTokenValueByLoginIDAndDevice(ctx, "10001", "web")
 
 ```go
 err := dtoken.ForEachTerminal(ctx, "10001", func(info manager.TerminalInfo) bool {
-    fmt.Println(info.Device, info.DeviceId, info.Token)
+    fmt.Println(info.Device, info.DeviceID, info.Token)
     return true
 })
 
@@ -77,6 +81,8 @@ err = dtoken.ForEachTerminalByDevice(ctx, "10001", "web", func(info manager.Term
 ```
 
 回调返回 `false` 时会停止遍历。
+
+终端列表、遍历及未开启 `checkAlive` 的 Token 列表返回存储快照，可能包含过期或陈旧条目；查询不会删除这些记录。Session 数据中的“键存在且值为 nil”与“键不存在”由 `GetSessionValue` / `GetSessionValueByToken` 的布尔返回值区分。
 
 ## 搜索
 
@@ -95,6 +101,10 @@ sessions, err := dtoken.SearchSessionId(ctx, "keyword", 0, 20)
 | kickout | 保留状态标记，后续表现为被踢下线 |
 | replace | 保留状态标记，后续表现为被顶下线 |
 
+按 Token 下线在账号或设备封禁期间仍可执行；已确认归属的残留 Token 即使 Session 缺失也会被清理，并撤销关联刷新令牌。已有 kickout、replace 或活跃超时标记保持幂等，不改写下线原因。
+
+`Terminate` 中有效 Token 优先于账号、设备筛选；显式传入纯空白 Token 或设备筛选字段会返回参数错误，不会回退到更大的操作范围。
+
 三类操作都支持：
 
 - 按 Token
@@ -111,7 +121,9 @@ Token 可能因以下原因失效：
 3. 被 logout 删除
 4. 被 kickout 标记
 5. 被 replace 标记
-6. 账号、设备或服务封禁导致校验失败
+6. 账号或设备封禁导致登录校验失败
+
+服务封禁只阻止相应的显式服务校验，不会使普通登录态失效。
 
 ## 测试覆盖
 

@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/derror"
+	"github.com/Zany2/dtoken-go/core/utils"
 )
 
 var (
@@ -79,7 +81,7 @@ type ShortKey struct {
 	AuthType   string         `json:"authType,omitempty"`  // AuthType stores auth namespace. AuthType 存储认证命名空间。
 	LoginID    string         `json:"loginId,omitempty"`   // LoginID stores confirmed subject id. LoginID 存储确认后的主体 ID。
 	Device     string         `json:"device,omitempty"`    // Device stores device type. Device 存储设备类型。
-	DeviceId   string         `json:"deviceId,omitempty"`  // DeviceId stores concrete device id. DeviceId 存储具体设备 ID。
+	DeviceID   string         `json:"deviceId,omitempty"`  // DeviceID stores concrete device id. DeviceID 存储具体设备 ID。
 	Scene      string         `json:"scene,omitempty"`     // Scene stores business scene. Scene 存储业务场景。
 	SourceApp  string         `json:"sourceApp,omitempty"` // SourceApp stores issuing application. SourceApp 存储签发应用。
 	TargetApp  string         `json:"targetApp,omitempty"` // TargetApp stores consuming application. TargetApp 存储目标应用。
@@ -88,6 +90,7 @@ type ShortKey struct {
 	CreateTime int64          `json:"createTime"`          // CreateTime stores creation unix time. CreateTime 存储创建时间戳。
 	UpdateTime int64          `json:"updateTime"`          // UpdateTime stores update unix time. UpdateTime 存储更新时间戳。
 	ExpiresIn  int64          `json:"expiresIn"`           // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
+	ExpiresAt  time.Time      `json:"expiresAt,omitempty"` // ExpiresAt stores the precise deadline; zero denotes a legacy short key. ExpiresAt 存储精确截止时间，零值表示旧版短 Key。
 	Status     Status         `json:"status"`              // Status stores lifecycle state. Status 存储生命周期状态。
 }
 
@@ -95,7 +98,7 @@ type ShortKey struct {
 type CreateOptions struct {
 	LoginID   string         // LoginID stores subject id and confirms the key when set. LoginID 存储主体 ID，非空时直接确认短 Key。
 	Device    string         // Device stores device type. Device 存储设备类型。
-	DeviceId  string         // DeviceId stores concrete device id. DeviceId 存储具体设备 ID。
+	DeviceID  string         // DeviceID stores concrete device id. DeviceID 存储具体设备 ID。
 	Scene     string         // Scene stores business scene. Scene 存储业务场景。
 	SourceApp string         // SourceApp stores issuing application. SourceApp 存储签发应用。
 	TargetApp string         // TargetApp stores consuming application. TargetApp 存储目标应用。
@@ -108,7 +111,7 @@ type CreateOptions struct {
 type ConfirmOptions struct {
 	LoginID  string         // LoginID stores confirmed subject id. LoginID 存储确认后的主体 ID。
 	Device   string         // Device stores confirmed device type. Device 存储确认后的设备类型。
-	DeviceId string         // DeviceId stores confirmed concrete device id. DeviceId 存储确认后的具体设备 ID。
+	DeviceID string         // DeviceID stores confirmed concrete device id. DeviceID 存储确认后的具体设备 ID。
 	Scopes   []string       // Scopes replaces granted scopes when set. Scopes 非空时替换授权范围。
 	Extra    map[string]any // Extra replaces extension data when set. Extra 非空时替换扩展数据。
 }
@@ -117,7 +120,7 @@ type ConfirmOptions struct {
 type ValidateOptions struct {
 	LoginID   string // LoginID requires matching subject id when set. LoginID 非空时要求主体 ID 匹配。
 	Device    string // Device requires matching device type when set. Device 非空时要求设备类型匹配。
-	DeviceId  string // DeviceId requires matching concrete device id when set. DeviceId 非空时要求具体设备 ID 匹配。
+	DeviceID  string // DeviceID requires matching concrete device id when set. DeviceID 非空时要求具体设备 ID 匹配。
 	Scene     string // Scene requires matching business scene when set. Scene 非空时要求业务场景匹配。
 	SourceApp string // SourceApp requires matching issuing application when set. SourceApp 非空时要求签发应用匹配。
 	TargetApp string // TargetApp requires matching consuming application when set. TargetApp 非空时要求目标应用匹配。
@@ -137,6 +140,7 @@ type Manager struct {
 	maxGenerateRetries int
 	storage            adapter.Storage
 	serializer         adapter.Codec
+	mu                 sync.Mutex // Serializes creation writes and state transitions within this manager. 在当前管理器内串行化创建写入与状态流转。
 }
 
 // NewDefaultManager creates short key manager with default config. NewDefaultManager 使用默认配置创建短 Key 管理器。
@@ -182,57 +186,58 @@ func (m *Manager) CreateWithTimeout(ctx context.Context, opts CreateOptions, tim
 	if timeout <= 0 {
 		timeout = m.ttl
 	}
-	var key string
+
 	for i := 0; i < m.maxGenerateRetries; i++ {
 		generated, err := generateKey(m.length)
 		if err != nil {
 			return nil, err
 		}
-		if !m.storage.Exists(ctx, m.getKey(generated)) {
-			key = generated
-			break
+		now := time.Now()
+		shortKey := &ShortKey{
+			Key:        generated,
+			AuthType:   m.authType,
+			LoginID:    opts.LoginID,
+			Device:     opts.Device,
+			DeviceID:   opts.DeviceID,
+			Scene:      opts.Scene,
+			SourceApp:  opts.SourceApp,
+			TargetApp:  opts.TargetApp,
+			Scopes:     append([]string(nil), opts.Scopes...),
+			Extra:      cloneMap(opts.Extra),
+			CreateTime: now.Unix(),
+			UpdateTime: now.Unix(),
+			ExpiresIn:  durationSeconds(timeout),
+			ExpiresAt:  now.Add(timeout),
+			Status:     StatusPending,
+		}
+		if shortKey.LoginID != "" {
+			shortKey.Status = StatusConfirmed
+		}
+		ok, err := m.saveIfAbsent(ctx, shortKey, timeout)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			return shortKey, nil
 		}
 	}
-	if key == "" {
-		return nil, fmt.Errorf("short key collision retry limit reached")
-	}
-	now := time.Now().Unix()
-	shortKey := &ShortKey{
-		Key:        key,
-		AuthType:   m.authType,
-		LoginID:    opts.LoginID,
-		Device:     opts.Device,
-		DeviceId:   opts.DeviceId,
-		Scene:      opts.Scene,
-		SourceApp:  opts.SourceApp,
-		TargetApp:  opts.TargetApp,
-		Scopes:     append([]string(nil), opts.Scopes...),
-		Extra:      cloneMap(opts.Extra),
-		CreateTime: now,
-		UpdateTime: now,
-		ExpiresIn:  int64(timeout.Seconds()),
-		Status:     StatusPending,
-	}
-	if shortKey.LoginID != "" {
-		shortKey.Status = StatusConfirmed
-	}
-	if err := m.save(ctx, shortKey, timeout); err != nil {
-		return nil, err
-	}
-	return shortKey, nil
+	return nil, fmt.Errorf("short key collision retry limit reached")
 }
 
 // Confirm confirms a pending short key. Confirm 确认待处理短 Key。
 func (m *Manager) Confirm(ctx context.Context, key string, opts ConfirmOptions) (*ShortKey, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	shortKey, err := m.get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
-	if err = m.checkUsable(shortKey); err != nil {
+	if err = m.checkUsable(shortKey, time.Now()); err != nil {
 		return nil, err
 	}
-	if shortKey.Status != StatusPending && shortKey.Status != StatusConfirmed {
-		return nil, ErrInvalidShortKey
+	if shortKey.Status != StatusPending {
+		return nil, ErrShortKeyMismatch
 	}
 	if opts.LoginID != "" {
 		shortKey.LoginID = opts.LoginID
@@ -240,8 +245,8 @@ func (m *Manager) Confirm(ctx context.Context, key string, opts ConfirmOptions) 
 	if opts.Device != "" {
 		shortKey.Device = opts.Device
 	}
-	if opts.DeviceId != "" {
-		shortKey.DeviceId = opts.DeviceId
+	if opts.DeviceID != "" {
+		shortKey.DeviceID = opts.DeviceID
 	}
 	if opts.Scopes != nil {
 		shortKey.Scopes = append([]string(nil), opts.Scopes...)
@@ -267,7 +272,7 @@ func (m *Manager) Validate(ctx context.Context, key string, opts ...ValidateOpti
 	if err != nil {
 		return nil, err
 	}
-	if err = m.checkUsable(shortKey); err != nil {
+	if err = m.checkUsable(shortKey, time.Now()); err != nil {
 		return nil, err
 	}
 	if shortKey.Status == StatusPending {
@@ -282,49 +287,61 @@ func (m *Manager) Validate(ctx context.Context, key string, opts ...ValidateOpti
 }
 
 // Consume validates and consumes a confirmed short key. Consume 校验并消费已确认短 Key。
+// Plain Storage provides only instance-local serialized consumption. 普通 Storage 仅提供当前实例内的串行消费。
 func (m *Manager) Consume(ctx context.Context, key string, opts ...ValidateOptions) (*ConsumeResult, error) {
-	if _, err := m.Validate(ctx, key, opts...); err != nil {
-		return nil, err
-	}
-	atomicStorage, ok := m.storage.(adapter.AtomicStorage)
-	if !ok {
-		return nil, derror.ErrStorageCapabilityUnsupported
-	}
-	value, err := atomicStorage.GetAndDelete(ctx, m.getKey(key))
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-	}
-	if value == nil {
-		return nil, ErrInvalidShortKey
-	}
-	shortKey, err := m.decode(value)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	shortKey, err := m.Validate(ctx, key, opts...)
 	if err != nil {
 		return nil, err
 	}
-	if err = m.checkUsable(shortKey); err != nil {
-		if ttl := remainingDuration(shortKey); ttl > 0 {
-			_ = m.save(ctx, shortKey, ttl)
+
+	// Prefer atomic removal and revalidate the value actually removed. 优先原子读删，并重新校验实际取出的载荷。
+	if atomicStorage, ok := m.storage.(adapter.AtomicStorage); ok {
+		value, err := atomicStorage.GetAndDelete(ctx, m.getKey(key))
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
-		return nil, err
-	}
-	if shortKey.Status == StatusPending {
-		if ttl := remainingDuration(shortKey); ttl > 0 {
-			_ = m.save(ctx, shortKey, ttl)
+		if value == nil {
+			return nil, ErrInvalidShortKey
 		}
-		return nil, ErrShortKeyPending
-	}
-	if len(opts) > 0 {
-		if err = checkConstraints(shortKey, opts[0]); err != nil {
+		shortKey, err = m.decode(value, key)
+		if err != nil {
+			return nil, err
+		}
+		if err = m.checkUsable(shortKey, time.Now()); err != nil {
 			if ttl := remainingDuration(shortKey); ttl > 0 {
 				_ = m.save(ctx, shortKey, ttl)
 			}
 			return nil, err
 		}
+		if shortKey.Status == StatusPending {
+			if ttl := remainingDuration(shortKey); ttl > 0 {
+				_ = m.save(ctx, shortKey, ttl)
+			}
+			return nil, ErrShortKeyPending
+		}
+		if len(opts) > 0 {
+			if err = checkConstraints(shortKey, opts[0]); err != nil {
+				if ttl := remainingDuration(shortKey); ttl > 0 {
+					_ = m.save(ctx, shortKey, ttl)
+				}
+				return nil, err
+			}
+		}
+	} else if err = m.storage.Delete(ctx, m.getKey(key)); err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	} else if err = m.checkUsable(shortKey, time.Now()); err != nil {
+		return nil, err
 	}
+
 	shortKey.Status = StatusConsumed
 	shortKey.UpdateTime = time.Now().Unix()
 	if ttl := remainingDuration(shortKey); ttl > 0 {
-		_ = m.save(ctx, shortKey, ttl)
+		if err = m.save(ctx, shortKey, ttl); err != nil {
+			return nil, err
+		}
 	}
 	return &ConsumeResult{ShortKey: shortKey}, nil
 }
@@ -334,12 +351,23 @@ func (m *Manager) Revoke(ctx context.Context, key string) error {
 	if key == "" {
 		return nil
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	shortKey, err := m.get(ctx, key)
 	if err != nil {
 		if errors.Is(err, ErrInvalidShortKey) {
 			return nil
 		}
 		return err
+	}
+	if err = m.checkUsable(shortKey, time.Now()); err != nil {
+		switch {
+		case errors.Is(err, ErrShortKeyConsumed), errors.Is(err, ErrShortKeyRevoked), errors.Is(err, ErrShortKeyExpired):
+			return nil
+		default:
+			return err
+		}
 	}
 	shortKey.Status = StatusRevoked
 	shortKey.UpdateTime = time.Now().Unix()
@@ -362,10 +390,8 @@ func (m *Manager) Status(ctx context.Context, key string) (Status, error) {
 		}
 		return StatusInvalid, err
 	}
-	if err = m.checkUsable(shortKey); err != nil {
+	if err = m.checkUsable(shortKey, time.Now()); err != nil {
 		switch {
-		case errors.Is(err, ErrShortKeyPending):
-			return StatusPending, nil
 		case errors.Is(err, ErrShortKeyConsumed):
 			return StatusConsumed, nil
 		case errors.Is(err, ErrShortKeyRevoked):
@@ -400,17 +426,68 @@ func (m *Manager) GetTTL(ctx context.Context, key string) (int64, error) {
 	}
 }
 
+// save serializes and persists short key state. save 序列化并持久化短 Key 状态。
 func (m *Manager) save(ctx context.Context, shortKey *ShortKey, timeout time.Duration) error {
 	encoded, err := m.serializer.Encode(shortKey)
 	if err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
+
+	// Account for encoding time before writing the remaining lifetime. 写入剩余有效期前计入编码耗时。
+	timeout, err = storageTimeout(shortKey, timeout)
+	if err != nil {
+		return err
+	}
+
 	if err = m.storage.Set(ctx, m.getKey(shortKey.Key), encoded, timeout); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 	return nil
 }
 
+// saveIfAbsent persists a short key only when its storage key is absent. saveIfAbsent 仅在存储键不存在时持久化短 Key。
+func (m *Manager) saveIfAbsent(ctx context.Context, shortKey *ShortKey, timeout time.Duration) (bool, error) {
+	encoded, err := m.serializer.Encode(shortKey)
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+	}
+
+	// Serialize creation with state transitions, including the consumption removal window. 将创建与状态流转串行化，覆盖消费读删期间的空键窗口。
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	key := m.getKey(shortKey.Key)
+	if atomicStorage, ok := m.storage.(adapter.AtomicStorage); ok {
+		timeout, err = storageTimeout(shortKey, timeout)
+		if err != nil {
+			return false, err
+		}
+		ok, err := atomicStorage.SetIfAbsent(ctx, key, encoded, timeout)
+		if err != nil {
+			return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
+		return ok, nil
+	}
+
+	// Preserve collision-check errors in the ordinary Get/Set fallback. 普通 Get/Set 回退流程保留碰撞检查错误。
+	existing, err := m.storage.Get(ctx, key)
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	if existing != nil {
+		return false, nil
+	}
+	timeout, err = storageTimeout(shortKey, timeout)
+	if err != nil {
+		return false, err
+	}
+	if err = m.storage.Set(ctx, key, encoded, timeout); err != nil {
+		return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	return true, nil
+}
+
+// get loads a short key by its credential value. get 根据凭证值加载短 Key。
 func (m *Manager) get(ctx context.Context, key string) (*ShortKey, error) {
 	if key == "" {
 		return nil, ErrInvalidShortKey
@@ -422,10 +499,11 @@ func (m *Manager) get(ctx context.Context, key string) (*ShortKey, error) {
 	if data == nil {
 		return nil, ErrInvalidShortKey
 	}
-	return m.decode(data)
+	return m.decode(data, key)
 }
 
-func (m *Manager) decode(value any) (*ShortKey, error) {
+// decode converts a stored value and verifies its storage identity. decode 转换存储值并校验其存储身份。
+func (m *Manager) decode(value any, key string) (*ShortKey, error) {
 	rawData, err := toBytes(value)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
@@ -434,10 +512,14 @@ func (m *Manager) decode(value any) (*ShortKey, error) {
 	if err = m.serializer.Decode(rawData, &shortKey); err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
+	if shortKey.Key != key || shortKey.AuthType != m.authType {
+		return nil, ErrInvalidShortKey
+	}
 	return &shortKey, nil
 }
 
-func (m *Manager) checkUsable(shortKey *ShortKey) error {
+// checkUsable validates short key state and expiration. checkUsable 校验短 Key 状态与有效期。
+func (m *Manager) checkUsable(shortKey *ShortKey, now time.Time) error {
 	if shortKey == nil || shortKey.Key == "" {
 		return ErrInvalidShortKey
 	}
@@ -452,16 +534,18 @@ func (m *Manager) checkUsable(shortKey *ShortKey) error {
 	default:
 		return ErrInvalidShortKey
 	}
-	if shortKey.ExpiresIn > 0 && time.Now().Unix() > shortKey.CreateTime+shortKey.ExpiresIn {
+	if expiresAt := expirationTime(shortKey); !expiresAt.IsZero() && !now.Before(expiresAt) {
 		return ErrShortKeyExpired
 	}
 	return nil
 }
 
+// getKey builds the storage key for a short key. getKey 构建短 Key 存储键。
 func (m *Manager) getKey(key string) string {
-	return m.keyPrefix + m.authType + KeySuffix + key
+	return utils.StorageNamespace(m.keyPrefix, m.authType) + KeySuffix + key
 }
 
+// checkConstraints validates short key binding constraints. checkConstraints 校验短 Key 绑定约束。
 func checkConstraints(shortKey *ShortKey, opts ValidateOptions) error {
 	if opts.LoginID != "" && shortKey.LoginID != opts.LoginID {
 		return ErrShortKeyMismatch
@@ -469,7 +553,7 @@ func checkConstraints(shortKey *ShortKey, opts ValidateOptions) error {
 	if opts.Device != "" && shortKey.Device != opts.Device {
 		return ErrShortKeyMismatch
 	}
-	if opts.DeviceId != "" && shortKey.DeviceId != opts.DeviceId {
+	if opts.DeviceID != "" && shortKey.DeviceID != opts.DeviceID {
 		return ErrShortKeyMismatch
 	}
 	if opts.Scene != "" && shortKey.Scene != opts.Scene {
@@ -484,18 +568,56 @@ func checkConstraints(shortKey *ShortKey, opts ValidateOptions) error {
 	return nil
 }
 
-func remainingDuration(shortKey *ShortKey) time.Duration {
-	if shortKey == nil || shortKey.ExpiresIn <= 0 {
-		return 0
+// expirationTime reads the precise deadline with compatibility for legacy payloads. expirationTime 读取精确截止时间，并兼容旧版载荷。
+func expirationTime(shortKey *ShortKey) time.Time {
+	if shortKey == nil {
+		return time.Time{}
 	}
-	expiresAt := time.Unix(shortKey.CreateTime+shortKey.ExpiresIn, 0)
-	ttl := time.Until(expiresAt)
+	if !shortKey.ExpiresAt.IsZero() {
+		return shortKey.ExpiresAt
+	}
+	if shortKey.ExpiresIn > 0 {
+		return time.Unix(shortKey.CreateTime+shortKey.ExpiresIn, 0)
+	}
+	return time.Time{}
+}
+
+// remainingDuration calculates the remaining short key lifetime. remainingDuration 计算短 Key 剩余有效期。
+func remainingDuration(shortKey *ShortKey) time.Duration {
+	ttl := time.Until(expirationTime(shortKey))
 	if ttl <= 0 {
 		return 0
 	}
 	return ttl
 }
 
+// storageTimeout caps writes at the precise deadline and rejects expired writes. storageTimeout 按精确截止时间限制写入 TTL，并拒绝过期写入。
+func storageTimeout(shortKey *ShortKey, timeout time.Duration) (time.Duration, error) {
+	if !shortKey.ExpiresAt.IsZero() {
+		ttl := remainingDuration(shortKey)
+		if ttl <= 0 {
+			return 0, ErrShortKeyExpired
+		}
+		if timeout <= 0 || ttl < timeout {
+			return ttl, nil
+		}
+	}
+	return timeout, nil
+}
+
+// durationSeconds rounds a positive duration up to whole seconds. durationSeconds 将正时长向上取整为秒。
+func durationSeconds(duration time.Duration) int64 {
+	seconds := duration / time.Second
+	if duration%time.Second != 0 {
+		seconds++
+	}
+	if seconds <= 0 {
+		return 1
+	}
+	return int64(seconds)
+}
+
+// generateKey creates a cryptographically secure short key. generateKey 生成密码学安全的短 Key。
 func generateKey(length int) (string, error) {
 	result := make([]byte, length)
 	max := big.NewInt(int64(len(alphabet)))
@@ -509,6 +631,7 @@ func generateKey(length int) (string, error) {
 	return string(result), nil
 }
 
+// toBytes converts supported storage values to bytes. toBytes 将受支持的存储值转换为字节切片。
 func toBytes(value any) ([]byte, error) {
 	switch v := value.(type) {
 	case string:
@@ -524,6 +647,7 @@ func toBytes(value any) ([]byte, error) {
 	}
 }
 
+// cloneMap copies extension data to avoid shared mutation. cloneMap 复制扩展数据以避免共享修改。
 func cloneMap(values map[string]any) map[string]any {
 	if len(values) == 0 {
 		return nil

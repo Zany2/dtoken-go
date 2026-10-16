@@ -10,14 +10,15 @@ import (
 
 // GFLogger implements the GoFrame logger adapter GoFrame 日志适配器实现
 type GFLogger struct {
-	ctx context.Context
-	l   *glog.Logger
+	ctx context.Context // ctx stores the default log context ctx 存储默认日志上下文。
+	l   *glog.Logger    // l stores the GoFrame logger instance l 存储 GoFrame 日志实例。
 }
 
 // Interface assertion keeps log contract checked at compile time 接口断言在编译期检查日志契约
 var _ adapter.Log = (*GFLogger)(nil)
 
 // NewGFLogger creates a GoFrame logger adapter 创建新的 GoFrame 日志适配器
+// The caller manages the supplied logger's configuration and resources; nil disables output. 调用方管理传入日志器的配置和资源，nil 表示禁用输出。
 func NewGFLogger(ctx context.Context, l *glog.Logger) *GFLogger {
 	if ctx == nil {
 		ctx = context.Background()

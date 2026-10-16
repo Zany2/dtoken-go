@@ -6,11 +6,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/derror"
+	"github.com/Zany2/dtoken-go/core/utils"
 )
 
 // Config defines nonce manager config Config 定义 Nonce 管理器配置
@@ -49,7 +49,6 @@ type NonceManager struct {
 	authType  string          // authType stores auth type authType 存储认证体系类型
 	keyPrefix string          // keyPrefix stores key prefix keyPrefix 存储可配置前缀
 	ttl       time.Duration   // ttl stores nonce ttl ttl 存储 Nonce 有效期
-	mu        sync.RWMutex    // mu guards concurrent access mu 保护并发读写
 	storage   adapter.Storage // storage stores storage adapter storage 存储存储适配器
 }
 
@@ -80,6 +79,11 @@ func NewNonceManager(authType, prefix string, storage adapter.Storage, ttl time.
 	}
 }
 
+// TTL returns the effective default nonce ttl. TTL 返回实际生效的默认 Nonce 有效期。
+func (nm *NonceManager) TTL() time.Duration {
+	return nm.ttl
+}
+
 // Generate creates nonce with default ttl Generate 使用默认有效期生成并存储 nonce
 func (nm *NonceManager) Generate(ctx context.Context) (string, error) {
 	return nm.GenerateWithTimeout(ctx, nm.ttl)
@@ -105,7 +109,7 @@ func (nm *NonceManager) GenerateWithTimeout(ctx context.Context, timeout time.Du
 	return nonce, nil
 }
 
-// GetTTL gets remaining nonce ttl GetTTL 获取 nonce 的剩余有效时间秒数
+// GetTTL returns remaining whole seconds, -2 when missing, or -1 without expiry. GetTTL 返回向下取整的剩余秒数，不存在返回 -2，永不过期返回 -1。
 func (nm *NonceManager) GetTTL(ctx context.Context, nonce string) (int64, error) {
 	if nonce == "" {
 		return -2, nil
@@ -123,7 +127,7 @@ func (nm *NonceManager) GetTTL(ctx context.Context, nonce string) (int64, error)
 	case ttl == adapter.TTLNoExpire:
 		return -1, nil
 	case ttl > 0:
-		return int64(ttl.Seconds()), nil
+		return int64(ttl / time.Second), nil
 	default:
 		return 0, nil
 	}
@@ -134,16 +138,16 @@ func (nm *NonceManager) Verify(ctx context.Context, nonce string) bool {
 	return nm.VerifyAndConsume(ctx, nonce) == nil
 }
 
-// VerifyAndConsume verifies nonce with error VerifyAndConsume 验证并消费 nonce 且在无效时返回错误
+// VerifyAndConsume verifies nonce with error VerifyAndConsume 验证并消费 nonce 且在无效时返回错误。
+// In distributed deployments, replay protection relies entirely on AtomicStorage.GetAndDelete being truly atomic (e.g. Redis GETDEL).
+// No process-local fallback is used because it cannot protect multiple instances.
+// 分布式部署下，防重放能力完全依赖 AtomicStorage.GetAndDelete 的原子性（如 Redis GETDEL），不会使用无法保护多实例的进程内回退方案。
 func (nm *NonceManager) VerifyAndConsume(ctx context.Context, nonce string) error {
 	if nonce == "" {
 		return derror.ErrInvalidNonce
 	}
 
 	key := nm.getNonceKey(nonce)
-
-	nm.mu.Lock()
-	defer nm.mu.Unlock()
 
 	atomicStorage, ok := nm.storage.(adapter.AtomicStorage)
 	if !ok {
@@ -169,13 +173,10 @@ func (nm *NonceManager) IsValid(ctx context.Context, nonce string) bool {
 
 	key := nm.getNonceKey(nonce)
 
-	nm.mu.RLock()
-	defer nm.mu.RUnlock()
-
 	return nm.storage.Exists(ctx, key)
 }
 
 // getNonceKey builds nonce storage key getNonceKey 获取 nonce 的存储键
 func (nm *NonceManager) getNonceKey(nonce string) string {
-	return nm.keyPrefix + nm.authType + NonceKeySuffix + nonce
+	return utils.StorageNamespace(nm.keyPrefix, nm.authType) + NonceKeySuffix + nonce
 }

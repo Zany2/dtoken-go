@@ -6,35 +6,46 @@ import (
 	"time"
 )
 
+// Storage TTL sentinel values 存储 TTL 哨兵值
 const (
 	// TTLNoExpire means the key exists without expiration. TTLNoExpire 表示键存在且永不过期。
 	TTLNoExpire = time.Duration(-1)
+
 	// TTLNotFound means the key does not exist. TTLNotFound 表示键不存在。
 	TTLNotFound = time.Duration(-2)
 )
 
 // Storage defines the minimal key-value contract used by core auth flows. Storage 定义核心鉴权流程使用的最小键值存储契约。
 type Storage interface {
-	// Set stores a key-value pair with optional expiration. Set 写入键值对，并可设置过期时间。
+	// Set stores a key-value pair with optional expiration; non-positive expiration means no expiry. Set 写入键值对，并可设置过期时间；非正过期时间表示永不过期。
 	Set(ctx context.Context, key string, value any, expiration time.Duration) error
+
 	// Get gets value by key and returns nil, nil when missing. Get 根据键读取值，键不存在时返回 nil, nil。
 	Get(ctx context.Context, key string) (any, error)
-	// Delete deletes one or more keys. Delete 删除一个或多个键。
+
+	// Delete deletes one or more keys; an empty key list is a no-op. Delete 删除一个或多个键；键列表为空时不执行任何操作。
 	Delete(ctx context.Context, keys ...string) error
+
 	// Exists checks whether key exists. Exists 检查键是否存在。
 	Exists(ctx context.Context, key string) bool
-	// Expire sets key expiration and returns an error when the key is missing. Expire 设置键过期时间，键不存在时返回错误。
+
+	// Expire sets key expiration and returns an error when the key is missing; non-positive expiration removes the key immediately. Expire 设置键过期时间，键不存在时返回错误；非正过期时间会立即删除键。
 	Expire(ctx context.Context, key string, expiration time.Duration) error
+
 	// TTL gets remaining lifetime of key using TTL sentinel values. TTL 获取键剩余生存时间，并使用 TTL 哨兵值表达特殊状态。
 	TTL(ctx context.Context, key string) (time.Duration, error)
+
 	// Ping checks whether storage is reachable. Ping 检查存储是否可达。
 	Ping(ctx context.Context) error
 }
 
-// AtomicStorage defines optional storage operations that must be atomic. AtomicStorage 定义必须具备原子性的可选存储操作。
+// AtomicStorage defines optional storage operations with atomic primary-key semantics. AtomicStorage 定义具备主键原子语义的可选存储操作。
 type AtomicStorage interface {
-	// GetAndDelete gets and deletes key atomically. GetAndDelete 原子地读取并删除键。
+	// GetAndDelete gets and deletes key atomically. GetAndDelete 原子读取并删除键。
 	GetAndDelete(ctx context.Context, key string) (any, error)
+
+	// SetIfAbsent stores a key only when it does not exist; non-positive expiration means no expiry. SetIfAbsent 仅在键不存在时写入键值；非正过期时间表示永不过期。
+	SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error)
 }
 
 // ScannerStorage defines optional key scanning capability. ScannerStorage 定义可选的键扫描能力。
@@ -51,8 +62,15 @@ type AdminStorage interface {
 
 // FullStorage groups all built-in storage capabilities. FullStorage 组合全部内置存储能力。
 type FullStorage interface {
+	// Storage provides the base key-value operations Storage 提供基础键值操作
 	Storage
+
+	// AtomicStorage provides atomic key operations AtomicStorage 提供原子键操作
 	AtomicStorage
+
+	// ScannerStorage provides key scanning operations ScannerStorage 提供键扫描操作
 	ScannerStorage
+
+	// AdminStorage provides administrative operations AdminStorage 提供管理操作
 	AdminStorage
 }

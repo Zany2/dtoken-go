@@ -7,7 +7,18 @@ import (
 	"testing"
 
 	"github.com/Zany2/dtoken-go/core/derror"
+	"github.com/Zany2/dtoken-go/core/manager"
 )
+
+// TestWithManagerOption verifies explicit manager injection is retained by options. TestWithManagerOption 验证选项会保留显式注入的 Manager。
+func TestWithManagerOption(t *testing.T) {
+	expected := &manager.Manager{}
+	options := defaultAuthOptions()
+	WithManager(expected)(options)
+	if options.Manager != expected {
+		t.Fatalf("Manager = %p, want %p", options.Manager, expected)
+	}
+}
 
 // TestAuthMiddlewareUsesTokenExpiredLoginError verifies auth failure semantics TestAuthMiddlewareUsesTokenExpiredLoginError 验证认证失败语义
 func TestAuthMiddlewareUsesTokenExpiredLoginError(t *testing.T) {

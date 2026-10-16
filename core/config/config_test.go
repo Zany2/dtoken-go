@@ -220,6 +220,13 @@ func TestConfigCloneDeepCopiesCookieConfig(t *testing.T) {
 	}
 }
 
+// TestConfigCloneNilReturnsNil verifies nil config clone stays nil TestConfigCloneNilReturnsNil 验证 nil 配置克隆后仍为 nil
+func TestConfigCloneNilReturnsNil(t *testing.T) {
+	if clone := (*Config)(nil).Clone(); clone != nil {
+		t.Fatalf("Clone() = %+v, want nil", clone)
+	}
+}
+
 // TestConfigClonePreservesNilCookieConfig verifies nil cookie config stays nil TestConfigClonePreservesNilCookieConfig 验证 nil Cookie 配置克隆后仍为 nil
 func TestConfigClonePreservesNilCookieConfig(t *testing.T) {
 	cfg := DefaultConfig()

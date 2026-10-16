@@ -15,6 +15,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/ticket"
 )
 
+// TestManagerAccessors verifies manager component and optional-module accessors. TestManagerAccessors 验证 Manager 组件与可选模块访问器。
 func TestManagerAccessors(t *testing.T) {
 	mgr := newTestManager(t, nil)
 
@@ -56,6 +57,7 @@ func TestManagerAccessors(t *testing.T) {
 	}
 }
 
+// TestManagerLoginRenewAndTokenDetails verifies login renewal and token metadata queries. TestManagerLoginRenewAndTokenDetails 验证登录续期与 Token 元数据查询。
 func TestManagerLoginRenewAndTokenDetails(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -74,12 +76,19 @@ func TestManagerLoginRenewAndTokenDetails(t *testing.T) {
 	if device != "web" {
 		t.Fatalf("GetDevice() = %q, want web", device)
 	}
-	deviceID, err := mgr.GetDeviceId(ctx, token)
+	deviceID, err := mgr.GetDeviceID(ctx, token)
 	if err != nil {
-		t.Fatalf("GetDeviceId() error = %v", err)
+		t.Fatalf("GetDeviceID() error = %v", err)
 	}
 	if deviceID != "browser-1" {
-		t.Fatalf("GetDeviceId() = %q, want browser-1", deviceID)
+		t.Fatalf("GetDeviceID() = %q, want browser-1", deviceID)
+	}
+	combinedDevice, combinedDeviceID, err := mgr.GetDeviceAndDeviceID(ctx, token)
+	if err != nil {
+		t.Fatalf("GetDeviceAndDeviceID() error = %v", err)
+	}
+	if combinedDevice != "web" || combinedDeviceID != "browser-1" {
+		t.Fatalf("GetDeviceAndDeviceID() = %q/%q, want web/browser-1", combinedDevice, combinedDeviceID)
 	}
 	createdAt, err := mgr.GetTokenCreateTime(ctx, token)
 	if err != nil {
@@ -118,6 +127,7 @@ func TestManagerLoginRenewAndTokenDetails(t *testing.T) {
 	}
 }
 
+// TestManagerLogoutKickoutReplaceScopes verifies logout, kickout, and replacement across terminal scopes. TestManagerLogoutKickoutReplaceScopes 验证不同终端作用域下的登出、踢下线与顶替操作。
 func TestManagerLogoutKickoutReplaceScopes(t *testing.T) {
 	ctx := context.Background()
 
@@ -179,12 +189,13 @@ func TestManagerLogoutKickoutReplaceScopes(t *testing.T) {
 		if err := mgr.KickoutByDevice(ctx, "u", " "); !errors.Is(err, derror.ErrInvalidParam) {
 			t.Fatalf("KickoutByDevice(empty device) error = %v, want ErrInvalidParam", err)
 		}
-		if err := mgr.ReplaceByDeviceAndDeviceId(ctx, "u", "web"); !errors.Is(err, derror.ErrInvalidParam) {
-			t.Fatalf("ReplaceByDeviceAndDeviceId(missing id) error = %v, want ErrInvalidParam", err)
+		if err := mgr.ReplaceByDeviceAndDeviceID(ctx, "u", "web"); !errors.Is(err, derror.ErrInvalidParam) {
+			t.Fatalf("ReplaceByDeviceAndDeviceID(missing id) error = %v, want ErrInvalidParam", err)
 		}
 	})
 }
 
+// TestManagerDisableBoundaries verifies account, service, and device disable boundaries. TestManagerDisableBoundaries 验证账号、服务与设备封禁边界。
 func TestManagerDisableBoundaries(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, nil)
@@ -238,27 +249,27 @@ func TestManagerDisableBoundaries(t *testing.T) {
 		t.Fatalf("GetDisableDeviceInfo(after untie) error = %v, want ErrDeviceNotDisabled", err)
 	}
 
-	if err = mgr.DisableDeviceAndDeviceId(ctx, "device-user", "web", "a", time.Minute); err != nil {
-		t.Fatalf("DisableDeviceAndDeviceId() error = %v", err)
+	if err = mgr.DisableDeviceAndDeviceID(ctx, "device-user", "web", "a", time.Minute); err != nil {
+		t.Fatalf("DisableDeviceAndDeviceID() error = %v", err)
 	}
-	if !mgr.IsDisableDeviceAndDeviceId(ctx, "device-user", "web", "a") {
-		t.Fatal("IsDisableDeviceAndDeviceId() = false, want true")
+	if !mgr.IsDisableDeviceAndDeviceID(ctx, "device-user", "web", "a") {
+		t.Fatal("IsDisableDeviceAndDeviceID() = false, want true")
 	}
-	if err = mgr.CheckDisableDeviceAndDeviceId(ctx, "device-user", "web", "a"); !errors.Is(err, derror.ErrDeviceDisabled) {
-		t.Fatalf("CheckDisableDeviceAndDeviceId() error = %v, want ErrDeviceDisabled", err)
+	if err = mgr.CheckDisableDeviceAndDeviceID(ctx, "device-user", "web", "a"); !errors.Is(err, derror.ErrDeviceDisabled) {
+		t.Fatalf("CheckDisableDeviceAndDeviceID() error = %v, want ErrDeviceDisabled", err)
 	}
-	concreteInfo, err := mgr.GetDisableDeviceAndDeviceIdInfo(ctx, "device-user", "web", "a")
+	concreteInfo, err := mgr.GetDisableDeviceAndDeviceIDInfo(ctx, "device-user", "web", "a")
 	if err != nil {
-		t.Fatalf("GetDisableDeviceAndDeviceIdInfo() error = %v", err)
+		t.Fatalf("GetDisableDeviceAndDeviceIDInfo() error = %v", err)
 	}
-	if concreteInfo.Device != "web" || concreteInfo.DeviceId != "a" {
+	if concreteInfo.Device != "web" || concreteInfo.DeviceID != "a" {
 		t.Fatalf("concrete device disable info = %+v, want web/a", concreteInfo)
 	}
-	if err = mgr.UntieDeviceAndDeviceId(ctx, "device-user", "web", "a"); err != nil {
-		t.Fatalf("UntieDeviceAndDeviceId() error = %v", err)
+	if err = mgr.UntieDeviceAndDeviceID(ctx, "device-user", "web", "a"); err != nil {
+		t.Fatalf("UntieDeviceAndDeviceID() error = %v", err)
 	}
-	if ttl, err = mgr.GetDisableDeviceAndDeviceIdTTL(ctx, "device-user", "web", "a"); err != nil || ttl != -2 {
-		t.Fatalf("GetDisableDeviceAndDeviceIdTTL(after untie) = %d, %v, want -2, nil", ttl, err)
+	if ttl, err = mgr.GetDisableDeviceAndDeviceIDTTL(ctx, "device-user", "web", "a"); err != nil || ttl != -2 {
+		t.Fatalf("GetDisableDeviceAndDeviceIDTTL(after untie) = %d, %v, want -2, nil", ttl, err)
 	}
 
 	for name, testErr := range map[string]error{
@@ -267,13 +278,13 @@ func TestManagerDisableBoundaries(t *testing.T) {
 		"UntieService empty service":            mgr.UntieService(ctx, "u", " "),
 		"CheckDisableService empty service":     mgr.CheckDisableService(ctx, "u", " "),
 		"CheckDisableDevice empty device":       mgr.CheckDisableDevice(ctx, "u", " "),
-		"CheckDisableConcrete empty device id":  mgr.CheckDisableDeviceAndDeviceId(ctx, "u", "web", " "),
+		"CheckDisableConcrete empty device id":  mgr.CheckDisableDeviceAndDeviceID(ctx, "u", "web", " "),
 		"GetDisableServiceInfo empty service":   func() error { _, err := mgr.GetDisableServiceInfo(ctx, "u", " "); return err }(),
 		"GetDisableDeviceInfo empty device":     func() error { _, err := mgr.GetDisableDeviceInfo(ctx, "u", " "); return err }(),
-		"GetDisableConcreteInfo empty device":   func() error { _, err := mgr.GetDisableDeviceAndDeviceIdInfo(ctx, "u", " ", "a"); return err }(),
+		"GetDisableConcreteInfo empty device":   func() error { _, err := mgr.GetDisableDeviceAndDeviceIDInfo(ctx, "u", " ", "a"); return err }(),
 		"GetDisableServiceTTL empty service":    func() error { _, err := mgr.GetDisableServiceTTL(ctx, "u", " "); return err }(),
 		"GetDisableDeviceTTL empty device":      func() error { _, err := mgr.GetDisableDeviceTTL(ctx, "u", " "); return err }(),
-		"GetDisableConcreteTTL empty device id": func() error { _, err := mgr.GetDisableDeviceAndDeviceIdTTL(ctx, "u", "web", " "); return err }(),
+		"GetDisableConcreteTTL empty device id": func() error { _, err := mgr.GetDisableDeviceAndDeviceIDTTL(ctx, "u", "web", " "); return err }(),
 	} {
 		if !errors.Is(testErr, derror.ErrInvalidParam) {
 			t.Fatalf("%s error = %v, want ErrInvalidParam", name, testErr)
@@ -281,6 +292,7 @@ func TestManagerDisableBoundaries(t *testing.T) {
 	}
 }
 
+// TestManagerOptionalModulesDisabled verifies disabled optional modules fail explicitly. TestManagerOptionalModulesDisabled 验证未启用的可选模块会明确失败。
 func TestManagerOptionalModulesDisabled(t *testing.T) {
 	ctx := context.Background()
 	mgr := newBareTestManager(t)
@@ -358,6 +370,7 @@ func TestManagerOptionalModulesDisabled(t *testing.T) {
 	}
 }
 
+// TestManagerNonceFacade verifies nonce generation, validation, consumption, and TTL access. TestManagerNonceFacade 验证 Nonce 生成、校验、消费与 TTL 查询。
 func TestManagerNonceFacade(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithNonce(t)

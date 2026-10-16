@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"strconv"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
@@ -26,17 +28,17 @@ type Config struct {
 	Port int
 	// Password specifies the Redis auth password Redis 认证密码，若未设置鉴权可留空
 	Password string
-	// Database specifies the Redis database index Redis 数据库索引（0 到 15），默认使用 0
+	// Database specifies the Redis database index; zero selects the default database. Database 指定 Redis 数据库索引；零值选择默认数据库。
 	Database int
-	// PoolSize specifies the maximum active connections 连接池中最大活跃连接数，影响并发性能；建议根据业务负载调整
+	// PoolSize specifies the base connection pool size; zero uses the go-redis default. PoolSize 指定基础连接池大小；零值使用 go-redis 默认值。
 	PoolSize int
-	// DialTimeout specifies the TCP dial timeout 建立 TCP 连接的超时时间，0 表示无限制（不推荐）
+	// DialTimeout specifies the TCP dial timeout; zero uses the go-redis default. DialTimeout 指定 TCP 建连超时；零值使用 go-redis 默认值。
 	DialTimeout time.Duration
-	// ReadTimeout specifies the Redis read timeout 从 Redis 读取响应的超时时间，0 表示无限制
+	// ReadTimeout specifies the Redis read timeout using go-redis duration semantics. ReadTimeout 使用 go-redis 时长语义指定 Redis 读取超时。
 	ReadTimeout time.Duration
-	// WriteTimeout specifies the Redis write timeout 向 Redis 发送命令的超时时间，0 表示无限制
+	// WriteTimeout specifies the Redis write timeout using go-redis duration semantics. WriteTimeout 使用 go-redis 时长语义指定 Redis 写入超时。
 	WriteTimeout time.Duration
-	// PoolTimeout specifies the wait timeout for pool acquisition 从连接池获取连接时的等待超时时间
+	// PoolTimeout specifies the wait timeout for pool acquisition; zero uses the go-redis default. PoolTimeout 指定连接池等待超时；零值使用 go-redis 默认值。
 	PoolTimeout time.Duration
 	// OperationTimeout specifies the timeout for each storage operation 每个存储操作（如 Get/Set/Delete）的上下文超时时间。
 	OperationTimeout time.Duration
@@ -49,9 +51,11 @@ type Storage struct {
 }
 
 // Interface assertion keeps storage contract checked at compile time 接口断言在编译期检查存储契约
-var _ adapter.Storage = (*Storage)(nil)
-var _ adapter.AtomicStorage = (*Storage)(nil)
-var _ adapter.FullStorage = (*Storage)(nil)
+var (
+	_ adapter.Storage       = (*Storage)(nil)
+	_ adapter.AtomicStorage = (*Storage)(nil)
+	_ adapter.FullStorage   = (*Storage)(nil)
+)
 
 // NewStorage creates storage from a Redis URL 通过 Redis URL 创建存储
 func NewStorage(url string) (*Storage, error) {
@@ -59,7 +63,16 @@ func NewStorage(url string) (*Storage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse redis url: %w", err)
 	}
+	if opts.PoolSize < 0 {
+		return nil, fmt.Errorf("redis pool size must not be negative: %d", opts.PoolSize)
+	}
+	if opts.DB < 0 {
+		return nil, fmt.Errorf("redis database must not be negative: %d", opts.DB)
+	}
 	opTimeout := 3 * time.Second
+
+	// Apply operation deadlines to network reads and writes. 将操作截止时间应用于网络读写。
+	opts.ContextTimeoutEnabled = true
 
 	client := redis.NewClient(opts)
 	pingCtx, cancel := context.WithTimeout(context.Background(), opTimeout)
@@ -82,6 +95,12 @@ func NewStorageFromConfig(cfg *Config) (*Storage, error) {
 	if cfg == nil {
 		return nil, errors.New("redis config is nil")
 	}
+	if cfg.PoolSize < 0 {
+		return nil, fmt.Errorf("redis pool size must not be negative: %d", cfg.PoolSize)
+	}
+	if cfg.Database < 0 {
+		return nil, fmt.Errorf("redis database must not be negative: %d", cfg.Database)
+	}
 
 	opTimeout := cfg.OperationTimeout
 	if opTimeout <= 0 {
@@ -90,16 +109,7 @@ func NewStorageFromConfig(cfg *Config) (*Storage, error) {
 	pingCtx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
 
-	client := redis.NewClient(&redis.Options{
-		Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
-		Password:     cfg.Password,
-		DB:           cfg.Database,
-		PoolSize:     cfg.PoolSize,
-		DialTimeout:  cfg.DialTimeout,
-		ReadTimeout:  cfg.ReadTimeout,
-		WriteTimeout: cfg.WriteTimeout,
-		PoolTimeout:  cfg.PoolTimeout,
-	})
+	client := redis.NewClient(redisOptionsFromConfig(cfg))
 
 	if err := client.Ping(pingCtx).Err(); err != nil {
 		_ = client.Close()
@@ -110,6 +120,26 @@ func NewStorageFromConfig(cfg *Config) (*Storage, error) {
 		client:           client,
 		operationTimeout: opTimeout,
 	}, nil
+}
+
+// redisOptionsFromConfig maps storage configuration without mutating the caller's value. redisOptionsFromConfig 映射存储配置且不修改调用方传入值。
+func redisOptionsFromConfig(cfg *Config) *redis.Options {
+	host := cfg.Host
+	if len(host) >= 2 && host[0] == '[' && host[len(host)-1] == ']' {
+		host = host[1 : len(host)-1]
+	}
+
+	return &redis.Options{
+		Addr:                  net.JoinHostPort(host, strconv.Itoa(cfg.Port)),
+		Password:              cfg.Password,
+		DB:                    cfg.Database,
+		PoolSize:              cfg.PoolSize,
+		DialTimeout:           cfg.DialTimeout,
+		ReadTimeout:           cfg.ReadTimeout,
+		WriteTimeout:          cfg.WriteTimeout,
+		PoolTimeout:           cfg.PoolTimeout,
+		ContextTimeoutEnabled: true,
+	}
 }
 
 // NewStorageFromClient creates storage from an existing Redis client 从已有的 Redis 客户端创建存储
@@ -168,6 +198,17 @@ func (s *Storage) GetAndDelete(ctx context.Context, key string) (any, error) {
 	return val, nil
 }
 
+// SetIfAbsent stores a key only when it does not exist 仅当键不存在时写入
+func (s *Storage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	if err := s.ensureReady(); err != nil {
+		return false, err
+	}
+	ctx, cancel := s.withOperationTimeout(ctx)
+	defer cancel()
+
+	return s.client.SetNX(ctx, key, value, normalizeSetExpiration(expiration)).Result()
+}
+
 // Delete removes keys 删除键
 func (s *Storage) Delete(ctx context.Context, keys ...string) error {
 	if len(keys) == 0 {
@@ -213,6 +254,7 @@ func (s *Storage) Keys(ctx context.Context, pattern string) ([]string, error) {
 	var (
 		cursor uint64
 		result = make([]string, 0)
+		seen   = make(map[string]struct{})
 	)
 
 	for {
@@ -220,7 +262,14 @@ func (s *Storage) Keys(ctx context.Context, pattern string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, keys...)
+
+		// SCAN may repeat keys across pages; expose each key only once. SCAN 可能跨页重复返回键，对外只保留一次。
+		for _, key := range keys {
+			if _, exists := seen[key]; !exists {
+				seen[key] = struct{}{}
+				result = append(result, key)
+			}
+		}
 		cursor = next
 		if cursor == 0 {
 			break

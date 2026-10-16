@@ -5,34 +5,47 @@ import (
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/config"
+	"github.com/Zany2/dtoken-go/core/derror"
 )
 
-// LoginOptions describes one login operation LoginOptions 描述一次登录操作
+// LoginOptions describes one login operation LoginOptions 描述一次登录操作。
 type LoginOptions struct {
 	// LoginID stores the subject id LoginID 存储登录主体 ID
 	LoginID string `json:"loginId"`
+
 	// Device stores the device type Device 存储设备类型
 	Device string `json:"device"`
+
 	// DeviceID stores the concrete device id DeviceID 存储具体设备 ID
 	DeviceID string `json:"deviceId"`
-	// Timeout overrides token timeout for this login Timeout 覆盖本次登录的 token 有效期
+
+	// Timeout overrides token timeout when positive; otherwise the global timeout applies. Timeout 为正数时覆盖本次 Token 有效期，否则沿用全局配置。
 	Timeout time.Duration `json:"timeout"`
-	// ActiveTimeout overrides active timeout for this token ActiveTimeout 覆盖本次 token 的活跃超时
+
+	// ActiveTimeout overrides inactivity timeout; zero inherits config and negative values disable it. ActiveTimeout 覆盖活跃超时；零沿用配置，负数表示不限制。
 	ActiveTimeout time.Duration `json:"activeTimeout"`
-	// Token uses a pre-created token value Token 使用预生成 token 值
+
+	// Token uses a pre-created token value Token 使用预生成的 token。
 	Token string `json:"token"`
-	// Extra stores token extension data Extra 存储 token 扩展数据
+
+	// Extra stores token extension data supported by the configured codec. Extra 存储当前编解码器支持的 Token 扩展数据。
 	Extra map[string]any `json:"extra,omitempty"`
-	// TerminalExtra stores terminal extension data TerminalExtra 存储终端扩展数据
+
+	// TerminalExtra stores terminal extension data supported by the configured codec. TerminalExtra 存储当前编解码器支持的终端扩展数据。
 	TerminalExtra map[string]any `json:"terminalExtra,omitempty"`
-	// IsConcurrent overrides concurrent login switch IsConcurrent 覆盖并发登录开关
+
+	// IsConcurrent overrides concurrent login switch IsConcurrent 覆盖并发登录开关。
 	IsConcurrent *bool `json:"isConcurrent,omitempty"`
-	// IsShare overrides shared token switch IsShare 覆盖共享 token 开关
+
+	// IsShare overrides shared token reuse. Reuse is skipped when Token, Timeout, ActiveTimeout, Extra, or TerminalExtra is set. IsShare 控制共享 Token 复用；设置 Token、Timeout、ActiveTimeout、Extra 或 TerminalExtra 时跳过复用。
 	IsShare *bool `json:"isShare,omitempty"`
-	// MaxLoginCount overrides max login count MaxLoginCount 覆盖最大登录数量
+
+	// MaxLoginCount overrides max login count MaxLoginCount 覆盖最大登录数。
 	MaxLoginCount *int64 `json:"maxLoginCount,omitempty"`
-	// ReplacedLoginExitMode overrides non-concurrent strategy ReplacedLoginExitMode 覆盖非并发登录处理策略
+
+	// ReplacedLoginExitMode overrides non-concurrent strategy ReplacedLoginExitMode 覆盖非并发登录处理策略。
 	ReplacedLoginExitMode *config.ReplacedLoginExitMode `json:"replacedLoginExitMode,omitempty"`
+
 	// OverflowLogoutMode overrides overflow terminal mode OverflowLogoutMode 覆盖超限终端处理模式
 	OverflowLogoutMode *config.LogoutMode `json:"overflowLogoutMode,omitempty"`
 }
@@ -40,35 +53,88 @@ type LoginOptions struct {
 // TerminateAction defines terminal operation behavior TerminateAction 定义终端操作行为
 type TerminateAction string
 
+// Terminal operation actions 终端操作行为。
 const (
 	// TerminateActionLogout deletes terminal token TerminateActionLogout 删除终端 token
 	TerminateActionLogout TerminateAction = "logout"
+
 	// TerminateActionKickout marks terminal as kicked out TerminateActionKickout 标记终端被踢下线
 	TerminateActionKickout TerminateAction = "kickout"
-	// TerminateActionReplace marks terminal as replaced TerminateActionReplace 标记终端被顶替
+
+	// TerminateActionReplace marks terminal as replaced TerminateActionReplace 标记终端被顶下线
 	TerminateActionReplace TerminateAction = "replace"
 )
 
-// TerminateOptions describes one terminal operation TerminateOptions 描述一次终端下线操作
+// TerminateOptions describes one terminal operation TerminateOptions 描述一次终端下线操作。
 type TerminateOptions struct {
 	// Action stores terminal operation behavior Action 存储终端操作行为
 	Action TerminateAction `json:"action"`
+
 	// LoginID stores the subject id LoginID 存储登录主体 ID
 	LoginID string `json:"loginId"`
+
 	// Token stores the target token Token 存储目标 token
 	Token string `json:"token"`
+
 	// Device stores target device type Device 存储目标设备类型
 	Device string `json:"device"`
+
 	// DeviceID stores target concrete device id DeviceID 存储目标具体设备 ID
 	DeviceID string `json:"deviceId"`
 }
 
+// loginPolicy stores the effective login policy for one login call. loginPolicy 存储单次登录最终生效的登录策略。
 type loginPolicy struct {
-	isConcurrent          bool
-	isShare               bool
-	maxLoginCount         int64
-	replacedLoginExitMode config.ReplacedLoginExitMode
-	overflowLogoutMode    config.LogoutMode
+	isConcurrent          bool                         // isConcurrent controls whether multiple terminals may coexist. isConcurrent 控制是否允许多端共存。
+	isShare               bool                         // isShare controls whether same-device login may reuse a token. isShare 控制同设备登录是否可复用 Token。
+	maxLoginCount         int64                        // maxLoginCount limits terminal count in the configured scope. maxLoginCount 限制配置作用域内的终端数量。
+	replacedLoginExitMode config.ReplacedLoginExitMode // replacedLoginExitMode controls non-concurrent replacement behavior. replacedLoginExitMode 控制非并发登录的顶替行为。
+	overflowLogoutMode    config.LogoutMode            // overflowLogoutMode controls how overflowed terminals are retired. overflowLogoutMode 控制超限终端的下线方式。
+}
+
+// loginInternalOptions carries manager-only login controls. loginInternalOptions 承载 manager 内部登录控制参数。
+type loginInternalOptions struct {
+	skipConcurrencyControl bool   // skipConcurrencyControl skips login concurrency handling. skipConcurrencyControl 跳过登录并发策略处理。
+	accessID               string // accessID binds follow-up work to this fresh login before callbacks run. accessID 在回调执行前将后续操作绑定到本次新登录。
+}
+
+// concurrencyResult describes the outcome of concurrency handling. concurrencyResult 描述并发策略处理结果。
+type concurrencyResult struct {
+	reuseToken       string                   // reuseToken stores a shared token when login can reuse one. reuseToken 保存可复用的共享 Token。
+	handled          bool                     // handled reports whether concurrency logic already took an action. handled 表示并发逻辑是否已经处理。
+	destroyedSession bool                     // destroyedSession reports whether the whole old session was removed. destroyedSession 表示是否移除了整个旧会话。
+	terminalEvents   []terminalLifecycleEvent // terminalEvents stores terminal lifecycle events emitted after releasing the login lock. terminalEvents 保存登录锁释放后触发的终端生命周期事件。
+}
+
+// terminalLifecycleEvent describes one terminal state change caused by concurrency handling. terminalLifecycleEvent 描述并发处理导致的一次终端状态变更。
+type terminalLifecycleEvent struct {
+	terminal TerminalInfo // terminal stores the affected terminal. terminal 保存受影响终端。
+	state    TokenState   // state stores the resulting terminal state. state 保存终端最终状态。
+}
+
+// validateLoginPolicyOverrides validates per-login policy overrides. validateLoginPolicyOverrides 校验单次登录策略覆盖项。
+func validateLoginPolicyOverrides(opts LoginOptions) error {
+	if opts.MaxLoginCount != nil && *opts.MaxLoginCount != config.NoLimit && *opts.MaxLoginCount <= 0 {
+		return derror.ErrInvalidParam
+	}
+
+	if opts.ReplacedLoginExitMode != nil {
+		switch *opts.ReplacedLoginExitMode {
+		case config.ReplacedLoginExitModeOldDevice, config.ReplacedLoginExitModeNewDevice:
+		default:
+			return derror.ErrInvalidParam
+		}
+	}
+
+	if opts.OverflowLogoutMode != nil {
+		switch *opts.OverflowLogoutMode {
+		case config.LogoutModeLogout, config.LogoutModeKickout, config.LogoutModeReplaced:
+		default:
+			return derror.ErrInvalidParam
+		}
+	}
+
+	return nil
 }
 
 // resolveLoginPolicy merges global config with per-login overrides resolveLoginPolicy 合并全局配置和单次登录覆盖项

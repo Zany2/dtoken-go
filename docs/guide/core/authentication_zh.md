@@ -18,14 +18,18 @@ import (
 )
 
 func initDToken() {
-    dtoken.SetManager(
+    if _, err := dtoken.BuildAndSetManager(
         defaults.NewBuilder().
-            SetStorage(memory.NewStorage()).
-            Build(),
-    )
+            SetStorage(memory.NewStorage()),
+    ); err != nil {
+        panic(err)
+    }
 }
 
 func main() {
+    initDToken()
+    defer dtoken.DeleteAllManager()
+
     ctx := context.Background()
     token, _ := dtoken.Login(ctx, "10001")
     _ = token
@@ -69,6 +73,8 @@ err := dtoken.LoginByToken(ctx, token)
 
 `LoginByToken()` 会在当前 token 仍然有效时，异步续期 token、session、活跃时间等相关信息。
 
+自动续期使用存储返回的精确剩余时长比较阈值；不足一秒但尚未过期的 Token 仍可续期。共享登录会使此前排队的维护任务失效，防止旧任务覆盖较新的活跃时间。有限期 Token 若在实际续期前过期，不会发送续期成功事件。
+
 ## 检查登录状态
 
 ```go
@@ -93,6 +99,8 @@ loginID, err := dtoken.GetLoginID(ctx, token)
 
 ### 获取 Token 信息
 
+`GetTokenInfo` 读取已存储的元数据，成功返回不代表登录态有效；它不检查账号或设备封禁、活跃超时及 Session 有效性。判断登录态请使用 `CheckLogin` 或 `IntrospectToken`。`GetLoginID` 等身份查询会同时校验 Token 和账号 Session。
+
 ```go
 ctx := context.Background()
 
@@ -101,18 +109,24 @@ if err == nil {
     fmt.Println("认证体系:", info.AuthType)
     fmt.Println("登录 ID:", info.LoginID)
     fmt.Println("设备类型:", info.Device)
-    fmt.Println("设备 ID:", info.DeviceId)
+    fmt.Println("设备 ID:", info.DeviceID)
     fmt.Println("创建时间:", info.CreateTime)
+    fmt.Println("有效期:", info.Timeout)
+    fmt.Println("不活跃超时:", info.ActiveTimeout)
+    fmt.Println("扩展数据:", info.Extra)
 }
 ```
 
-当前 `TokenInfo` 只包含：
+当前 `TokenInfo` 包含：
 
 - `AuthType`
 - `LoginID`
 - `Device`
-- `DeviceId`
+- `DeviceID`
 - `CreateTime`
+- `Timeout`（秒）
+- `ActiveTimeout`（秒；`0` 表示继承 Manager 配置）
+- `Extra`
 
 ### 获取 Token 其他信息
 
@@ -120,7 +134,7 @@ if err == nil {
 ctx := context.Background()
 
 device, err := dtoken.GetDevice(ctx, token)
-deviceId, err := dtoken.GetDeviceId(ctx, token)
+deviceID, err := dtoken.GetDeviceID(ctx, token)
 createTime, err := dtoken.GetTokenCreateTime(ctx, token)
 ttl, err := dtoken.GetTokenTTL(ctx, token)
 ```
@@ -147,7 +161,7 @@ err := dtoken.LogoutByLoginID(ctx, "10001")
 err = dtoken.LogoutByDevice(ctx, "10001", "web")
 
 // 登出指定账号下某个设备类型 + 设备 ID 的终端
-err = dtoken.LogoutByDeviceAndDeviceId(ctx, "10001", "app", "ios-iphone-15")
+err = dtoken.LogoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ## 踢人下线
@@ -167,7 +181,7 @@ ctx := context.Background()
 
 err := dtoken.KickoutByLoginID(ctx, "10001")
 err = dtoken.KickoutByDevice(ctx, "10001", "web")
-err = dtoken.KickoutByDeviceAndDeviceId(ctx, "10001", "app", "ios-iphone-15")
+err = dtoken.KickoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 被踢下线的 token 不会立即从存储中删除，而是会被标记为 `kickout` 状态，后续校验时会返回对应错误。
@@ -189,7 +203,7 @@ ctx := context.Background()
 
 err := dtoken.ReplaceByLoginID(ctx, "10001")
 err = dtoken.ReplaceByDevice(ctx, "10001", "web")
-err = dtoken.ReplaceByDeviceAndDeviceId(ctx, "10001", "app", "ios-iphone-15")
+err = dtoken.ReplaceByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 被顶下线的 token 会被标记为 `replaced` 状态，适合用在“新登录挤掉旧登录”的场景中。
@@ -201,7 +215,7 @@ ctx := context.Background()
 
 count, err := dtoken.GetOnlineTerminalCount(ctx, "10001")
 webCount, err := dtoken.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
-singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, "10001", "app", "ios-iphone-15")
+singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ## 登录配置
@@ -209,12 +223,13 @@ singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, "10001
 ### 并发登录
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
-        IsConcurrent(true).
-        Build(),
-)
+        IsConcurrent(true),
+); err != nil {
+    panic(err)
+}
 ```
 
 `IsConcurrent(true)` 表示允许同账号多端并发登录。  
@@ -223,13 +238,14 @@ dtoken.SetManager(
 ### 共享 Token
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         IsConcurrent(true).
-        IsShare(true).
-        Build(),
-)
+        IsShare(true),
+); err != nil {
+    panic(err)
+}
 ```
 
 `IsShare(true)` 表示并发登录时可复用已有 token，但只会在相同设备维度内复用。  
@@ -238,14 +254,15 @@ dtoken.SetManager(
 ### 最大登录数
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         IsConcurrent(true).
         IsShare(false).
-        MaxLoginCount(3).
-        Build(),
-)
+        MaxLoginCount(3),
+); err != nil {
+    panic(err)
+}
 ```
 
 当 `MaxLoginCount > 0` 时，超过上限的旧终端会被自动清理。
@@ -255,15 +272,16 @@ dtoken.SetManager(
 ### 配置方式
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         Timeout(24 * 60 * 60).
         AutoRenew(true).
         RenewMaxRefresh(30 * 60).
-        RenewInterval(60).
-        Build(),
-)
+        RenewInterval(60),
+); err != nil {
+    panic(err)
+}
 ```
 
 ### 工作机制
@@ -282,13 +300,14 @@ dtoken.SetManager(
 ### 配置方式
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         Timeout(24 * 60 * 60).
-        ActiveTimeout(30 * 60).
-        Build(),
-)
+        ActiveTimeout(30 * 60),
+); err != nil {
+    panic(err)
+}
 ```
 
 ### 工作机制
@@ -305,7 +324,7 @@ dtoken.SetManager(
 ## 完整配置示例
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         TokenName("dtoken").
@@ -317,9 +336,10 @@ dtoken.SetManager(
         IsConcurrent(true).
         IsShare(false).
         MaxLoginCount(3).
-        IsReadHeader(true).
-        Build(),
-)
+        IsReadHeader(true),
+); err != nil {
+    panic(err)
+}
 ```
 
 ## 相关文档

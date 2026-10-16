@@ -17,7 +17,7 @@ func CreateTicketByContext(c *beegocontext.Context, opts ticket.CreateOptions) (
 	return dCtx.Ticket().Create(requestContext(c), opts)
 }
 
-// CreateTicketForCurrentLoginByContext creates ticket for current user CreateTicketForCurrentLoginByContext 为当前登录用户创建 Ticket
+// CreateTicketForCurrentLoginByContext creates ticket for current user CreateTicketForCurrentLoginByContext 为当前用户创建 Ticket
 func CreateTicketForCurrentLoginByContext(c *beegocontext.Context, opts ticket.CreateOptions) (*ticket.Ticket, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

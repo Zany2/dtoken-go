@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
+	"github.com/Zany2/dtoken-go/core/derror"
 )
 
+// TestConfigValidateAndClone verifies short key config validation and independent cloning. TestConfigValidateAndClone 验证短 Key 配置校验与独立克隆。
 func TestConfigValidateAndClone(t *testing.T) {
 	cfg := DefaultConfig()
 	if cfg == nil || cfg.TTL != DefaultTTL || cfg.Length != DefaultLength || cfg.MaxGenerateRetries <= 0 {
@@ -36,8 +38,12 @@ func TestConfigValidateAndClone(t *testing.T) {
 			t.Fatalf("Validate(%s) error = nil, want error", name)
 		}
 	}
+	if (*Config)(nil).Clone() != nil || (*Config)(nil).Validate() != nil {
+		t.Fatal("nil config Clone/Validate should be safe")
+	}
 }
 
+// TestManagerCreateConfirmValidateConsume verifies the short key lifecycle from creation through consumption. TestManagerCreateConfirmValidateConsume 验证短 Key 从创建到消费的完整生命周期。
 func TestManagerCreateConfirmValidateConsume(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestShortKeyManager(time.Minute)
@@ -62,7 +68,7 @@ func TestManagerCreateConfirmValidateConsume(t *testing.T) {
 	confirmed, err := mgr.Confirm(ctx, created.Key, ConfirmOptions{
 		LoginID:  "user-1",
 		Device:   "web",
-		DeviceId: "browser-1",
+		DeviceID: "browser-1",
 		Scopes:   []string{"profile", "email"},
 		Extra:    map[string]any{"confirmed": true},
 	})
@@ -82,7 +88,7 @@ func TestManagerCreateConfirmValidateConsume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}
-	if validated.DeviceId != "browser-1" || len(validated.Scopes) != 2 {
+	if validated.DeviceID != "browser-1" || len(validated.Scopes) != 2 {
 		t.Fatalf("Validate() = %+v, want confirmed data", validated)
 	}
 
@@ -106,6 +112,7 @@ func TestManagerCreateConfirmValidateConsume(t *testing.T) {
 	}
 }
 
+// TestManagerBoundaries verifies short key invalid-input and lifecycle boundaries. TestManagerBoundaries 验证短 Key 非法输入与生命周期边界。
 func TestManagerBoundaries(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestShortKeyManager(time.Minute)
@@ -147,6 +154,7 @@ func TestManagerBoundaries(t *testing.T) {
 
 	expired := &ShortKey{
 		Key:        "expired-key",
+		AuthType:   mgr.authType,
 		CreateTime: time.Now().Add(-2 * time.Second).Unix(),
 		UpdateTime: time.Now().Add(-2 * time.Second).Unix(),
 		ExpiresIn:  1,
@@ -163,6 +171,44 @@ func TestManagerBoundaries(t *testing.T) {
 	}
 }
 
+// TestManagerRejectsMismatchedStoredIdentity verifies stored payloads cannot escape their credential namespace. TestManagerRejectsMismatchedStoredIdentity 验证存储载荷不能越过其凭证命名空间。
+func TestManagerRejectsMismatchedStoredIdentity(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestShortKeyManager(time.Minute)
+
+	for _, tt := range []struct {
+		name     string
+		key      string
+		authType string
+	}{
+		{name: "key value", key: "other-key", authType: "test"},
+		{name: "auth type", key: "requested-key", authType: "other"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			stored := &ShortKey{
+				Key:        tt.key,
+				AuthType:   tt.authType,
+				CreateTime: time.Now().Unix(),
+				UpdateTime: time.Now().Unix(),
+				ExpiresIn:  60,
+				Status:     StatusConfirmed,
+			}
+			encoded, err := mgr.serializer.Encode(stored)
+			if err != nil {
+				t.Fatalf("Encode() error = %v", err)
+			}
+			if err = mgr.storage.Set(ctx, mgr.getKey("requested-key"), encoded, time.Minute); err != nil {
+				t.Fatalf("Set() error = %v", err)
+			}
+
+			if _, err = mgr.Validate(ctx, "requested-key"); !errors.Is(err, ErrInvalidShortKey) {
+				t.Fatalf("Validate(mismatched identity) error = %v, want ErrInvalidShortKey", err)
+			}
+		})
+	}
+}
+
+// TestConsumeConstraintMismatchDoesNotConsumeShortKey verifies mismatched constraints preserve the short key. TestConsumeConstraintMismatchDoesNotConsumeShortKey 验证约束不匹配时不会消费短 Key。
 func TestConsumeConstraintMismatchDoesNotConsumeShortKey(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestShortKeyManager(time.Minute)
@@ -193,6 +239,106 @@ func TestConsumeConstraintMismatchDoesNotConsumeShortKey(t *testing.T) {
 	}
 }
 
+// TestConfirmDoesNotOverwriteConfirmedShortKey verifies repeated confirmation preserves confirmed data. TestConfirmDoesNotOverwriteConfirmedShortKey 验证重复确认不会覆盖已确认数据。
+func TestConfirmDoesNotOverwriteConfirmedShortKey(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestShortKeyManager(time.Minute)
+
+	created, err := mgr.Create(ctx, CreateOptions{Scene: "login"})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err = mgr.Confirm(ctx, created.Key, ConfirmOptions{LoginID: "user-1"}); err != nil {
+		t.Fatalf("Confirm() error = %v", err)
+	}
+	if _, err = mgr.Confirm(ctx, created.Key, ConfirmOptions{LoginID: "user-2"}); !errors.Is(err, ErrShortKeyMismatch) {
+		t.Fatalf("Confirm(overwrite) error = %v, want ErrShortKeyMismatch", err)
+	}
+	validated, err := mgr.Validate(ctx, created.Key, ValidateOptions{LoginID: "user-1"})
+	if err != nil {
+		t.Fatalf("Validate(original user) error = %v", err)
+	}
+	if validated.LoginID != "user-1" {
+		t.Fatalf("Validate(original user) loginID = %q, want user-1", validated.LoginID)
+	}
+}
+
+// TestRevokeDoesNotOverwriteConsumedShortKey verifies revoke keeps an existing consumed state. TestRevokeDoesNotOverwriteConsumedShortKey 验证撤销操作不会覆盖已消费状态。
+func TestRevokeDoesNotOverwriteConsumedShortKey(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestShortKeyManager(time.Minute)
+
+	created, err := mgr.Create(ctx, CreateOptions{LoginID: "user-1"})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err = mgr.Consume(ctx, created.Key); err != nil {
+		t.Fatalf("Consume() error = %v", err)
+	}
+	if err = mgr.Revoke(ctx, created.Key); err != nil {
+		t.Fatalf("Revoke(consumed) error = %v", err)
+	}
+	status, err := mgr.Status(ctx, created.Key)
+	if err != nil {
+		t.Fatalf("Status(consumed after revoke) error = %v", err)
+	}
+	if status != StatusConsumed {
+		t.Fatalf("Status(consumed after revoke) = %s, want %s", status, StatusConsumed)
+	}
+}
+
+// TestShortKeyExpirationBoundaryAndDurationRounding verifies exact expiry and positive metadata for sub-second TTLs. TestShortKeyExpirationBoundaryAndDurationRounding 验证恰好到期边界及亚秒 TTL 的正数元数据。
+func TestShortKeyExpirationBoundaryAndDurationRounding(t *testing.T) {
+	if got := durationSeconds(500 * time.Millisecond); got != 1 {
+		t.Fatalf("durationSeconds(500ms) = %d, want 1", got)
+	}
+	if got := durationSeconds(2 * time.Second); got != 2 {
+		t.Fatalf("durationSeconds(2s) = %d, want 2", got)
+	}
+
+	mgr := newTestShortKeyManager(time.Minute)
+	expired := &ShortKey{
+		Key:        "expired-boundary",
+		AuthType:   mgr.authType,
+		CreateTime: time.Now().Unix() - 1,
+		ExpiresIn:  1,
+		Status:     StatusConfirmed,
+	}
+	if err := mgr.save(context.Background(), expired, time.Minute); err != nil {
+		t.Fatalf("save(expired boundary) error = %v", err)
+	}
+	if _, err := mgr.Validate(context.Background(), expired.Key); !errors.Is(err, ErrShortKeyExpired) {
+		t.Fatalf("Validate(expired boundary) error = %v, want ErrShortKeyExpired", err)
+	}
+
+	beforeCreate := time.Now()
+	created, err := mgr.CreateWithTimeout(context.Background(), CreateOptions{}, 500*time.Millisecond)
+	afterCreate := time.Now()
+	if err != nil {
+		t.Fatalf("CreateWithTimeout(500ms) error = %v", err)
+	}
+	if created.ExpiresIn < 1 {
+		t.Fatalf("CreateWithTimeout(500ms) ExpiresIn = %d, want positive", created.ExpiresIn)
+	}
+	if created.ExpiresAt.Before(beforeCreate.Add(500*time.Millisecond)) || created.ExpiresAt.After(afterCreate.Add(500*time.Millisecond)) {
+		t.Fatalf("ExpiresAt = %v, want creation time + 500ms", created.ExpiresAt)
+	}
+}
+
+// TestShortKeyConsumeReportsStateSaveFailure verifies consumption does not hide persistence errors. TestShortKeyConsumeReportsStateSaveFailure 验证消费不会隐藏状态持久化错误。
+func TestShortKeyConsumeReportsStateSaveFailure(t *testing.T) {
+	storage := &shortKeyConsumeSaveFailStorage{shortKeyTestStorage: newShortKeyTestStorage()}
+	mgr := NewManagerWithConfig("test", "dt:", storage, shortKeyTestCodec{}, &Config{TTL: time.Minute, Length: DefaultLength, MaxGenerateRetries: 4})
+	created, err := mgr.Create(context.Background(), CreateOptions{LoginID: "user-1"})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	storage.failSets = true
+	if _, err = mgr.Consume(context.Background(), created.Key); !errors.Is(err, derror.ErrStorageUnavailable) {
+		t.Fatalf("Consume() error = %v, want ErrStorageUnavailable", err)
+	}
+}
+
 func newTestShortKeyManager(ttl time.Duration) *Manager {
 	return NewManagerWithConfig("test", "dt:", newShortKeyTestStorage(), shortKeyTestCodec{}, &Config{
 		TTL:                ttl,
@@ -212,6 +358,18 @@ func (shortKeyTestCodec) Decode(data []byte, v any) error { return json.Unmarsha
 type shortKeyTestStorage struct {
 	mu    sync.Mutex
 	items map[string]shortKeyTestStorageItem
+}
+
+type shortKeyConsumeSaveFailStorage struct {
+	*shortKeyTestStorage
+	failSets bool
+}
+
+func (s *shortKeyConsumeSaveFailStorage) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
+	if s.failSets {
+		return errors.New("consume state save failed")
+	}
+	return s.shortKeyTestStorage.Set(ctx, key, value, expiration)
 }
 
 type shortKeyTestStorageItem struct {
@@ -326,6 +484,22 @@ func (s *shortKeyTestStorage) GetAndDelete(_ context.Context, key string) (any, 
 		return nil, nil
 	}
 	return item.value, nil
+}
+
+func (s *shortKeyTestStorage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if ok && !item.expired() {
+		return false, nil
+	}
+	next := shortKeyTestStorageItem{value: value}
+	if expiration > 0 {
+		next.expiresAt = time.Now().Add(expiration)
+	}
+	s.items[key] = next
+	return true, nil
 }
 
 func (item shortKeyTestStorageItem) expired() bool {

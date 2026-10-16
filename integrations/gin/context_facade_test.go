@@ -163,6 +163,55 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	}
 }
 
+// TestAnnotationReusesExplicitManager verifies annotations reuse a manager injected into request context. TestAnnotationReusesExplicitManager 验证注解会复用请求上下文中注入的显式 Manager。
+func TestAnnotationReusesExplicitManager(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+
+	ctx := context.Background()
+	mgr, err := dtoken.NewBuilder().
+		IsPrintBanner(false).
+		AutoRenew(false).
+		AuthType("gin-explicit").
+		Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+
+	token, err := mgr.Login(ctx, "explicit-user")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if err = mgr.AddPermissions(ctx, "explicit-user", []string{"report:read"}); err != nil {
+		t.Fatalf("AddPermissions() error = %v", err)
+	}
+
+	success := newGinTestContext(http.MethodGet, "/reports", mgr.GetConfig().TokenName, token)
+	RegisterDTokenContextMiddleware(ctx, WithManager(mgr))(success)
+
+	handled := false
+	var gotErr error
+	CheckPermissionMiddleware(ctx, []string{"report:read"}, func(*gin.Context) {
+		handled = true
+	}, func(_ *gin.Context, err error) {
+		gotErr = err
+	})(success)
+	if !handled || gotErr != nil || success.IsAborted() {
+		t.Fatalf("implicit annotation handled=%v err=%v aborted=%v", handled, gotErr, success.IsAborted())
+	}
+
+	override := newGinTestContext(http.MethodGet, "/reports", mgr.GetConfig().TokenName, token)
+	RegisterDTokenContextMiddleware(ctx, WithManager(mgr))(override)
+	gotErr = nil
+	CheckPermissionMiddleware(ctx, []string{"report:read"}, nil, func(_ *gin.Context, err error) {
+		gotErr = err
+	}, "missing-auth-type")(override)
+	if !errors.Is(gotErr, derror.ErrManagerNotFound) {
+		t.Fatalf("explicit annotation auth type error = %v, want ErrManagerNotFound", gotErr)
+	}
+}
+
 func newGinTestContext(method, path, tokenName, token string) *gin.Context {
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	req := httptest.NewRequest(method, path, nil)

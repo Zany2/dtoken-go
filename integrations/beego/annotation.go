@@ -4,6 +4,7 @@ package beego
 import (
 	"context"
 
+	"github.com/Zany2/dtoken-go/core/derror"
 	web "github.com/beego/beego/v2/server/web"
 	beegocontext "github.com/beego/beego/v2/server/web/context"
 )
@@ -29,7 +30,11 @@ type Annotation struct {
 // RouteAccessHandlerFromAnnotations creates route access handler RouteAccessHandlerFromAnnotations 根据注解创建路由访问处理器
 func RouteAccessHandlerFromAnnotations(annotations ...*Annotation) RouteAccessHandler {
 	return func(_ context.Context, _ *beegocontext.Context, req *RouteAccessRequest) {
-		if len(annotations) == 0 || annotations[0] == nil {
+		if len(annotations) == 0 {
+			return
+		}
+		if annotations[0] == nil {
+			req.err = derror.ErrInvalidParam
 			return
 		}
 

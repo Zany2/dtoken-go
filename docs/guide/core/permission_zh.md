@@ -28,15 +28,18 @@ import (
 )
 
 func initDToken() {
-    dtoken.SetManager(
+    if _, err := dtoken.BuildAndSetManager(
         defaults.NewBuilder().
-            SetStorage(memory.NewStorage()).
-            Build(),
-    )
+            SetStorage(memory.NewStorage()),
+    ); err != nil {
+        panic(err)
+    }
 }
 ```
 
 ## 权限管理
+
+按 Token 添加或删除权限、角色时，即使列表为 `nil`、空列表或仅含空字符串，也会校验 Token 的完整登录态。无效、封禁或活跃超时的 Token 会返回对应错误；有效登录的空变更不写入 Session、不触发变更事件，也不安排续期或活跃维护任务。
 
 ### 添加权限
 
@@ -221,7 +224,7 @@ _ = dtoken.UntieService(ctx, "10001", "comment")
 ## 自定义权限与角色回调
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         SetCustomPermissionListFunc(func(loginID, authType string) ([]string, error) {
@@ -235,22 +238,23 @@ dtoken.SetManager(
                 return []string{"admin"}, nil
             }
             return []string{"user"}, nil
-        }).
-        Build(),
-)
+        }),
+); err != nil {
+    panic(err)
+}
 ```
 
-扩展回调还支持拿到 `device`、`deviceId`：
+扩展回调还支持拿到 `device`、`deviceID`：
 
 ```go
 defaults.NewBuilder().
-    SetCustomPermissionListExtFunc(func(loginID, device, deviceId, authType string) ([]string, error) {
+    SetCustomPermissionListExtFunc(func(loginID, device, deviceID, authType string) ([]string, error) {
         if device == "app" {
             return []string{"mobile:read", "mobile:write"}, nil
         }
         return []string{"web:read"}, nil
     }).
-    SetCustomRoleListExtFunc(func(loginID, device, deviceId, authType string) ([]string, error) {
+    SetCustomRoleListExtFunc(func(loginID, device, deviceID, authType string) ([]string, error) {
         if device == "app" {
             return []string{"mobile-user"}, nil
         }

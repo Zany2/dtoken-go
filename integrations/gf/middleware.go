@@ -38,12 +38,18 @@ type RouteAccessHandler func(ctx context.Context, r *ghttp.Request, req *RouteAc
 
 // AuthHandleRequest carries auth check metadata AuthHandleRequest 携带认证校验元数据
 type AuthHandleRequest struct {
-	AuthType     string
-	CheckLogin   bool
+	// AuthType selects the auth type. AuthType 指定认证类型。
+	AuthType string
+	// CheckLogin requires login-state validation. CheckLogin 要求校验登录状态。
+	CheckLogin bool
+	// CheckDisable requires account-disable validation. CheckDisable 要求校验账号封禁状态。
 	CheckDisable bool
-	Permissions  []string
-	Roles        []string
-	LogicType    LogicType
+	// Permissions lists required permissions. Permissions 保存所需权限列表。
+	Permissions []string
+	// Roles lists required roles. Roles 保存所需角色列表。
+	Roles []string
+	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
+	LogicType LogicType
 
 	next    func()
 	exit    func()
@@ -52,6 +58,9 @@ type AuthHandleRequest struct {
 
 // Next continues request and stops dtoken checks Next 放行请求并停止 dtoken 校验
 func (req *AuthHandleRequest) Next() {
+	if req.handled {
+		return
+	}
 	req.handled = true
 	if req.next != nil {
 		req.next()
@@ -60,6 +69,9 @@ func (req *AuthHandleRequest) Next() {
 
 // Exit stops dtoken checks after custom handling Exit 自定义处理后停止 dtoken 校验
 func (req *AuthHandleRequest) Exit() {
+	if req.handled {
+		return
+	}
 	req.handled = true
 	if req.exit != nil {
 		req.exit()
@@ -73,11 +85,16 @@ func (req *AuthHandleRequest) IsHandled() bool {
 
 // RouteAccessRequest carries route access rules RouteAccessRequest 携带路由访问规则
 type RouteAccessRequest struct {
-	AuthType     string
-	LogicType    LogicType
+	// AuthType selects the auth type. AuthType 指定认证类型。
+	AuthType string
+	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
+	LogicType LogicType
+	// CheckDisable requires account-disable validation. CheckDisable 要求校验账号封禁状态。
 	CheckDisable bool
-	Permissions  []string
-	Roles        []string
+	// Permissions lists route-required permissions. Permissions 保存路由所需权限列表。
+	Permissions []string
+	// Roles lists route-required roles. Roles 保存路由所需角色列表。
+	Roles []string
 
 	skipAuth       bool
 	skipPermission bool
@@ -114,10 +131,17 @@ func (req *RouteAccessRequest) SetLogicType(logicType LogicType) {
 
 // AuthOptions defines middleware auth options AuthOptions 定义中间件认证选项
 type AuthOptions struct {
-	AuthType           string
-	LogicType          LogicType
-	FailFunc           func(r *ghttp.Request, err error)
-	BeforeAuthHandler  BeforeAuthHandler
+	// AuthType selects the auth type. AuthType 指定认证类型。
+	AuthType string
+	// Manager overrides auth type, request cache and global selection. Manager 优先于认证类型、请求缓存及全局选择。
+	Manager *manager.Manager
+	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
+	LogicType LogicType
+	// FailFunc handles authentication failures. FailFunc 处理认证失败。
+	FailFunc func(r *ghttp.Request, err error)
+	// BeforeAuthHandler runs before authentication checks. BeforeAuthHandler 在认证校验前执行。
+	BeforeAuthHandler BeforeAuthHandler
+	// RouteAccessHandler resolves route-specific access rules. RouteAccessHandler 解析路由级访问规则。
 	RouteAccessHandler RouteAccessHandler
 }
 
@@ -130,6 +154,15 @@ func defaultAuthOptions() *AuthOptions {
 func WithAuthType(authType string) AuthOption {
 	return func(o *AuthOptions) {
 		o.AuthType = authType
+	}
+}
+
+// WithManager sets the manager used by middleware. WithManager 设置中间件使用的 Manager。
+func WithManager(mgr *manager.Manager) AuthOption {
+	return func(o *AuthOptions) {
+		if mgr != nil {
+			o.Manager = mgr
+		}
 	}
 }
 
@@ -169,14 +202,18 @@ func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) gh
 	}
 
 	return func(r *ghttp.Request) {
-		mgr, err := authcheck.GetManager(options.AuthType)
+		if isRequestAborted(r) {
+			return
+		}
+
+		mgr, err := resolveRequestManager(r, options.Manager, options.AuthType)
 		if err != nil {
 			dispatchFail(r, options, err)
 			return
 		}
 
 		_ = getDContext(r, mgr)
-		r.Middleware.Next()
+		nextRequest(r)
 	}
 }
 
@@ -188,17 +225,21 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) ghttp.HandlerFunc {
 	}
 
 	return func(r *ghttp.Request) {
-		authReq := newAuthHandleRequest(options, func() {
-			r.Middleware.Next()
-		}, func() {
-			r.Exit()
-		})
-		authReq.CheckLogin = true
-		if runBeforeAuthHandler(ctx, r, options, authReq) {
+		if isRequestAborted(r) {
 			return
 		}
 
-		mgr, err := authcheck.GetManager(options.AuthType)
+		authReq := newAuthHandleRequest(options, func() {
+			nextRequest(r)
+		}, func() {
+			r.ExitAll()
+		})
+		authReq.CheckLogin = true
+		if runBeforeAuthHandler(r.Context(), r, options, authReq) {
+			return
+		}
+
+		mgr, err := resolveRequestManager(r, options.Manager, options.AuthType)
 		if err != nil {
 			dispatchFail(r, options, err)
 			return
@@ -207,7 +248,7 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) ghttp.HandlerFunc {
 		dCtx := getDContext(r, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
-		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		_, err = authcheck.Check(r.Context(), mgr, authcheck.Request{
 			TokenValue: tokenValue,
 			CheckLogin: true,
 			LoginError: derror.ErrTokenExpired,
@@ -217,7 +258,7 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) ghttp.HandlerFunc {
 			return
 		}
 
-		r.Middleware.Next()
+		nextRequest(r)
 	}
 }
 
@@ -229,17 +270,25 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) ghttp.HandlerFunc
 	}
 
 	return func(r *ghttp.Request) {
-		accessReq := newRouteAccessRequest(options)
-		if options.RouteAccessHandler != nil {
-			options.RouteAccessHandler(ctx, r, accessReq)
-		}
-
-		if accessReq.skipAuth {
-			r.Middleware.Next()
+		if isRequestAborted(r) {
 			return
 		}
 
-		mgr, err := authcheck.GetManager(accessReq.AuthType)
+		accessReq := newRouteAccessRequest(options)
+		if options.RouteAccessHandler != nil {
+			options.RouteAccessHandler(r.Context(), r, accessReq)
+		}
+
+		if isRequestAborted(r) {
+			return
+		}
+
+		if accessReq.skipAuth {
+			nextRequest(r)
+			return
+		}
+
+		mgr, err := resolveRequestManager(r, options.Manager, accessReq.AuthType)
 		if err != nil {
 			dispatchFail(r, options, err)
 			return
@@ -261,13 +310,13 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) ghttp.HandlerFunc
 			req.LogicType = accessReq.LogicType
 		}
 
-		_, err = authcheck.Check(ctx, mgr, req)
+		_, err = authcheck.Check(r.Context(), mgr, req)
 		if err != nil {
 			dispatchFail(r, options, err)
 			return
 		}
 
-		r.Middleware.Next()
+		nextRequest(r)
 	}
 }
 
@@ -279,22 +328,26 @@ func PermissionMiddleware(ctx context.Context, permissions []string, opts ...Aut
 	}
 
 	return func(r *ghttp.Request) {
+		if isRequestAborted(r) {
+			return
+		}
+
 		authReq := newAuthHandleRequest(options, func() {
-			r.Middleware.Next()
+			nextRequest(r)
 		}, func() {
-			r.Exit()
+			r.ExitAll()
 		})
 		authReq.Permissions = append([]string{}, permissions...)
-		if runBeforeAuthHandler(ctx, r, options, authReq) {
+		if runBeforeAuthHandler(r.Context(), r, options, authReq) {
 			return
 		}
 
 		if len(permissions) == 0 {
-			r.Middleware.Next()
+			nextRequest(r)
 			return
 		}
 
-		mgr, err := authcheck.GetManager(options.AuthType)
+		mgr, err := resolveRequestManager(r, options.Manager, options.AuthType)
 		if err != nil {
 			dispatchFail(r, options, err)
 			return
@@ -303,7 +356,7 @@ func PermissionMiddleware(ctx context.Context, permissions []string, opts ...Aut
 		dCtx := getDContext(r, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
-		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		_, err = authcheck.Check(r.Context(), mgr, authcheck.Request{
 			TokenValue:  tokenValue,
 			Permissions: permissions,
 			LogicType:   options.LogicType,
@@ -313,7 +366,7 @@ func PermissionMiddleware(ctx context.Context, permissions []string, opts ...Aut
 			return
 		}
 
-		r.Middleware.Next()
+		nextRequest(r)
 	}
 }
 
@@ -325,25 +378,29 @@ func PermissionPathMiddleware(ctx context.Context, permissions []string, opts ..
 	}
 
 	return func(r *ghttp.Request) {
+		if isRequestAborted(r) {
+			return
+		}
+
 		reqPermissions := append([]string{}, permissions...)
 		reqPermissions = append(reqPermissions, r.URL.Path)
 
 		authReq := newAuthHandleRequest(options, func() {
-			r.Middleware.Next()
+			nextRequest(r)
 		}, func() {
-			r.Exit()
+			r.ExitAll()
 		})
 		authReq.Permissions = append([]string{}, reqPermissions...)
-		if runBeforeAuthHandler(ctx, r, options, authReq) {
+		if runBeforeAuthHandler(r.Context(), r, options, authReq) {
 			return
 		}
 
 		if len(reqPermissions) == 0 {
-			r.Middleware.Next()
+			nextRequest(r)
 			return
 		}
 
-		mgr, err := authcheck.GetManager(options.AuthType)
+		mgr, err := resolveRequestManager(r, options.Manager, options.AuthType)
 		if err != nil {
 			dispatchFail(r, options, err)
 			return
@@ -352,7 +409,7 @@ func PermissionPathMiddleware(ctx context.Context, permissions []string, opts ..
 		dCtx := getDContext(r, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
-		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		_, err = authcheck.Check(r.Context(), mgr, authcheck.Request{
 			TokenValue:  tokenValue,
 			Permissions: reqPermissions,
 			LogicType:   options.LogicType,
@@ -362,7 +419,7 @@ func PermissionPathMiddleware(ctx context.Context, permissions []string, opts ..
 			return
 		}
 
-		r.Middleware.Next()
+		nextRequest(r)
 	}
 }
 
@@ -374,22 +431,26 @@ func RoleMiddleware(ctx context.Context, roles []string, opts ...AuthOption) ght
 	}
 
 	return func(r *ghttp.Request) {
+		if isRequestAborted(r) {
+			return
+		}
+
 		authReq := newAuthHandleRequest(options, func() {
-			r.Middleware.Next()
+			nextRequest(r)
 		}, func() {
-			r.Exit()
+			r.ExitAll()
 		})
 		authReq.Roles = append([]string{}, roles...)
-		if runBeforeAuthHandler(ctx, r, options, authReq) {
+		if runBeforeAuthHandler(r.Context(), r, options, authReq) {
 			return
 		}
 
 		if len(roles) == 0 {
-			r.Middleware.Next()
+			nextRequest(r)
 			return
 		}
 
-		mgr, err := authcheck.GetManager(options.AuthType)
+		mgr, err := resolveRequestManager(r, options.Manager, options.AuthType)
 		if err != nil {
 			dispatchFail(r, options, err)
 			return
@@ -398,7 +459,7 @@ func RoleMiddleware(ctx context.Context, roles []string, opts ...AuthOption) ght
 		dCtx := getDContext(r, mgr)
 		tokenValue := dCtx.GetTokenValue()
 
-		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		_, err = authcheck.Check(r.Context(), mgr, authcheck.Request{
 			TokenValue: tokenValue,
 			Roles:      roles,
 			LogicType:  options.LogicType,
@@ -408,7 +469,7 @@ func RoleMiddleware(ctx context.Context, roles []string, opts ...AuthOption) ght
 			return
 		}
 
-		r.Middleware.Next()
+		nextRequest(r)
 	}
 }
 
@@ -437,31 +498,49 @@ func runBeforeAuthHandler(ctx context.Context, r *ghttp.Request, options *AuthOp
 	}
 
 	options.BeforeAuthHandler(ctx, r, req)
-	return req.IsHandled()
+	return req.IsHandled() || isRequestAborted(r)
 }
 
 // dispatchFail writes or dispatches auth failure dispatchFail 写入或分发认证失败响应
 func dispatchFail(r *ghttp.Request, options *AuthOptions, err error) {
-	if options.FailFunc != nil {
-		options.FailFunc(r, err)
+	respond := func() {
+		if options.FailFunc != nil {
+			options.FailFunc(r, err)
+			return
+		}
+		writeErrorResponse(r, err)
+	}
+	if r == nil {
+		respond()
 		return
 	}
-	writeErrorResponse(r, err)
+
+	// ExitAll marks the chain before unwinding into the callback, so Next cannot bypass failure. ExitAll 先标记整条链再通过 defer 执行回调，避免回调中的 Next 绕过失败。
+	defer respond()
+	r.ExitAll()
 }
 
 // GetDTokenContext gets cached DToken context GetDTokenContext 获取缓存的 DToken 上下文
 func GetDTokenContext(r *ghttp.Request) (*DContext.DTokenContext, bool) {
+	if r == nil {
+		return nil, false
+	}
+
 	v := r.GetCtxVar(DTokenCtxKey)
 	if v == nil {
 		return nil, false
 	}
 
 	ctx, ok := v.Val().(*DContext.DTokenContext)
-	return ctx, ok
+	return ctx, ok && ctx != nil
 }
 
 // GetDTokenContextByCtx gets DToken context by context GetDTokenContextByCtx 从上下文获取 DToken 上下文
 func GetDTokenContextByCtx(ctx context.Context) (*DContext.DTokenContext, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+
 	request := g.RequestFromCtx(ctx)
 	if request == nil {
 		return nil, false
@@ -472,14 +551,14 @@ func GetDTokenContextByCtx(ctx context.Context) (*DContext.DTokenContext, bool) 
 	}
 
 	tokenContext, ok := ctxVar.Val().(*DContext.DTokenContext)
-	return tokenContext, ok
+	return tokenContext, ok && tokenContext != nil
 }
 
 // getDContext gets or creates DToken context getDContext 获取或创建 DToken 上下文
 func getDContext(r *ghttp.Request, mgr *manager.Manager) *DContext.DTokenContext {
 	if v := r.GetCtxVar(DTokenCtxKey); v != nil {
 		if dCtx, ok := v.Val().(*DContext.DTokenContext); ok {
-			if dCtx.GetManager() == mgr {
+			if dCtx != nil && dCtx.GetManager() == mgr {
 				return dCtx
 			}
 		}
@@ -491,12 +570,45 @@ func getDContext(r *ghttp.Request, mgr *manager.Manager) *DContext.DTokenContext
 	return dCtx
 }
 
+// resolveRequestManager honors explicit selection before inheriting the request manager. resolveRequestManager 优先使用显式配置，否则继承请求 Manager。
+func resolveRequestManager(r *ghttp.Request, explicit *manager.Manager, authType string) (*manager.Manager, error) {
+	if explicit != nil {
+		return authcheck.ResolveManager(explicit, authType)
+	}
+	cached, _ := GetDTokenContext(r)
+	return authcheck.ResolveManagerFromContext(authType, cached)
+}
+
+// isRequestAborted checks native exit state and the shared adapter. isRequestAborted 检查框架退出状态和共享适配器的终止标记。
+func isRequestAborted(r *ghttp.Request) bool {
+	if r == nil {
+		return false
+	}
+	if r.IsExited() {
+		return true
+	}
+	if cached, ok := GetDTokenContext(r); ok {
+		if reqCtx := cached.GetRequestContext(); reqCtx != nil {
+			return reqCtx.IsAborted()
+		}
+	}
+	return false
+}
+
+// nextRequest respects the adapter abort flag before continuing GoFrame middleware. nextRequest 继续 GoFrame 中间件前检查适配器终止标记。
+func nextRequest(r *ghttp.Request) {
+	if !isRequestAborted(r) {
+		r.Middleware.Next()
+	}
+}
+
 // writeErrorResponse writes error response writeErrorResponse 写入错误响应
 func writeErrorResponse(r *ghttp.Request, err error) {
 	code, message := authcheck.GetErrorCodeAndMessage(err)
 	httpStatus := getHTTPStatusFromCode(code)
 
-	r.Response.WriteStatusExit(httpStatus, g.Map{
+	r.Response.WriteHeader(httpStatus)
+	r.Response.WriteJson(g.Map{
 		"code":    code,
 		"message": message,
 		"data":    err.Error(),

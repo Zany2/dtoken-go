@@ -8,7 +8,7 @@ DToken-Go uses Session to record the online terminal list for a login ID. Each t
 
 - `LoginID`
 - `Device`
-- `DeviceId`
+- `DeviceID`
 - `Token`
 - `Index`
 
@@ -36,7 +36,7 @@ Count online terminals by account, device type, or concrete device:
 ```go
 count, err := dtoken.GetOnlineTerminalCount(ctx, "10001")
 webCount, err := dtoken.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
-deviceCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, "10001", "web", "browser-1")
+deviceCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "web", "browser-1")
 ```
 
 ## Query Token Lists
@@ -44,7 +44,7 @@ deviceCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceId(ctx, "10001
 ```go
 tokens, err := dtoken.GetTokenValueListByLoginID(ctx, "10001", true)
 tokens, err = dtoken.GetTokenValueListByDevice(ctx, "10001", "web", true)
-tokens, err = dtoken.GetTokenValueListByDeviceAndDeviceId(ctx, "10001", "web", "browser-1", true)
+tokens, err = dtoken.GetTokenValueListByDeviceAndDeviceID(ctx, "10001", "web", "browser-1", true)
 ```
 
 The last boolean parameter controls whether only alive tokens should be returned.
@@ -58,6 +58,12 @@ terminals, err = dtoken.GetTerminalListByLoginIDAndDevice(ctx, "10001", "web")
 
 ## Get Latest Token
 
+Manager's `GetTerminalListByLoginID` and `GetTokenValueByLoginID` accept at most one optional device type; extra arguments return an error.
+
+The token-list APIs likewise accept at most one `checkAlive` value. Live lists, online counts, latest-token queries, and token-based terminal details match account, device, creation time, and lifecycle sequence against the token record, ignoring stale entries.
+
+Raw terminal lists, visitors, and token lists without `checkAlive` return stored snapshots that may include expired or stale entries; queries do not delete them. The boolean returned by `GetSessionValue` / `GetSessionValueByToken` distinguishes a stored nil value from a missing key.
+
 ```go
 token, err := dtoken.GetTokenValueByLoginID(ctx, "10001")
 token, err = dtoken.GetTokenValueByLoginIDAndDevice(ctx, "10001", "web")
@@ -67,7 +73,7 @@ token, err = dtoken.GetTokenValueByLoginIDAndDevice(ctx, "10001", "web")
 
 ```go
 err := dtoken.ForEachTerminal(ctx, "10001", func(info manager.TerminalInfo) bool {
-    fmt.Println(info.Device, info.DeviceId, info.Token)
+    fmt.Println(info.Device, info.DeviceID, info.Token)
     return true
 })
 
@@ -95,6 +101,10 @@ These APIs require key scanning support from the storage implementation. The bui
 | kickout | keep a state marker; later checks behave as kicked out |
 | replace | keep a state marker; later checks behave as replaced |
 
+Token-based termination remains available during account or device bans. A residual token with verified ownership can be retired even when its session is missing, including its linked refresh token. Existing kickout, replace, and inactivity-timeout markers remain unchanged on repeated calls.
+
+In `Terminate`, a valid token takes precedence over account and device filters. Explicit whitespace-only token or device filters return an error instead of falling back to a broader scope.
+
 All three operations support:
 
 - by token
@@ -111,7 +121,9 @@ A token can become invalid because:
 3. logout deletes it
 4. kickout marks it
 5. replace marks it
-6. account, device, or service disable makes validation fail
+6. account or device disable makes login validation fail
+
+Service disable only blocks the corresponding explicit service checks; it does not invalidate the general login state.
 
 ## Test Coverage
 

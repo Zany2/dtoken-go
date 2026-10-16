@@ -7,7 +7,7 @@ import (
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 )
 
-// GenerateNonceWithTimeoutByContext generates nonce with timeout GenerateNonceWithTimeoutByContext ?Nonce
+// GenerateNonceWithTimeoutByContext generates nonce with timeout GenerateNonceWithTimeoutByContext 使用指定有效期生成 Nonce
 func GenerateNonceWithTimeoutByContext(ctx *hertzapp.RequestContext, timeout time.Duration) (string, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -16,7 +16,7 @@ func GenerateNonceWithTimeoutByContext(ctx *hertzapp.RequestContext, timeout tim
 	return dCtx.Nonce().GenerateWithTimeout(requestContext(ctx), timeout)
 }
 
-// IsValidNonceByContext checks nonce state IsValidNonceByContext ?Nonce ?
+// IsValidNonceByContext checks nonce state IsValidNonceByContext 检查 Nonce 状态
 func IsValidNonceByContext(ctx *hertzapp.RequestContext, nonce string) bool {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -25,7 +25,7 @@ func IsValidNonceByContext(ctx *hertzapp.RequestContext, nonce string) bool {
 	return dCtx.Nonce().IsValid(requestContext(ctx), nonce)
 }
 
-// GetNonceTTLByContext gets nonce TTL GetNonceTTLByContext ?Nonce ?
+// GetNonceTTLByContext gets nonce TTL GetNonceTTLByContext 获取 Nonce 剩余有效期
 func GetNonceTTLByContext(ctx *hertzapp.RequestContext, nonce string) (int64, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {

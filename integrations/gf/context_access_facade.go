@@ -5,7 +5,7 @@ import (
 	"context"
 )
 
-// CheckRoleByCtx checks current user role CheckRoleByCtx 鏍￠獙褰撳墠鐢ㄦ埛瑙掕壊
+// CheckRoleByCtx checks current user role CheckRoleByCtx 校验当前用户角色
 func CheckRoleByCtx(ctx context.Context, role string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -14,7 +14,7 @@ func CheckRoleByCtx(ctx context.Context, role string) error {
 	return dCtx.Access().CheckRole(ctx, role)
 }
 
-// CheckRolesAndByCtx checks all current user roles CheckRolesAndByCtx 鏍￠獙褰撳墠鐢ㄦ埛鏄惁鎷ユ湁鍏ㄩ儴瑙掕壊
+// CheckRolesAndByCtx checks all current user roles CheckRolesAndByCtx 校验当前用户是否拥有全部角色
 func CheckRolesAndByCtx(ctx context.Context, roles []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -23,7 +23,7 @@ func CheckRolesAndByCtx(ctx context.Context, roles []string) error {
 	return dCtx.Access().CheckRolesAnd(ctx, roles)
 }
 
-// CheckRolesOrByCtx checks any current user role CheckRolesOrByCtx 鏍￠獙褰撳墠鐢ㄦ埛鏄惁鎷ユ湁浠讳竴瑙掕壊
+// CheckRolesOrByCtx checks any current user role CheckRolesOrByCtx 校验当前用户是否拥有任一角色
 func CheckRolesOrByCtx(ctx context.Context, roles []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -32,7 +32,7 @@ func CheckRolesOrByCtx(ctx context.Context, roles []string) error {
 	return dCtx.Access().CheckRolesOr(ctx, roles)
 }
 
-// CheckPermissionByCtx checks current user permission CheckPermissionByCtx 鏍￠獙褰撳墠鐢ㄦ埛鏉冮檺
+// CheckPermissionByCtx checks current user permission CheckPermissionByCtx 校验当前用户权限
 func CheckPermissionByCtx(ctx context.Context, permission string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -41,7 +41,7 @@ func CheckPermissionByCtx(ctx context.Context, permission string) error {
 	return dCtx.Access().CheckPermission(ctx, permission)
 }
 
-// CheckPermissionsAndByCtx checks all current user permissions CheckPermissionsAndByCtx 鏍￠獙褰撳墠鐢ㄦ埛鏄惁鎷ユ湁鍏ㄩ儴鏉冮檺
+// CheckPermissionsAndByCtx checks all current user permissions CheckPermissionsAndByCtx 校验当前用户是否拥有全部权限
 func CheckPermissionsAndByCtx(ctx context.Context, permissions []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -50,7 +50,7 @@ func CheckPermissionsAndByCtx(ctx context.Context, permissions []string) error {
 	return dCtx.Access().CheckPermissionsAnd(ctx, permissions)
 }
 
-// CheckPermissionsOrByCtx checks any current user permission CheckPermissionsOrByCtx 鏍￠獙褰撳墠鐢ㄦ埛鏄惁鎷ユ湁浠讳竴鏉冮檺
+// CheckPermissionsOrByCtx checks any current user permission CheckPermissionsOrByCtx 校验当前用户是否拥有任一权限
 func CheckPermissionsOrByCtx(ctx context.Context, permissions []string) error {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {

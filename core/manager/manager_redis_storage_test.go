@@ -3,19 +3,16 @@ package manager
 import (
 	"context"
 	"errors"
+	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
 	"github.com/Zany2/dtoken-go/core/derror"
+	"github.com/Zany2/dtoken-go/core/utils"
 	"github.com/redis/go-redis/v9"
-)
-
-const (
-	managerRedisTestAddr     = "192.168.19.104:6379"
-	managerRedisTestPassword = "root"
-	managerRedisTestDatabase = 0
 )
 
 var _ adapter.FullStorage = (*managerRedisTestStorage)(nil)
@@ -28,15 +25,20 @@ type managerRedisTestStorage struct {
 func newManagerRedisTestStorage(t interface {
 	Helper()
 	Fatalf(string, ...any)
+	Skipf(string, ...any)
 	Cleanup(func())
 }, cfg *config.Config) adapter.FullStorage {
 	t.Helper()
-	client := redis.NewClient(&redis.Options{
-		Addr:     managerRedisTestAddr,
-		Password: managerRedisTestPassword,
-		DB:       managerRedisTestDatabase,
-	})
-	storage := &managerRedisTestStorage{client: client, prefix: cfg.KeyPrefix}
+	redisURL := strings.TrimSpace(os.Getenv("DTOKEN_REDIS_URL"))
+	if redisURL == "" {
+		t.Skipf("set DTOKEN_REDIS_URL to run manager Redis tests")
+	}
+	redisOptions, err := redis.ParseURL(redisURL)
+	if err != nil {
+		t.Fatalf("parse DTOKEN_REDIS_URL error = %v", err)
+	}
+	client := redis.NewClient(redisOptions)
+	storage := &managerRedisTestStorage{client: client, prefix: utils.StorageNamespace(cfg.KeyPrefix, cfg.AuthType)}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -125,6 +127,10 @@ func (s *managerRedisTestStorage) GetAndDelete(ctx context.Context, key string) 
 	return value, nil
 }
 
+func (s *managerRedisTestStorage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	return s.client.SetNX(ctx, key, value, normalizeManagerRedisTestExpiration(expiration)).Result()
+}
+
 func (s *managerRedisTestStorage) Keys(ctx context.Context, pattern string) ([]string, error) {
 	if pattern == "" {
 		pattern = "*"
@@ -149,7 +155,7 @@ func (s *managerRedisTestStorage) Keys(ctx context.Context, pattern string) ([]s
 }
 
 func (s *managerRedisTestStorage) Clear(ctx context.Context) error {
-	keys, err := s.Keys(ctx, s.prefix+"*")
+	keys, err := s.Keys(ctx, escapeSearchKeyword(s.prefix)+"*")
 	if err != nil {
 		return err
 	}

@@ -1,4 +1,6 @@
 // @Author daixk 2025/12/22 15:56:00
+//
+//go:generate go run ./internal/integrationexportgen
 package gin
 
 import (
@@ -43,6 +45,7 @@ type (
 	LogoutMode                 = config.LogoutMode
 	Manager                    = manager.Manager
 	ManagerOption              = manager.Option
+	ComponentOwnership         = manager.ComponentOwnership
 	TokenInfo                  = manager.TokenInfo
 	TokenIntrospection         = manager.TokenIntrospection
 	ManagerRefreshTokenOptions = manager.RefreshTokenOptions
@@ -106,7 +109,7 @@ type (
 	NopLogger                  = nop.NopLogger
 )
 
-// Common constants forward core configuration values. Common 常量转发核心配置值。 Common 常量转发核心配置值。
+// Common constants forward core configuration values. Common 常量转发核心配置值。
 const (
 	Version                        = corepkg.Version
 	SameSiteStrict                 = config.SameSiteStrict
@@ -272,6 +275,7 @@ var (
 	DefaultCookieConfig            = config.DefaultCookieConfig
 	NewContext                     = corecontext.NewContext
 	NewManager                     = manager.NewManager
+	WithComponentOwnership         = manager.WithComponentOwnership
 	WithNonceManager               = manager.WithNonceManager
 	WithOAuth2Manager              = manager.WithOAuth2Manager
 	NewEventManager                = listener.NewManager

@@ -10,9 +10,10 @@ import (
 	echo4 "github.com/labstack/echo/v4"
 )
 
+// TestEchoContextAdapterRequestAndResponse verifies request and response adaptation. TestEchoContextAdapterRequestAndResponse 验证请求与响应适配。
 func TestEchoContextAdapterRequestAndResponse(t *testing.T) {
 	engine := echo4.New()
-	req := httptest.NewRequest(http.MethodPost, "/demo?foo=bar", strings.NewReader("hello"))
+	req := httptest.NewRequest(http.MethodPost, "/demo?foo=bar&foo=baz", strings.NewReader("hello"))
 	req.Header.Set("X-Token", "token")
 	req.Header.Set("X-Forwarded-For", "203.0.113.2")
 	req.Header.Set("User-Agent", "echo-test")
@@ -24,8 +25,15 @@ func TestEchoContextAdapterRequestAndResponse(t *testing.T) {
 	if got := ctx.GetHeader("X-Token"); got != "token" {
 		t.Fatalf("GetHeader() = %q, want token", got)
 	}
+	if got := ctx.GetHeaders()["X-Token"]; len(got) != 1 || got[0] != "token" {
+		t.Fatalf("GetHeaders()[X-Token] = %v, want [token]", got)
+	}
 	if got := ctx.GetQuery("foo"); got != "bar" {
 		t.Fatalf("GetQuery() = %q, want bar", got)
+	}
+	query := ctx.GetQueryAll()["foo"]
+	if len(query) != 2 || query[0] != "bar" || query[1] != "baz" {
+		t.Fatalf("GetQueryAll()[foo] = %v, want [bar baz]", query)
 	}
 	if got := ctx.GetCookie("sid"); got != "cookie-token" {
 		t.Fatalf("GetCookie() = %q, want cookie-token", got)
@@ -47,11 +55,17 @@ func TestEchoContextAdapterRequestAndResponse(t *testing.T) {
 	if got := ctx.GetPath(); got != "/demo" {
 		t.Fatalf("GetPath() = %q, want /demo", got)
 	}
-	if got := ctx.GetURL(); got != "/demo?foo=bar" {
-		t.Fatalf("GetURL() = %q, want /demo?foo=bar", got)
+	if got := ctx.GetURL(); got != "/demo?foo=bar&foo=baz" {
+		t.Fatalf("GetURL() = %q, want /demo?foo=bar&foo=baz", got)
 	}
 	if got := ctx.GetUserAgent(); got != "echo-test" {
 		t.Fatalf("GetUserAgent() = %q, want echo-test", got)
+	}
+	if got := ctx.GetPostForm("missing"); got != "" {
+		t.Fatalf("GetPostForm(missing) = %q, want empty", got)
+	}
+	if ctx.IsTLS() {
+		t.Fatal("IsTLS() = true for HTTP request")
 	}
 
 	ctx.Set("name", "dtoken")
@@ -70,6 +84,7 @@ func TestEchoContextAdapterRequestAndResponse(t *testing.T) {
 	}
 
 	ctx.SetHeader("X-Result", "ok")
+	ctx.SetCookie("legacy", "value", 60, "/", "", false, true)
 	ctx.SetCookieWithOptions(&adapter.CookieOptions{Name: "dt", Value: "v", Path: "/", SameSite: "None"})
 	ctx.SetStatusCode(http.StatusAccepted)
 	if _, err = ctx.Write([]byte("done")); err != nil {
@@ -84,11 +99,12 @@ func TestEchoContextAdapterRequestAndResponse(t *testing.T) {
 	if got := rec.Body.String(); got != "done" {
 		t.Fatalf("response body = %q, want done", got)
 	}
-	if got := rec.Header().Values("Set-Cookie"); len(got) == 0 {
-		t.Fatal("SetCookieWithOptions() did not write Set-Cookie header")
+	if got := rec.Header().Values("Set-Cookie"); len(got) != 2 {
+		t.Fatalf("Set-Cookie count = %d, want 2", len(got))
 	}
 }
 
+// TestEchoContextMustGetPanicsWhenMissing verifies missing values trigger a panic. TestEchoContextMustGetPanicsWhenMissing 验证缺失值会触发 panic。
 func TestEchoContextMustGetPanicsWhenMissing(t *testing.T) {
 	engine := echo4.New()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)

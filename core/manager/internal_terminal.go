@@ -26,6 +26,7 @@ func (s *Session) removeTerminals(match terminalMatchFunc) []TerminalInfo {
 // filterTerminals returns matched terminals. filterTerminals 返回匹配的终端信息。
 func (s *Session) filterTerminals(match terminalMatchFunc) []TerminalInfo {
 	var matched []TerminalInfo
+
 	// Collect matched terminals. 收集匹配终端。
 	for _, ti := range s.TerminalInfos {
 		if match != nil && match(ti) {
@@ -59,6 +60,26 @@ func addUniqueStrings(items []string, values ...string) []string {
 		}
 	}
 	return items
+}
+
+// normalizeAccessValues removes empty values and keeps first occurrence order. normalizeAccessValues 移除空值并保留首次出现顺序。
+func normalizeAccessValues(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		normalized = append(normalized, value)
+	}
+	return normalized
 }
 
 // removeStrings removes matched non-empty strings. removeStrings 移除匹配的非空字符串。
@@ -97,6 +118,30 @@ func (s *Session) removeTerminalByToken(tokenValue string) (TerminalInfo, bool) 
 	for i, ti := range s.TerminalInfos {
 		if ti.Token == tokenValue {
 			removed := ti
+
+			// Remove matched terminal while preserving order. 保持顺序移除匹配终端。
+			s.TerminalInfos = append(s.TerminalInfos[:i], s.TerminalInfos[i+1:]...)
+			return removed, true
+		}
+	}
+
+	// Return not found. 返回未找到。
+	return TerminalInfo{}, false
+}
+
+// removeLatestTerminalByToken removes the newest terminal by token. removeLatestTerminalByToken 根据 token 值移除最新的终端信息。
+func (s *Session) removeLatestTerminalByToken(tokenValue string) (TerminalInfo, bool) {
+	// Validate token value. 校验 Token 值。
+	if tokenValue == "" {
+		return TerminalInfo{}, false
+	}
+
+	// Search matched terminal from newest to oldest. 从新到旧查找匹配终端。
+	for i := len(s.TerminalInfos) - 1; i >= 0; i-- {
+		ti := s.TerminalInfos[i]
+		if ti.Token == tokenValue {
+			removed := ti
+
 			// Remove matched terminal while preserving order. 保持顺序移除匹配终端。
 			s.TerminalInfos = append(s.TerminalInfos[:i], s.TerminalInfos[i+1:]...)
 			return removed, true
@@ -114,10 +159,10 @@ func (s *Session) removeTerminalByDevice(device string) []TerminalInfo {
 	})
 }
 
-// removeTerminalByDeviceAndDeviceId removes terminals by device and id. removeTerminalByDeviceAndDeviceId 根据设备类型和设备 ID 移除终端。
-func (s *Session) removeTerminalByDeviceAndDeviceId(device, deviceId string) []TerminalInfo {
+// removeTerminalByDeviceAndDeviceID removes terminals by device and id. removeTerminalByDeviceAndDeviceID 根据设备类型和设备 ID 移除终端。
+func (s *Session) removeTerminalByDeviceAndDeviceID(device, deviceID string) []TerminalInfo {
 	return s.removeTerminals(func(ti TerminalInfo) bool {
-		return ti.Device == device && ti.DeviceId == deviceId
+		return ti.Device == device && ti.DeviceID == deviceID
 	})
 }
 
@@ -140,6 +185,7 @@ func (s *Session) removeOldestTerminal(device ...string) (TerminalInfo, bool) {
 	for i, ti := range s.TerminalInfos {
 		if ti.Device == targetDevice {
 			removed := ti
+
 			// Remove matched terminal while preserving order. 保持顺序移除匹配终端。
 			s.TerminalInfos = append(s.TerminalInfos[:i], s.TerminalInfos[i+1:]...)
 			return removed, true
@@ -155,6 +201,7 @@ func (s *Session) removeAllTerminals() []TerminalInfo {
 	// Copy removed terminals. 拷贝被移除终端。
 	removed := make([]TerminalInfo, len(s.TerminalInfos))
 	copy(removed, s.TerminalInfos)
+
 	// Clear terminal list. 清空终端列表。
 	s.TerminalInfos = []TerminalInfo{}
 	return removed
@@ -167,10 +214,10 @@ func (s *Session) getTerminalsByDevice(device string) []TerminalInfo {
 	})
 }
 
-// getTerminalsByDeviceAndDeviceId gets terminals by device and id. getTerminalsByDeviceAndDeviceId 返回精确匹配设备和设备 ID 的终端信息。
-func (s *Session) getTerminalsByDeviceAndDeviceId(device, deviceId string) []TerminalInfo {
+// getTerminalsByDeviceAndDeviceID gets terminals by device and id. getTerminalsByDeviceAndDeviceID 返回精确匹配设备和设备 ID 的终端信息。
+func (s *Session) getTerminalsByDeviceAndDeviceID(device, deviceID string) []TerminalInfo {
 	return s.filterTerminals(func(ti TerminalInfo) bool {
-		return ti.Device == device && ti.DeviceId == deviceId
+		return ti.Device == device && ti.DeviceID == deviceID
 	})
 }
 
@@ -182,6 +229,7 @@ func (s *Session) getLatestTerminalByDevice(device string) (TerminalInfo, bool) 
 			return s.TerminalInfos[i], true
 		}
 	}
+
 	// Return not found. 返回未找到。
 	return TerminalInfo{}, false
 }
@@ -202,22 +250,54 @@ func (s *Session) hasTerminalToken(tokenValue string) bool {
 	return false
 }
 
-// addPermissions adds permissions with dedupe. addPermissions 向会话添加权限并自动去重。
-func (s *Session) addPermissions(permissions ...string) {
+// addPermissions adds permissions with dedupe and returns the added values. addPermissions 向会话添加权限并自动去重，同时返回实际新增值。
+func (s *Session) addPermissions(permissions ...string) []string {
+	previousCount := len(s.Permissions)
 	s.Permissions = addUniqueStrings(s.Permissions, permissions...)
+	return s.Permissions[previousCount:]
 }
 
-// removePermissions removes permissions. removePermissions 从会话移除指定权限。
-func (s *Session) removePermissions(permissions ...string) {
-	s.Permissions = removeStrings(s.Permissions, permissions...)
+// removePermissions removes permissions and returns the removed values. removePermissions 从会话移除指定权限，同时返回实际移除值。
+func (s *Session) removePermissions(permissions ...string) []string {
+	removed := existingAccessValues(s.Permissions, permissions)
+	s.Permissions = removeStrings(s.Permissions, removed...)
+	return removed
 }
 
-// addRoles adds roles with dedupe. addRoles 向会话添加角色并自动去重。
-func (s *Session) addRoles(roles ...string) {
+// addRoles adds roles with dedupe and returns the added values. addRoles 向会话添加角色并自动去重，同时返回实际新增值。
+func (s *Session) addRoles(roles ...string) []string {
+	previousCount := len(s.Roles)
 	s.Roles = addUniqueStrings(s.Roles, roles...)
+	return s.Roles[previousCount:]
 }
 
-// removeRoles removes roles. removeRoles 从会话移除指定角色。
-func (s *Session) removeRoles(roles ...string) {
-	s.Roles = removeStrings(s.Roles, roles...)
+// removeRoles removes roles and returns the removed values. removeRoles 从会话移除指定角色，同时返回实际移除值。
+func (s *Session) removeRoles(roles ...string) []string {
+	removed := existingAccessValues(s.Roles, roles)
+	s.Roles = removeStrings(s.Roles, removed...)
+	return removed
+}
+
+// existingAccessValues returns requested values that exist, preserving request order. existingAccessValues 返回已存在的请求值并保留请求顺序。
+func existingAccessValues(items, values []string) []string {
+	if len(items) == 0 || len(values) == 0 {
+		return nil
+	}
+
+	existing := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		existing[item] = struct{}{}
+	}
+
+	matched := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, ok := existing[value]; ok {
+			matched = append(matched, value)
+			delete(existing, value)
+		}
+	}
+	return matched
 }

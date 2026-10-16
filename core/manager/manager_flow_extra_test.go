@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/Zany2/dtoken-go/core/listener"
 )
 
+// TestManagerAutoRenewHonorsThresholdAndInterval verifies renewal threshold and throttling behavior. TestManagerAutoRenewHonorsThresholdAndInterval 验证自动续期阈值与节流间隔。
 func TestManagerAutoRenewHonorsThresholdAndInterval(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -73,6 +75,7 @@ func TestManagerAutoRenewHonorsThresholdAndInterval(t *testing.T) {
 	}
 }
 
+// TestManagerLoginByTokenRenewsTokenAndSessionTTL verifies token-based login renews both token and session TTL. TestManagerLoginByTokenRenewsTokenAndSessionTTL 验证 Token 续登会同时续期 Token 与 Session。
 func TestManagerLoginByTokenRenewsTokenAndSessionTTL(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -107,6 +110,7 @@ func TestManagerLoginByTokenRenewsTokenAndSessionTTL(t *testing.T) {
 	}
 }
 
+// TestManagerLoginWithTimeoutEntryPoint verifies the custom-timeout login entry point. TestManagerLoginWithTimeoutEntryPoint 验证自定义超时登录入口。
 func TestManagerLoginWithTimeoutEntryPoint(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -121,7 +125,7 @@ func TestManagerLoginWithTimeoutEntryPoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTokenInfo() error = %v", err)
 	}
-	if info.LoginID != "timeout-entry" || info.Device != "app" || info.DeviceId != "device-1" || info.Timeout != 120 {
+	if info.LoginID != "timeout-entry" || info.Device != "app" || info.DeviceID != "device-1" || info.Timeout != 120 {
 		t.Fatalf("TokenInfo = %+v, want login/device/deviceId/custom timeout", info)
 	}
 	ttl, err := mgr.GetTokenTTL(ctx, token)
@@ -136,6 +140,7 @@ func TestManagerLoginWithTimeoutEntryPoint(t *testing.T) {
 	}
 }
 
+// TestManagerOverflowLogoutModesPreserveExpectedTokenState verifies overflow modes retain their intended token states. TestManagerOverflowLogoutModesPreserveExpectedTokenState 验证登录数溢出策略会保留预期 Token 状态。
 func TestManagerOverflowLogoutModesPreserveExpectedTokenState(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
@@ -178,6 +183,7 @@ func TestManagerOverflowLogoutModesPreserveExpectedTokenState(t *testing.T) {
 	}
 }
 
+// TestManagerConcurrencyPolicyFullMatrix verifies the complete account and device concurrency policy matrix. TestManagerConcurrencyPolicyFullMatrix 验证账号级与设备级并发策略完整矩阵。
 func TestManagerConcurrencyPolicyFullMatrix(t *testing.T) {
 	ctx := context.Background()
 
@@ -746,6 +752,7 @@ func TestManagerConcurrencyPolicyFullMatrix(t *testing.T) {
 	})
 }
 
+// TestManagerAccountAndDeviceScopedExitOperations verifies account-scoped and device-scoped exit operations. TestManagerAccountAndDeviceScopedExitOperations 验证账号级与设备级下线操作。
 func TestManagerAccountAndDeviceScopedExitOperations(t *testing.T) {
 	ctx := context.Background()
 
@@ -818,8 +825,8 @@ func TestManagerAccountAndDeviceScopedExitOperations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Login(web/b) error = %v", err)
 		}
-		if err = mgr.ReplaceByDeviceAndDeviceId(ctx, "concrete-replace", "web", "a"); err != nil {
-			t.Fatalf("ReplaceByDeviceAndDeviceId() error = %v", err)
+		if err = mgr.ReplaceByDeviceAndDeviceID(ctx, "concrete-replace", "web", "a"); err != nil {
+			t.Fatalf("ReplaceByDeviceAndDeviceID() error = %v", err)
 		}
 		if err = mgr.CheckLogin(ctx, webA); !errors.Is(err, derror.ErrTokenReplaced) {
 			t.Fatalf("web/a CheckLogin() error = %v, want ErrTokenReplaced", err)
@@ -830,6 +837,7 @@ func TestManagerAccountAndDeviceScopedExitOperations(t *testing.T) {
 	})
 }
 
+// TestManagerRejectsNewLoginWhenReplacementModeIsNewDevice verifies new-device rejection mode preserves active sessions. TestManagerRejectsNewLoginWhenReplacementModeIsNewDevice 验证拒绝新设备模式会保留已有活跃会话。
 func TestManagerRejectsNewLoginWhenReplacementModeIsNewDevice(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -857,6 +865,7 @@ func TestManagerRejectsNewLoginWhenReplacementModeIsNewDevice(t *testing.T) {
 	}
 }
 
+// TestManagerDeviceAndConcreteExitOperations verifies device-type and concrete-device termination behavior. TestManagerDeviceAndConcreteExitOperations 验证设备类型与具体设备维度的下线行为。
 func TestManagerDeviceAndConcreteExitOperations(t *testing.T) {
 	ctx := context.Background()
 
@@ -878,8 +887,8 @@ func TestManagerDeviceAndConcreteExitOperations(t *testing.T) {
 			t.Fatalf("Login(mobile/a) error = %v", err)
 		}
 
-		if err = mgr.KickoutByDeviceAndDeviceId(ctx, "concrete-kickout", "web", "a"); err != nil {
-			t.Fatalf("KickoutByDeviceAndDeviceId() error = %v", err)
+		if err = mgr.KickoutByDeviceAndDeviceID(ctx, "concrete-kickout", "web", "a"); err != nil {
+			t.Fatalf("KickoutByDeviceAndDeviceID() error = %v", err)
 		}
 		if err = mgr.CheckLogin(ctx, webA); !errors.Is(err, derror.ErrTokenKickout) {
 			t.Fatalf("web/a CheckLogin() error = %v, want ErrTokenKickout", err)
@@ -935,8 +944,8 @@ func TestManagerDeviceAndConcreteExitOperations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Login(web/b) error = %v", err)
 		}
-		if err = mgr.LogoutByDeviceAndDeviceId(ctx, "concrete-logout", "web", "a"); err != nil {
-			t.Fatalf("LogoutByDeviceAndDeviceId() error = %v", err)
+		if err = mgr.LogoutByDeviceAndDeviceID(ctx, "concrete-logout", "web", "a"); err != nil {
+			t.Fatalf("LogoutByDeviceAndDeviceID() error = %v", err)
 		}
 		if err = mgr.CheckLogin(ctx, webA); !errors.Is(err, derror.ErrInvalidToken) {
 			t.Fatalf("web/a CheckLogin() error = %v, want ErrInvalidToken", err)
@@ -947,6 +956,7 @@ func TestManagerDeviceAndConcreteExitOperations(t *testing.T) {
 	})
 }
 
+// TestManagerForEachTerminalByDeviceStopsEarly verifies terminal traversal respects early termination. TestManagerForEachTerminalByDeviceStopsEarly 验证按设备遍历终端时支持提前停止。
 func TestManagerForEachTerminalByDeviceStopsEarly(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -982,6 +992,7 @@ func TestManagerForEachTerminalByDeviceStopsEarly(t *testing.T) {
 	}
 }
 
+// TestManagerPermissionAndRoleTokenCheckMatrix verifies token-based permission and role check combinations. TestManagerPermissionAndRoleTokenCheckMatrix 验证基于 Token 的权限与角色校验组合。
 func TestManagerPermissionAndRoleTokenCheckMatrix(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, nil)
@@ -1035,6 +1046,7 @@ func TestManagerPermissionAndRoleTokenCheckMatrix(t *testing.T) {
 	}
 }
 
+// TestManagerTerminateDispatchesAccountAndDeviceScopes verifies termination dispatch across account and device scopes. TestManagerTerminateDispatchesAccountAndDeviceScopes 验证终端操作在账号与设备作用域间的分发。
 func TestManagerTerminateDispatchesAccountAndDeviceScopes(t *testing.T) {
 	ctx := context.Background()
 
@@ -1110,6 +1122,7 @@ func TestManagerTerminateDispatchesAccountAndDeviceScopes(t *testing.T) {
 	})
 }
 
+// TestManagerIntrospectionInactiveBoundaries verifies introspection results for inactive token states. TestManagerIntrospectionInactiveBoundaries 验证非活跃 Token 状态的自省结果。
 func TestManagerIntrospectionInactiveBoundaries(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, nil)
@@ -1138,6 +1151,7 @@ func TestManagerIntrospectionInactiveBoundaries(t *testing.T) {
 	}
 }
 
+// TestManagerGetTokenInfoStateSemantics verifies token metadata queries preserve logical state errors. TestManagerGetTokenInfoStateSemantics 验证 Token 元数据查询会保留逻辑状态错误。
 func TestManagerGetTokenInfoStateSemantics(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
@@ -1167,6 +1181,115 @@ func TestManagerGetTokenInfoStateSemantics(t *testing.T) {
 	}
 }
 
+// TestManagerTerminalStateActionsPreserveReason verifies terminal actions retain exact invalidation reasons. TestManagerTerminalStateActionsPreserveReason 验证终端下线操作会保留精确失效原因。
+func TestManagerTerminalStateActionsPreserveReason(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name    string
+		action  func(*Manager, string, string) error
+		wantErr error
+	}{
+		{
+			name: "kickout by token",
+			action: func(mgr *Manager, _, token string) error {
+				return mgr.Kickout(ctx, token)
+			},
+			wantErr: derror.ErrTokenKickout,
+		},
+		{
+			name: "kickout by login id",
+			action: func(mgr *Manager, loginID, _ string) error {
+				return mgr.KickoutByLoginID(ctx, loginID)
+			},
+			wantErr: derror.ErrTokenKickout,
+		},
+		{
+			name: "replace by token",
+			action: func(mgr *Manager, _, token string) error {
+				return mgr.Replace(ctx, token)
+			},
+			wantErr: derror.ErrTokenReplaced,
+		},
+		{
+			name: "replace by login id",
+			action: func(mgr *Manager, loginID, _ string) error {
+				return mgr.ReplaceByLoginID(ctx, loginID)
+			},
+			wantErr: derror.ErrTokenReplaced,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mgr := newTestManager(t, nil)
+			loginID := "terminal-state-" + tt.name
+			token, err := mgr.Login(ctx, loginID, "web")
+			if err != nil {
+				t.Fatalf("Login() error = %v", err)
+			}
+			keptToken, err := mgr.Login(ctx, loginID, "mobile")
+			if err != nil {
+				t.Fatalf("Login(kept) error = %v", err)
+			}
+			if err = tt.action(mgr, loginID, token); err != nil {
+				t.Fatalf("action() error = %v", err)
+			}
+			if err = mgr.CheckLogin(ctx, token); !errors.Is(err, tt.wantErr) {
+				t.Fatalf("CheckLogin() error = %v, want %v", err, tt.wantErr)
+			}
+			if strings.Contains(tt.name, "by token") {
+				if err = mgr.CheckLogin(ctx, keptToken); err != nil {
+					t.Fatalf("kept token CheckLogin() error = %v, want nil", err)
+				}
+			}
+		})
+	}
+}
+
+// TestManagerLogoutHelpersHandleNoopAndEmptyTokenMetadata verifies logout helpers safely handle no-op and empty metadata cases. TestManagerLogoutHelpersHandleNoopAndEmptyTokenMetadata 验证登出辅助逻辑能安全处理空操作与空元数据。
+func TestManagerLogoutHelpersHandleNoopAndEmptyTokenMetadata(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, nil)
+
+	token, err := mgr.Login(ctx, "logout-noop-helper", "web")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	sess, err := mgr.getSession(ctx, "logout-noop-helper")
+	if err != nil {
+		t.Fatalf("getSession() error = %v", err)
+	}
+	destroyed, removed, err := mgr.removeTerminalInfosAndTokens(ctx, sess, config.LogoutModeLogout, "mobile")
+	if err != nil {
+		t.Fatalf("removeTerminalInfosAndTokens(no match) error = %v", err)
+	}
+	if destroyed {
+		t.Fatal("removeTerminalInfosAndTokens(no match) destroyed session")
+	}
+	if len(removed) != 0 {
+		t.Fatalf("removeTerminalInfosAndTokens(no match) removed = %+v, want empty", removed)
+	}
+	if err = mgr.CheckLogin(ctx, token); err != nil {
+		t.Fatalf("CheckLogin() after no-op remove error = %v", err)
+	}
+
+	emptyRenewKey := mgr.getRenewKey("")
+	emptyActiveKey := mgr.getActiveKey("")
+	if err = mgr.storage.Set(ctx, emptyRenewKey, "keep", time.Minute); err != nil {
+		t.Fatalf("Set(empty renew key) error = %v", err)
+	}
+	if err = mgr.storage.Set(ctx, emptyActiveKey, "keep", time.Minute); err != nil {
+		t.Fatalf("Set(empty active key) error = %v", err)
+	}
+	if err = mgr.cleanTokenMetadata(ctx, []string{"", token}); err != nil {
+		t.Fatalf("cleanTokenMetadata() error = %v", err)
+	}
+	if !mgr.storage.Exists(ctx, emptyRenewKey) || !mgr.storage.Exists(ctx, emptyActiveKey) {
+		t.Fatal("cleanTokenMetadata() deleted empty-token metadata keys")
+	}
+}
+
+// TestManagerRefreshTokenRejectsDisabledAccountAndDevice verifies refresh login rejects disabled subjects and devices. TestManagerRefreshTokenRejectsDisabledAccountAndDevice 验证刷新令牌流程会拒绝已封禁账号与设备。
 func TestManagerRefreshTokenRejectsDisabledAccountAndDevice(t *testing.T) {
 	ctx := context.Background()
 
@@ -1194,8 +1317,8 @@ func TestManagerRefreshTokenRejectsDisabledAccountAndDevice(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LoginWithRefreshToken() error = %v", err)
 		}
-		info := DeviceDisableInfo{Device: "web", DeviceId: "browser", DisableTime: time.Now().Unix()}
-		if err = mgr.saveToStorage(ctx, mgr.getDisableDeviceAndDeviceIdKey("refresh-disabled-device", "web", "browser"), info, time.Minute); err != nil {
+		info := DeviceDisableInfo{Device: "web", DeviceID: "browser", DisableTime: time.Now().Unix()}
+		if err = mgr.saveToStorage(ctx, mgr.getDisableDeviceAndDeviceIDKey("refresh-disabled-device", "web", "browser"), info, time.Minute); err != nil {
 			t.Fatalf("save device disable marker error = %v", err)
 		}
 		if _, err = mgr.RefreshToken(ctx, pair.RefreshToken); !errors.Is(err, derror.ErrDeviceDisabled) {
@@ -1204,6 +1327,7 @@ func TestManagerRefreshTokenRejectsDisabledAccountAndDevice(t *testing.T) {
 	})
 }
 
+// TestManagerSaveSessionWithMinTTLKeepsLongerTTL verifies session persistence never shortens a longer TTL. TestManagerSaveSessionWithMinTTLKeepsLongerTTL 验证保存 Session 时不会缩短已有较长有效期。
 func TestManagerSaveSessionWithMinTTLKeepsLongerTTL(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, nil)
@@ -1236,6 +1360,7 @@ func TestManagerSaveSessionWithMinTTLKeepsLongerTTL(t *testing.T) {
 	}
 }
 
+// TestManagerEventPayloadsForCoreFlows verifies core lifecycle events carry complete payloads. TestManagerEventPayloadsForCoreFlows 验证核心生命周期事件携带完整载荷。
 func TestManagerEventPayloadsForCoreFlows(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -1301,6 +1426,40 @@ func TestManagerEventPayloadsForCoreFlows(t *testing.T) {
 	assertManagerEvent(t, events, listener.EventLogout, "event-user", "web", "browser", token, nil)
 }
 
+// TestManagerActiveTimeoutEmitsDedicatedEvent verifies inactive timeout emits its dedicated event. TestManagerActiveTimeoutEmitsDedicatedEvent 验证不活跃超时会触发专用事件。
+func TestManagerActiveTimeoutEmitsDedicatedEvent(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.Timeout = 60
+		cfg.ActiveTimeout = 1
+	})
+
+	var events []*listener.EventData
+	mgr.GetEventManager().RegisterFuncWithConfig(listener.EventAll, func(data *listener.EventData) {
+		copyData := *data
+		events = append(events, &copyData)
+	}, listener.ListenerConfig{Async: false})
+
+	token, err := mgr.Login(ctx, "event-active-timeout", "web", "browser")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if err = requireManagerTestStorage(t, mgr).Set(ctx, mgr.getActiveKey(token), time.Now().Add(-2*time.Second).Unix(), time.Minute); err != nil {
+		t.Fatalf("Set(active marker) error = %v", err)
+	}
+	if err = mgr.CheckLogin(ctx, token); !errors.Is(err, derror.ErrActiveTimeout) {
+		t.Fatalf("CheckLogin() error = %v, want ErrActiveTimeout", err)
+	}
+
+	assertManagerEvent(t, events, listener.EventActiveTimeout, "event-active-timeout", "web", "browser", token, nil)
+	for _, data := range events {
+		if data.Event == listener.EventKickout && data.Token == token {
+			t.Fatalf("active timeout emitted EventKickout: %+v", data)
+		}
+	}
+}
+
+// TestManagerSearchPaginationBoundaries verifies token and session search pagination boundaries. TestManagerSearchPaginationBoundaries 验证 Token 与 Session 搜索的分页边界。
 func TestManagerSearchPaginationBoundaries(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
@@ -1358,7 +1517,7 @@ func boolPtr(v bool) *bool {
 func assertManagerEvent(t *testing.T, events []*listener.EventData, event listener.Event, loginID, device, deviceID, token string, extra map[string]any) {
 	t.Helper()
 	for _, data := range events {
-		if data.Event != event || data.LoginID != loginID || data.Device != device || data.DeviceId != deviceID || data.Token != token {
+		if data.Event != event || data.LoginID != loginID || data.Device != device || data.DeviceID != deviceID || data.Token != token {
 			continue
 		}
 		matched := true

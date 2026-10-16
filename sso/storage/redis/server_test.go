@@ -11,14 +11,14 @@ import (
 // TestNewServerRejectsInvalidRedisURL verifies invalid Redis URL is rejected. TestNewServerRejectsInvalidRedisURL 验证非法 Redis 地址会被拒绝。
 func TestNewServerRejectsInvalidRedisURL(t *testing.T) {
 	if server, err := NewServer("://bad-url"); err == nil || server != nil {
-		t.Fatalf("NewServer(invalid) = %v, %v, want nil error", server, err)
+		t.Fatalf("NewServer(invalid) = %v, %v, want nil server and non-nil error", server, err)
 	}
 }
 
 // TestNewServerFromConfigRejectsNil verifies nil config is rejected. TestNewServerFromConfigRejectsNil 验证空配置会被拒绝。
 func TestNewServerFromConfigRejectsNil(t *testing.T) {
 	if server, err := NewServerFromConfig(nil); err == nil || server != nil {
-		t.Fatalf("NewServerFromConfig(nil) = %v, %v, want nil error", server, err)
+		t.Fatalf("NewServerFromConfig(nil) = %v, %v, want nil server and non-nil error", server, err)
 	}
 }
 

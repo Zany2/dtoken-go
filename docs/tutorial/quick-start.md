@@ -11,7 +11,7 @@ This page is based on the current version of the codebase and walks through the 
 ### Option 1: Core Modules + Memory Storage
 
 ```bash
-go get github.com/Zany2/dtoken-go/core
+go get github.com/Zany2/dtoken-go/defaults
 go get github.com/Zany2/dtoken-go/dtoken
 go get github.com/Zany2/dtoken-go/com/storage/memory
 ```
@@ -41,13 +41,15 @@ import (
 var ctx = context.Background()
 
 func init() {
-    dtoken.SetManager(
-        defaults.NewBuilder().
-            SetStorage(memory.NewStorage()).
-            TokenName("Authorization").
-            Timeout(86400).
-            Build(),
-    )
+    mgr, err := defaults.NewBuilder().
+        SetStorage(memory.NewStorage()).
+        TokenName("Authorization").
+        Timeout(86400).
+        Build()
+    if err != nil {
+        panic(err)
+    }
+    dtoken.SetManager(mgr)
 }
 ```
 
@@ -86,7 +88,7 @@ func main() {
 You can continue adjusting common settings through the Builder:
 
 ```go
-mgr := defaults.NewBuilder().
+mgr, err := defaults.NewBuilder().
     SetStorage(memory.NewStorage()).
     TokenName("token").
     Timeout(7200).
@@ -95,6 +97,9 @@ mgr := defaults.NewBuilder().
     IsReadHeader(true).
     IsPrintBanner(true).
     Build()
+if err != nil {
+    panic(err)
+}
 
 dtoken.SetManager(mgr)
 ```

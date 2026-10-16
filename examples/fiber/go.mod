@@ -3,6 +3,7 @@ module github.com/Zany2/dtoken-go/examples/fiber
 go 1.25.0
 
 require (
+	github.com/Zany2/dtoken-go/dtoken v0.0.3
 	github.com/Zany2/dtoken-go/integrations/fiber v0.0.3
 	github.com/gofiber/fiber/v2 v2.52.0
 )
@@ -19,7 +20,6 @@ require (
 	github.com/Zany2/dtoken-go/com/storage/redis v0.0.3 // indirect
 	github.com/Zany2/dtoken-go/core v0.0.3 // indirect
 	github.com/Zany2/dtoken-go/defaults v0.0.3 // indirect
-	github.com/Zany2/dtoken-go/dtoken v0.0.3 // indirect
 	github.com/Zany2/dtoken-go/integrations/authcheck v0.0.3 // indirect
 	github.com/andybalholm/brotli v1.0.5 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

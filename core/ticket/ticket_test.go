@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
+	"github.com/Zany2/dtoken-go/core/derror"
 )
 
+// TestConfigValidateAndClone verifies ticket config validation and independent cloning. TestConfigValidateAndClone 验证 Ticket 配置校验与独立克隆。
 func TestConfigValidateAndClone(t *testing.T) {
 	cfg := DefaultConfig()
 	if cfg == nil || cfg.TTL != DefaultTicketTTL {
@@ -30,8 +32,12 @@ func TestConfigValidateAndClone(t *testing.T) {
 	if err := (&Config{}).Validate(); err == nil {
 		t.Fatalf("Validate() error = nil, want invalid ttl error")
 	}
+	if (*Config)(nil).Clone() != nil || (*Config)(nil).Validate() != nil {
+		t.Fatal("nil config Clone/Validate should be safe")
+	}
 }
 
+// TestManagerCreateValidateConsume verifies the ticket create, validate, and consume lifecycle. TestManagerCreateValidateConsume 验证 Ticket 创建、校验与消费生命周期。
 func TestManagerCreateValidateConsume(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestTicketManager(time.Minute)
@@ -39,7 +45,7 @@ func TestManagerCreateValidateConsume(t *testing.T) {
 	created, err := mgr.Create(ctx, CreateOptions{
 		LoginID:   "user-1",
 		Device:    "web",
-		DeviceId:  "browser-1",
+		DeviceID:  "browser-1",
 		Source:    "qr",
 		SourceApp: "portal",
 		TargetApp: "admin",
@@ -85,6 +91,7 @@ func TestManagerCreateValidateConsume(t *testing.T) {
 	}
 }
 
+// TestManagerBoundaries verifies ticket invalid-input and lifecycle boundaries. TestManagerBoundaries 验证 Ticket 非法输入与生命周期边界。
 func TestManagerBoundaries(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestTicketManager(time.Minute)
@@ -126,6 +133,7 @@ func TestManagerBoundaries(t *testing.T) {
 
 	expired := &Ticket{
 		Ticket:     "expired-ticket",
+		AuthType:   mgr.authType,
 		CreateTime: time.Now().Add(-2 * time.Second).Unix(),
 		ExpiresIn:  1,
 		Status:     StatusValid,
@@ -141,6 +149,43 @@ func TestManagerBoundaries(t *testing.T) {
 	}
 }
 
+// TestManagerRejectsMismatchedStoredIdentity verifies stored payloads cannot escape their credential namespace. TestManagerRejectsMismatchedStoredIdentity 验证存储载荷不能越过其凭证命名空间。
+func TestManagerRejectsMismatchedStoredIdentity(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestTicketManager(time.Minute)
+
+	for _, tt := range []struct {
+		name     string
+		ticket   string
+		authType string
+	}{
+		{name: "ticket value", ticket: "other-ticket", authType: "test"},
+		{name: "auth type", ticket: "requested-ticket", authType: "other"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			stored := &Ticket{
+				Ticket:     tt.ticket,
+				AuthType:   tt.authType,
+				CreateTime: time.Now().Unix(),
+				ExpiresIn:  60,
+				Status:     StatusValid,
+			}
+			encoded, err := mgr.serializer.Encode(stored)
+			if err != nil {
+				t.Fatalf("Encode() error = %v", err)
+			}
+			if err = mgr.storage.Set(ctx, mgr.getTicketKey("requested-ticket"), encoded, time.Minute); err != nil {
+				t.Fatalf("Set() error = %v", err)
+			}
+
+			if _, err = mgr.Validate(ctx, "requested-ticket"); !errors.Is(err, ErrInvalidTicket) {
+				t.Fatalf("Validate(mismatched identity) error = %v, want ErrInvalidTicket", err)
+			}
+		})
+	}
+}
+
+// TestConsumeConstraintMismatchDoesNotConsumeTicket verifies mismatched constraints preserve the ticket. TestConsumeConstraintMismatchDoesNotConsumeTicket 验证约束不匹配时不会消费 Ticket。
 func TestConsumeConstraintMismatchDoesNotConsumeTicket(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestTicketManager(time.Minute)
@@ -171,6 +216,77 @@ func TestConsumeConstraintMismatchDoesNotConsumeTicket(t *testing.T) {
 	}
 }
 
+// TestRevokeDoesNotOverwriteConsumedTicket verifies revoke keeps an existing consumed state. TestRevokeDoesNotOverwriteConsumedTicket 验证撤销操作不会覆盖已消费状态。
+func TestRevokeDoesNotOverwriteConsumedTicket(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestTicketManager(time.Minute)
+
+	created, err := mgr.Create(ctx, CreateOptions{LoginID: "user-1"})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err = mgr.Consume(ctx, created.Ticket); err != nil {
+		t.Fatalf("Consume() error = %v", err)
+	}
+	if err = mgr.Revoke(ctx, created.Ticket); err != nil {
+		t.Fatalf("Revoke(consumed) error = %v", err)
+	}
+	status, err := mgr.Status(ctx, created.Ticket)
+	if err != nil {
+		t.Fatalf("Status(consumed after revoke) error = %v", err)
+	}
+	if status != StatusConsumed {
+		t.Fatalf("Status(consumed after revoke) = %s, want %s", status, StatusConsumed)
+	}
+}
+
+// TestTicketExpirationBoundaryAndDurationRounding verifies exact expiry and positive metadata for sub-second TTLs. TestTicketExpirationBoundaryAndDurationRounding 验证恰好到期边界及亚秒 TTL 的正数元数据。
+func TestTicketExpirationBoundaryAndDurationRounding(t *testing.T) {
+	if got := durationSeconds(500 * time.Millisecond); got != 1 {
+		t.Fatalf("durationSeconds(500ms) = %d, want 1", got)
+	}
+	if got := durationSeconds(2 * time.Second); got != 2 {
+		t.Fatalf("durationSeconds(2s) = %d, want 2", got)
+	}
+
+	mgr := newTestTicketManager(time.Minute)
+	expired := &Ticket{
+		Ticket:     "expired-boundary",
+		AuthType:   mgr.authType,
+		CreateTime: time.Now().Unix() - 1,
+		ExpiresIn:  1,
+		Status:     StatusValid,
+	}
+	if err := mgr.save(context.Background(), expired, time.Minute); err != nil {
+		t.Fatalf("save(expired boundary) error = %v", err)
+	}
+	if _, err := mgr.Validate(context.Background(), expired.Ticket); !errors.Is(err, ErrTicketExpired) {
+		t.Fatalf("Validate(expired boundary) error = %v, want ErrTicketExpired", err)
+	}
+
+	created, err := mgr.CreateWithTimeout(context.Background(), CreateOptions{}, 500*time.Millisecond)
+	if err != nil {
+		t.Fatalf("CreateWithTimeout(500ms) error = %v", err)
+	}
+	if created.ExpiresIn < 1 {
+		t.Fatalf("CreateWithTimeout(500ms) ExpiresIn = %d, want positive", created.ExpiresIn)
+	}
+}
+
+// TestTicketConsumeReportsStateSaveFailure verifies consumption does not hide persistence errors. TestTicketConsumeReportsStateSaveFailure 验证消费不会隐藏状态持久化错误。
+func TestTicketConsumeReportsStateSaveFailure(t *testing.T) {
+	storage := &ticketConsumeSaveFailStorage{ticketTestStorage: newTicketTestStorage()}
+	mgr := NewManagerWithConfig("test", "dt:", storage, ticketTestCodec{}, &Config{TTL: time.Minute})
+	created, err := mgr.Create(context.Background(), CreateOptions{LoginID: "user-1"})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	storage.failSets = true
+	if _, err = mgr.Consume(context.Background(), created.Ticket); !errors.Is(err, derror.ErrStorageUnavailable) {
+		t.Fatalf("Consume() error = %v, want ErrStorageUnavailable", err)
+	}
+}
+
 func newTestTicketManager(ttl time.Duration) *Manager {
 	return NewManagerWithConfig("test", "dt:", newTicketTestStorage(), ticketTestCodec{}, &Config{TTL: ttl})
 }
@@ -186,6 +302,18 @@ func (ticketTestCodec) Decode(data []byte, v any) error { return json.Unmarshal(
 type ticketTestStorage struct {
 	mu    sync.Mutex
 	items map[string]ticketTestStorageItem
+}
+
+type ticketConsumeSaveFailStorage struct {
+	*ticketTestStorage
+	failSets bool
+}
+
+func (s *ticketConsumeSaveFailStorage) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
+	if s.failSets {
+		return errors.New("consume state save failed")
+	}
+	return s.ticketTestStorage.Set(ctx, key, value, expiration)
 }
 
 type ticketTestStorageItem struct {
@@ -300,6 +428,22 @@ func (s *ticketTestStorage) GetAndDelete(_ context.Context, key string) (any, er
 		return nil, nil
 	}
 	return item.value, nil
+}
+
+func (s *ticketTestStorage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if ok && !item.expired() {
+		return false, nil
+	}
+	next := ticketTestStorageItem{value: value}
+	if expiration > 0 {
+		next.expiresAt = time.Now().Add(expiration)
+	}
+	s.items[key] = next
+	return true, nil
 }
 
 func (item ticketTestStorageItem) expired() bool {

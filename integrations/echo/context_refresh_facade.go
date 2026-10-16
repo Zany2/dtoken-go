@@ -7,12 +7,12 @@ import (
 )
 
 // LoginWithRefreshTokenByContext logs in and issues refresh token LoginWithRefreshTokenByContext 登录并签发刷新 Token
-func LoginWithRefreshTokenByContext(c echo4.Context, loginID string, deviceAndDeviceId ...string) (*manager.RefreshTokenPair, error) {
+func LoginWithRefreshTokenByContext(c echo4.Context, loginID string, deviceAndDeviceID ...string) (*manager.RefreshTokenPair, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return nil, err
 	}
-	return dCtx.Refresh().Login(requestContext(c), loginID, deviceAndDeviceId...)
+	return dCtx.Refresh().Login(requestContext(c), loginID, deviceAndDeviceID...)
 }
 
 // LoginWithRefreshTokenOptionsByContext logs in with refresh token options LoginWithRefreshTokenOptionsByContext 使用刷新 Token 选项登录
@@ -24,7 +24,7 @@ func LoginWithRefreshTokenOptionsByContext(c echo4.Context, opts manager.Refresh
 	return dCtx.Refresh().LoginWithOptions(requestContext(c), opts)
 }
 
-// RefreshTokenByContext refreshes access token RefreshTokenByContext 鍒锋柊璁块棶 Token
+// RefreshTokenByContext refreshes access token RefreshTokenByContext 刷新访问 Token
 func RefreshTokenByContext(c echo4.Context, refreshToken string) (*manager.RefreshTokenPair, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -33,7 +33,7 @@ func RefreshTokenByContext(c echo4.Context, refreshToken string) (*manager.Refre
 	return dCtx.Refresh().Refresh(requestContext(c), refreshToken)
 }
 
-// RevokeRefreshTokenByContext revokes refresh token RevokeRefreshTokenByContext 鎾ら攢鍒锋柊 Token
+// RevokeRefreshTokenByContext revokes refresh token RevokeRefreshTokenByContext 撤销刷新 Token
 func RevokeRefreshTokenByContext(c echo4.Context, refreshToken string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -42,7 +42,7 @@ func RevokeRefreshTokenByContext(c echo4.Context, refreshToken string) error {
 	return dCtx.Refresh().Revoke(requestContext(c), refreshToken)
 }
 
-// GetRefreshTokenTTLByContext gets refresh token TTL GetRefreshTokenTTLByContext 鑾峰彇鍒锋柊 Token 鍓╀綑鏈夋晥鏈?
+// GetRefreshTokenTTLByContext gets refresh token TTL GetRefreshTokenTTLByContext 获取刷新 Token 剩余有效期
 func GetRefreshTokenTTLByContext(c echo4.Context, refreshToken string) (int64, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

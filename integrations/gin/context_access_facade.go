@@ -5,7 +5,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CheckRoleByContext checks current user role CheckRoleByContext 鏍￠獙褰撳墠鐢ㄦ埛瑙掕壊
+// CheckRoleByContext checks current user role CheckRoleByContext 校验当前用户角色
 func CheckRoleByContext(c *gin.Context, role string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -14,7 +14,7 @@ func CheckRoleByContext(c *gin.Context, role string) error {
 	return dCtx.Access().CheckRole(requestContext(c), role)
 }
 
-// CheckRolesAndByContext checks all current user roles CheckRolesAndByContext 鏍￠獙褰撳墠鐢ㄦ埛鏄惁鎷ユ湁鍏ㄩ儴瑙掕壊
+// CheckRolesAndByContext checks all current user roles CheckRolesAndByContext 校验当前用户是否拥有全部角色
 func CheckRolesAndByContext(c *gin.Context, roles []string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -23,7 +23,7 @@ func CheckRolesAndByContext(c *gin.Context, roles []string) error {
 	return dCtx.Access().CheckRolesAnd(requestContext(c), roles)
 }
 
-// CheckRolesOrByContext checks any current user role CheckRolesOrByContext 鏍￠獙褰撳墠鐢ㄦ埛鏄惁鎷ユ湁浠讳竴瑙掕壊
+// CheckRolesOrByContext checks any current user role CheckRolesOrByContext 校验当前用户是否拥有任一角色
 func CheckRolesOrByContext(c *gin.Context, roles []string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -32,7 +32,7 @@ func CheckRolesOrByContext(c *gin.Context, roles []string) error {
 	return dCtx.Access().CheckRolesOr(requestContext(c), roles)
 }
 
-// CheckPermissionByContext checks current user permission CheckPermissionByContext 鏍￠獙褰撳墠鐢ㄦ埛鏉冮檺
+// CheckPermissionByContext checks current user permission CheckPermissionByContext 校验当前用户权限
 func CheckPermissionByContext(c *gin.Context, permission string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -41,7 +41,7 @@ func CheckPermissionByContext(c *gin.Context, permission string) error {
 	return dCtx.Access().CheckPermission(requestContext(c), permission)
 }
 
-// CheckPermissionsAndByContext checks all current user permissions CheckPermissionsAndByContext 鏍￠獙褰撳墠鐢ㄦ埛鏄惁鎷ユ湁鍏ㄩ儴鏉冮檺
+// CheckPermissionsAndByContext checks all current user permissions CheckPermissionsAndByContext 校验当前用户是否拥有全部权限
 func CheckPermissionsAndByContext(c *gin.Context, permissions []string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -50,7 +50,7 @@ func CheckPermissionsAndByContext(c *gin.Context, permissions []string) error {
 	return dCtx.Access().CheckPermissionsAnd(requestContext(c), permissions)
 }
 
-// CheckPermissionsOrByContext checks any current user permission CheckPermissionsOrByContext 鏍￠獙褰撳墠鐢ㄦ埛鏄惁鎷ユ湁浠讳竴鏉冮檺
+// CheckPermissionsOrByContext checks any current user permission CheckPermissionsOrByContext 校验当前用户是否拥有任一权限
 func CheckPermissionsOrByContext(c *gin.Context, permissions []string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

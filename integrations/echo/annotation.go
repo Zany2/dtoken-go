@@ -11,18 +11,28 @@ import (
 
 // Annotation describes declarative auth requirements Annotation 描述声明式认证要求
 type Annotation struct {
-	AuthType        string
-	CheckLogin      bool
-	CheckRole       []string
-	CheckPermission []string
-	CheckDisable    bool
-	Ignore          bool
-	LogicType       LogicType
+	AuthType        string    // Optional: specify auth type 可选：指定认证类型
+	CheckLogin      bool      // Check login 检查登录
+	CheckRole       []string  // Check roles 检查角色
+	CheckPermission []string  // Check permissions 检查权限
+	CheckDisable    bool      // Check disable status 检查封禁状态
+	Ignore          bool      // Ignore authentication 忽略认证
+	LogicType       LogicType // OR or AND logic (default: OR) OR 或 AND 逻辑（默认：OR）
 }
 
 // GetHandler wraps Echo handler with annotation checks GetHandler 使用注解检查包装 Echo 处理器
 func GetHandler(ctx context.Context, handler echo4.HandlerFunc, failFunc func(c echo4.Context, err error) error, annotations ...*Annotation) echo4.HandlerFunc {
 	return func(c echo4.Context) error {
+		if isRequestAborted(c) {
+			return nil
+		}
+
+		if len(annotations) > 0 && annotations[0] == nil {
+			if failFunc != nil {
+				return failFunc(c, derror.ErrInvalidParam)
+			}
+			return writeErrorResponse(c, derror.ErrInvalidParam)
+		}
 		if len(annotations) > 0 && annotations[0].Ignore {
 			if handler != nil {
 				return handler(c)
@@ -43,7 +53,8 @@ func GetHandler(ctx context.Context, handler echo4.HandlerFunc, failFunc func(c 
 			return nil
 		}
 
-		mgr, err := authcheck.GetManager(ann.AuthType)
+		cached, _ := GetDTokenContext(c)
+		mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached)
 		if err != nil {
 			if failFunc != nil {
 				return failFunc(c, err)
@@ -55,7 +66,7 @@ func GetHandler(ctx context.Context, handler echo4.HandlerFunc, failFunc func(c 
 		dCtx := getDTokenContext(c, mgr)
 		token := dCtx.GetTokenValue()
 
-		_, err = authcheck.Check(ctx, mgr, authcheck.Request{
+		_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
 			TokenValue:   token,
 			CheckLogin:   true,
 			CheckDisable: ann.CheckDisable,

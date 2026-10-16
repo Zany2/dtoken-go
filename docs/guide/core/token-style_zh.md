@@ -66,10 +66,19 @@ mgr, err := defaults.NewBuilder().
 如果内置风格不满足要求，可以实现 `adapter.Generator`：
 
 ```go
+import (
+    "crypto/rand"
+    "encoding/hex"
+)
+
 type MyGenerator struct{}
 
 func (MyGenerator) Generate(loginID, device, deviceID string) (string, error) {
-    return "custom-token-value", nil
+    var value [32]byte
+    if _, err := rand.Read(value[:]); err != nil {
+        return "", err
+    }
+    return hex.EncodeToString(value[:]), nil
 }
 
 mgr, err := defaults.NewBuilder().

@@ -2,13 +2,15 @@
 package dlog
 
 import (
-	"github.com/Zany2/dtoken-go/core/adapter"
 	"time"
+
+	"github.com/Zany2/dtoken-go/core/adapter"
 )
 
 // LogLevel aliases adapter.LogLevel 日志级别别名
 type LogLevel = adapter.LogLevel
 
+// Log level aliases 日志级别别名
 const (
 	LevelDebug = adapter.LogLevelDebug // Debug level 调试级别
 	LevelInfo  = adapter.LogLevelInfo  // Info level 信息级别
@@ -16,6 +18,7 @@ const (
 	LevelError = adapter.LogLevelError // Error level 错误级别（最高）
 )
 
+// Default logger configuration values 默认日志配置值
 const (
 	DefaultPrefix            = "[DTOKEN] "              // Default log prefix 默认日志前缀
 	DefaultFileFormat        = "DTOKEN_{Y}-{m}-{d}.log" // Default log filename format 默认文件命名格式

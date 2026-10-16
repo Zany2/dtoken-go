@@ -14,6 +14,8 @@ import (
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/go-kratos/kratos/v2/transport"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 )
 
 // KratosContext adapts request context KratosContext 适配 Kratos 请求上下文
@@ -32,6 +34,9 @@ var (
 
 // NewKratosContext creates request context adapter NewKratosContext 创建 Kratos 请求上下文适配器
 func NewKratosContext(ctx context.Context) adapter.RequestContext {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return &KratosContext{ctx: ctx}
 }
 
@@ -69,6 +74,9 @@ func (k *KratosContext) GetHeaders() map[string][]string {
 
 // GetHeader implements adapter.RequestContext GetHeader 实现 adapter.RequestContext 接口
 func (k *KratosContext) GetHeader(key string) string {
+	if request := k.GetRawRequest(); request != nil {
+		return request.Header.Get(key)
+	}
 	if tr, ok := transport.FromServerContext(k.ctx); ok {
 		return tr.RequestHeader().Get(key)
 	}
@@ -77,7 +85,7 @@ func (k *KratosContext) GetHeader(key string) string {
 
 // GetQuery implements adapter.RequestContext GetQuery 实现 adapter.RequestContext 接口
 func (k *KratosContext) GetQuery(key string) string {
-	if request := k.GetRawRequest(); request != nil {
+	if request := k.GetRawRequest(); request != nil && request.URL != nil {
 		return request.URL.Query().Get(key)
 	}
 	return ""
@@ -86,7 +94,7 @@ func (k *KratosContext) GetQuery(key string) string {
 // GetQueryAll implements adapter.RequestContext GetQueryAll 实现 adapter.RequestContext 接口
 func (k *KratosContext) GetQueryAll() map[string][]string {
 	query := make(map[string][]string)
-	if request := k.GetRawRequest(); request != nil {
+	if request := k.GetRawRequest(); request != nil && request.URL != nil {
 		for key, values := range request.URL.Query() {
 			query[key] = append([]string(nil), values...)
 		}
@@ -101,10 +109,7 @@ func (k *KratosContext) GetPostForm(key string) string {
 		return ""
 	}
 
-	if err := request.ParseForm(); err != nil {
-		return ""
-	}
-
+	// Let PostFormValue parse multipart as well as URL-encoded bodies. 由 PostFormValue 解析 multipart 和 URL 编码请求体，不混入 Query。
 	return request.PostFormValue(key)
 }
 
@@ -142,29 +147,21 @@ func (k *KratosContext) GetBody() ([]byte, error) {
 
 // GetClientIP implements adapter.RequestContext GetClientIP 实现 adapter.RequestContext 接口
 func (k *KratosContext) GetClientIP() string {
-	request := k.GetRawRequest()
-	if request == nil {
-		return ""
+	// Proxy middleware must validate forwarding headers before normalizing the peer address. 代理中间件应先验证转发头，再规范化连接地址。
+	var remoteAddr string
+	if request := k.GetRawRequest(); request != nil {
+		remoteAddr = request.RemoteAddr
+	} else if p, ok := peer.FromContext(k.ctx); ok && p.Addr != nil {
+		remoteAddr = p.Addr.String()
 	}
 
-	// Prefer forwarded headers first 优先读取代理转发头
-	if forwarded := strings.TrimSpace(request.Header.Get("X-Forwarded-For")); forwarded != "" {
-		if index := strings.Index(forwarded, ","); index >= 0 {
-			return strings.TrimSpace(forwarded[:index])
-		}
-		return forwarded
-	}
-
-	if realIP := strings.TrimSpace(request.Header.Get("X-Real-IP")); realIP != "" {
-		return realIP
-	}
-
-	host, _, err := net.SplitHostPort(strings.TrimSpace(request.RemoteAddr))
+	remoteAddr = strings.TrimSpace(remoteAddr)
+	host, _, err := net.SplitHostPort(remoteAddr)
 	if err == nil {
 		return host
 	}
 
-	return strings.TrimSpace(request.RemoteAddr)
+	return remoteAddr
 }
 
 // GetMethod implements adapter.RequestContext GetMethod 实现 adapter.RequestContext 接口
@@ -205,6 +202,12 @@ func (k *KratosContext) IsTLS() bool {
 	if request := k.GetRawRequest(); request != nil {
 		return request.TLS != nil
 	}
+	if p, ok := peer.FromContext(k.ctx); ok {
+		switch p.AuthInfo.(type) {
+		case credentials.TLSInfo, *credentials.TLSInfo:
+			return true
+		}
+	}
 	return false
 }
 
@@ -217,6 +220,10 @@ func (k *KratosContext) SetStatusCode(code int) {
 
 // SetHeader implements adapter.RequestContext SetHeader 实现 adapter.RequestContext 接口
 func (k *KratosContext) SetHeader(key, value string) {
+	if writer := k.GetRawResponseWriter(); writer != nil {
+		writer.Header().Set(key, value)
+		return
+	}
 	if tr, ok := transport.FromServerContext(k.ctx); ok {
 		tr.ReplyHeader().Set(key, value)
 	}
@@ -233,7 +240,11 @@ func (k *KratosContext) Write(data []byte) (int, error) {
 
 // SetCookie implements adapter.RequestContext SetCookie 实现 adapter.RequestContext 接口
 func (k *KratosContext) SetCookie(name, value string, maxAge int, path, domain string, secure, httpOnly bool) {
-	khttp.SetCookie(k.ctx, &http.Cookie{
+	writer := k.GetRawResponseWriter()
+	if writer == nil {
+		return
+	}
+	http.SetCookie(writer, &http.Cookie{
 		Name:     name,
 		Value:    value,
 		MaxAge:   maxAge,
@@ -247,6 +258,10 @@ func (k *KratosContext) SetCookie(name, value string, maxAge int, path, domain s
 
 // SetCookieWithOptions implements adapter.RequestContext SetCookieWithOptions 实现 adapter.RequestContext 接口
 func (k *KratosContext) SetCookieWithOptions(options *adapter.CookieOptions) {
+	writer := k.GetRawResponseWriter()
+	if writer == nil {
+		return
+	}
 	cookie := &http.Cookie{
 		Name:     options.Name,
 		Value:    options.Value,
@@ -265,7 +280,7 @@ func (k *KratosContext) SetCookieWithOptions(options *adapter.CookieOptions) {
 		cookie.SameSite = http.SameSiteNoneMode
 	}
 
-	khttp.SetCookie(k.ctx, cookie)
+	http.SetCookie(writer, cookie)
 }
 
 // Set implements adapter.RequestContext Set 实现 adapter.RequestContext 接口
@@ -331,11 +346,12 @@ func (k *KratosContext) JSON(code int, value any) error {
 
 // GetRawRequest implements adapter.RequestContextExt GetRawRequest 实现 adapter.RequestContextExt 接口
 func (k *KratosContext) GetRawRequest() *http.Request {
-	request, ok := khttp.RequestFromServerContext(k.ctx)
-	if !ok {
-		return nil
+	if tr, ok := transport.FromServerContext(k.ctx); ok {
+		if httpTr, ok := tr.(khttp.Transporter); ok {
+			return httpTr.Request()
+		}
 	}
-	return request
+	return nil
 }
 
 // GetRawResponseWriter implements adapter.RequestContextExt GetRawResponseWriter 实现 adapter.RequestContextExt 接口

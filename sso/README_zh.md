@@ -114,6 +114,7 @@ server, err := ssoredis.NewServer(
 if err != nil {
 	return err
 }
+defer server.Close() // URL/Config 构造器创建的 Redis Client 由 Server 负责关闭。
 ```
 
 也可以显式注入已有存储：
@@ -123,6 +124,8 @@ server := sso.NewServer(
 	sso.WithStorage(storage),
 )
 ```
+
+`server.Close()` 默认不会关闭注入的已有存储；请由创建该存储的调用方负责关闭。
 
 ## Client 辅助
 
@@ -144,13 +147,7 @@ if err != nil {
 
 fmt.Println(authURL)
 
-exchangeURL, err := app.ExchangeTicketURLWithRedirect("ticket-value", callbackURL, nil)
-if err != nil {
-	return err
-}
-
-fmt.Println(exchangeURL)
-
+// 机密客户端通过 POST 换取身份，客户端密钥不会进入 URL。
 result, err := app.ExchangeTicket(ctx, "ticket-value", callbackURL)
 if err != nil {
 	return err
@@ -197,6 +194,12 @@ mux.HandleFunc("/sso/logout-callback", app.LogoutCallbackHandler(func(r *http.Re
 | `UserInfo` | 使用有效凭证读取登录主体信息 |
 | `Revoke` | 撤销 Ticket、共享 Token、远程会话或 OAuth2 Code |
 
+`ServerURL` 必须是 HTTP(S) 绝对地址，不能包含用户凭据、查询参数或片段；支持并保留网关路径前缀。端点配置必须是路径，不能包含查询参数或片段。
+
+HTTP 请求默认总超时为 10 秒，且不跟随重定向，包括可能转发表单凭证的 307/308。注入的 `HTTPClient` 保留自身超时（包括零值）及显式 `CheckRedirect` 策略；未配置策略时仍拒绝重定向。辅助对象不会修改注入的客户端，请求上下文的取消及更早截止时间仍然有效。
+
+响应必须包含数值型 `code`，身份获取和凭证检查还要求非空 `data`。交换凭证和 UserInfo 响应必须包含非空 `loginId`。`Extra` 中的数字解码为 `json.Number`，保留整数精度。`UserInfo` 包含凭证的 `active`、`mode` 和 `expiresIn` 字段。
+
 ## HTTP 重定向接入
 
 `HTTPServer` 提供标准库 Handler，可以直接挂载到 `http.ServeMux`，也可以被 Gin、Echo、Fiber 等框架转接。
@@ -235,11 +238,11 @@ httpSSO.Register(mux)
 
 | 路由 | 说明 |
 | --- | --- |
-| `GET /sso/authorize` | 校验中心登录态，生成 Ticket，并重定向回子系统 |
-| `GET/POST /sso/token` | 子系统使用 Ticket 或 OAuth2 Code 换取登录主体信息 |
-| `GET/POST /sso/introspect` | 检查 Ticket、共享 Token、远程会话或 OAuth2 Code 是否有效 |
-| `GET/POST /sso/userinfo` | 使用有效凭证读取登录主体、客户端和授权范围 |
-| `GET/POST /sso/revoke` | 撤销 Ticket、共享 Token、远程会话或 OAuth2 Code |
+| `GET /sso/authorize` | 校验中心登录态，按 Mode 生成凭证，并重定向回子系统 |
+| `POST /sso/token` | 子系统使用 Ticket 或 OAuth2 Code 换取登录主体信息 |
+| `POST /sso/introspect` | 检查 Ticket、共享 Token、远程会话或 OAuth2 Code 是否有效 |
+| `POST /sso/userinfo` | 使用有效凭证读取登录主体、客户端和授权范围 |
+| `POST /sso/revoke` | 撤销 Ticket、共享 Token、远程会话或 OAuth2 Code |
 | `GET/POST /sso/logout` | 清除共享 Cookie，推送已登记的子系统注销回调，并返回注销结果 |
 
 ## 单点注销
@@ -261,13 +264,13 @@ httpSSO.Register(mux)
 
 子系统收到回调后应删除自己的本地 Session、Cookie 或 Token。所有回调成功后，登录中心会清理该登录主体的客户端会话记录。
 
-`LogoutCallbackBestEffort` 用于控制失败策略：为 `false` 时任意子系统回调失败会让本次中心注销返回错误；为 `true` 时会尽量推送全部回调，并继续清理中心侧客户端会话记录。`LogoutHTTPClient` 可用于注入自定义 HTTP Client，例如统一代理、TLS 配置或更细的超时控制。
+`LogoutCallbackBestEffort` 用于控制失败策略：为 `false` 时任意子系统回调失败会让本次中心注销返回错误；为 `true` 时会尽量推送全部回调，并继续清理中心侧客户端会话记录。默认回调客户端不会跟随重定向；`LogoutHTTPClient` 可用于注入自定义 HTTP Client，例如统一代理、TLS 配置或更细的超时控制。
 
 为了避免恶意 `callback` 造成 SSRF，登录中心只会登记属于当前客户端的注销回调地址：完整匹配 `RedirectURIs`、与某个 `RedirectURIs` 同源，或匹配 `AllowOrigins` 中配置的来源。
 
 ## Redis 存储
 
-生产环境建议把 SSO Server 切换到 Redis 存储。Ticket、OAuth2 Code 这类一次性凭证依赖原子读删，Redis 组件已经提供对应能力；ClientSession 这类单点注销记录也可以跨多实例共享。
+生产环境建议把 SSO Server 切换到 Redis 存储。Ticket、OAuth2 Code 这类一次性凭证依赖原子读删，Redis 组件已经提供对应能力；ClientSession 这类单点注销记录也可以跨多实例共享。每个 Server 实例内的注册操作已串行化；如果多个实例会并发注册同一登录主体，应先为存储层增加原子合并能力，再依赖这种写入模式。
 
 ```go
 import ssoredis "github.com/Zany2/dtoken-go/sso/storage/redis"
@@ -288,13 +291,15 @@ Redis 下建议重点验证四条链路：Ticket 生成与消费、OAuth2 Code �
 也可以通过环境变量运行 Redis 可选集成测试：
 
 ```powershell
-$env:DTOKEN_SSO_REDIS="redis://:password@127.0.0.1:6379/0"
+$env:DTOKEN_REDIS_URL="redis://:password@127.0.0.1:6379/0"
 go test ./sso/storage/redis/... -v
 ```
 
 ## 共享 Cookie
 
-同主域部署时，可以使用共享 Cookie 作为登录中心会话来源。它适合 `sso.example.com`、`app-a.example.com`、`app-b.example.com` 这类场景。
+同主域部署时，可以使用共享 Cookie 作为登录中心会话来源。它适合 `sso.example.com`、`app-a.example.com`、`app-b.example.com` 这类场景。必须配置强随机 `SecretKey`；未配置时 Cookie 不会被解析为可信登录身份。
+
+签名 Cookie 包含精确过期时间，服务端会独立于浏览器的 `Max-Age` 检查有效期。升级后，缺少签名截止时间的旧 Cookie 会被拒绝，用户需要重新登录。清除 Cookie 只删除浏览器副本，不能提前撤销这种无状态凭证的其他副本。如需立即撤销，请通过 `LoginIDResolver` 查询服务端会话，并在应用注销流程中使该会话失效。
 
 ```go
 cookie := sso.CookieOptions{
@@ -305,6 +310,7 @@ cookie := sso.CookieOptions{
 	HTTPOnly: true,
 	Secure:   true,
 	SameSite: http.SameSiteLaxMode,
+	SecretKey: "replace-with-a-strong-cookie-signing-secret",
 }
 
 // 登录中心登录成功后写入共享 Cookie。
@@ -362,13 +368,13 @@ if !signer.Verify(signedValues) {
 - `sso.NewServer()` 内置的 `MemoryStorage` 只适合本地调试和测试，进程重启后数据会丢失，也不适合多实例部署。
 - 生产环境建议使用 `sso/storage/redis`，Redis 存储已经实现原子读删能力，适合一次性 Ticket 和 OAuth2 Code 消费场景。
 - 生产环境建议开启 `CheckSign` 并配置 `SecretKey`，让 Server 与 Client 之间的换票、检查和注销回调都具备防篡改能力。
-- 注销回调地址会按客户端注册信息校验来源，不建议把过宽的域名加入 `AllowOrigins`。
-- 如果使用自定义存储，Ticket 和 SSO OAuth2 授权码消费需要存储实现 `adapter.AtomicStorage`，保证读取并删除是原子操作。
+- 注销回调地址必须是无用户信息、无片段的 HTTP(S) 绝对地址。登记和发送前都会校验当前客户端白名单，已注销客户端会被跳过。不建议把过宽的域名加入 `AllowOrigins`。
+- 如果使用自定义存储，框架会优先使用 `adapter.AtomicStorage` 原子消费 Ticket 和 SSO OAuth2 授权码；普通 `Storage` 使用单实例串行回退，不保证跨实例原子性。
 - `ModeSharedToken` 适合可信系统内部复用短期凭证，默认按客户端维度校验。
 - `ModeRemoteSession` 适合子系统不保存完整登录态、每次向统一登录中心远程校验的场景。
 - `ModeOAuth2` 是 SSO 场景下的授权码原语，不等同于完整 OAuth2 Token Server。
-- `Signer` 默认忽略 `sign` 字段本身，并按参数名和值排序后签名，适合 Server 与 Client 之间做请求防篡改。
-- 当前 HTTP 路由已覆盖 `ModeTicket` 重定向换票、OAuth2 Code 换取、凭证检查、凭证撤销、用户信息读取和统一登出回调推送。
+- `Signer` 忽略签名字段本身，按参数名排序，并保留同名参数值的顺序，与取首值的读取语义保持一致。验签拒绝空密钥和多个签名值。单值参数签名不变；升级时，同名多值参数需要重新签名。
+- 当前 HTTP 授权路由支持按 Mode 签发 Ticket、共享 Token、远程会话或 OAuth2 Code，并提供凭证交换、检查、撤销、用户信息和统一登出回调推送。
 
 ## 测试与示例
 

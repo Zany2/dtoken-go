@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/config"
+	"github.com/Zany2/dtoken-go/core/listener"
 	"github.com/Zany2/dtoken-go/core/shortkey"
 )
 
+// TestManagerShortKeyConfirmAndConsume verifies Manager short key confirmation and consumption. TestManagerShortKeyConfirmAndConsume 验证 Manager 的短 Key 确认与消费流程。
 func TestManagerShortKeyConfirmAndConsume(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithShortKey(t, nil)
@@ -32,7 +34,7 @@ func TestManagerShortKeyConfirmAndConsume(t *testing.T) {
 	confirmed, err := mgr.ConfirmShortKey(ctx, created.Key, shortkey.ConfirmOptions{
 		LoginID:  "user-1001",
 		Device:   "mobile",
-		DeviceId: "ios-1",
+		DeviceID: "ios-1",
 		Scopes:   []string{"profile"},
 		Extra:    map[string]any{"confirmedBy": "scan"},
 	})
@@ -50,7 +52,7 @@ func TestManagerShortKeyConfirmAndConsume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateShortKey() error = %v", err)
 	}
-	if validated.Scene != "qr-login" || validated.DeviceId != "ios-1" {
+	if validated.Scene != "qr-login" || validated.DeviceID != "ios-1" {
 		t.Fatalf("ValidateShortKey() = %+v, want preserved scene/device", validated)
 	}
 
@@ -73,6 +75,7 @@ func TestManagerShortKeyConfirmAndConsume(t *testing.T) {
 	}
 }
 
+// TestManagerShortKeyBoundaries verifies Manager short key validation and state boundaries. TestManagerShortKeyBoundaries 验证 Manager 的短 Key 校验与状态边界。
 func TestManagerShortKeyBoundaries(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManagerWithShortKey(t, nil)
@@ -121,6 +124,51 @@ func TestManagerShortKeyBoundaries(t *testing.T) {
 	}
 	if ttl != -2 {
 		t.Fatalf("GetShortKeyTTL() = %d, want -2", ttl)
+	}
+}
+
+// TestManagerRevokeMissingShortKeyDoesNotTriggerEvent verifies missing-key revocation remains an event-free no-op. TestManagerRevokeMissingShortKeyDoesNotTriggerEvent 验证撤销不存在的短 Key 是不触发事件的空操作。
+func TestManagerRevokeMissingShortKeyDoesNotTriggerEvent(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManagerWithShortKey(t, nil)
+
+	var events []*listener.EventData
+	mgr.GetEventManager().RegisterFuncWithConfig(listener.EventShortKeyRevoke, func(data *listener.EventData) {
+		copyData := *data
+		events = append(events, &copyData)
+	}, listener.ListenerConfig{Async: false})
+
+	if err := mgr.RevokeShortKey(ctx, "missing-short-key"); err != nil {
+		t.Fatalf("RevokeShortKey(missing) error = %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("RevokeShortKey(missing) events = %d, want 0", len(events))
+	}
+}
+
+// TestManagerRevokePendingShortKeyTriggersEvent verifies pending-key revocation emits its lifecycle event. TestManagerRevokePendingShortKeyTriggersEvent 验证撤销待确认短 Key 会触发生命周期事件。
+func TestManagerRevokePendingShortKeyTriggersEvent(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManagerWithShortKey(t, nil)
+
+	var events []*listener.EventData
+	mgr.GetEventManager().RegisterFuncWithConfig(listener.EventShortKeyRevoke, func(data *listener.EventData) {
+		copyData := *data
+		events = append(events, &copyData)
+	}, listener.ListenerConfig{Async: false})
+
+	created, err := mgr.CreateShortKey(ctx, shortkey.CreateOptions{Scene: "qr-login"})
+	if err != nil {
+		t.Fatalf("CreateShortKey() error = %v", err)
+	}
+	if err = mgr.RevokeShortKey(ctx, created.Key); err != nil {
+		t.Fatalf("RevokeShortKey(pending) error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("RevokeShortKey(pending) events = %d, want 1", len(events))
+	}
+	if events[0].Token != created.Key {
+		t.Fatalf("RevokeShortKey(pending) event token = %q, want %q", events[0].Token, created.Key)
 	}
 }
 

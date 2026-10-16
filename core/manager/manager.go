@@ -3,6 +3,7 @@ package manager
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/Zany2/dtoken-go/core/adapter"
 	"github.com/Zany2/dtoken-go/core/config"
@@ -15,22 +16,30 @@ import (
 
 // Manager is the core auth facade. Manager 是鉴权核心门面。
 type Manager struct {
-	config     *config.Config    // config stores runtime configuration. config 存储运行时配置。
-	generator  adapter.Generator // generator creates token values. generator 负责生成 Token 值。
-	storage    adapter.Storage   // storage persists auth data. storage 持久化鉴权数据。
-	serializer adapter.Codec     // serializer encodes and decodes storage payloads. serializer 编解码存储数据。
-	logger     adapter.Log       // logger writes framework logs. logger 写入框架日志。
-	pool       adapter.Pool      // pool runs asynchronous tasks. pool 执行异步任务。
-
-	nonceManager    *nonce.NonceManager        // nonceManager handles one-time nonce values. nonceManager 管理一次性 nonce。
-	oauth2Manager   *oauth2.OAuth2Server       // oauth2Manager handles OAuth2 flows. oauth2Manager 处理 OAuth2 流程。
-	ticketManager   *ticket.Manager            // ticketManager handles temporary tickets. ticketManager 管理临时 Ticket。
-	shortKeyManager *shortkey.Manager          // shortKeyManager handles short key credentials. shortKeyManager 管理短 Key 凭证。
-	eventManager    *listener.Manager          // eventManager dispatches auth events. eventManager 分发鉴权事件。
-	loginLocksMu    sync.Mutex                 // loginLocksMu protects the login lock registry. loginLocksMu 保护登录锁注册表。
-	loginLocks      map[string]*loginLockEntry // loginLocks serializes writes per login ID. loginLocks 按登录 ID 串行化写操作。
-	accessProvider  AccessProvider             // accessProvider resolves roles and permissions. accessProvider 解析角色和权限。
-	strategy        *Strategy                  // strategy stores replaceable algorithms. strategy 存储可替换算法。
+	config          *config.Config                   // config stores runtime configuration. config 存储运行时配置。
+	generator       adapter.Generator                // generator creates token values. generator 负责生成 Token 值。
+	storage         adapter.Storage                  // storage persists auth data. storage 持久化鉴权数据。
+	serializer      adapter.Codec                    // serializer encodes and decodes storage payloads. serializer 编解码存储数据。
+	logger          adapter.Log                      // logger writes framework logs. logger 写入框架日志。
+	pool            adapter.Pool                     // pool runs asynchronous tasks. pool 执行异步任务。
+	nonceManager    *nonce.NonceManager              // nonceManager handles one-time nonce values. nonceManager 管理一次性 nonce。
+	oauth2Manager   *oauth2.OAuth2Server             // oauth2Manager handles OAuth2 flows. oauth2Manager 处理 OAuth2 流程。
+	ticketManager   *ticket.Manager                  // ticketManager handles temporary tickets. ticketManager 管理临时 Ticket。
+	shortKeyManager *shortkey.Manager                // shortKeyManager handles short key credentials. shortKeyManager 管理短 Key 凭证。
+	eventManager    *listener.Manager                // eventManager dispatches auth events. eventManager 分发鉴权事件。
+	loginLocksMu    sync.Mutex                       // loginLocksMu protects the login lock registry. loginLocksMu 保护登录锁注册表。
+	loginLocks      map[string]*loginLockEntry       // loginLocks serializes writes per login ID. loginLocks 按登录 ID 串行化写操作。
+	maintenanceMu   sync.Mutex                       // maintenanceMu protects in-flight login maintenance tasks. maintenanceMu 保护执行中的登录维护任务。
+	maintenanceSeq  uint64                           // maintenanceSeq identifies token maintenance generations. maintenanceSeq 标识 Token 维护任务代次。
+	maintenance     map[string]loginMaintenanceState // maintenance coalesces login maintenance by token. maintenance 按 Token 合并登录维护任务。
+	asyncMu         sync.Mutex                       // asyncMu serializes async task admission and shutdown. asyncMu 串行化异步任务接收与关闭。
+	asyncWG         sync.WaitGroup                   // asyncWG waits for accepted async tasks. asyncWG 等待已接收的异步任务完成。
+	asyncClosed     bool                             // asyncClosed rejects new async tasks during shutdown. asyncClosed 在关闭期间拒绝新的异步任务。
+	closed          atomic.Bool                      // closed reports whether manager shutdown has started. closed 标记 Manager 是否已开始关闭。
+	closeOnce       sync.Once                        // closeOnce releases manager resources once. closeOnce 确保资源只释放一次。
+	ownership       ComponentOwnership               // ownership records which runtime components are manager-owned. ownership 记录由 Manager 持有的运行时组件。
+	accessProvider  AccessProvider                   // accessProvider resolves roles and permissions. accessProvider 解析角色和权限。
+	strategy        *Strategy                        // strategy stores replaceable algorithms. strategy 存储可替换算法。
 }
 
 // TokenInfo defines token info. TokenInfo 定义 Token 信息。
@@ -38,7 +47,7 @@ type TokenInfo struct {
 	AuthType      string         `json:"authType"`                // AuthType stores auth namespace. AuthType 存储认证命名空间。
 	LoginID       string         `json:"loginId"`                 // LoginID stores subject identifier. LoginID 存储主体标识。
 	Device        string         `json:"device"`                  // Device stores device type. Device 存储设备类型。
-	DeviceId      string         `json:"deviceId"`                // DeviceId stores concrete device ID. DeviceId 存储具体设备 ID。
+	DeviceID      string         `json:"deviceId"`                // DeviceID stores concrete device ID. DeviceID 存储具体设备 ID。
 	CreateTime    int64          `json:"createTime"`              // CreateTime stores token creation time. CreateTime 存储 Token 创建时间。
 	Timeout       int64          `json:"timeout"`                 // Timeout stores token timeout seconds. Timeout 存储 Token 过期秒数。
 	ActiveTimeout int64          `json:"activeTimeout,omitempty"` // ActiveTimeout stores inactive timeout seconds. ActiveTimeout 存储不活跃超时秒数。
@@ -62,7 +71,7 @@ type TerminalInfo struct {
 	Token      string         `json:"token"`           // Token stores terminal token. Token 存储终端 Token。
 	LoginID    string         `json:"loginId"`         // LoginID stores subject identifier. LoginID 存储主体标识。
 	Device     string         `json:"device"`          // Device stores device type. Device 存储设备类型。
-	DeviceId   string         `json:"deviceId"`        // DeviceId stores concrete device ID. DeviceId 存储具体设备 ID。
+	DeviceID   string         `json:"deviceId"`        // DeviceID stores concrete device ID. DeviceID 存储具体设备 ID。
 	CreateTime int64          `json:"createTime"`      // CreateTime stores terminal creation time. CreateTime 存储终端创建时间。
 	Index      int64          `json:"index"`           // Index stores terminal sequence. Index 存储终端序号。
 	Extra      map[string]any `json:"extra,omitempty"` // Extra stores terminal extension data. Extra 存储终端扩展数据。
@@ -85,7 +94,77 @@ type ServiceDisableInfo struct {
 // DeviceDisableInfo defines device disable info. DeviceDisableInfo 定义设备封禁信息。
 type DeviceDisableInfo struct {
 	Device        string `json:"device"`        // Device stores disabled device type. Device 存储被封禁设备类型。
-	DeviceId      string `json:"deviceId"`      // DeviceId stores disabled concrete device ID. DeviceId 存储被封禁具体设备 ID。
+	DeviceID      string `json:"deviceId"`      // DeviceID stores disabled concrete device ID. DeviceID 存储被封禁具体设备 ID。
 	DisableTime   int64  `json:"disableTime"`   // DisableTime stores disable timestamp. DisableTime 存储封禁时间戳。
 	DisableReason string `json:"disableReason"` // DisableReason stores disable reason. DisableReason 存储封禁原因。
+}
+
+// GetConfig retrieves the manager configuration. GetConfig 获取管理器配置。
+func (m *Manager) GetConfig() *config.Config {
+	return m.config
+}
+
+// IsClosed reports whether manager shutdown has started. IsClosed 返回 Manager 是否已开始关闭。
+func (m *Manager) IsClosed() bool {
+	return m == nil || m.closed.Load()
+}
+
+// GetGenerator retrieves the token generator. GetGenerator 获取 Token 生成器。
+func (m *Manager) GetGenerator() adapter.Generator {
+	return m.generator
+}
+
+// GetStorage retrieves the storage adapter. GetStorage 获取存储适配器。
+func (m *Manager) GetStorage() adapter.Storage {
+	return m.storage
+}
+
+// GetSerializer retrieves the serializer adapter. GetSerializer 获取序列化适配器。
+func (m *Manager) GetSerializer() adapter.Codec {
+	return m.serializer
+}
+
+// GetLogger retrieves the logger adapter. GetLogger 获取日志适配器。
+func (m *Manager) GetLogger() adapter.Log {
+	return m.logger
+}
+
+// GetPool retrieves the goroutine pool. GetPool 获取协程池。
+func (m *Manager) GetPool() adapter.Pool {
+	return m.pool
+}
+
+// GetAccessProvider retrieves the access provider. GetAccessProvider 获取访问权限提供器。
+func (m *Manager) GetAccessProvider() AccessProvider {
+	return m.accessProvider
+}
+
+// GetStrategy retrieves the manager strategy. GetStrategy 获取管理器策略。
+func (m *Manager) GetStrategy() *Strategy {
+	return m.strategy.normalize()
+}
+
+// GetNonceManager retrieves the nonce manager. GetNonceManager 获取 nonce 管理器。
+func (m *Manager) GetNonceManager() *nonce.NonceManager {
+	return m.nonceManager
+}
+
+// GetOAuth2Manager retrieves the OAuth2 manager. GetOAuth2Manager 获取 OAuth2 管理器。
+func (m *Manager) GetOAuth2Manager() *oauth2.OAuth2Server {
+	return m.oauth2Manager
+}
+
+// GetTicketManager retrieves the ticket manager. GetTicketManager 获取 Ticket 管理器。
+func (m *Manager) GetTicketManager() *ticket.Manager {
+	return m.ticketManager
+}
+
+// GetShortKeyManager retrieves the short key manager. GetShortKeyManager 获取短 Key 管理器。
+func (m *Manager) GetShortKeyManager() *shortkey.Manager {
+	return m.shortKeyManager
+}
+
+// GetEventManager retrieves the event manager. GetEventManager 获取事件监听管理器。
+func (m *Manager) GetEventManager() *listener.Manager {
+	return m.eventManager
 }

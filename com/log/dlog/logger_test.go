@@ -192,12 +192,6 @@ func TestLoggerHelpers(t *testing.T) {
 	if levelString(LevelWarn) != "WARN" {
 		t.Fatalf("levelString(LevelWarn) = %q", levelString(LevelWarn))
 	}
-	if normalizeBaseName("APP_{Y}-{m}-{d}.log") != "APP" {
-		t.Fatalf("normalizeBaseName() = %q", normalizeBaseName("APP_{Y}-{m}-{d}.log"))
-	}
-	if secureRandomInt(10) < 0 || secureRandomInt(10) >= 10 {
-		t.Fatal("secureRandomInt() should stay in range")
-	}
 }
 
 // TestLoggerTimeCacheTracksFormat verifies time cache respects format changes TestLoggerTimeCacheTracksFormat 验证时间缓存会感知时间格式变化。
@@ -242,6 +236,96 @@ func TestLoggerRuntimeControls(t *testing.T) {
 	logger.Close()
 }
 
+// TestLoggerLevelFiltering verifies messages below the configured level are skipped. TestLoggerLevelFiltering 验证低于配置级别的日志会被过滤。
+func TestLoggerLevelFiltering(t *testing.T) {
+	dir := t.TempDir()
+	logger, err := NewLoggerWithConfig(&LoggerConfig{
+		Path:       dir,
+		FileFormat: "level.log",
+		Level:      LevelWarn,
+		Stdout:     false,
+		QueueSize:  8,
+	})
+	if err != nil {
+		t.Fatalf("NewLoggerWithConfig() error = %v", err)
+	}
+	defer logger.Close()
+
+	logger.Debug("debug")
+	logger.Info("info")
+	logger.Warn("warn")
+	logger.Error("error")
+	logger.Flush()
+
+	data, err := os.ReadFile(filepath.Join(dir, "level.log"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	text := string(data)
+	if strings.Contains(text, "debug") || strings.Contains(text, "info") {
+		t.Fatalf("low-level logs were written: %q", text)
+	}
+	if !strings.Contains(text, "warn") || !strings.Contains(text, "error") {
+		t.Fatalf("accepted levels missing: %q", text)
+	}
+}
+
+// TestLoggerFileNameFormatting verifies date placeholders and the default suffix. TestLoggerFileNameFormatting 验证日期占位符和默认后缀。
+func TestLoggerFileNameFormatting(t *testing.T) {
+	logger := &Logger{}
+	now := time.Date(2024, time.January, 2, 3, 4, 5, 0, time.UTC)
+
+	if got := logger.formatFileName(now, LoggerConfig{FileFormat: "APP_{Y}-{m}-{d}"}); got != "APP_2024-01-02.log" {
+		t.Fatalf("formatFileName() = %q, want %q", got, "APP_2024-01-02.log")
+	}
+	if got := logger.formatFileName(now, LoggerConfig{FileFormat: "custom.log"}); got != "custom.log" {
+		t.Fatalf("formatFileName(existing suffix) = %q, want %q", got, "custom.log")
+	}
+	if got := logger.formatFileName(now, LoggerConfig{}); got != "DTOKEN_2024-01-02.log" {
+		t.Fatalf("formatFileName(default) = %q, want %q", got, "DTOKEN_2024-01-02.log")
+	}
+}
+
+// TestLoggerSetConfigRejectsInvalidConfig verifies invalid runtime config does not replace the active config. TestLoggerSetConfigRejectsInvalidConfig 验证非法运行时配置不会替换当前配置。
+func TestLoggerSetConfigRejectsInvalidConfig(t *testing.T) {
+	logger, err := NewLoggerWithConfig(&LoggerConfig{StdoutOnly: true, Prefix: "[ORIGINAL] "})
+	if err != nil {
+		t.Fatalf("NewLoggerWithConfig() error = %v", err)
+	}
+	defer logger.Close()
+
+	logger.SetConfig(&LoggerConfig{StdoutOnly: true, Prefix: "[INVALID] ", Level: LogLevel(99)})
+	if got := logger.currentCfg().Prefix; got != "[ORIGINAL] " {
+		t.Fatalf("SetConfig(invalid) replaced prefix with %q", got)
+	}
+}
+
+// TestLoggerClosedIgnoresWrites verifies writes after Close are ignored. TestLoggerClosedIgnoresWrites 验证关闭后写入会被忽略。
+func TestLoggerClosedIgnoresWrites(t *testing.T) {
+	dir := t.TempDir()
+	logger, err := NewLoggerWithConfig(&LoggerConfig{
+		Path:       dir,
+		FileFormat: "closed.log",
+		Stdout:     false,
+		QueueSize:  4,
+	})
+	if err != nil {
+		t.Fatalf("NewLoggerWithConfig() error = %v", err)
+	}
+	logger.Info("before close")
+	logger.Close()
+	logger.Info("after close")
+
+	data, err := os.ReadFile(filepath.Join(dir, "closed.log"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "before close") || strings.Contains(text, "after close") {
+		t.Fatalf("closed logger output = %q", text)
+	}
+}
+
 // TestNilLoggerMethodsAreSafe verifies nil logger calls do not panic TestNilLoggerMethodsAreSafe 验证空日志器调用安全。
 func TestNilLoggerMethodsAreSafe(t *testing.T) {
 	var logger *Logger
@@ -272,6 +356,7 @@ func TestNilLoggerMethodsAreSafe(t *testing.T) {
 	}
 }
 
+// listLogFiles returns sorted log file names in a directory listLogFiles 返回目录下排序后的日志文件名
 func listLogFiles(t *testing.T, dir string) []string {
 	t.Helper()
 
@@ -288,6 +373,7 @@ func listLogFiles(t *testing.T, dir string) []string {
 	return files
 }
 
+// waitForLogFileCount waits until log file count reaches the expected value waitForLogFileCount 等待日志文件数量达到期望值
 func waitForLogFileCount(dir string, count int, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {

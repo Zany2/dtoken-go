@@ -3,12 +3,24 @@ package manager
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Zany2/dtoken-go/core/derror"
 )
 
-// Terminate applies one terminal operation by options Terminate 根据选项执行一次终端下线操作
+// Terminate applies one terminal operation by options Terminate 根据选项执行一次终端下线操作。
 func (m *Manager) Terminate(ctx context.Context, opts TerminateOptions) error {
+	// Remember explicit filters so whitespace cannot widen a destructive operation. 记录显式筛选字段，避免空白值扩大下线范围。
+	explicitToken, explicitDevice, explicitDeviceID := opts.Token != "", opts.Device != "", opts.DeviceID != ""
+
+	// Normalize option fields before dispatching 规范化选项字段后再分发。
+	opts.Token = strings.TrimSpace(opts.Token)
+	opts.Device = strings.TrimSpace(opts.Device)
+	opts.DeviceID = strings.TrimSpace(opts.DeviceID)
+	if explicitToken && opts.Token == "" {
+		return derror.ErrInvalidToken
+	}
+
 	// Use logout as the default terminal action 默认使用注销作为终端操作
 	action := opts.Action
 	if action == "" {
@@ -33,6 +45,9 @@ func (m *Manager) Terminate(ctx context.Context, opts TerminateOptions) error {
 	if opts.LoginID == "" {
 		return derror.ErrIDIsEmpty
 	}
+	if (explicitDevice && opts.Device == "") || (explicitDeviceID && opts.DeviceID == "") {
+		return derror.ErrInvalidParam
+	}
 
 	// Dispatch operation by terminal action 根据终端操作类型分发处理
 	switch action {
@@ -49,8 +64,11 @@ func (m *Manager) Terminate(ctx context.Context, opts TerminateOptions) error {
 
 // terminateLogout dispatches logout by account or device scope terminateLogout 按账号或设备范围分发注销操作
 func (m *Manager) terminateLogout(ctx context.Context, opts TerminateOptions) error {
+	if opts.DeviceID != "" && opts.Device == "" {
+		return derror.ErrInvalidParam
+	}
 	if opts.Device != "" && opts.DeviceID != "" {
-		return m.LogoutByDeviceAndDeviceId(ctx, opts.LoginID, opts.Device, opts.DeviceID)
+		return m.LogoutByDeviceAndDeviceID(ctx, opts.LoginID, opts.Device, opts.DeviceID)
 	}
 	if opts.Device != "" {
 		return m.LogoutByDevice(ctx, opts.LoginID, opts.Device)
@@ -58,10 +76,13 @@ func (m *Manager) terminateLogout(ctx context.Context, opts TerminateOptions) er
 	return m.LogoutByLoginID(ctx, opts.LoginID)
 }
 
-// terminateKickout dispatches kickout by account or device scope terminateKickout 按账号或设备范围分发踢下线操作
+// terminateKickout dispatches kickout by account or device scope terminateKickout 按账号或设备范围分发踢下线操作。
 func (m *Manager) terminateKickout(ctx context.Context, opts TerminateOptions) error {
+	if opts.DeviceID != "" && opts.Device == "" {
+		return derror.ErrInvalidParam
+	}
 	if opts.Device != "" && opts.DeviceID != "" {
-		return m.KickoutByDeviceAndDeviceId(ctx, opts.LoginID, opts.Device, opts.DeviceID)
+		return m.KickoutByDeviceAndDeviceID(ctx, opts.LoginID, opts.Device, opts.DeviceID)
 	}
 	if opts.Device != "" {
 		return m.KickoutByDevice(ctx, opts.LoginID, opts.Device)
@@ -71,8 +92,11 @@ func (m *Manager) terminateKickout(ctx context.Context, opts TerminateOptions) e
 
 // terminateReplace dispatches replace by account or device scope terminateReplace 按账号或设备范围分发顶替下线操作
 func (m *Manager) terminateReplace(ctx context.Context, opts TerminateOptions) error {
+	if opts.DeviceID != "" && opts.Device == "" {
+		return derror.ErrInvalidParam
+	}
 	if opts.Device != "" && opts.DeviceID != "" {
-		return m.ReplaceByDeviceAndDeviceId(ctx, opts.LoginID, opts.Device, opts.DeviceID)
+		return m.ReplaceByDeviceAndDeviceID(ctx, opts.LoginID, opts.Device, opts.DeviceID)
 	}
 	if opts.Device != "" {
 		return m.ReplaceByDevice(ctx, opts.LoginID, opts.Device)

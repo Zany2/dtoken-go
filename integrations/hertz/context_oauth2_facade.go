@@ -33,7 +33,7 @@ func GetOAuth2ClientByContext(ctx *hertzapp.RequestContext, clientID string) (*o
 	return dCtx.OAuth2().GetClient(clientID)
 }
 
-// OAuth2TokenByContext handles OAuth2 token request OAuth2TokenByContext  OAuth2 Token
+// OAuth2TokenByContext handles OAuth2 token request OAuth2TokenByContext 处理 OAuth2 Token 请求
 func OAuth2TokenByContext(ctx *hertzapp.RequestContext, req *oauth2.TokenRequest, validateUser oauth2.UserValidator) (*oauth2.AccessToken, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -60,7 +60,7 @@ func GenerateOAuth2AuthorizationCodeWithPKCEByContext(ctx *hertzapp.RequestConte
 	return dCtx.OAuth2().GenerateAuthorizationCodeWithPKCE(requestContext(ctx), clientID, userID, redirectURI, scopes, codeChallenge, codeChallengeMethod)
 }
 
-// ExchangeOAuth2CodeForTokenByContext exchanges OAuth2 code for token ExchangeOAuth2CodeForTokenByContext  OAuth2 ?Token
+// ExchangeOAuth2CodeForTokenByContext exchanges OAuth2 code for token ExchangeOAuth2CodeForTokenByContext 使用 OAuth2 授权码换取 Token
 func ExchangeOAuth2CodeForTokenByContext(ctx *hertzapp.RequestContext, code, clientID, clientSecret, redirectURI string) (*oauth2.AccessToken, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -69,7 +69,7 @@ func ExchangeOAuth2CodeForTokenByContext(ctx *hertzapp.RequestContext, code, cli
 	return dCtx.OAuth2().ExchangeCodeForToken(requestContext(ctx), code, clientID, clientSecret, redirectURI)
 }
 
-// ExchangeOAuth2CodeForTokenWithPKCEByContext exchanges OAuth2 code for token with PKCE ExchangeOAuth2CodeForTokenWithPKCEByContext  PKCE ?Token
+// ExchangeOAuth2CodeForTokenWithPKCEByContext exchanges OAuth2 code for token with PKCE ExchangeOAuth2CodeForTokenWithPKCEByContext 使用 PKCE 授权码换取 Token
 func ExchangeOAuth2CodeForTokenWithPKCEByContext(ctx *hertzapp.RequestContext, code, clientID, clientSecret, redirectURI, codeVerifier string) (*oauth2.AccessToken, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -78,7 +78,7 @@ func ExchangeOAuth2CodeForTokenWithPKCEByContext(ctx *hertzapp.RequestContext, c
 	return dCtx.OAuth2().ExchangeCodeForTokenWithPKCE(requestContext(ctx), code, clientID, clientSecret, redirectURI, codeVerifier)
 }
 
-// OAuth2ClientCredentialsTokenByContext gets OAuth2 token by client credentials OAuth2ClientCredentialsTokenByContext ?OAuth2 Token
+// OAuth2ClientCredentialsTokenByContext gets OAuth2 token by client credentials OAuth2ClientCredentialsTokenByContext 使用客户端凭证获取 OAuth2 Token
 func OAuth2ClientCredentialsTokenByContext(ctx *hertzapp.RequestContext, clientID, clientSecret string, scopes []string) (*oauth2.AccessToken, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -87,7 +87,7 @@ func OAuth2ClientCredentialsTokenByContext(ctx *hertzapp.RequestContext, clientI
 	return dCtx.OAuth2().ClientCredentialsToken(requestContext(ctx), clientID, clientSecret, scopes)
 }
 
-// OAuth2PasswordGrantTokenByContext gets OAuth2 token by password grant OAuth2PasswordGrantTokenByContext  OAuth2 Token
+// OAuth2PasswordGrantTokenByContext gets OAuth2 token by password grant OAuth2PasswordGrantTokenByContext 使用密码模式获取 OAuth2 Token
 func OAuth2PasswordGrantTokenByContext(ctx *hertzapp.RequestContext, clientID, clientSecret, username, password string, scopes []string, validateUser oauth2.UserValidator) (*oauth2.AccessToken, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -96,7 +96,7 @@ func OAuth2PasswordGrantTokenByContext(ctx *hertzapp.RequestContext, clientID, c
 	return dCtx.OAuth2().PasswordGrantToken(requestContext(ctx), clientID, clientSecret, username, password, scopes, validateUser)
 }
 
-// RefreshOAuth2AccessTokenByContext refreshes OAuth2 access token RefreshOAuth2AccessTokenByContext  OAuth2  Token
+// RefreshOAuth2AccessTokenByContext refreshes OAuth2 access token RefreshOAuth2AccessTokenByContext 刷新 OAuth2 访问 Token
 func RefreshOAuth2AccessTokenByContext(ctx *hertzapp.RequestContext, clientID, refreshToken, clientSecret string) (*oauth2.AccessToken, error) {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -105,7 +105,7 @@ func RefreshOAuth2AccessTokenByContext(ctx *hertzapp.RequestContext, clientID, r
 	return dCtx.OAuth2().RefreshAccessToken(requestContext(ctx), clientID, refreshToken, clientSecret)
 }
 
-// ValidateOAuth2AccessTokenByContext validates OAuth2 access token ValidateOAuth2AccessTokenByContext  OAuth2  Token
+// ValidateOAuth2AccessTokenByContext validates OAuth2 access token ValidateOAuth2AccessTokenByContext 校验 OAuth2 访问 Token
 func ValidateOAuth2AccessTokenByContext(ctx *hertzapp.RequestContext, accessToken string) bool {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {
@@ -123,7 +123,7 @@ func ValidateOAuth2AccessTokenAndGetInfoByContext(ctx *hertzapp.RequestContext, 
 	return dCtx.OAuth2().ValidateAccessTokenAndGetInfo(requestContext(ctx), accessToken)
 }
 
-// RevokeOAuth2TokenByContext revokes OAuth2 token RevokeOAuth2TokenByContext  OAuth2 Token
+// RevokeOAuth2TokenByContext revokes OAuth2 token RevokeOAuth2TokenByContext 撤销 OAuth2 Token
 func RevokeOAuth2TokenByContext(ctx *hertzapp.RequestContext, accessToken string) error {
 	dCtx, err := requireDTokenContextByContext(ctx)
 	if err != nil {

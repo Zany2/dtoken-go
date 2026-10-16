@@ -6,7 +6,7 @@ import (
 	beegocontext "github.com/beego/beego/v2/server/web/context"
 )
 
-// LogoutByDeviceByContext logs out current user by device LogoutByDeviceByContext 按设备登出当前用户
+// LogoutByDeviceByContext logs out current user by device LogoutByDeviceByContext 按设备登出当前用。
 func LogoutByDeviceByContext(c *beegocontext.Context, device string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -15,13 +15,13 @@ func LogoutByDeviceByContext(c *beegocontext.Context, device string) error {
 	return dCtx.Terminal().LogoutByDevice(requestContext(c), device)
 }
 
-// LogoutByDeviceAndDeviceIdByContext logs out current user by device and id LogoutByDeviceAndDeviceIdByContext 按设备和设备 ID 登出当前用户
-func LogoutByDeviceAndDeviceIdByContext(c *beegocontext.Context, deviceAndDeviceId ...string) error {
+// LogoutByDeviceAndDeviceIDByContext logs out current user by device and id LogoutByDeviceAndDeviceIDByContext 按设备和设备 ID 登出当前用户
+func LogoutByDeviceAndDeviceIDByContext(c *beegocontext.Context, deviceAndDeviceID ...string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return err
 	}
-	return dCtx.Terminal().LogoutByDeviceAndDeviceId(requestContext(c), deviceAndDeviceId...)
+	return dCtx.Terminal().LogoutByDeviceAndDeviceID(requestContext(c), deviceAndDeviceID...)
 }
 
 // LogoutByLoginIDByContext logs out all terminals of current user LogoutByLoginIDByContext 登出当前用户全部终端
@@ -42,13 +42,13 @@ func KickoutByDeviceByContext(c *beegocontext.Context, device string) error {
 	return dCtx.Terminal().KickoutByDevice(requestContext(c), device)
 }
 
-// KickoutByDeviceAndDeviceIDByContext kicks out current user by device ID KickoutByDeviceAndDeviceIDByContext 按设备 ID 踢出当前用户
-func KickoutByDeviceAndDeviceIDByContext(c *beegocontext.Context, deviceAndDeviceId ...string) error {
+// KickoutByDeviceAndDeviceIDByContext kicks out current user by device ID KickoutByDeviceAndDeviceIDByContext 按设备和设备 ID 踢出当前用户
+func KickoutByDeviceAndDeviceIDByContext(c *beegocontext.Context, deviceAndDeviceID ...string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return err
 	}
-	return dCtx.Terminal().KickoutByDeviceAndDeviceId(requestContext(c), deviceAndDeviceId...)
+	return dCtx.Terminal().KickoutByDeviceAndDeviceID(requestContext(c), deviceAndDeviceID...)
 }
 
 // KickoutByLoginIDByContext kicks out all terminals of current user KickoutByLoginIDByContext 踢出当前用户全部终端
@@ -69,13 +69,13 @@ func ReplaceByDeviceByContext(c *beegocontext.Context, device string) error {
 	return dCtx.Terminal().ReplaceByDevice(requestContext(c), device)
 }
 
-// ReplaceByDeviceAndDeviceIDByContext replaces current user by device ID ReplaceByDeviceAndDeviceIDByContext 按设备 ID 顶替当前用户
-func ReplaceByDeviceAndDeviceIDByContext(c *beegocontext.Context, deviceAndDeviceId ...string) error {
+// ReplaceByDeviceAndDeviceIDByContext replaces current user by device ID ReplaceByDeviceAndDeviceIDByContext 按设备和设备 ID 顶替当前用户
+func ReplaceByDeviceAndDeviceIDByContext(c *beegocontext.Context, deviceAndDeviceID ...string) error {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return err
 	}
-	return dCtx.Terminal().ReplaceByDeviceAndDeviceId(requestContext(c), deviceAndDeviceId...)
+	return dCtx.Terminal().ReplaceByDeviceAndDeviceID(requestContext(c), deviceAndDeviceID...)
 }
 
 // ReplaceByLoginIDByContext replaces all terminals of current user ReplaceByLoginIDByContext 顶替当前用户全部终端
@@ -105,7 +105,7 @@ func GetTokenValueListByContext(c *beegocontext.Context, checkAlive ...bool) ([]
 	return dCtx.Terminal().GetTokenValueList(requestContext(c), checkAlive...)
 }
 
-// GetTokenValueListByDeviceByContext gets current user tokens by device GetTokenValueListByDeviceByContext 按设备获取当前用户 token 列表
+// GetTokenValueListByDeviceByContext gets current user tokens by device GetTokenValueListByDeviceByContext 按设备获取当前用户 Token 列表
 func GetTokenValueListByDeviceByContext(c *beegocontext.Context, device string, checkAlive ...bool) ([]string, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -114,13 +114,13 @@ func GetTokenValueListByDeviceByContext(c *beegocontext.Context, device string, 
 	return dCtx.Terminal().GetTokenValueListByDevice(requestContext(c), device, checkAlive...)
 }
 
-// GetTokenValueListByDeviceAndDeviceIDByContext gets current user tokens by device ID GetTokenValueListByDeviceAndDeviceIDByContext 按设备 ID 获取当前用户 token 列表
-func GetTokenValueListByDeviceAndDeviceIDByContext(c *beegocontext.Context, device, deviceId string, checkAlive ...bool) ([]string, error) {
+// GetTokenValueListByDeviceAndDeviceIDByContext gets current user tokens by device ID GetTokenValueListByDeviceAndDeviceIDByContext 按设备和设备 ID 获取当前用户 Token 列表
+func GetTokenValueListByDeviceAndDeviceIDByContext(c *beegocontext.Context, device, deviceID string, checkAlive ...bool) ([]string, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return nil, err
 	}
-	return dCtx.Terminal().GetTokenValueListByDeviceAndDeviceId(requestContext(c), device, deviceId, checkAlive...)
+	return dCtx.Terminal().GetTokenValueListByDeviceAndDeviceID(requestContext(c), device, deviceID, checkAlive...)
 }
 
 // GetOnlineTerminalCountByContext gets current user online terminal count GetOnlineTerminalCountByContext 获取当前用户在线终端数量
@@ -132,7 +132,7 @@ func GetOnlineTerminalCountByContext(c *beegocontext.Context) (int, error) {
 	return dCtx.Terminal().GetOnlineTerminalCount(requestContext(c))
 }
 
-// GetOnlineTerminalCountByDeviceByContext gets online count by device GetOnlineTerminalCountByDeviceByContext 按设备获取在线数量
+// GetOnlineTerminalCountByDeviceByContext gets online count by device GetOnlineTerminalCountByDeviceByContext 按设备获取在线终端数量
 func GetOnlineTerminalCountByDeviceByContext(c *beegocontext.Context, device string) (int, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -141,13 +141,13 @@ func GetOnlineTerminalCountByDeviceByContext(c *beegocontext.Context, device str
 	return dCtx.Terminal().GetOnlineTerminalCountByDevice(requestContext(c), device)
 }
 
-// GetOnlineTerminalCountByDeviceAndDeviceIDByContext gets online count by device ID GetOnlineTerminalCountByDeviceAndDeviceIDByContext 按设备 ID 获取在线数量
-func GetOnlineTerminalCountByDeviceAndDeviceIDByContext(c *beegocontext.Context, device, deviceId string) (int, error) {
+// GetOnlineTerminalCountByDeviceAndDeviceIDByContext gets online count by device ID GetOnlineTerminalCountByDeviceAndDeviceIDByContext 按设备和设备 ID 获取在线终端数量
+func GetOnlineTerminalCountByDeviceAndDeviceIDByContext(c *beegocontext.Context, device, deviceID string) (int, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
 		return 0, err
 	}
-	return dCtx.Terminal().GetOnlineTerminalCountByDeviceAndDeviceId(requestContext(c), device, deviceId)
+	return dCtx.Terminal().GetOnlineTerminalCountByDeviceAndDeviceID(requestContext(c), device, deviceID)
 }
 
 // GetTerminalInfoByContext gets current terminal info GetTerminalInfoByContext 获取当前终端信息
@@ -168,7 +168,7 @@ func GetTerminalListByContext(c *beegocontext.Context, device ...string) ([]mana
 	return dCtx.Terminal().GetTerminalList(requestContext(c), device...)
 }
 
-// GetLatestTokenValueByContext gets latest current user token GetLatestTokenValueByContext 获取当前用户最新 token
+// GetLatestTokenValueByContext gets latest current user token GetLatestTokenValueByContext 获取当前用户最新 Token
 func GetLatestTokenValueByContext(c *beegocontext.Context, device ...string) (string, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {
@@ -177,7 +177,7 @@ func GetLatestTokenValueByContext(c *beegocontext.Context, device ...string) (st
 	return dCtx.Terminal().GetLatestTokenValue(requestContext(c), device...)
 }
 
-// SearchTokenValueByContext searches token values SearchTokenValueByContext 搜索 token 值
+// SearchTokenValueByContext searches token values SearchTokenValueByContext 搜索 Token 值
 func SearchTokenValueByContext(c *beegocontext.Context, keyword string, start, size int) ([]string, error) {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

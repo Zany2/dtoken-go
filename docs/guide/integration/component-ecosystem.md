@@ -12,7 +12,7 @@ DToken-Go decouples core authentication logic from component implementations. Th
 | Atomic storage | `adapter.AtomicStorage` | Redis, Memory | Atomic get-and-delete operations such as one-time Nonce consumption |
 | Scanner storage | `adapter.ScannerStorage` | Redis, Memory | Search Tokens and Session IDs |
 | Admin storage | `adapter.AdminStorage` | Redis, Memory | Test cleanup or administrative clear operations |
-| Codec | `adapter.Codec` | JSON, JSON v2, MessagePack, Base64 | Serialize stored structures |
+| Codec | `adapter.Codec` | JSON, MessagePack, Base64 | Serialize stored structures |
 | Logger | `adapter.Log` | DLog, GoFrame, Nop | Runtime and error logging |
 | Token generator | `adapter.Generator` | `dgenerator` | Generate UUID, random, JWT, and other Token styles |
 | Async task pool | `adapter.Pool` | Ants | Auto-renew and async event tasks |
@@ -27,7 +27,7 @@ mgr, err := defaults.NewBuilder().
     Build()
 ```
 
-In most projects, storage is the only component that must be explicitly set. Other default components can remain unchanged unless there is a specific requirement.
+Memory storage is already provided by default. Set storage explicitly when using Redis or another backend; other default components can remain unchanged unless there is a specific requirement.
 
 ## Replace Components
 
@@ -53,6 +53,8 @@ mgr, err := defaults.NewBuilder().
 
 Factories are useful when component creation depends on config values such as `AuthType`, `KeyPrefix`, or deployment environment.
 
+`com/codec/jsonv2` provides an adapter backed by Go 1.27's standard-library `encoding/json/v2` and requires `GOEXPERIMENT=jsonv2`. Use JSON, MessagePack, Base64, or a custom `adapter.Codec` when JSON v2's experimental behavior is not needed.
+
 ## Storage Recommendations
 
 - Single-process tests, examples, and local development: use Memory Storage.
@@ -76,10 +78,19 @@ mgr, err := defaults.NewBuilder().
 To fully customize generation rules, implement `adapter.Generator`:
 
 ```go
+import (
+    "crypto/rand"
+    "encoding/hex"
+)
+
 type MyGenerator struct{}
 
 func (MyGenerator) Generate(loginID, device, deviceID string) (string, error) {
-    return "my-token-value", nil
+    var value [32]byte
+    if _, err := rand.Read(value[:]); err != nil {
+        return "", err
+    }
+    return hex.EncodeToString(value[:]), nil
 }
 ```
 

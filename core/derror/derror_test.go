@@ -2,10 +2,12 @@ package derror
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
 
+// TestDTokenErrorErrorAndUnwrap verifies formatted messages and wrapped error access. TestDTokenErrorErrorAndUnwrap 验证错误信息格式化与原始错误解包。
 func TestDTokenErrorErrorAndUnwrap(t *testing.T) {
 	base := ErrInvalidToken
 	err := NewDTokenError(CodeTokenInvalid, "bad token", base)
@@ -21,6 +23,7 @@ func TestDTokenErrorErrorAndUnwrap(t *testing.T) {
 	}
 }
 
+// TestDTokenErrorWithoutWrappedError verifies formatting without a wrapped cause. TestDTokenErrorWithoutWrappedError 验证未包装原始错误时的格式化结果。
 func TestDTokenErrorWithoutWrappedError(t *testing.T) {
 	err := NewDTokenError(CodeBadRequest, "bad request", nil)
 
@@ -32,8 +35,37 @@ func TestDTokenErrorWithoutWrappedError(t *testing.T) {
 	}
 }
 
+// TestDTokenErrorSupportsNestedErrors verifies errors.Is and errors.As across nested wrapping. TestDTokenErrorSupportsNestedErrors 验证嵌套包装时 errors.Is 与 errors.As 仍然有效。
+func TestDTokenErrorSupportsNestedErrors(t *testing.T) {
+	inner := NewDTokenError(CodeTokenExpired, "expired", ErrTokenExpired)
+	outer := fmt.Errorf("request failed: %w", inner)
+
+	if !errors.Is(outer, ErrTokenExpired) {
+		t.Fatal("errors.Is() = false, want wrapped sentinel")
+	}
+
+	var got *DTokenError
+	if !errors.As(outer, &got) || got != inner {
+		t.Fatalf("errors.As() = %v, want inner DTokenError", got)
+	}
+}
+
+// TestDTokenErrorNilReceiver verifies a typed-nil DTokenError is safe to inspect. TestDTokenErrorNilReceiver 验证 typed-nil DTokenError 可安全读取。
+func TestDTokenErrorNilReceiver(t *testing.T) {
+	var err *DTokenError
+	if got := err.Error(); got != "<nil>" {
+		t.Fatalf("Error() = %q, want <nil>", got)
+	}
+	if got := err.Unwrap(); got != nil {
+		t.Fatalf("Unwrap() = %v, want nil", got)
+	}
+}
+
+// TestSentinelErrorsAreDistinct verifies sentinel errors preserve distinct identities. TestSentinelErrorsAreDistinct 验证哨兵错误保持独立身份。
 func TestSentinelErrorsAreDistinct(t *testing.T) {
 	cases := []error{
+		ErrInvalidAccessToken,
+		ErrInvalidRefreshToken,
 		ErrInvalidTicket,
 		ErrTicketConsumed,
 		ErrInvalidShortKey,
@@ -42,12 +74,40 @@ func TestSentinelErrorsAreDistinct(t *testing.T) {
 		ErrRoleDenied,
 	}
 
-	for _, err := range cases {
+	for i, err := range cases {
 		if err == nil {
 			t.Fatalf("sentinel error is nil")
 		}
 		if err.Error() == "" {
 			t.Fatalf("sentinel error %v has empty message", err)
 		}
+		for j, other := range cases {
+			if i != j && (err == other || errors.Is(err, other)) {
+				t.Fatalf("sentinels at indexes %d and %d share an identity: %v, %v", i, j, err, other)
+			}
+		}
+	}
+}
+
+// TestOAuth2SentinelAliases verifies aliases retain their original error identities. TestOAuth2SentinelAliases 验证别名保留原始错误身份。
+func TestOAuth2SentinelAliases(t *testing.T) {
+	tests := []struct {
+		name     string
+		alias    error
+		original error
+	}{
+		{name: "access token", alias: ErrOAuth2InvalidAccessToken, original: ErrInvalidAccessToken},
+		{name: "refresh token", alias: ErrOAuth2InvalidRefreshToken, original: ErrInvalidRefreshToken},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.alias != tt.original {
+				t.Fatal("alias does not preserve original identity")
+			}
+			if !errors.Is(fmt.Errorf("wrapped: %w", tt.alias), tt.original) ||
+				!errors.Is(fmt.Errorf("wrapped: %w", tt.original), tt.alias) {
+				t.Fatal("wrapped alias and original do not match through errors.Is")
+			}
+		})
 	}
 }

@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// GenerateNonceWithTimeoutByCtx generates nonce with timeout GenerateNonceWithTimeoutByCtx 浣跨敤鎸囧畾鏈夋晥鏈熺敓鎴?Nonce
+// GenerateNonceWithTimeoutByCtx generates nonce with timeout GenerateNonceWithTimeoutByCtx 使用指定有效期生成 Nonce
 func GenerateNonceWithTimeoutByCtx(ctx context.Context, timeout time.Duration) (string, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -15,7 +15,7 @@ func GenerateNonceWithTimeoutByCtx(ctx context.Context, timeout time.Duration) (
 	return dCtx.Nonce().GenerateWithTimeout(ctx, timeout)
 }
 
-// IsValidNonceByCtx checks nonce state IsValidNonceByCtx 妫€鏌?Nonce 鐘舵€?
+// IsValidNonceByCtx checks nonce state IsValidNonceByCtx 检查 Nonce 状态
 func IsValidNonceByCtx(ctx context.Context, nonce string) bool {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {
@@ -24,7 +24,7 @@ func IsValidNonceByCtx(ctx context.Context, nonce string) bool {
 	return dCtx.Nonce().IsValid(ctx, nonce)
 }
 
-// GetNonceTTLByCtx gets nonce TTL GetNonceTTLByCtx 鑾峰彇 Nonce 鍓╀綑鏈夋晥鏈?
+// GetNonceTTLByCtx gets nonce TTL GetNonceTTLByCtx 获取 Nonce 剩余有效期
 func GetNonceTTLByCtx(ctx context.Context, nonce string) (int64, error) {
 	dCtx, err := requireDTokenContextByCtx(ctx)
 	if err != nil {

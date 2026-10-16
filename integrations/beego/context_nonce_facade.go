@@ -25,7 +25,7 @@ func GenerateNonceWithTimeoutByContext(c *beegocontext.Context, timeout time.Dur
 	return dCtx.Nonce().GenerateWithTimeout(requestContext(c), timeout)
 }
 
-// VerifyNonceByContext verifies nonce with current manager VerifyNonceByContext 使用当前管理器验证 nonce
+// VerifyNonceByContext verifies nonce with current manager VerifyNonceByContext 使用当前管理器校验 nonce
 func VerifyNonceByContext(c *beegocontext.Context, nonce string) bool {
 	dCtx, err := requireDTokenContextByContext(c)
 	if err != nil {

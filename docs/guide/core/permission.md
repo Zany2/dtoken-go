@@ -28,15 +28,18 @@ import (
 )
 
 func initDToken() {
-    dtoken.SetManager(
+    if _, err := dtoken.BuildAndSetManager(
         defaults.NewBuilder().
-            SetStorage(memory.NewStorage()).
-            Build(),
-    )
+            SetStorage(memory.NewStorage()),
+    ); err != nil {
+        panic(err)
+    }
 }
 ```
 
 ## Permission APIs
+
+Token-based permission and role additions/removals validate the full login state even when the list is `nil`, empty, or contains only empty strings. Invalid, disabled, or inactive tokens return the corresponding error. For a valid login, an empty change does not write the session, emit change events, or schedule renewal or activity maintenance.
 
 ### Add Permissions
 
@@ -221,7 +224,7 @@ _ = dtoken.UntieService(ctx, "10001", "comment")
 ## Custom Permission and Role Callbacks
 
 ```go
-dtoken.SetManager(
+if _, err := dtoken.BuildAndSetManager(
     defaults.NewBuilder().
         SetStorage(memory.NewStorage()).
         SetCustomPermissionListFunc(func(loginID, authType string) ([]string, error) {
@@ -235,22 +238,23 @@ dtoken.SetManager(
                 return []string{"admin"}, nil
             }
             return []string{"user"}, nil
-        }).
-        Build(),
-)
+        }),
+); err != nil {
+    panic(err)
+}
 ```
 
-Extended callbacks can also use `device` and `deviceId`:
+Extended callbacks can also use `device` and `deviceID`:
 
 ```go
 defaults.NewBuilder().
-    SetCustomPermissionListExtFunc(func(loginID, device, deviceId, authType string) ([]string, error) {
+    SetCustomPermissionListExtFunc(func(loginID, device, deviceID, authType string) ([]string, error) {
         if device == "app" {
             return []string{"mobile:read", "mobile:write"}, nil
         }
         return []string{"web:read"}, nil
     }).
-    SetCustomRoleListExtFunc(func(loginID, device, deviceId, authType string) ([]string, error) {
+    SetCustomRoleListExtFunc(func(loginID, device, deviceID, authType string) ([]string, error) {
         if device == "app" {
             return []string{"mobile-user"}, nil
         }

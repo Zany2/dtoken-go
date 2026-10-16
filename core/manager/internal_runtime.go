@@ -3,8 +3,11 @@ package manager
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
+
+	"github.com/Zany2/dtoken-go/core/derror"
 )
 
 // loginLockEntry tracks one login lock and its active users. loginLockEntry 跟踪单个登录锁及其活跃使用者。
@@ -13,9 +16,16 @@ type loginLockEntry struct {
 	refs int        // refs tracks lock holders and waiters. refs 跟踪持锁者和等待者。
 }
 
+// loginMaintenanceState tracks one token maintenance generation and its latest activity. loginMaintenanceState 跟踪 Token 维护任务代次及最新活跃时间。
+type loginMaintenanceState struct {
+	generation uint64      // generation identifies the token lifecycle task. generation 标识 Token 生命周期任务。
+	activeAt   int64       // activeAt stores the latest validation timestamp. activeAt 存储最近一次校验时间戳。
+	record     tokenRecord // record binds merged activity to the checked lifecycle. record 将合并的活跃时间绑定到已校验生命周期。
+}
+
 // lockLoginWrite locks write operations for one login ID lockLoginWrite 锁定指定账号的写操作
 func (m *Manager) lockLoginWrite(loginID string) func() {
-	// Return no-op unlock for empty ID 空 ID 返回空解锁函数。
+	// Return no-op unlock for empty ID ID 为空时返回空解锁函数
 	if loginID == "" {
 		return func() {}
 	}
@@ -49,30 +59,145 @@ func (m *Manager) lockLoginWrite(loginID string) func() {
 	}
 }
 
-// submitAsync submits async work with goroutine fallback submitAsync 提交异步任务并在池不可用时回退到 goroutine
-func (m *Manager) submitAsync(name string, task func()) {
+// submitAsync submits async work with a goroutine fallback and reports admission. submitAsync 提交异步任务并在池不可用时回退到 goroutine，同时返回是否已接收。
+func (m *Manager) submitAsync(name string, task func()) bool {
+	// Register the task unless manager shutdown has started. Manager 开始关闭后不再接收新任务。
+	m.asyncMu.Lock()
+	if m.asyncClosed {
+		m.asyncMu.Unlock()
+		return false
+	}
+	m.asyncWG.Add(1)
+	pool := m.pool
+	m.asyncMu.Unlock()
+
+	// Track task completion independently from pool ownership. 独立于协程池所有权跟踪任务完成状态。
+	trackedTask := func() {
+		defer m.asyncWG.Done()
+
+		// Keep goroutine fallback as safe as pool execution when a component panics. 组件发生 panic 时，确保 goroutine 回退与协程池执行一样不会终止进程。
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				m.logger.Errorf("manager.submitAsync: task panic recovered, task=%s, panic=%v", name, recovered)
+			}
+		}()
+		task()
+	}
+
 	// Fallback when pool is absent 协程池不存在时回退。
-	if m.pool == nil {
-		go task()
-		return
+	if pool == nil {
+		go trackedTask()
+		return true
 	}
 
 	// Submit task to pool 提交任务到协程池。
-	if err := m.pool.Submit(task); err != nil {
+	if err := pool.Submit(trackedTask); err != nil {
 		m.logger.Errorf("manager.submitAsync: failed to submit async task, task=%s, error=%v", name, err)
+
 		// Fallback when submit fails 提交失败时回退。
-		go task()
+		go trackedTask()
+	}
+	return true
+}
+
+// beginLoginMaintenance reserves or replaces one in-flight maintenance generation for a token. beginLoginMaintenance 为 Token 登记或替换一个执行中的维护任务代次。
+func (m *Manager) beginLoginMaintenance(tokenValue string, record *tokenRecord, activeAt int64, replace bool) (uint64, bool) {
+	if tokenValue == "" || record == nil || record.Revoked || m.closed.Load() {
+		return 0, false
+	}
+
+	// Coalesce concurrent maintenance requests for the same token. 合并同一 Token 的并发维护请求。
+	m.maintenanceMu.Lock()
+	defer m.maintenanceMu.Unlock()
+	if state, exists := m.maintenance[tokenValue]; exists && !replace {
+		// Never merge activity across token lifecycles. 不合并其他 Token 生命周期的活跃时间。
+		if !tokenRecordsMatchLifecycle(record, &state.record) {
+			return 0, false
+		}
+
+		// Preserve the latest request activity while sharing the existing task. 复用已有任务时保留最近一次请求活跃时间。
+		if activeAt > state.activeAt {
+			state.activeAt = activeAt
+			m.maintenance[tokenValue] = state
+		}
+		return 0, false
+	}
+	if m.maintenance == nil {
+		m.maintenance = make(map[string]loginMaintenanceState)
+	}
+	m.maintenanceSeq++
+	generation := m.maintenanceSeq
+	m.maintenance[tokenValue] = loginMaintenanceState{generation: generation, activeAt: activeAt, record: *record}
+	return generation, true
+}
+
+// isLoginMaintenanceCurrent reports whether a token task still owns its generation. isLoginMaintenanceCurrent 判断 Token 维护任务是否仍持有当前代次。
+func (m *Manager) isLoginMaintenanceCurrent(tokenValue string, generation uint64) bool {
+	m.maintenanceMu.Lock()
+	defer m.maintenanceMu.Unlock()
+	state, exists := m.maintenance[tokenValue]
+	return exists && generation != 0 && state.generation == generation
+}
+
+// getLoginMaintenanceActiveAt returns the latest activity owned by a task generation. getLoginMaintenanceActiveAt 返回任务代次持有的最新活跃时间。
+func (m *Manager) getLoginMaintenanceActiveAt(tokenValue string, generation uint64) (int64, bool) {
+	m.maintenanceMu.Lock()
+	defer m.maintenanceMu.Unlock()
+	state, exists := m.maintenance[tokenValue]
+	if !exists || generation == 0 || state.generation != generation {
+		return 0, false
+	}
+	return state.activeAt, true
+}
+
+// finishLoginMaintenanceActiveWrite completes a stable activity write. finishLoginMaintenanceActiveWrite 完成稳定的活跃写入。
+func (m *Manager) finishLoginMaintenanceActiveWrite(tokenValue string, generation uint64, writtenAt int64) bool {
+	m.maintenanceMu.Lock()
+	defer m.maintenanceMu.Unlock()
+	state, exists := m.maintenance[tokenValue]
+	if !exists || generation == 0 || state.generation != generation {
+		return true
+	}
+	if state.activeAt > writtenAt {
+		return false
+	}
+
+	// Delete atomically with the stable check so a later request creates a new task. 与稳定性检查原子删除，使后续请求能够创建新任务。
+	delete(m.maintenance, tokenValue)
+	return true
+}
+
+// finishLoginMaintenance releases a completed token maintenance generation. finishLoginMaintenance 释放已完成的 Token 维护任务代次。
+func (m *Manager) finishLoginMaintenance(tokenValue string, generation uint64) {
+	m.maintenanceMu.Lock()
+	defer m.maintenanceMu.Unlock()
+	if state, exists := m.maintenance[tokenValue]; exists && state.generation == generation {
+		delete(m.maintenance, tokenValue)
 	}
 }
 
-// expireIfLimited renews key only when duration is limited expireIfLimited 仅在有限过期时间下续期 key
+// cancelLoginMaintenance invalidates pending maintenance for a token lifecycle. cancelLoginMaintenance 使 Token 当前生命周期的待执行维护任务失效。
+func (m *Manager) cancelLoginMaintenance(tokenValue string) {
+	if tokenValue == "" {
+		return
+	}
+	m.maintenanceMu.Lock()
+	delete(m.maintenance, tokenValue)
+	m.maintenanceMu.Unlock()
+}
+
+// expireIfLimited renews a key only when duration is limited expireIfLimited 仅在有限过期时间下续期存储键
 func (m *Manager) expireIfLimited(ctx context.Context, key string, expiration time.Duration) error {
 	// Skip unlimited expiration 跳过无限有效期。
 	if expiration <= 0 {
 		return nil
 	}
+
 	// Renew key expiration 续期键过期时间。
-	return m.storage.Expire(ctx, key, expiration)
+	if err := m.storage.Expire(ctx, key, expiration); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	return nil
 }
 
 // expireTokenIfLimited renews token key when expiration is limited. expireTokenIfLimited 在存在过期时间时续期 Token 键。
@@ -81,36 +206,15 @@ func (m *Manager) expireTokenIfLimited(ctx context.Context, tokenValue string, e
 	if expiration <= 0 {
 		return nil
 	}
+
 	// Build token key 构建 Token 键。
 	key := m.getTokenKey(tokenValue)
-	// Skip missing token key 跳过不存在的 Token 键。
+
+	// A token that expired after validation was not successfully renewed. 校验后已过期的 Token 不能被视为续期成功。
 	if !m.storage.Exists(ctx, key) {
-		return nil
+		return derror.ErrInvalidToken
 	}
+
 	// Renew token key expiration 续期 Token 键过期时间。
 	return m.expireIfLimited(ctx, key, expiration)
-}
-
-// rollbackLogin removes data written by a failed login rollbackLogin 回滚失败登录已写入的数据
-func (m *Manager) rollbackLogin(ctx context.Context, sess *Session, loginID, token string, expiration time.Duration) {
-	// Roll back session terminal 回滚会话终端。
-	if sess != nil {
-		if _, ok := sess.removeTerminalByToken(token); ok {
-			// Delete empty session 删除空会话。
-			if len(sess.TerminalInfos) == 0 {
-				if err := m.storage.Delete(ctx, m.getSessionKey(loginID)); err != nil {
-					m.logger.Errorf("manager.rollbackLogin: failed to delete empty session, loginID=%s, token=%s, error=%v", loginID, token, err)
-				}
-			} else {
-				// Save restored session 保存回滚后的会话。
-				if err := m.saveSessionWithMinTTL(ctx, m.getSessionKey(loginID), *sess, expiration); err != nil {
-					m.logger.Errorf("manager.rollbackLogin: failed to save session, loginID=%s, token=%s, error=%v", loginID, token, err)
-				}
-			}
-		}
-	}
-	// Delete token data 删除 Token 数据。
-	if err := m.storage.Delete(ctx, m.getTokenKey(token), m.getRenewKey(token), m.getActiveKey(token)); err != nil {
-		m.logger.Errorf("manager.rollbackLogin: failed to delete token data, loginID=%s, token=%s, error=%v", loginID, token, err)
-	}
 }

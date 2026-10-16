@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Zany2/dtoken-go"><img src="https://img.shields.io/badge/Go-1.20+-00ADD8?style=flat-square&logo=go" alt="Go"></a>
+  <a href="https://github.com/Zany2/dtoken-go"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat-square&logo=go" alt="Go"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue?style=flat-square" alt="License"></a>
   <a href="docs/README.md"><img src="https://img.shields.io/badge/Docs-English-brightgreen?style=flat-square" alt="Docs"></a>
   <a href="https://pkg.go.dev/github.com/Zany2/dtoken-go/dtoken"><img src="https://img.shields.io/badge/pkg.go.dev-dtoken-007D9C?style=flat-square&logo=go" alt="pkg.go.dev"></a>
@@ -23,12 +23,12 @@
 
 ## What Is DToken-Go
 
-DToken-Go is a modular and pluggable Go authentication and authorization framework. It already provides login authentication, Token management, Session management, terminal management, role and permission checks, account and device banning, Nonce anti-replay, OAuth2 server support, SSO, event listeners, temporary tickets, short-key access credentials, Token Introspection, and standalone Refresh Token capabilities. The framework supports pluggable component replacement and custom extensions, and integrates with mainstream Go Web frameworks, so it can be used as an independent auth core or quickly embedded into existing business projects.
+DToken-Go is a modular and pluggable Go authentication and authorization framework. It already provides login authentication, Token management, Session management, terminal management, role and permission checks, account and device banning, Nonce anti-replay, OAuth2 server support, event listeners, temporary tickets, short-key access credentials, Token Introspection, and standalone Refresh Token capabilities, while the SSO module is still under development. The framework supports pluggable component replacement and custom extensions, and integrates with mainstream Go Web frameworks, so it can be used as an independent auth core or quickly embedded into existing business projects.
 
 You can use it for:
 
 - Admin systems, user centers, open platforms, and other systems that need unified authentication and authorization.
-- Login and permission integration for Gin, Echo, Fiber, Chi, GoFrame, Hertz, Kratos, and other Go Web projects.
+- Login and permission integration for Gin, Echo, Fiber, Chi, GoFrame, Hertz, Kratos, Beego, and other Go Web projects.
 - Microservice gateways, centralized authentication centers, cross-system SSO, and unified logout.
 - Login state and session management across apps, mini-programs, web clients, multiple devices, and multiple terminals.
 - QR confirmation, one-time access, temporary authorization, short-link credentials, and third-party Token validation.
@@ -49,13 +49,15 @@ You can use it for:
 | Event system | Listeners for login, logout, renewal, permissions, roles, bans, unbans, and other core lifecycle events |
 | Pluggable components | Storage, codec, logger, Token generator, goroutine pool, and other components can be replaced |
 | Framework integration | Middleware, context adapters, and API exports for mainstream Go Web frameworks |
-| SSO | Unified login, ticket exchange, cross-system login-state sharing, unified logout, and application-level management |
+| SSO (under development) | Unified login, ticket exchange, cross-system login-state sharing, unified logout, and application-level management |
 | Temporary Ticket | Ticket creation, validation, one-time consumption, revocation, TTL query, and status identification |
 | Short-key access credential | Generate random short keys for short-link access, QR confirmation, temporary authorization, and system-to-system ticket exchange |
 | Token Introspection | Standardized query for Token validity, ownership information, TTL, and invalid reason |
 | Refresh Token | Independent refresh token issuing, refreshing, revocation, expiration, rotation, and security checks |
 
 ## Installation
+
+The core modules target Go 1.25 or later. Local development with this repository's `go.work` requires Go 1.27 or later; the optional `com/codec/jsonv2` module additionally requires `GOEXPERIMENT=jsonv2`.
 
 ### Default Core Usage
 
@@ -81,6 +83,7 @@ go get github.com/Zany2/dtoken-go/integrations/chi
 go get github.com/Zany2/dtoken-go/integrations/gf
 go get github.com/Zany2/dtoken-go/integrations/hertz
 go get github.com/Zany2/dtoken-go/integrations/kratos
+go get github.com/Zany2/dtoken-go/integrations/beego
 ```
 
 ### Pluggable Components
@@ -213,7 +216,7 @@ func main() {
 	user.GET("/me", func(c *gin.Context) {
 		// Resolve the current login account from request context.
 		dCtx, _ := gindt.GetDTokenContext(c)
-		loginID, _ := dCtx.GetLoginID(c.Request.Context())
+		loginID, _ := dCtx.Auth().GetLoginID(c.Request.Context())
 		c.JSON(http.StatusOK, gin.H{"loginId": loginID})
 	})
 
@@ -238,6 +241,7 @@ func main() {
 | GoFrame | [examples/gf](examples/gf/) | `github.com/Zany2/dtoken-go/integrations/gf` |
 | Hertz | [examples/hertz](examples/hertz/) | `github.com/Zany2/dtoken-go/integrations/hertz` |
 | Kratos | [examples/kratos](examples/kratos/) | `github.com/Zany2/dtoken-go/integrations/kratos` |
+| Beego | [examples/beego](examples/beego/) | `github.com/Zany2/dtoken-go/integrations/beego` |
 
 ## Deep Reading
 
@@ -256,7 +260,7 @@ README keeps only the minimal getting-started path. For more API, configuration,
 
 ```text
 dtoken-go/
-├── core/                         # Framework core modules, split by capability as independent Go modules
+├── core/                         # One Go module with packages organized by capability
 │   ├── adapter/                  # Contracts for storage, codec, logger, Token generator, and request context
 │   ├── builder/                  # Manager builder, component wiring, and configuration validation
 │   ├── config/                   # Core configuration, defaults, and validation
@@ -283,7 +287,8 @@ dtoken-go/
 │   ├── chi/                      # Chi middleware, context adapter, and API exports
 │   ├── gf/                       # GoFrame middleware, context adapter, and API exports
 │   ├── hertz/                    # Hertz middleware, context adapter, and API exports
-│   └── kratos/                   # Kratos middleware, context adapter, and API exports
+│   ├── kratos/                   # Kratos middleware, context adapter, and API exports
+│   └── beego/                    # Beego filters, context adapter, and API exports
 ├── examples/                     # Quick-start and framework integration examples
 │   ├── quick_start/              # Minimal example with the default Builder and global API
 │   ├── gin/                      # Gin example
@@ -296,7 +301,8 @@ dtoken-go/
 │   ├── chi/                      # Chi example
 │   ├── gf/                       # GoFrame example
 │   ├── hertz/                    # Hertz example
-│   └── kratos/                   # Kratos example
+│   ├── kratos/                   # Kratos example
+│   └── beego/                    # Beego example
 ├── tests/                        # Flow tests and test applications
 │   ├── gin_core_app/             # Gin core flow test application
 │   └── gin_core_flow/            # HTTP flow tests for core features
@@ -354,6 +360,7 @@ dtoken-go/
 | [examples/gf](examples/gf/) | GoFrame framework integration example |
 | [examples/hertz](examples/hertz/) | Hertz framework integration example |
 | [examples/kratos](examples/kratos/) | Kratos framework integration example |
+| [examples/beego](examples/beego/) | Beego framework integration example |
 
 ## Contributing
 

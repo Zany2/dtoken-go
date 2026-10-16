@@ -31,6 +31,16 @@ type Annotation struct {
 // GetHandler gets annotation handler GetHandler 获取注解处理器
 func GetHandler(handler http.HandlerFunc, annotations ...*Annotation) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		chiCtx := prepareRequestContext(w, r)
+		if chiCtx.IsAborted() {
+			return
+		}
+		r = chiCtx.r
+
+		if len(annotations) > 0 && annotations[0] == nil {
+			writeErrorResponse(w, derror.ErrInvalidParam)
+			return
+		}
 		if len(annotations) > 0 && annotations[0].Ignore {
 			if handler != nil {
 				handler(w, r)
@@ -51,14 +61,14 @@ func GetHandler(handler http.HandlerFunc, annotations ...*Annotation) http.Handl
 			return
 		}
 
-		mgr, err := authcheck.GetManager(ann.AuthType)
+		cached, _ := GetDTokenContext(r)
+		mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached)
 		if err != nil {
 			writeErrorResponse(w, err)
 			return
 		}
 
-		// Get DTokenContext (reuse cached context) 获取 DTokenContext（复用缓存上下文）
-		chiCtx := NewChiContext(w, r).(*ChiContext)
+		// Bind the selected manager to the current request. 将选定的 Manager 绑定到当前请求。
 		dCtx := getDTokenContext(chiCtx, mgr)
 		r = chiCtx.r
 		token := dCtx.GetTokenValue()
@@ -176,7 +186,8 @@ func RoleAndPermissionGroup(group chiRouter.Router, roles []string, perms []stri
 
 // GetLoginIDFromRequest gets login ID from request GetLoginIDFromRequest 从请求获取登录 ID
 func GetLoginIDFromRequest(w http.ResponseWriter, r *http.Request, authType ...string) (string, error) {
-	mgr, err := authcheck.GetManager(firstAuthType(authType...))
+	cached, _ := GetDTokenContext(r)
+	mgr, err := authcheck.ResolveManagerFromContext(firstAuthType(authType...), cached)
 	if err != nil {
 		return "", err
 	}
@@ -188,7 +199,8 @@ func GetLoginIDFromRequest(w http.ResponseWriter, r *http.Request, authType ...s
 
 // IsLoginFromRequest checks login state from request IsLoginFromRequest 从请求检查登录状态
 func IsLoginFromRequest(w http.ResponseWriter, r *http.Request, authType ...string) bool {
-	mgr, err := authcheck.GetManager(firstAuthType(authType...))
+	cached, _ := GetDTokenContext(r)
+	mgr, err := authcheck.ResolveManagerFromContext(firstAuthType(authType...), cached)
 	if err != nil {
 		return false
 	}
@@ -204,7 +216,8 @@ func IsLoginFromRequest(w http.ResponseWriter, r *http.Request, authType ...stri
 
 // GetTokenFromRequest gets token from request GetTokenFromRequest 从请求获取 Token
 func GetTokenFromRequest(w http.ResponseWriter, r *http.Request, authType ...string) string {
-	mgr, err := authcheck.GetManager(firstAuthType(authType...))
+	cached, _ := GetDTokenContext(r)
+	mgr, err := authcheck.ResolveManagerFromContext(firstAuthType(authType...), cached)
 	if err != nil {
 		return ""
 	}

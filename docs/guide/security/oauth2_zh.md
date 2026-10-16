@@ -7,7 +7,7 @@
 当前项目内置了一个轻量级 OAuth2 服务端实现，核心代码位于：
 
 - `core/oauth2`
-- `core/manager/manager_oauth2_func.go`
+- `core/manager/feature_oauth2.go`
 - `dtoken` 中对应的 OAuth2 包装函数
 
 ## 当前支持的授权类型
@@ -35,6 +35,8 @@ oauth2.GrantTypePassword
 - 授权码：`10` 分钟
 - Access Token：`2` 小时
 - Refresh Token：`30` 天
+
+使用全局入口前，需要通过 `dtoken.NewBuilder().EnableOAuth2()` 启用可选模块。授权码保存精确的 `ExpiresAt` 截止时间；不含该字段的旧记录继续按 `CreateTime + ExpiresIn` 校验。
 
 ## 客户端模型
 
@@ -114,7 +116,7 @@ token, err := dtoken.ExchangeOAuth2CodeForToken(
 
 ### PKCE
 
-公开客户端可以把授权码和 proof key 绑定起来。
+客户端可以把授权码和 proof key 绑定起来。
 
 ```go
 authCode, err := dtoken.GenerateOAuth2AuthorizationCodeWithPKCE(
@@ -138,6 +140,8 @@ token, err := dtoken.ExchangeOAuth2CodeForTokenWithPKCE(
 ```
 
 `codeChallengeMethod` 支持 `oauth2.CodeChallengeMethodPlain` 和 `oauth2.CodeChallengeMethodS256`。如果传入了 challenge 但 method 为空，默认按 `plain` 处理。统一令牌入口 `OAuth2Token` 也可以通过 `TokenRequest.CodeVerifier` 处理 `authorization_code` 请求。
+
+当前实现仍要求非空客户端密钥，PKCE 不替代客户端身份认证。verifier 和 `plain` challenge 必须为 43–128 个 ASCII 字符，仅允许 `A-Z`、`a-z`、`0-9`、`-`、`.`、`_`、`~`。S256 challenge 必须是 SHA-256 摘要的 43 字符无填充 base64url 编码。challenge 和 verifier 中的空白字符会被拒绝，不再自动裁剪。只提供 method 而没有 challenge，或为未启用 PKCE 的授权码提交 verifier，均会被拒绝。
 
 返回的 `AccessToken` 结构包括：
 
@@ -202,11 +206,13 @@ newToken, err := dtoken.RefreshOAuth2AccessToken(
 
 当前实现会：
 
-1. 校验 refresh token
-2. 校验 `clientID` / `clientSecret`
-3. 删除旧 access token
-4. 删除旧 refresh token
-5. 重新签发一组新的 token
+1. 校验客户端凭证、授权类型及 refresh token 的归属
+2. 按原授权范围和当前客户端白名单校验请求的 scopes
+3. 创建新的令牌对
+4. 消费旧 refresh token，存储支持时使用原子操作
+5. 删除旧 access token 并返回新的令牌对
+
+`RefreshOAuth2AccessToken` 保留原 scopes。需要缩小权限时，在 `OAuth2Token` 的 `GrantTypeRefreshToken` 请求中传入 `Scopes`。省略或传空 scopes 时保留原授权，非空 scopes 必须是原授权的子集。权限校验失败不会消费旧 refresh token。
 
 ## 校验 Access Token
 
@@ -230,6 +236,8 @@ err := dtoken.RevokeOAuth2Token(ctx, token.Token)
 ## Scope 校验
 
 当前实现会在签发前校验 scope 是否属于客户端允许范围。如果客户端 `Scopes` 为空，则视为不限制。
+
+授权码兑换和刷新也会重新检查当前客户端的 scope 白名单，授权码兑换还要求原回调地址仍在注册列表中。这些检查约束新的签发，不会追溯撤销已有 access token。
 
 ```go
 client := &oauth2.Client{
@@ -270,6 +278,7 @@ client := &oauth2.Client{
 1. 当前 API 没有 `GetOAuth2Server()` 这类公开入口
 2. PKCE 已内建到授权码助手和统一令牌入口中，但客户端侧仍需要自行生成、保存和传递 `code_verifier`
 3. Token introspection 端点没有内建 HTTP 封装，需要你在应用层自己写路由
+4. 普通存储支持顺序兑换和刷新；跨服务实例的并发一次性消费依赖真正原子的 `adapter.AtomicStorage` 操作
 
 ## 相关文档
 

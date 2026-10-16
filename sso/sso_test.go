@@ -3,10 +3,13 @@ package sso
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 )
 
+// TestSSONewServerDefaults verifies the SSO New Server Defaults scenario. TestSSONewServerDefaults 验证对应的 SSO 服务端场景。
 func TestSSONewServerDefaults(t *testing.T) {
 	ctx := context.Background()
 	server := NewServer()
@@ -33,6 +36,7 @@ func TestSSONewServerDefaults(t *testing.T) {
 	}
 }
 
+// TestSSONewServerWithConfigFallsBackToBuiltIns verifies the SSO New Server With Config Falls Back To Built Ins scenario. TestSSONewServerWithConfigFallsBackToBuiltIns 验证对应的 SSO 服务端场景。
 func TestSSONewServerWithConfigFallsBackToBuiltIns(t *testing.T) {
 	ctx := context.Background()
 	server := NewServerWithConfig(DefaultAuthType, DefaultKeyPrefix, nil, nil, nil)
@@ -49,6 +53,35 @@ func TestSSONewServerWithConfigFallsBackToBuiltIns(t *testing.T) {
 	}
 }
 
+// TestSSOServerCloseOwnership verifies server-owned storage is closed exactly once. TestSSOServerCloseOwnership 验证 Server 仅关闭自有存储且只关闭一次。
+func TestSSOServerCloseOwnership(t *testing.T) {
+	externalStorage := &closeTrackingStorage{MemoryStorage: NewMemoryStorage()}
+	externalServer := NewServer(WithStorage(externalStorage))
+	if err := externalServer.Close(); err != nil {
+		t.Fatalf("Close() external storage error = %v", err)
+	}
+	if externalStorage.closeCount != 0 {
+		t.Fatalf("Close() external storage count = %d, want 0", externalStorage.closeCount)
+	}
+
+	closeErr := errors.New("close failed")
+	ownedStorage := &closeTrackingStorage{
+		MemoryStorage: NewMemoryStorage(),
+		closeErr:      closeErr,
+	}
+	ownedServer := NewServer(WithStorage(ownedStorage), WithStorageOwnership(true))
+	if err := ownedServer.Close(); !errors.Is(err, closeErr) {
+		t.Fatalf("Close() owned storage error = %v, want %v", err, closeErr)
+	}
+	if err := ownedServer.Close(); !errors.Is(err, closeErr) {
+		t.Fatalf("Close() owned storage second error = %v, want %v", err, closeErr)
+	}
+	if ownedStorage.closeCount != 1 {
+		t.Fatalf("Close() owned storage count = %d, want 1", ownedStorage.closeCount)
+	}
+}
+
+// TestSSOClientLifecycle verifies the SSO Client Lifecycle scenario. TestSSOClientLifecycle 验证对应的 SSO 服务端场景。
 func TestSSOClientLifecycle(t *testing.T) {
 	server := newTestServer()
 
@@ -73,6 +106,7 @@ func TestSSOClientLifecycle(t *testing.T) {
 	}
 }
 
+// TestSSOTicketGenerateValidateAndConsume verifies the SSO Ticket Generate Validate And Consume scenario. TestSSOTicketGenerateValidateAndConsume 验证对应的 SSO 服务端场景。
 func TestSSOTicketGenerateValidateAndConsume(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -107,6 +141,7 @@ func TestSSOTicketGenerateValidateAndConsume(t *testing.T) {
 	}
 }
 
+// TestSSOTicketErrorBoundaries verifies the SSO Ticket Error Boundaries scenario. TestSSOTicketErrorBoundaries 验证对应的 SSO 服务端场景。
 func TestSSOTicketErrorBoundaries(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -132,8 +167,12 @@ func TestSSOTicketErrorBoundaries(t *testing.T) {
 	if _, err = server.ConsumeTicket(ctx, ticket.Ticket, "app-a", "secret-a", "https://other.example.com/callback"); !errors.Is(err, ErrRedirectURIMismatch) {
 		t.Fatalf("ConsumeTicket() redirect mismatch error = %v, want ErrRedirectURIMismatch", err)
 	}
+	if consumed, err := server.ConsumeTicket(ctx, ticket.Ticket, "app-a", "secret-a", "https://app.example.com/sso/callback"); err != nil || consumed == nil || !consumed.Used {
+		t.Fatalf("ConsumeTicket() after rejected request = %+v, %v, want successful consume", consumed, err)
+	}
 }
 
+// TestSSOTicketTTLRevokeAndExpire verifies the SSO Ticket TTL Revoke And Expire scenario. TestSSOTicketTTLRevokeAndExpire 验证对应的 SSO 服务端场景。
 func TestSSOTicketTTLRevokeAndExpire(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -173,6 +212,7 @@ func TestSSOTicketTTLRevokeAndExpire(t *testing.T) {
 	}
 }
 
+// TestSSOModeCompatibility verifies the SSO Mode Compatibility scenario. TestSSOModeCompatibility 验证对应的 SSO 服务端场景。
 func TestSSOModeCompatibility(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -201,6 +241,7 @@ func TestSSOModeCompatibility(t *testing.T) {
 	}
 }
 
+// TestSSOClientSessionFlow verifies the SSO Client Session Flow scenario. TestSSOClientSessionFlow 验证对应的 SSO 服务端场景。
 func TestSSOClientSessionFlow(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -260,6 +301,58 @@ func TestSSOClientSessionFlow(t *testing.T) {
 	}
 }
 
+// TestSSOClientSessionConcurrentRegistration preserves all local index updates. TestSSOClientSessionConcurrentRegistration 验证并发注册不会丢失当前实例内的索引更新。
+func TestSSOClientSessionConcurrentRegistration(t *testing.T) {
+	ctx := context.Background()
+	server := NewServer()
+	const clientCount = 32
+
+	for i := 0; i < clientCount; i++ {
+		clientID := fmt.Sprintf("app-%d", i)
+		if err := server.RegisterClient(&Client{
+			ClientID:     clientID,
+			RedirectURIs: []string{fmt.Sprintf("https://%s.example.com/callback", clientID)},
+			Modes:        []Mode{ModeTicket},
+		}); err != nil {
+			t.Fatalf("RegisterClient(%q) error = %v", clientID, err)
+		}
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < clientCount; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			clientID := fmt.Sprintf("app-%d", i)
+			callback := fmt.Sprintf("https://%s.example.com/callback", clientID)
+			if _, err := server.RegisterClientSession(ctx, "user-concurrent", clientID, callback); err != nil {
+				t.Errorf("RegisterClientSession(%q) error = %v", clientID, err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	sessions, err := server.GetClientSessions(ctx, "user-concurrent")
+	if err != nil {
+		t.Fatalf("GetClientSessions() error = %v", err)
+	}
+	if len(sessions) != clientCount {
+		t.Fatalf("GetClientSessions() count = %d, want %d", len(sessions), clientCount)
+	}
+	seen := make(map[string]bool, len(sessions))
+	for _, session := range sessions {
+		seen[session.ClientID] = true
+	}
+	for i := 0; i < clientCount; i++ {
+		clientID := fmt.Sprintf("app-%d", i)
+		if !seen[clientID] {
+			t.Fatalf("GetClientSessions() missing client %q", clientID)
+		}
+	}
+}
+
+// TestSSOClientSessionAllowOrigin verifies the SSO Client Session Allow Origin scenario. TestSSOClientSessionAllowOrigin 验证对应的 SSO 服务端场景。
 func TestSSOClientSessionAllowOrigin(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -278,6 +371,7 @@ func TestSSOClientSessionAllowOrigin(t *testing.T) {
 	}
 }
 
+// TestSSOSharedTokenFlow verifies the SSO Shared Token Flow scenario. TestSSOSharedTokenFlow 验证对应的 SSO 服务端场景。
 func TestSSOSharedTokenFlow(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -314,6 +408,7 @@ func TestSSOSharedTokenFlow(t *testing.T) {
 	}
 }
 
+// TestSSOSharedTokenTTLAndBoundaries verifies the SSO Shared Token TTL And Boundaries scenario. TestSSOSharedTokenTTLAndBoundaries 验证对应的 SSO 服务端场景。
 func TestSSOSharedTokenTTLAndBoundaries(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -348,6 +443,7 @@ func TestSSOSharedTokenTTLAndBoundaries(t *testing.T) {
 	}
 }
 
+// TestSSORemoteSessionFlow verifies the SSO Remote Session Flow scenario. TestSSORemoteSessionFlow 验证对应的 SSO 服务端场景。
 func TestSSORemoteSessionFlow(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -373,15 +469,19 @@ func TestSSORemoteSessionFlow(t *testing.T) {
 		t.Fatalf("ValidateRemoteSession() sessionID = %q, want %q", validated.SessionID, session.SessionID)
 	}
 
-	if err = server.RenewRemoteSession(ctx, session.SessionID, 2*time.Second); err != nil {
+	if err = server.RenewRemoteSession(ctx, session.SessionID, 3*time.Second); err != nil {
 		t.Fatalf("RenewRemoteSession() error = %v", err)
 	}
 	ttl, err := server.GetRemoteSessionTTL(ctx, session.SessionID)
 	if err != nil {
 		t.Fatalf("GetRemoteSessionTTL() error = %v", err)
 	}
-	if ttl < 0 || ttl > 2 {
-		t.Fatalf("GetRemoteSessionTTL() = %d, want 0..2", ttl)
+	if ttl < 0 || ttl > 3 {
+		t.Fatalf("GetRemoteSessionTTL() = %d, want 0..3", ttl)
+	}
+	time.Sleep(1100 * time.Millisecond)
+	if validated, err = server.ValidateRemoteSession(ctx, session.SessionID, "app-a"); err != nil || validated.ExpiresIn != 3 {
+		t.Fatalf("ValidateRemoteSession() after original deadline = %+v, %v, want renewed session", validated, err)
 	}
 
 	if err = server.RevokeRemoteSession(ctx, session.SessionID); err != nil {
@@ -392,6 +492,7 @@ func TestSSORemoteSessionFlow(t *testing.T) {
 	}
 }
 
+// TestSSORemoteSessionBoundaries verifies the SSO Remote Session Boundaries scenario. TestSSORemoteSessionBoundaries 验证对应的 SSO 服务端场景。
 func TestSSORemoteSessionBoundaries(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -425,6 +526,7 @@ func TestSSORemoteSessionBoundaries(t *testing.T) {
 	}
 }
 
+// TestSSOOAuth2CodeFlow verifies the SSO OAuth2 authorization-code flow. TestSSOOAuth2CodeFlow 验证 SSO OAuth2 授权码流程。
 func TestSSOOAuth2CodeFlow(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -454,6 +556,7 @@ func TestSSOOAuth2CodeFlow(t *testing.T) {
 	}
 }
 
+// TestSSOOAuth2CodeBoundaries verifies SSO OAuth2 Code error boundaries. TestSSOOAuth2CodeBoundaries 验证 SSO OAuth2 授权码错误边界。
 func TestSSOOAuth2CodeBoundaries(t *testing.T) {
 	ctx := context.Background()
 	server := newTestServer()
@@ -483,6 +586,9 @@ func TestSSOOAuth2CodeBoundaries(t *testing.T) {
 	if _, err = server.ConsumeOAuth2Code(ctx, code.Code, "app-a", "secret-a", "https://other.example.com/callback"); !errors.Is(err, ErrRedirectURIMismatch) {
 		t.Fatalf("ConsumeOAuth2Code() redirect mismatch error = %v, want ErrRedirectURIMismatch", err)
 	}
+	if consumed, err := server.ConsumeOAuth2Code(ctx, code.Code, "app-a", "secret-a", "https://app.example.com/sso/callback"); err != nil || consumed == nil || !consumed.Used {
+		t.Fatalf("ConsumeOAuth2Code() after rejected request = %+v, %v, want successful consume", consumed, err)
+	}
 
 	expiringCode, err := server.GenerateOAuth2CodeWithTimeout(ctx, "app-a", "user-1001", "https://app.example.com/sso/callback", nil, nil, time.Second)
 	if err != nil {
@@ -494,6 +600,7 @@ func TestSSOOAuth2CodeBoundaries(t *testing.T) {
 	}
 }
 
+// newTestServer creates an isolated SSO server for tests. newTestServer 为测试创建隔离的 SSO 服务端。
 func newTestServer() *Server {
 	return NewServer(
 		WithAuthType("login:"),
@@ -507,6 +614,7 @@ func newTestServer() *Server {
 	)
 }
 
+// newTestClient creates the default SSO test client. newTestClient 创建默认 SSO 测试客户端。
 func newTestClient() *Client {
 	return &Client{
 		ClientID:     "app-a",
@@ -518,9 +626,23 @@ func newTestClient() *Client {
 	}
 }
 
+// registerTestClient registers the default client for a test. registerTestClient 为测试注册默认客户端。
 func registerTestClient(t *testing.T, server *Server) {
 	t.Helper()
 	if err := server.RegisterClient(newTestClient()); err != nil {
 		t.Fatalf("RegisterClient() error = %v", err)
 	}
+}
+
+// closeTrackingStorage records close calls for lifecycle tests. closeTrackingStorage 为生命周期测试记录关闭调用。
+type closeTrackingStorage struct {
+	*MemoryStorage
+	closeCount int
+	closeErr   error
+}
+
+// Close records one close call and returns the configured error. Close 记录一次关闭调用并返回预设错误。
+func (s *closeTrackingStorage) Close() error {
+	s.closeCount++
+	return s.closeErr
 }

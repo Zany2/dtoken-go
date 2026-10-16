@@ -12,6 +12,7 @@ import (
 	"time"
 )
 
+// TestEndpointsPrefixHelpers verifies the Endpoints Prefix Helpers scenario. TestEndpointsPrefixHelpers 验证对应的 SSO 协议场景。
 func TestEndpointsPrefixHelpers(t *testing.T) {
 	api := DefaultEndpoints().ReplacePrefix("/auth-center")
 	if api.Authorize != "/auth-center/authorize" || api.Token != "/auth-center/token" {
@@ -24,6 +25,7 @@ func TestEndpointsPrefixHelpers(t *testing.T) {
 	}
 }
 
+// TestClientAppExchangesTicketOverHTTP verifies the Client App Exchanges Ticket Over HTTP scenario. TestClientAppExchangesTicketOverHTTP 验证对应的 SSO 协议场景。
 func TestClientAppExchangesTicketOverHTTP(t *testing.T) {
 	var gotValues url.Values
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -61,6 +63,7 @@ func TestClientAppExchangesTicketOverHTTP(t *testing.T) {
 	}
 }
 
+// TestClientAppIntrospectAndRevokeOverHTTP verifies the Client App Introspect And Revoke Over HTTP scenario. TestClientAppIntrospectAndRevokeOverHTTP 验证对应的 SSO 协议场景。
 func TestClientAppIntrospectAndRevokeOverHTTP(t *testing.T) {
 	requests := make([]string, 0, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -113,6 +116,7 @@ func TestClientAppIntrospectAndRevokeOverHTTP(t *testing.T) {
 	}
 }
 
+// TestSignerIgnoresParameterOrder verifies the Signer Ignores Parameter Order scenario. TestSignerIgnoresParameterOrder 验证对应的 SSO 协议场景。
 func TestSignerIgnoresParameterOrder(t *testing.T) {
 	signer := NewSigner("secret")
 	a := url.Values{"b": {"2"}, "a": {"1"}}
@@ -131,6 +135,7 @@ func TestSignerIgnoresParameterOrder(t *testing.T) {
 	}
 }
 
+// TestSignerWithZeroParamsUsesDefaults verifies the Signer With Zero Params Uses Defaults scenario. TestSignerWithZeroParamsUsesDefaults 验证对应的 SSO 协议场景。
 func TestSignerWithZeroParamsUsesDefaults(t *testing.T) {
 	values := NewSignerWithParams("secret", ParamNames{}).AttachSign(url.Values{
 		"client": {"app-a"},
@@ -143,6 +148,33 @@ func TestSignerWithZeroParamsUsesDefaults(t *testing.T) {
 	}
 }
 
+// TestSigningAndLogoutCallbackRequireSecurityInputs verifies enabled signing and callback freshness fail closed. TestSigningAndLogoutCallbackRequireSecurityInputs 验证启用签名和回调时效校验时采用安全失败策略。
+func TestSigningAndLogoutCallbackRequireSecurityInputs(t *testing.T) {
+	cfg := DefaultClientConfig()
+	cfg.ClientID = "app-a"
+	cfg.ServerURL = "https://sso.example.com"
+	app := NewClientApp(cfg)
+	if _, err := app.AuthURL("https://app.example.com/callback", nil); !errors.Is(err, ErrSignSecretRequired) {
+		t.Fatalf("AuthURL() without signing secret error = %v, want ErrSignSecretRequired", err)
+	}
+
+	unsignedApp := NewClientApp(ClientConfig{ClientID: "app-a", CheckSign: false})
+	missingTimestamp := url.Values{"loginId": {"user-1"}, "client": {"app-a"}}
+	request := httptest.NewRequest(http.MethodPost, "/sso/logout-callback", strings.NewReader(missingTimestamp.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if _, err := unsignedApp.VerifyLogoutCallback(request); !errors.Is(err, ErrCallbackExpired) {
+		t.Fatalf("VerifyLogoutCallback() missing timestamp error = %v, want ErrCallbackExpired", err)
+	}
+
+	missingClient := url.Values{"loginId": {"user-1"}, "timestamp": {time.Now().Format(time.RFC3339)}}
+	request = httptest.NewRequest(http.MethodPost, "/sso/logout-callback", strings.NewReader(missingClient.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if _, err := unsignedApp.VerifyLogoutCallback(request); !errors.Is(err, ErrClientMismatch) {
+		t.Fatalf("VerifyLogoutCallback() missing client error = %v, want ErrClientMismatch", err)
+	}
+}
+
+// TestClientAppBuildsSignedURLs verifies signed SSO URL construction. TestClientAppBuildsSignedURLs 验证带签名的 SSO URL 构建。
 func TestClientAppBuildsSignedURLs(t *testing.T) {
 	app := NewClientApp(ClientConfig{
 		Mode:         ModeTicket,
@@ -183,11 +215,12 @@ func TestClientAppBuildsSignedURLs(t *testing.T) {
 		t.Fatalf("url.Parse(exchangeURL) error = %v", err)
 	}
 	values = parsed.Query()
-	if values.Get("ticket") != "ticket-value" || values.Get("redirect") == "" || values.Get("clientSecret") != "secret-a" {
-		t.Fatalf("ExchangeTicketURLWithRedirect() query = %v, want ticket redirect and clientSecret", values)
+	if values.Get("ticket") != "ticket-value" || values.Get("redirect") == "" || values.Get("clientSecret") != "" {
+		t.Fatalf("ExchangeTicketURLWithRedirect() query = %v, want ticket and redirect without clientSecret", values)
 	}
 }
 
+// TestClientAppVerifiesLogoutCallback verifies the Client App Verifies Logout Callback scenario. TestClientAppVerifiesLogoutCallback 验证对应的 SSO 协议场景。
 func TestClientAppVerifiesLogoutCallback(t *testing.T) {
 	app := NewClientApp(ClientConfig{
 		ClientID:  "app-a",
@@ -219,6 +252,7 @@ func TestClientAppVerifiesLogoutCallback(t *testing.T) {
 	}
 }
 
+// TestClientAppRejectsExpiredLogoutCallback verifies the Client App Rejects Expired Logout Callback scenario. TestClientAppRejectsExpiredLogoutCallback 验证对应的 SSO 协议场景。
 func TestClientAppRejectsExpiredLogoutCallback(t *testing.T) {
 	app := NewClientApp(ClientConfig{
 		ClientID:             "app-a",
@@ -238,6 +272,7 @@ func TestClientAppRejectsExpiredLogoutCallback(t *testing.T) {
 	}
 }
 
+// TestClientAppLogoutCallbackHandler verifies the Client App Logout Callback Handler scenario. TestClientAppLogoutCallbackHandler 验证对应的 SSO 协议场景。
 func TestClientAppLogoutCallbackHandler(t *testing.T) {
 	app := NewClientApp(ClientConfig{
 		ClientID:  "app-a",
@@ -253,6 +288,7 @@ func TestClientAppLogoutCallbackHandler(t *testing.T) {
 	form := url.Values{}
 	form.Set("loginId", "user-1001")
 	form.Set("client", "app-a")
+	form.Set("timestamp", time.Now().Format(time.RFC3339))
 	req := httptest.NewRequest(http.MethodPost, "/sso/logout-callback", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
