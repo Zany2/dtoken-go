@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation / 使用文档
+    url: https://github.com/Zany2/dtoken-go/tree/HEAD/docs
+    about: Read the English and Chinese guides. 查阅中英文使用指南。
+  - name: Security reporting / 安全报告
+    url: https://github.com/Zany2/dtoken-go/blob/HEAD/.github/SECURITY.md
+    about: Follow the private reporting instructions for vulnerabilities. 安全漏洞请按说明私下反馈。

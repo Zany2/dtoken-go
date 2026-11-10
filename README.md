@@ -366,6 +366,8 @@ dtoken-go/
 
 Issues, pull requests, and feedback are welcome. Please keep changes focused and follow the existing module boundaries and coding style.
 
+See the [contributing guide](.github/CONTRIBUTING.md) for development and verification instructions, and the [security policy](.github/SECURITY.md) for vulnerability reporting.
+
 ## Star History
 
 <picture>

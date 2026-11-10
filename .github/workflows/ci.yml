@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workspace:
+    name: Workspace checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: local
+    defaults:
+      run:
+        shell: bash
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - name: Check out source / 检出源码
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up workspace Go / 配置工作区 Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache-dependency-path: '**/go.sum'
+
+      - name: Vet and test workspace modules / 检查并测试工作区模块
+        run: |
+          modules="$(go list -m -f '{{.Dir}}')"
+          while IFS= read -r module; do
+            echo "::group::${module#"$GITHUB_WORKSPACE"/}"
+            (
+              cd "$module"
+
+              # Enable the experiment only for its codec module. 仅为对应编解码模块启用实验特性。
+              if [[ "$module" == "$GITHUB_WORKSPACE/com/codec/jsonv2" ]]; then
+                export GOEXPERIMENT=jsonv2
+              fi
+
+              go vet ./...
+              go test -count=1 -timeout=5m ./...
+            )
+            echo "::endgroup::"
+          done <<< "$modules"
+
+      - name: Test Redis-backed scenarios / 测试 Redis 场景
+        env:
+          DTOKEN_REDIS_URL: redis://127.0.0.1:6379/0
+          DTOKEN_MANAGER_TEST_STORAGE: redis
+        run: |
+          for module in core com/storage/redis sso/storage/redis tests/gin_core_flow; do
+            echo "::group::Redis - $module"
+            (
+              cd "$module"
+              go test -count=1 -timeout=5m ./...
+            )
+            echo "::endgroup::"
+          done

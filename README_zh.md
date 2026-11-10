@@ -366,6 +366,8 @@ dtoken-go/
 
 欢迎提交 Issue、Pull Request 或使用反馈。提交代码前请尽量保持改动聚焦，并遵循项目现有的模块边界和代码风格。
 
+开发与验证流程见[贡献指南](.github/CONTRIBUTING.md)，漏洞报告方式见[安全报告说明](.github/SECURITY.md)。
+
 ## Star History
 
 <picture>

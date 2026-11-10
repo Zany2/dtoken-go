@@ -1,0 +1,62 @@
+name: Bug report / 问题反馈
+description: Report a reproducible problem in DToken-Go. 反馈可复现的问题。
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        English and Chinese reports are welcome. 欢迎使用中文或英文反馈。
+        For vulnerabilities, follow [the security policy](https://github.com/Zany2/dtoken-go/blob/HEAD/.github/SECURITY.md). 安全漏洞请按安全报告说明私下反馈。
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting / 提交前检查
+      options:
+        - label: I searched existing issues and the documentation. 我已搜索现有 Issue 和文档。
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Module and version / 模块与版本
+      description: Include each affected module version, or the commit SHA for a source checkout. 填写受影响模块的版本，源码开发请填写提交 SHA。
+      placeholder: github.com/Zany2/dtoken-go/core v0.0.3
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment / 运行环境
+      description: Include Go version, OS/architecture, framework, storage, and relevant configuration. 填写 Go 版本、系统架构、Web 框架、存储和相关配置。
+      placeholder: |
+        Go version / Go 版本
+        OS and architecture / 系统与架构
+        Framework and version / 框架与版本
+        Storage and deployment / 存储与部署方式
+        Relevant configuration / 相关配置
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction / 最小复现
+      description: Provide steps and a minimal code sample or repository link. 提供复现步骤及最小代码示例或仓库链接。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior / 预期行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior / 实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and stack traces / 日志与堆栈
+      description: Redact tokens, secrets, personal data, and private addresses. 请脱敏 Token、密钥、个人信息和私有地址。
+      render: text
