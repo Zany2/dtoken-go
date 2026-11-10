@@ -3,7 +3,7 @@ module github.com/Zany2/dtoken-go/examples/kratos
 go 1.25.0
 
 require (
-	github.com/Zany2/dtoken-go/dtoken v0.0.3
+	github.com/Zany2/dtoken-go v0.0.3
 	github.com/Zany2/dtoken-go/integrations/kratos v0.0.3
 	github.com/go-kratos/kratos/v2 v2.9.1
 	google.golang.org/genproto/googleapis/api v0.0.0-20251111163417-95abcf5c77ba
@@ -12,18 +12,8 @@ require (
 )
 
 require (
-	github.com/Zany2/dtoken-go/com/codec/base64 v0.0.3 // indirect
-	github.com/Zany2/dtoken-go/com/codec/json v0.0.3 // indirect
 	github.com/Zany2/dtoken-go/com/codec/msgpack v0.0.3 // indirect
-	github.com/Zany2/dtoken-go/com/generator/dgenerator v0.0.3 // indirect
-	github.com/Zany2/dtoken-go/com/log/dlog v0.0.3 // indirect
-	github.com/Zany2/dtoken-go/com/log/nop v0.0.3 // indirect
-	github.com/Zany2/dtoken-go/com/pool/ants v0.0.3 // indirect
-	github.com/Zany2/dtoken-go/com/storage/memory v0.0.3 // indirect
 	github.com/Zany2/dtoken-go/com/storage/redis v0.0.3 // indirect
-	github.com/Zany2/dtoken-go/core v0.0.3 // indirect
-	github.com/Zany2/dtoken-go/defaults v0.0.3 // indirect
-	github.com/Zany2/dtoken-go/integrations/authcheck v0.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/go-kratos/aegis v0.2.0 // indirect

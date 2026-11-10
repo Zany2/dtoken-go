@@ -13,7 +13,7 @@ Use the bug report form for reproducible defects and the feature request form fo
 
 ## Repository layout / 仓库结构
 
-This repository contains multiple Go modules managed by `go.work`. 使用 `go.work` 管理多个 Go 模块。
+The root module contains core, facade, default wiring, basic components, and shared auth checks. `go.work` also includes independent extensions, examples, and test modules. 根模块包含核心、门面、默认装配、基础组件与共享鉴权，`go.work` 同时管理独立扩展、示例与测试模块。
 
 | Directory / 目录 | Responsibility / 职责 |
 | --- | --- |
@@ -46,7 +46,7 @@ The `com/codec/jsonv2` module requires `GOEXPERIMENT=jsonv2`. Enable it for that
 
 ## Verification / 验证
 
-For a changed module, run the following commands from its directory. 在修改的模块目录执行以下命令。
+For changes to core, facade, defaults, basic components, or shared auth checks, run from the repository root. For independent extensions, run from the module directory. 核心、门面、默认装配、基础组件或共享鉴权的变更请从仓库根目录验证，独立扩展从对应模块目录验证。
 
 ```bash
 go vet ./...
@@ -74,3 +74,5 @@ Redis 集成测试通过 `DTOKEN_REDIS_URL` 指定地址，测试会创建和删
 CI enumerates workspace modules, runs vet and tests, then reruns Redis-backed scenarios with a temporary Redis service. Report the commands actually run and any skipped checks in the PR.
 
 CI 会遍历工作区模块执行检查和测试，再使用临时 Redis 服务运行相关场景。PR 请如实填写执行的命令、结果与跳过的检查。
+
+Module ownership, builder selection, and release migration are described in the [module migration guide](../docs/design/module-migration.md). 模块归属、构建入口与发布迁移见[模块迁移指南](../docs/design/module-migration_zh.md)。

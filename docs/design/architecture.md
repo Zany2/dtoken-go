@@ -4,35 +4,22 @@ English | [中文文档](architecture_zh.md)
 
 ## Overall Architecture
 
-```text
-┌──────────────────────────────────────────────┐
-│              Application Layer               │
-└──────────────────────┬───────────────────────┘
-                       │
-        ┌──────────────┴──────────────┐
-        │                             │
-        ↓                             ↓
-┌──────────────────┐         ┌──────────────────┐
-│ Framework Layer   │         │ Global Utility   │
-│ integrations/*    │         │ dtoken          │
-└────────┬─────────┘         └────────┬─────────┘
-         │                             │
-         └──────────────┬──────────────┘
-                        ↓
-┌──────────────────────────────────────────────┐
-│                 Core Layer (core/*)          │
-│ Manager / Context / Config / Listener /      │
-│ Nonce / OAuth2 / Builder                     │
-└──────────────────────┬───────────────────────┘
-                       │
-        ┌──────────────┴──────────────┐
-        │                             │
-        ↓                             ↓
-┌──────────────────┐         ┌──────────────────┐
-│ Component Layer   │         │ Docs & Examples  │
-│ com/*             │         │ docs / examples  │
-└──────────────────┘         └──────────────────┘
+```mermaid
+flowchart TD
+    App[Application] --> Facade[dtoken facade]
+    App --> Integrations[Framework integrations]
+    Integrations --> Facade
+    Integrations --> Core[Core auth]
+    Facade --> Core
+    Facade --> Defaults[Default wiring]
+    Defaults --> Core
+    Defaults --> Components[Component implementations]
+    Components --> Contracts[core/adapter contracts]
+    Core --> Contracts
+    SSO[SSO] --> Core
 ```
+Arrows represent code dependencies. The root module publishes core, facade, default wiring, basic components, and shared auth checks together. Framework integrations, SSO, and optional components use independent modules. See the [module migration guide](module-migration.md) for builder selection and version migration.
+
 
 ## Module Division
 

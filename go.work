@@ -1,27 +1,12 @@
 go 1.27.0
 
 use (
-	./com/codec/base64
-	./com/codec/json
+	.
 	./com/codec/jsonv2
 	./com/codec/msgpack
-
-	./com/generator/dgenerator
-
-	./com/log/dlog
 	./com/log/gf
-	./com/log/nop
-
-	./com/pool/ants
-
-	./com/storage/memory
 	./com/storage/redis
-
-	./core
-	./defaults
-	./dtoken
 	./examples/beego
-
 	./examples/chi
 	./examples/echo
 	./examples/fiber
@@ -34,9 +19,7 @@ use (
 	./examples/sso_gin_client
 	./examples/sso_gin_server
 	./examples/sso_server
-	./integrations/authcheck
 	./integrations/beego
-
 	./integrations/chi
 	./integrations/echo
 	./integrations/fiber
@@ -47,6 +30,5 @@ use (
 	./sso
 	./sso/storage/redis
 	./tests/gin_core_app
-
 	./tests/gin_core_flow
 )

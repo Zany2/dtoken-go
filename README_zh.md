@@ -57,7 +57,9 @@ DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，已提供登
 
 ## 安装
 
-核心模块要求 Go 1.25 或更高版本。使用当前仓库的 `go.work` 本地开发时，需要 Go 1.27 或更高版本；可选的 `com/codec/jsonv2` 模块还需要启用 `GOEXPERIMENT=jsonv2`。
+根模块统一发布 `core`、`dtoken`、`defaults`、共享鉴权与内置基础组件。框架集成、SSO 和可选组件继续独立管理模块。现有包导入路径继续适用，依赖与发布调整见[模块迁移指南](docs/design/module-migration_zh.md)。
+
+主模块要求 Go 1.25 或更高版本。使用当前仓库的 `go.work` 本地开发时，需要 Go 1.27 或更高版本；可选的 `com/codec/jsonv2` 模块还需要启用 `GOEXPERIMENT=jsonv2`。
 
 ### 使用默认核心能力
 
@@ -96,7 +98,7 @@ go get github.com/Zany2/dtoken-go/com/pool/ants
 
 ## 5 分钟上手
 
-`defaults.NewBuilder()` 已经装配默认内存存储、JSON 编解码、默认 Token 生成器和日志组件，适合快速体验。
+`dtoken.NewBuilder()` 已经装配默认内存存储、JSON 编解码、默认 Token 生成器和日志组件，适合快速体验。
 
 ```go
 package main
@@ -105,14 +107,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Zany2/dtoken-go/defaults"
 	"github.com/Zany2/dtoken-go/dtoken"
 )
 
 func main() {
 	ctx := context.Background()
 
-	mgr, err := defaults.NewBuilder().
+	mgr, err := dtoken.NewBuilder().
 		TokenName("Authorization"). // 从 Authorization 中读取 Token
 		Timeout(7200).              // Token 有效期：7200 秒
 		AutoRenew(true).            // 登录态校验时自动续期

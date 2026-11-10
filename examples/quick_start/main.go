@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/defaults"
 	"github.com/Zany2/dtoken-go/dtoken"
 	"github.com/gin-gonic/gin"
 )
@@ -63,7 +62,7 @@ func registerRoutes(r *gin.Engine) {
 
 // initDToken initializes DToken with bundled memory storage initDToken 使用内置内存存储初始化 DToken
 func initDToken() {
-	mgr, err := defaults.NewBuilder().
+	mgr, err := dtoken.NewBuilder().
 		TokenName(tokenHeader).
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, architecture-refactor]
   pull_request:
   workflow_dispatch:
 
@@ -77,3 +77,24 @@ jobs:
             )
             echo "::endgroup::"
           done
+
+  modules:
+    name: Module checks without workspace
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: Check out source / 检出源码
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go / 配置 Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache-dependency-path: '**/go.sum'
+
+      - name: Check standalone modules / 检查独立模块
+        run: bash .github/scripts/check-modules.sh

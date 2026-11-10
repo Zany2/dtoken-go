@@ -4,35 +4,22 @@
 
 ## 总体架构
 
-```text
-┌──────────────────────────────────────────────┐
-│              应用层 (Your App)               │
-└──────────────────────┬───────────────────────┘
-                       │
-        ┌──────────────┴──────────────┐
-        │                             │
-        ↓                             ↓
-┌──────────────────┐         ┌──────────────────┐
-│ 框架集成层        │         │ 全局工具入口      │
-│ integrations/*   │         │ dtoken          │
-└────────┬─────────┘         └────────┬─────────┘
-         │                             │
-         └──────────────┬──────────────┘
-                        ↓
-┌──────────────────────────────────────────────┐
-│                核心层 (core/*)               │
-│ Manager / Context / Config / Listener /      │
-│ Nonce / OAuth2 / Builder                     │
-└──────────────────────┬───────────────────────┘
-                       │
-        ┌──────────────┴──────────────┐
-        │                             │
-        ↓                             ↓
-┌──────────────────┐         ┌──────────────────┐
-│ 组件实现层        │         │ 文档与示例层      │
-│ com/*            │         │ docs / examples  │
-└──────────────────┘         └──────────────────┘
+```mermaid
+flowchart TD
+    App[Application] --> Facade[dtoken facade]
+    App --> Integrations[Framework integrations]
+    Integrations --> Facade
+    Integrations --> Core[Core auth]
+    Facade --> Core
+    Facade --> Defaults[Default wiring]
+    Defaults --> Core
+    Defaults --> Components[Component implementations]
+    Components --> Contracts[core/adapter contracts]
+    Core --> Contracts
+    SSO[SSO] --> Core
 ```
+箭头表示代码依赖。根模块统一发布核心、门面、默认装配、基础组件与共享鉴权包。框架集成、SSO 和可选组件采用独立模块。构建入口选择与版本迁移见[模块迁移指南](module-migration_zh.md)。
+
 
 ## 模块划分
 

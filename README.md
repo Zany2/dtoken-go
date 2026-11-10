@@ -57,7 +57,9 @@ You can use it for:
 
 ## Installation
 
-The core modules target Go 1.25 or later. Local development with this repository's `go.work` requires Go 1.27 or later; the optional `com/codec/jsonv2` module additionally requires `GOEXPERIMENT=jsonv2`.
+The root module publishes `core`, `dtoken`, `defaults`, shared auth checks, and bundled basic components together. Framework integrations, SSO, and optional components retain independent modules. Existing package import paths continue to apply. See the [module migration guide](docs/design/module-migration.md) for dependency and release changes.
+
+The main module targets Go 1.25 or later. Local development with this repository's `go.work` requires Go 1.27 or later; the optional `com/codec/jsonv2` module additionally requires `GOEXPERIMENT=jsonv2`.
 
 ### Default Core Usage
 
@@ -96,7 +98,7 @@ go get github.com/Zany2/dtoken-go/com/pool/ants
 
 ## 5-Minute Quick Start
 
-`defaults.NewBuilder()` wires the default memory storage, JSON codec, Token generator, and logger, making it suitable for quick experiments.
+`dtoken.NewBuilder()` wires the default memory storage, JSON codec, Token generator, and logger, making it suitable for quick experiments.
 
 ```go
 package main
@@ -105,14 +107,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Zany2/dtoken-go/defaults"
 	"github.com/Zany2/dtoken-go/dtoken"
 )
 
 func main() {
 	ctx := context.Background()
 
-	mgr, err := defaults.NewBuilder().
+	mgr, err := dtoken.NewBuilder().
 		TokenName("Authorization"). // Read Token from Authorization
 		Timeout(7200).              // Token lifetime: 7200 seconds
 		AutoRenew(true).            // Auto-renew during login-state checks

@@ -11,15 +11,19 @@ updates:
 
   - package-ecosystem: gomod
     directories:
-      - /core
-      - /defaults
-      - /dtoken
-      - /com/codec/*
-      - /com/generator/*
-      - /com/log/*
-      - /com/pool/*
-      - /com/storage/*
-      - /integrations/*
+      - /
+      - /com/codec/jsonv2
+      - /com/codec/msgpack
+      - /com/log/gf
+      - /com/storage/redis
+      - /integrations/beego
+      - /integrations/chi
+      - /integrations/echo
+      - /integrations/fiber
+      - /integrations/gf
+      - /integrations/gin
+      - /integrations/hertz
+      - /integrations/kratos
       - /examples/*
       - /sso
       - /sso/storage/*
@@ -29,6 +33,7 @@ updates:
     open-pull-requests-limit: 5
     # Coordinate repository module versions through the release process. 仓库内部模块版本由发布流程统一维护。
     ignore:
+      - dependency-name: github.com/Zany2/dtoken-go
       - dependency-name: github.com/Zany2/dtoken-go/*
     groups:
       go-minor-and-patch:

@@ -13,9 +13,9 @@
 
 ## Activation / 生效方式
 
-Merge the templates and Dependabot configuration into the repository's default branch. CI runs on pushes to `main` and `develop`, on pull requests, and through manual dispatch. It reads the Go version and module list from `go.work`, enabling `jsonv2` for its codec module.
+Merge the templates and Dependabot configuration into the repository's default branch. CI runs on pushes to `main`, `develop`, and `architecture-refactor`, on pull requests, and through manual dispatch. It reads the Go version and module list from `go.work`, enabling `jsonv2` for its codec module.
 
-将模板与 Dependabot 配置合并到仓库默认分支后生效。CI 在推送到 `main`、`develop`，提交 PR 或手动触发时执行。工作流从 `go.work` 读取 Go 版本和模块列表，为 JSON v2 编解码模块启用实验特性。
+将模板与 Dependabot 配置合并到仓库默认分支后生效。CI 在推送到 `main`、`develop`、`architecture-refactor`，提交 PR 或手动触发时执行。工作流从 `go.work` 读取 Go 版本和模块列表，为 JSON v2 编解码模块启用实验特性。
 
 Dependabot checks all module directory groups weekly, limits Go update PRs to five and Actions update PRs to three, and groups minor/patch Go updates. Repository-internal module versions remain coordinated by releases. Review update PRs using the same compatibility checks as other changes.
 
@@ -32,3 +32,7 @@ Repository administrators can enable private vulnerability reporting in the repo
 - [Pull request templates / PR 模板](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/creating-a-pull-request-template-for-your-repository)
 - [Dependabot options / Dependabot 配置](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference)
 - [Enable private vulnerability reporting / 启用私密漏洞报告](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/configure-vulnerability-reporting/configure-for-a-repository)
+
+CI also runs `.github/scripts/check-modules.sh` with workspace resolution disabled. Temporary module files map local dependencies to the current checkout. This checks the standalone package graph against local sources. Published-version resolution requires the release verification described in the [migration guide](../docs/design/module-migration.md).
+
+CI 还会通过 `.github/scripts/check-modules.sh` 关闭工作区解析，使用临时模块文件将依赖映射到当前源码，检查独立模块的包依赖关系。发布版本的解析需要按[迁移指南](../docs/design/module-migration_zh.md)完成发布验证。
