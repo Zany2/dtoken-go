@@ -1,0 +1,253 @@
+// @Author daixk 2025/12/22 15:56:00
+package engine
+
+// terminalMatchFunc matches terminal info. terminalMatchFunc 匹配终端信息。
+type terminalMatchFunc func(TerminalInfo) bool
+
+// removeTerminals removes matched terminals. removeTerminals 移除匹配的终端信息。
+func sessionRemoveTerminals(s *Session, match terminalMatchFunc) []TerminalInfo {
+	// kept stores remaining terminals. kept 存储保留终端。
+	var kept []TerminalInfo
+	// removed stores removed terminals. removed 存储被移除终端。
+	var removed []TerminalInfo
+
+	// Split terminals by matcher. 按匹配器拆分终端。
+	for _, ti := range s.TerminalInfos {
+		if match != nil && match(ti) {
+			removed = append(removed, ti)
+			continue
+		}
+		kept = append(kept, ti)
+	}
+
+	// Replace terminal list. 替换终端列表。
+	s.TerminalInfos = kept
+	return removed
+}
+
+// filterTerminals returns matched terminals. filterTerminals 返回匹配的终端信息。
+func sessionFilterTerminals(s *Session, match terminalMatchFunc) []TerminalInfo {
+	var matched []TerminalInfo
+
+	// Collect matched terminals. 收集匹配终端。
+	for _, ti := range s.TerminalInfos {
+		if match != nil && match(ti) {
+			matched = append(matched, ti)
+		}
+	}
+	return matched
+}
+
+// addUniqueStrings appends non-empty strings with dedupe. addUniqueStrings 追加非空字符串并去重。
+func addUniqueStrings(items []string, values ...string) []string {
+	// Return original list when no values provided. 没有新值时返回原列表。
+	if len(values) == 0 {
+		return items
+	}
+
+	// Build existing set. 构建已有值集合。
+	existing := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		existing[item] = struct{}{}
+	}
+
+	// Append new unique values. 追加新的唯一值。
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, exists := existing[value]; !exists {
+			existing[value] = struct{}{}
+			items = append(items, value)
+		}
+	}
+	return items
+}
+
+// normalizeAccessValues removes empty values and keeps first occurrence order. normalizeAccessValues 移除空值并保留首次出现顺序。
+func normalizeAccessValues(values []string) []string {
+	if values == nil {
+		return nil
+	}
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		normalized = append(normalized, value)
+	}
+	return normalized
+}
+
+// removeStrings removes matched non-empty strings. removeStrings 移除匹配的非空字符串。
+func removeStrings(items []string, values ...string) []string {
+	// Return original list when no removal needed. 无需移除时返回原列表。
+	if len(values) == 0 || len(items) == 0 {
+		return items
+	}
+
+	// Build remove set. 构建待移除值集合。
+	toRemove := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if value != "" {
+			toRemove[value] = struct{}{}
+		}
+	}
+
+	// Keep unmatched values. 过滤保留未删除值。
+	var kept []string
+	for _, item := range items {
+		if _, shouldRemove := toRemove[item]; !shouldRemove {
+			kept = append(kept, item)
+		}
+	}
+	return kept
+}
+
+// removeTerminalByToken removes terminal by token. removeTerminalByToken 根据 token 值移除终端信息。
+func sessionRemoveTerminalByToken(s *Session, tokenValue string) (TerminalInfo, bool) {
+	// Validate token value. 校验 Token 值。
+	if tokenValue == "" {
+		return TerminalInfo{}, false
+	}
+
+	// Search matched terminal. 查找匹配终端。
+	for i, ti := range s.TerminalInfos {
+		if ti.Token == tokenValue {
+			removed := ti
+
+			// Remove matched terminal while preserving order. 保持顺序移除匹配终端。
+			s.TerminalInfos = append(s.TerminalInfos[:i], s.TerminalInfos[i+1:]...)
+			return removed, true
+		}
+	}
+
+	// Return not found. 返回未找到。
+	return TerminalInfo{}, false
+}
+
+// removeLatestTerminalByToken removes the newest terminal by token. removeLatestTerminalByToken 根据 token 值移除最新的终端信息。
+func sessionRemoveLatestTerminalByToken(s *Session, tokenValue string) (TerminalInfo, bool) {
+	// Validate token value. 校验 Token 值。
+	if tokenValue == "" {
+		return TerminalInfo{}, false
+	}
+
+	// Search matched terminal from newest to oldest. 从新到旧查找匹配终端。
+	for i := len(s.TerminalInfos) - 1; i >= 0; i-- {
+		ti := s.TerminalInfos[i]
+		if ti.Token == tokenValue {
+			removed := ti
+
+			// Remove matched terminal while preserving order. 保持顺序移除匹配终端。
+			s.TerminalInfos = append(s.TerminalInfos[:i], s.TerminalInfos[i+1:]...)
+			return removed, true
+		}
+	}
+
+	// Return not found. 返回未找到。
+	return TerminalInfo{}, false
+}
+
+// removeTerminalByDevice removes terminals by device. removeTerminalByDevice 根据设备类型移除全部匹配终端。
+func sessionRemoveTerminalByDevice(s *Session, device string) []TerminalInfo {
+	return sessionRemoveTerminals(s, func(ti TerminalInfo) bool {
+		return ti.Device == device
+	})
+}
+
+// removeTerminalByDeviceAndDeviceID removes terminals by device and id. removeTerminalByDeviceAndDeviceID 根据设备类型和设备 ID 移除终端。
+func sessionRemoveTerminalByDeviceAndDeviceID(s *Session, device, deviceID string) []TerminalInfo {
+	return sessionRemoveTerminals(s, func(ti TerminalInfo) bool {
+		return ti.Device == device && ti.DeviceID == deviceID
+	})
+}
+
+// removeOldestTerminal removes oldest terminal. removeOldestTerminal 移除最老终端并可按设备过滤。
+func sessionRemoveOldestTerminal(s *Session, device ...string) (TerminalInfo, bool) {
+	// Return when session has no terminals. 无终端时直接返回。
+	if len(s.TerminalInfos) == 0 {
+		return TerminalInfo{}, false
+	}
+
+	// Remove first terminal when no device filter. 无设备过滤时移除第一个终端。
+	if len(device) == 0 {
+		first := s.TerminalInfos[0]
+		s.TerminalInfos = s.TerminalInfos[1:]
+		return first, true
+	}
+
+	// Scan by device filter. 按设备过滤扫描。
+	targetDevice := device[0]
+	for i, ti := range s.TerminalInfos {
+		if ti.Device == targetDevice {
+			removed := ti
+
+			// Remove matched terminal while preserving order. 保持顺序移除匹配终端。
+			s.TerminalInfos = append(s.TerminalInfos[:i], s.TerminalInfos[i+1:]...)
+			return removed, true
+		}
+	}
+
+	// Return not found. 返回未找到。
+	return TerminalInfo{}, false
+}
+
+// removeAllTerminals removes all terminals. removeAllTerminals 移除全部终端信息。
+func sessionRemoveAllTerminals(s *Session) []TerminalInfo {
+	// Copy removed terminals. 拷贝被移除终端。
+	removed := make([]TerminalInfo, len(s.TerminalInfos))
+	copy(removed, s.TerminalInfos)
+
+	// Clear terminal list. 清空终端列表。
+	s.TerminalInfos = []TerminalInfo{}
+	return removed
+}
+
+// getTerminalsByDevice gets terminals by device. getTerminalsByDevice 返回指定设备的全部终端信息。
+func sessionGetTerminalsByDevice(s *Session, device string) []TerminalInfo {
+	return sessionFilterTerminals(s, func(ti TerminalInfo) bool {
+		return ti.Device == device
+	})
+}
+
+// getTerminalsByDeviceAndDeviceID gets terminals by device and id. getTerminalsByDeviceAndDeviceID 返回精确匹配设备和设备 ID 的终端信息。
+func sessionGetTerminalsByDeviceAndDeviceID(s *Session, device, deviceID string) []TerminalInfo {
+	return sessionFilterTerminals(s, func(ti TerminalInfo) bool {
+		return ti.Device == device && ti.DeviceID == deviceID
+	})
+}
+
+// getLatestTerminalByDevice gets latest terminal by device. getLatestTerminalByDevice 获取指定设备下最新的终端信息。
+func sessionGetLatestTerminalByDevice(s *Session, device string) (TerminalInfo, bool) {
+	// Scan from newest to oldest. 从新到旧扫描。
+	for i := len(s.TerminalInfos) - 1; i >= 0; i-- {
+		if s.TerminalInfos[i].Device == device {
+			return s.TerminalInfos[i], true
+		}
+	}
+
+	// Return not found. 返回未找到。
+	return TerminalInfo{}, false
+}
+
+// hasTerminalToken checks whether token exists in session. hasTerminalToken 检查会话中是否存在指定 Token。
+func sessionHasTerminalToken(s *Session, tokenValue string) bool {
+	// Validate token value. 校验 Token 值。
+	if tokenValue == "" {
+		return false
+	}
+
+	// Search token in terminals. 在终端列表中查找 Token。
+	for _, ti := range s.TerminalInfos {
+		if ti.Token == tokenValue {
+			return true
+		}
+	}
+	return false
+}

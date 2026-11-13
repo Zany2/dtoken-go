@@ -4,7 +4,7 @@ package kratos
 import (
 	"context"
 
-	"github.com/Zany2/dtoken-go/core/oauth2"
+	"github.com/Zany2/dtoken-go/contract/oauth2"
 )
 
 // RegisterOAuth2ClientByCtx delegates to DToken context RegisterOAuth2ClientByCtx 转发到 DToken 上下文。

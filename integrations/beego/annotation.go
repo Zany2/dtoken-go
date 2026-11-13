@@ -4,7 +4,7 @@ package beego
 import (
 	"context"
 
-	"github.com/Zany2/dtoken-go/core/derror"
+	derror "github.com/Zany2/dtoken-go/errors"
 	web "github.com/beego/beego/v2/server/web"
 	beegocontext "github.com/beego/beego/v2/server/web/context"
 )

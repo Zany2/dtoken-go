@@ -3,10 +3,12 @@ package chi
 
 import (
 	"context"
+	derror "github.com/Zany2/dtoken-go/errors"
+	requestcontext "github.com/Zany2/dtoken-go/httpauth/context"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
-	"github.com/Zany2/dtoken-go/core/manager"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 )
 
 // GetTokenValueByCtx gets token value from current Chi context GetTokenValueByCtx 从当前 Chi 上下文获取 Token 值。
@@ -18,7 +20,7 @@ func GetTokenValueByCtx(ctx context.Context) (string, error) {
 
 	tokenValue := dCtx.GetTokenValue()
 	if tokenValue == "" {
-		return "", ErrNotLogin
+		return "", derror.ErrNotLogin
 	}
 	return tokenValue, nil
 }
@@ -412,13 +414,13 @@ func VerifyAndConsumeNonceByCtx(ctx context.Context, nonce string) error {
 }
 
 // requireDTokenContextByCtx gets required DToken context requireDTokenContextByCtx 获取必需的 DToken 上下文。
-func requireDTokenContextByCtx(ctx context.Context) (*DTokenContext, error) {
+func requireDTokenContextByCtx(ctx context.Context) (*requestcontext.DTokenContext, error) {
 	dCtx, ok := GetDTokenContextByCtx(ctx)
 	if !ok {
-		return nil, ErrNotLogin
+		return nil, derror.ErrNotLogin
 	}
 	if mgr := dCtx.GetManager(); mgr == nil || mgr.IsClosed() {
-		return nil, ErrManagerNotFound
+		return nil, derror.ErrManagerNotFound
 	}
 	return dCtx, nil
 }

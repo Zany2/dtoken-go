@@ -1,5 +1,7 @@
 # Component Ecosystem
 
+Import aliases for code fragments: dt = github.com/Zany2/dtoken-go.
+
 **[中文文档](../integration/component-ecosystem_zh.md)**
 
 DToken-Go decouples core authentication logic from component implementations. The core depends on interfaces, `defaults` wires bundled implementations, and projects can replace storage, codec, logger, Token generator, and async task pool components as needed.
@@ -19,11 +21,11 @@ DToken-Go decouples core authentication logic from component implementations. Th
 
 ## Default Builder
 
-`defaults.NewBuilder()` wires default components:
+`dt.NewBuilder()` wires default components:
 
 ```go
-mgr, err := defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+mgr, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
     Build()
 ```
 
@@ -32,8 +34,8 @@ Memory storage is already provided by default. Set storage explicitly when using
 ## Replace Components
 
 ```go
-mgr, err := defaults.NewBuilder().
-    SetStorage(storage).
+mgr, err := dt.NewBuilder().
+    Storage(storage).
     SetCodec(codec).
     SetLog(logger).
     SetGenerator(generator).
@@ -44,7 +46,7 @@ mgr, err := defaults.NewBuilder().
 Factories can also be used to create components lazily:
 
 ```go
-mgr, err := defaults.NewBuilder().
+mgr, err := dt.NewBuilder().
     SetStorageFactory(func(cfg *config.Config) (adapter.Storage, error) {
         return redis.NewStorage("redis://localhost:6379/0")
     }).
@@ -53,7 +55,7 @@ mgr, err := defaults.NewBuilder().
 
 Factories are useful when component creation depends on config values such as `AuthType`, `KeyPrefix`, or deployment environment.
 
-`com/codec/jsonv2` provides an adapter backed by Go 1.27's standard-library `encoding/json/v2` and requires `GOEXPERIMENT=jsonv2`. Use JSON, MessagePack, Base64, or a custom `adapter.Codec` when JSON v2's experimental behavior is not needed.
+`codec/jsonv2` provides an adapter backed by Go 1.27's standard-library `encoding/json/v2` and requires `GOEXPERIMENT=jsonv2`. Use JSON, MessagePack, Base64, or a custom `adapter.Codec` when JSON v2's experimental behavior is not needed.
 
 ## Storage Recommendations
 
@@ -69,9 +71,9 @@ For Redis integration, see [Redis Storage](../integration/redis-storage.md).
 The default generator supports multiple Token styles:
 
 ```go
-mgr, err := defaults.NewBuilder().
+mgr, err := dt.NewBuilder().
     TokenStyle(adapter.TokenStyleRandom64).
-    SetStorage(storage).
+    Storage(storage).
     Build()
 ```
 
@@ -105,7 +107,7 @@ For all built-in styles, see [Token Styles](../core/token-style.md).
 
 ## Suggestions
 
-- Prefer `defaults.NewBuilder()` and replace only the components you truly need to replace.
+- Prefer `dt.NewBuilder()` and replace only the components you truly need to replace.
 - Custom components should satisfy core interfaces first, then add optional capabilities when needed.
 - Production deployments should usually use Redis Storage with a clear `KeyPrefix`.
 - Custom Token generators must provide enough randomness and unpredictability.
@@ -116,4 +118,4 @@ For all built-in styles, see [Token Styles](../core/token-style.md).
 - [Configuration Guide](../reference/configuration.md)
 - [Redis Storage](../integration/redis-storage.md)
 - [Token Styles](../core/token-style.md)
-- [Event Listener](../core/listener.md)
+- [Event Listener](../event.md)

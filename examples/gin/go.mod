@@ -9,8 +9,8 @@ require (
 )
 
 require (
-	github.com/Zany2/dtoken-go/com/codec/msgpack v0.0.3 // indirect
-	github.com/Zany2/dtoken-go/com/storage/redis v0.0.3 // indirect
+	github.com/Zany2/dtoken-go/codec/msgpack v0.0.3 // indirect
+	github.com/Zany2/dtoken-go/storage/redis v0.0.3 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect

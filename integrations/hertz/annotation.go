@@ -4,21 +4,30 @@ package hertz
 import (
 	"context"
 
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/integrations/authcheck"
+	derror "github.com/Zany2/dtoken-go/errors"
+	authcheck "github.com/Zany2/dtoken-go/httpauth"
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/route"
 )
 
 // Annotation defines annotation config Annotation 定义注解配置
 type Annotation struct {
-	AuthType        string    // Optional: specify auth type 可选：指定认证类型
-	CheckLogin      bool      // Check login 检查登录
-	CheckRole       []string  // Check roles 检查角色
-	CheckPermission []string  // Check permissions 检查权限
-	CheckDisable    bool      // Check disable status 检查封禁状态
-	Ignore          bool      // Ignore authentication 忽略认证
-	LogicType       LogicType // OR or AND logic (default: OR) OR 或 AND 逻辑（默认：OR）
+	// ManagerResolver explicitly selects a registry for this annotation. ManagerResolver 为此注解显式选择注册表。
+	ManagerResolver authcheck.ManagerResolver `json:"-"`
+	// Optional: specify auth type 可选：指定认证类型
+	AuthType string
+	// Check login 检查登录
+	CheckLogin bool
+	// Check roles 检查角色
+	CheckRole []string
+	// Check permissions 检查权限
+	CheckPermission []string
+	// Check disable status 检查封禁状态
+	CheckDisable bool
+	// Ignore authentication 忽略认证
+	Ignore bool
+	// OR or AND logic (default: OR) OR 或 AND 逻辑（默认：OR）
+	LogicType LogicType
 }
 
 // GetHandler gets annotation handler GetHandler 获取注解处理器
@@ -63,14 +72,14 @@ func GetHandler(
 		}
 
 		cached, _ := GetDTokenContext(reqCtx)
-		mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached)
+		mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached, ann.ManagerResolver)
 		if err != nil {
 			failAuthentication(c, reqCtx, err, failFunc)
 			return
 		}
 
 		// Get DTokenContext Get DTokenContext 获取缓存上下文
-		dCtx := getDTokenContext(reqCtx, mgr)
+		dCtx := getDTokenContext(reqCtx, mgr).WithManagerResolver(ann.ManagerResolver)
 		token := dCtx.GetTokenValue()
 
 		_, err = authcheck.Check(c, mgr, authcheck.Request{

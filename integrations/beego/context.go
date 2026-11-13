@@ -7,7 +7,7 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
 	beegocontext "github.com/beego/beego/v2/server/web/context"
 )
 

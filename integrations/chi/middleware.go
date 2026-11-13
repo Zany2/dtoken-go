@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"net/http"
 
-	DContext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/integrations/authcheck"
+	derror "github.com/Zany2/dtoken-go/errors"
+	authcheck "github.com/Zany2/dtoken-go/httpauth"
+	DContext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 )
 
 // LogicType defines middleware logic type LogicType 定义中间件逻辑类型
@@ -131,8 +131,12 @@ func (req *RouteAccessRequest) SetLogicType(logicType LogicType) {
 type AuthOptions struct {
 	// AuthType selects the auth type. AuthType 指定认证类型。
 	AuthType string
-	// Manager selects the manager explicitly. Auth checks otherwise prefer AuthType, the request manager, then the registry. Manager 显式指定 Manager；鉴权未显式指定时依次使用 AuthType、请求 Manager 和全局注册表。
+	// Manager selects an explicit instance before request-scope resolution. Manager 在请求作用域解析之前显式选择实例。
 	Manager *manager.Manager
+	// ManagerResolver explicitly enables registry lookup. ManagerResolver 显式启用注册表查找。
+	ManagerResolver authcheck.ManagerResolver
+	// Capabilities binds independently composed services to this request scope. Capabilities 为请求作用域绑定独立组合的服务。
+	Capabilities *DContext.Capabilities
 	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
 	LogicType LogicType
 	// FailFunc handles authentication failures. FailFunc 处理认证失败。
@@ -148,7 +152,7 @@ func defaultAuthOptions() *AuthOptions {
 	return &AuthOptions{LogicType: LogicAnd}
 }
 
-// WithAuthType sets auth type WithAuthType 设置认证类型
+// WithAuthType selects a namespace through the configured resolver or matches the current scope. WithAuthType 通过已配置的解析器选择命名空间，或匹配当前作用域。
 func WithAuthType(authType string) AuthOption {
 	return func(o *AuthOptions) {
 		o.AuthType = authType
@@ -161,6 +165,21 @@ func WithManager(mgr *manager.Manager) AuthOption {
 		if mgr != nil {
 			o.Manager = mgr
 		}
+	}
+}
+
+// WithManagerResolver selects a registry, such as global.GetManager. WithManagerResolver 选择注册表，例如 global.GetManager。
+func WithManagerResolver(resolver authcheck.ManagerResolver) AuthOption {
+	return func(o *AuthOptions) {
+		o.ManagerResolver = resolver
+	}
+}
+
+// WithCapabilities binds services composed for the selected authentication instance. WithCapabilities 绑定为所选认证实例组合的服务。
+func WithCapabilities(capabilities DContext.Capabilities) AuthOption {
+	return func(o *AuthOptions) {
+		bindings := capabilities
+		o.Capabilities = &bindings
 	}
 }
 
@@ -207,7 +226,7 @@ func RegisterDTokenContextMiddleware(opts ...AuthOption) func(http.Handler) http
 			}
 			r = chiCtx.r
 
-			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, options.AuthType)
+			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, options.AuthType, options.ManagerResolver)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, r, err)
@@ -217,7 +236,7 @@ func RegisterDTokenContextMiddleware(opts ...AuthOption) func(http.Handler) http
 				return
 			}
 
-			_ = getDTokenContext(chiCtx, mgr)
+			_ = getDTokenContext(chiCtx, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 			next.ServeHTTP(w, chiCtx.r)
 		})
 	}
@@ -248,7 +267,7 @@ func AuthMiddleware(opts ...AuthOption) func(http.Handler) http.Handler {
 				return
 			}
 
-			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, options.AuthType)
+			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, options.AuthType, options.ManagerResolver)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, r, err)
@@ -258,7 +277,7 @@ func AuthMiddleware(opts ...AuthOption) func(http.Handler) http.Handler {
 				return
 			}
 
-			dCtx := getDTokenContext(chiCtx, mgr)
+			dCtx := getDTokenContext(chiCtx, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 			tokenValue := dCtx.GetTokenValue()
 
 			_, err = authcheck.Check(chiCtx.r.Context(), mgr, authcheck.Request{
@@ -308,7 +327,7 @@ func AccessMiddleware(opts ...AuthOption) func(http.Handler) http.Handler {
 				return
 			}
 
-			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, accessReq.AuthType)
+			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, accessReq.AuthType, options.ManagerResolver)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, r, err)
@@ -318,7 +337,7 @@ func AccessMiddleware(opts ...AuthOption) func(http.Handler) http.Handler {
 				return
 			}
 
-			dCtx := getDTokenContext(chiCtx, mgr)
+			dCtx := getDTokenContext(chiCtx, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 			tokenValue := dCtx.GetTokenValue()
 
 			req := authcheck.Request{
@@ -379,7 +398,7 @@ func PermissionMiddleware(permissions []string, opts ...AuthOption) func(http.Ha
 				return
 			}
 
-			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, options.AuthType)
+			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, options.AuthType, options.ManagerResolver)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, r, err)
@@ -389,7 +408,7 @@ func PermissionMiddleware(permissions []string, opts ...AuthOption) func(http.Ha
 				return
 			}
 
-			dCtx := getDTokenContext(chiCtx, mgr)
+			dCtx := getDTokenContext(chiCtx, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 			tokenValue := dCtx.GetTokenValue()
 
 			_, err = authcheck.Check(chiCtx.r.Context(), mgr, authcheck.Request{
@@ -444,7 +463,7 @@ func PermissionPathMiddleware(permissions []string, opts ...AuthOption) func(htt
 				return
 			}
 
-			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, options.AuthType)
+			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, options.AuthType, options.ManagerResolver)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, r, err)
@@ -454,7 +473,7 @@ func PermissionPathMiddleware(permissions []string, opts ...AuthOption) func(htt
 				return
 			}
 
-			dCtx := getDTokenContext(chiCtx, mgr)
+			dCtx := getDTokenContext(chiCtx, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 			tokenValue := dCtx.GetTokenValue()
 
 			_, err = authcheck.Check(chiCtx.r.Context(), mgr, authcheck.Request{
@@ -506,7 +525,7 @@ func RoleMiddleware(roles []string, opts ...AuthOption) func(http.Handler) http.
 				return
 			}
 
-			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, options.AuthType)
+			mgr, err := resolveRequestManager(chiCtx.r, options.Manager, options.AuthType, options.ManagerResolver)
 			if err != nil {
 				if options.FailFunc != nil {
 					options.FailFunc(w, r, err)
@@ -516,7 +535,7 @@ func RoleMiddleware(roles []string, opts ...AuthOption) func(http.Handler) http.
 				return
 			}
 
-			dCtx := getDTokenContext(chiCtx, mgr)
+			dCtx := getDTokenContext(chiCtx, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 			tokenValue := dCtx.GetTokenValue()
 
 			_, err = authcheck.Check(chiCtx.r.Context(), mgr, authcheck.Request{
@@ -627,12 +646,12 @@ func IntrospectTokenByCtx(ctx context.Context) (*manager.TokenIntrospection, err
 }
 
 // resolveRequestManager preserves explicit selection before inheriting the request manager. resolveRequestManager 优先使用显式配置，否则继承请求 Manager。
-func resolveRequestManager(r *http.Request, explicit *manager.Manager, authType string) (*manager.Manager, error) {
+func resolveRequestManager(r *http.Request, explicit *manager.Manager, authType string, resolvers ...authcheck.ManagerResolver) (*manager.Manager, error) {
 	if explicit != nil {
 		return authcheck.ResolveManager(explicit, authType)
 	}
 	cached, _ := GetDTokenContext(r)
-	return authcheck.ResolveManagerFromContext(authType, cached)
+	return authcheck.ResolveManagerFromContext(authType, cached, resolvers...)
 }
 
 // prepareRequestContext binds cached metadata to the current request and writer before hooks run. prepareRequestContext 在钩子执行前将缓存元数据绑定到当前请求和响应写入器。
@@ -647,17 +666,24 @@ func prepareRequestContext(w http.ResponseWriter, r *http.Request) *ChiContext {
 	return chiCtx
 }
 
-// getDTokenContext reuses a context only when both its manager and request adapter match. getDTokenContext 仅在 Manager 和请求适配器均相同时复用上下文。
+// getDTokenContext preserves bindings when adapting the same authentication instance. getDTokenContext 适配同一认证实例时保留绑定。
 func getDTokenContext(chiCtx *ChiContext, mgr *manager.Manager) *DContext.DTokenContext {
 	if v := chiCtx.r.Context().Value(DTokenCtxKey); v != nil {
 		if dCtx, ok := v.(*DContext.DTokenContext); ok {
-			if dCtx != nil && dCtx.GetManager() == mgr && dCtx.GetRequestContext() == chiCtx {
+			if dCtx != nil && dCtx.GetManager() == mgr {
+				if dCtx.GetRequestContext() != chiCtx {
+					dCtx = dCtx.WithRequestContext(chiCtx)
+					chiCtx.Set(DTokenCtxKey, dCtx)
+				}
 				return dCtx
 			}
 		}
 	}
 
 	dCtx := DContext.NewContext(chiCtx, mgr)
+	if previous, ok := GetDTokenContext(chiCtx.r); ok {
+		dCtx.WithManagerResolver(previous.GetManagerResolver())
+	}
 	chiCtx.Set(DTokenCtxKey, dCtx)
 	return dCtx
 }
@@ -672,7 +698,7 @@ func writeErrorResponse(w http.ResponseWriter, err error) {
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"code":    code,
 		"message": message,
-		"data":    err.Error(),
+		"data":    message,
 	})
 }
 

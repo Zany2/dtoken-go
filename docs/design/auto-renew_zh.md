@@ -107,8 +107,8 @@ dtoken.GetDevice(ctx, token)
 ### 启用自动续签
 
 ```go
-defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+dt.NewBuilder().
+    Storage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
     Build()
@@ -117,8 +117,8 @@ defaults.NewBuilder().
 ### 指定续签触发阈值
 
 ```go
-defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+dt.NewBuilder().
+    Storage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
     RenewMaxRefresh(3600). // 剩余 1 小时内才触发续签
@@ -128,8 +128,8 @@ defaults.NewBuilder().
 ### 指定最小续期间隔
 
 ```go
-defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+dt.NewBuilder().
+    Storage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
     RenewMaxRefresh(3600).
@@ -140,8 +140,8 @@ defaults.NewBuilder().
 ### 结合最大不活跃时长
 
 ```go
-defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+dt.NewBuilder().
+    Storage(memory.NewStorage()).
     Timeout(86400).
     ActiveTimeout(1800).
     AutoRenew(true).
@@ -175,7 +175,7 @@ type Storage interface {
 
 默认情况下，开启自动续签时会优先使用续期协程池：
 
-- `com/pool/ants`
+- `pool/ants`
 - `adapter.Pool`
 - `Builder.SetPool(...)`
 
@@ -202,8 +202,8 @@ type Storage interface {
 ### 生产环境建议
 
 ```go
-defaults.NewBuilder().
-    SetStorage(redisStorage).
+dt.NewBuilder().
+    Storage(redisStorage).
     Timeout(86400).
     ActiveTimeout(1800).
     AutoRenew(true).
@@ -215,8 +215,8 @@ defaults.NewBuilder().
 ### 开发环境建议
 
 ```go
-defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+dt.NewBuilder().
+    Storage(memory.NewStorage()).
     Timeout(7200).
     AutoRenew(true).
     Build()
@@ -225,8 +225,8 @@ defaults.NewBuilder().
 ### 安全优先配置
 
 ```go
-defaults.NewBuilder().
-    SetStorage(redisStorage).
+dt.NewBuilder().
+    Storage(redisStorage).
     Timeout(1800).
     AutoRenew(false).
     Build()

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
 )
 
 // TestChiContextAdapterRequestAndResponse verifies request and response adaptation. TestChiContextAdapterRequestAndResponse 验证请求与响应适配。

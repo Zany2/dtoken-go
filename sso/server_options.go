@@ -8,21 +8,36 @@ import (
 
 // ServerOptions defines deployable SSO server protocol options. ServerOptions 定义可部署 SSO 服务端协议选项。
 type ServerOptions struct {
-	Mode                     Mode              // Mode stores preferred SSO mode. Mode 存储首选 SSO 模式。
-	HomeRoute                string            // HomeRoute stores default landing route. HomeRoute 存储默认主页地址。
-	EnableSLO                bool              // EnableSLO enables single logout. EnableSLO 启用单点注销。
-	AutoRenewTimeout         bool              // AutoRenewTimeout reserves center token renewal behavior. AutoRenewTimeout 预留中心 Token 续期行为。
-	MaxRegisteredClient      int               // MaxRegisteredClient stores max client records per account; negative disables the limit. MaxRegisteredClient 存储账号可记录客户端上限；负数表示不限制。
-	LogoutCallbackBestEffort bool              // LogoutCallbackBestEffort continues logout when a client callback fails. LogoutCallbackBestEffort 在客户端回调失败时仍继续注销。
-	LogoutCallbackTimeout    time.Duration     // LogoutCallbackTimeout stores timeout for each logout callback. LogoutCallbackTimeout 存储单个注销回调超时时间。
-	LogoutHTTPClient         *http.Client      // LogoutHTTPClient stores optional logout callback HTTP client. LogoutHTTPClient 存储可选注销回调 HTTP 客户端。
-	CheckSign                bool              // CheckSign enables request signature checks. CheckSign 启用请求签名校验。
-	AllowAnonymousClient     bool              // AllowAnonymousClient allows anonymous client access. AllowAnonymousClient 允许匿名客户端接入。
-	AllowURLs                []string          // AllowURLs stores callback allow-list for anonymous clients. AllowURLs 存储匿名客户端回调白名单。
-	SecretKey                string            // SecretKey stores default request signing secret. SecretKey 存储默认请求签名密钥。
-	Endpoints                Endpoints         // Endpoints stores protocol paths. Endpoints 存储协议路径。
-	Params                   ParamNames        // Params stores protocol parameter names. Params 存储协议参数名。
-	Clients                  map[string]Client // Clients stores initial client registrations. Clients 存储初始化客户端配置。
+	// Mode stores preferred SSO mode. Mode 存储首选 SSO 模式。
+	Mode Mode
+	// HomeRoute stores default landing route. HomeRoute 存储默认主页地址。
+	HomeRoute string
+	// EnableSLO enables single logout. EnableSLO 启用单点注销。
+	EnableSLO bool
+	// AutoRenewTimeout reserves center token renewal behavior. AutoRenewTimeout 预留中心 Token 续期行为。
+	AutoRenewTimeout bool
+	// MaxRegisteredClient stores max client records per account; negative disables the limit. MaxRegisteredClient 存储账号可记录客户端上限；负数表示不限制。
+	MaxRegisteredClient int
+	// LogoutCallbackBestEffort continues logout when a client callback fails. LogoutCallbackBestEffort 在客户端回调失败时仍继续注销。
+	LogoutCallbackBestEffort bool
+	// LogoutCallbackTimeout stores timeout for each logout callback. LogoutCallbackTimeout 存储单个注销回调超时时间。
+	LogoutCallbackTimeout time.Duration
+	// LogoutHTTPClient stores optional logout callback HTTP client. LogoutHTTPClient 存储可选注销回调 HTTP 客户端。
+	LogoutHTTPClient *http.Client
+	// CheckSign enables request signature checks. CheckSign 启用请求签名校验。
+	CheckSign bool
+	// AllowAnonymousClient allows anonymous client access. AllowAnonymousClient 允许匿名客户端接入。
+	AllowAnonymousClient bool
+	// AllowURLs stores callback allow-list for anonymous clients. AllowURLs 存储匿名客户端回调白名单。
+	AllowURLs []string
+	// SecretKey stores default request signing secret. SecretKey 存储默认请求签名密钥。
+	SecretKey string
+	// Endpoints stores protocol paths. Endpoints 存储协议路径。
+	Endpoints Endpoints
+	// Params stores protocol parameter names. Params 存储协议参数名。
+	Params ParamNames
+	// Clients stores initial client registrations. Clients 存储初始化客户端配置。
+	Clients map[string]Client
 }
 
 // DefaultServerOptions returns default deployable server options. DefaultServerOptions 返回默认服务端协议选项。

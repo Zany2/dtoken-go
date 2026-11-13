@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Zany2/dtoken-go/core/manager"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	gofiber "github.com/gofiber/fiber/v2"
 )
 

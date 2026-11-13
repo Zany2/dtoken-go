@@ -21,28 +21,28 @@ DToken-Go 的 `TokenStyle` 控制 Token 字符串的生成方式。无论使用�
 ## 基本使用
 
 ```go
-mgr, err := defaults.NewBuilder().
+mgr, err := dt.NewBuilder().
     TokenStyle(adapter.TokenStyleRandom64).
-    SetStorage(storage).
+    Storage(storage).
     Build()
 ```
 
 JWT 风格需要设置密钥：
 
 ```go
-mgr, err := defaults.NewBuilder().
+mgr, err := dt.NewBuilder().
     TokenStyle(adapter.TokenStyleJWT).
     JwtSecretKey("your-very-strong-secret").
-    SetStorage(storage).
+    Storage(storage).
     Build()
 ```
 
 也可以使用快捷方法：
 
 ```go
-mgr, err := defaults.NewBuilder().
+mgr, err := dt.NewBuilder().
     JwtSecret("your-very-strong-secret").
-    SetStorage(storage).
+    Storage(storage).
     Build()
 ```
 
@@ -67,6 +67,7 @@ mgr, err := defaults.NewBuilder().
 
 ```go
 import (
+    dt "github.com/Zany2/dtoken-go"
     "crypto/rand"
     "encoding/hex"
 )
@@ -81,9 +82,9 @@ func (MyGenerator) Generate(loginID, device, deviceID string) (string, error) {
     return hex.EncodeToString(value[:]), nil
 }
 
-mgr, err := defaults.NewBuilder().
+mgr, err := dt.NewBuilder().
     SetGenerator(MyGenerator{}).
-    SetStorage(storage).
+    Storage(storage).
     Build()
 ```
 

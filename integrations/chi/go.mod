@@ -4,8 +4,6 @@ go 1.25.0
 
 require (
 	github.com/Zany2/dtoken-go v0.0.3
-	github.com/Zany2/dtoken-go/com/codec/msgpack v0.0.3
-	github.com/Zany2/dtoken-go/com/storage/redis v0.0.3
 	github.com/go-chi/chi/v5 v5.0.11
 )
 

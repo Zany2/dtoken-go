@@ -12,10 +12,10 @@ updates:
   - package-ecosystem: gomod
     directories:
       - /
-      - /com/codec/jsonv2
-      - /com/codec/msgpack
-      - /com/log/gf
-      - /com/storage/redis
+      - /codec/jsonv2
+      - /codec/msgpack
+      - /logging/gf
+      - /storage/redis
       - /integrations/beego
       - /integrations/chi
       - /integrations/echo

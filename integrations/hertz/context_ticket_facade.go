@@ -4,7 +4,7 @@ package hertz
 import (
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/ticket"
+	"github.com/Zany2/dtoken-go/contract/ticket"
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 )
 

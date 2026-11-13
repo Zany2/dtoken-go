@@ -6,9 +6,8 @@ English | [中文文档](../security/oauth2_zh.md)
 
 The current project includes a lightweight OAuth2 authorization server implementation under:
 
-- `core/oauth2`
-- `core/manager/feature_oauth2.go`
-- the OAuth2 wrapper functions in `dtoken`
+- `oauth2`
+- oauth2.Service
 
 ## Supported Grant Types
 
@@ -36,7 +35,27 @@ According to the current code:
 - access token: `2` hours
 - refresh token: `30` days
 
-Enable the optional module with `dtoken.NewBuilder().EnableOAuth2()` before using the global helpers. Authorization codes persist a precise `ExpiresAt` deadline; older records without it retain `CreateTime + ExpiresIn` validation.
+
+
+## Explicit service composition
+
+Compose an independent OAuth2 Manager and Service. auth supplies shared components and optional event publication.
+
+```go
+import (
+    "github.com/Zany2/dtoken-go"
+    "github.com/Zany2/dtoken-go/oauth2"
+)
+
+auth, err := dtoken.NewBuilder().Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
+cfg := auth.Config()
+server := oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+service := oauth2.NewService(server, auth)
+```
 
 ## Client Model
 
@@ -56,7 +75,7 @@ client := &oauth2.Client{
 ## Register Client
 
 ```go
-err := dtoken.RegisterOAuth2Client(&oauth2.Client{
+err := service.RegisterOAuth2Client(&oauth2.Client{
     ClientID:     "web-app",
     ClientSecret: "secret",
     RedirectURIs: []string{"http://localhost:3000/callback"},
@@ -73,7 +92,7 @@ err := dtoken.RegisterOAuth2Client(&oauth2.Client{
 `dtoken` provides a unified token entry:
 
 ```go
-token, err := dtoken.OAuth2Token(ctx, &oauth2.TokenRequest{
+token, err := service.OAuth2Token(ctx, &oauth2.TokenRequest{
     GrantType:    oauth2.GrantTypeClientCredentials,
     ClientID:     "server-app",
     ClientSecret: "secret",
@@ -86,7 +105,7 @@ token, err := dtoken.OAuth2Token(ctx, &oauth2.TokenRequest{
 ### Generate Authorization Code
 
 ```go
-authCode, err := dtoken.GenerateOAuth2AuthorizationCode(
+authCode, err := service.GenerateOAuth2AuthorizationCode(
     ctx,
     "web-app",
     "10001",
@@ -105,7 +124,7 @@ This validates:
 ### Exchange For Token
 
 ```go
-token, err := dtoken.ExchangeOAuth2CodeForToken(
+token, err := service.ExchangeOAuth2CodeForToken(
     ctx,
     authCode.Code,
     "web-app",
@@ -119,7 +138,7 @@ token, err := dtoken.ExchangeOAuth2CodeForToken(
 Clients can bind the authorization code to a proof key. The current implementation still requires a non-empty client secret; PKCE does not replace client authentication.
 
 ```go
-authCode, err := dtoken.GenerateOAuth2AuthorizationCodeWithPKCE(
+authCode, err := service.GenerateOAuth2AuthorizationCodeWithPKCE(
     ctx,
     "mobile-app",
     "10001",
@@ -129,7 +148,7 @@ authCode, err := dtoken.GenerateOAuth2AuthorizationCodeWithPKCE(
     oauth2.CodeChallengeMethodS256,
 )
 
-token, err := dtoken.ExchangeOAuth2CodeForTokenWithPKCE(
+token, err := service.ExchangeOAuth2CodeForTokenWithPKCE(
     ctx,
     authCode.Code,
     "mobile-app",
@@ -160,7 +179,7 @@ type AccessToken struct {
 ## Client Credentials Flow
 
 ```go
-token, err := dtoken.OAuth2ClientCredentialsToken(
+token, err := service.OAuth2ClientCredentialsToken(
     ctx,
     "server-app",
     "secret",
@@ -180,7 +199,7 @@ validateUser := func(username, password string) (string, error) {
     return "", fmt.Errorf("invalid credentials")
 }
 
-token, err := dtoken.OAuth2PasswordGrantToken(
+token, err := service.OAuth2PasswordGrantToken(
     ctx,
     "native-app",
     "secret",
@@ -196,7 +215,7 @@ The current implementation requires `validateUser`; otherwise it returns an erro
 ## Refresh Access Token
 
 ```go
-newToken, err := dtoken.RefreshOAuth2AccessToken(
+newToken, err := service.RefreshOAuth2AccessToken(
     ctx,
     "web-app",
     token.RefreshToken,
@@ -217,15 +236,15 @@ The current implementation:
 ## Validate Access Token
 
 ```go
-valid := dtoken.ValidateOAuth2AccessToken(ctx, token.Token)
+valid := service.ValidateOAuth2AccessToken(ctx, token.Token)
 
-info, err := dtoken.ValidateOAuth2AccessTokenAndGetInfo(ctx, token.Token)
+info, err := service.ValidateOAuth2AccessTokenAndGetInfo(ctx, token.Token)
 ```
 
 ## Revoke Token
 
 ```go
-err := dtoken.RevokeOAuth2Token(ctx, token.Token)
+err := service.RevokeOAuth2Token(ctx, token.Token)
 ```
 
 Revocation clears both:

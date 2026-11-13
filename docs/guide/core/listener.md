@@ -1,10 +1,10 @@
 # Event Listener Guide
 
-[中文文档](../core/listener_zh.md) | English
+[中文文档](../event_zh.md) | English
 
 ## Current Status
 
-The project already contains a complete internal event system under `core/listener`.
+The project already contains a complete internal event system under `event`.
 
 It is used for authentication and lifecycle events, access checks and changes, refresh tokens, Nonce, Ticket, ShortKey, and OAuth2 flows.
 
@@ -25,7 +25,7 @@ After obtaining `*listener.Manager`, use its registration APIs such as `Register
 
 ## Internal Event Types
 
-The built-in events defined in `core/listener/consts.go` are:
+The built-in events defined in `event/consts.go` are:
 
 | Event | Description |
 |------|------|
@@ -72,7 +72,7 @@ The built-in events defined in `core/listener/consts.go` are:
 
 ## EventData Structure
 
-The payload is defined in `core/listener/listener.go`:
+The payload is defined in `event/listener.go`:
 
 ```go
 type EventData struct {
@@ -122,13 +122,13 @@ Current extra keys include:
 
 ## Event Manager APIs
 
-The `core/listener` package is public and can also be used independently.
+The `event` package is public and can also be used independently.
 
 ### Create a Manager
 
 ```go
 import (
-    "github.com/Zany2/dtoken-go/core/listener"
+    listener "github.com/Zany2/dtoken-go/event"
 )
 
 eventMgr := listener.NewManager()

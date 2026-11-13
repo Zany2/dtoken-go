@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
 	gingonic "github.com/gin-gonic/gin"
 )
 

@@ -1,5 +1,7 @@
 # 组件生态
 
+代码片段的导入别名：dt = github.com/Zany2/dtoken-go.
+
 [English](../integration/component-ecosystem.md) | 中文文档
 
 DToken-Go 将核心认证逻辑和组件实现解耦。核心只依赖接口，默认实现由 `defaults` 组装，也可以按业务需要替换存储、编解码、日志、Token 生成器和异步任务池。
@@ -19,11 +21,11 @@ DToken-Go 将核心认证逻辑和组件实现解耦。核心只依赖接口，�
 
 ## 默认 Builder
 
-`defaults.NewBuilder()` 会装配默认组件：
+`dt.NewBuilder()` 会装配默认组件：
 
 ```go
-mgr, err := defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+mgr, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
     Build()
 ```
 
@@ -32,8 +34,8 @@ mgr, err := defaults.NewBuilder().
 ## 替换具体组件
 
 ```go
-mgr, err := defaults.NewBuilder().
-    SetStorage(storage).
+mgr, err := dt.NewBuilder().
+    Storage(storage).
     SetCodec(codec).
     SetLog(logger).
     SetGenerator(generator).
@@ -44,7 +46,7 @@ mgr, err := defaults.NewBuilder().
 也可以通过工厂延迟创建组件：
 
 ```go
-mgr, err := defaults.NewBuilder().
+mgr, err := dt.NewBuilder().
     SetStorageFactory(func(cfg *config.Config) (adapter.Storage, error) {
         return redis.NewStorage("redis://localhost:6379/0")
     }).
@@ -53,7 +55,7 @@ mgr, err := defaults.NewBuilder().
 
 工厂适合组件依赖配置项的场景，例如根据 `AuthType`、`KeyPrefix` 或部署环境创建不同实例。
 
-`com/codec/jsonv2` 提供基于 Go 1.27 标准库 `encoding/json/v2` 的适配器，需要启用 `GOEXPERIMENT=jsonv2`。如果不需要 JSON v2 的实验特性，可继续使用 JSON、MessagePack、Base64，或自行实现 `adapter.Codec`。
+`codec/jsonv2` 提供基于 Go 1.27 标准库 `encoding/json/v2` 的适配器，需要启用 `GOEXPERIMENT=jsonv2`。如果不需要 JSON v2 的实验特性，可继续使用 JSON、MessagePack、Base64，或自行实现 `adapter.Codec`。
 
 ## 存储组件建议
 
@@ -69,9 +71,9 @@ Redis 接入方式见 [Redis 存储](../integration/redis-storage_zh.md)。
 默认生成器支持多种 Token 风格：
 
 ```go
-mgr, err := defaults.NewBuilder().
+mgr, err := dt.NewBuilder().
     TokenStyle(adapter.TokenStyleRandom64).
-    SetStorage(storage).
+    Storage(storage).
     Build()
 ```
 
@@ -105,7 +107,7 @@ func (MyGenerator) Generate(loginID, device, deviceID string) (string, error) {
 
 ## 使用建议
 
-- 优先使用 `defaults.NewBuilder()`，只替换确实需要替换的组件。
+- 优先使用 `dt.NewBuilder()`，只替换确实需要替换的组件。
 - 自定义组件时先满足核心接口，再考虑额外接口能力。
 - 生产环境建议使用 Redis Storage，并设置清晰的 `KeyPrefix`。
 - 自定义 Token 生成器要保证足够随机性和不可预测性。
@@ -116,4 +118,4 @@ func (MyGenerator) Generate(loginID, device, deviceID string) (string, error) {
 - [配置指南](../reference/configuration_zh.md)
 - [Redis 存储](../integration/redis-storage_zh.md)
 - [Token 风格](../core/token-style_zh.md)
-- [事件监听](../core/listener_zh.md)
+- [事件监听](../event_zh.md)

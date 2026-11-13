@@ -1,14 +1,17 @@
 package main
 
 import (
+	dtoken "github.com/Zany2/dtoken-go"
+	dterror "github.com/Zany2/dtoken-go/errors"
+	dt2 "github.com/Zany2/dtoken-go/global"
+	dt1 "github.com/Zany2/dtoken-go/storage/memory"
+
 	"context"
 	"encoding/json"
+	gofiber "github.com/gofiber/fiber/v2"
 	"net/http"
 	"testing"
 	"time"
-
-	fiberdt "github.com/Zany2/dtoken-go/integrations/fiber"
-	gofiber "github.com/gofiber/fiber/v2"
 )
 
 // TestProductionRouteFailures covers the actual registration, authentication and access failure callbacks. TestProductionRouteFailures 覆盖实际注册、认证和权限过滤器的失败回调。
@@ -38,36 +41,37 @@ func TestProductionRouteFailures(t *testing.T) {
 		if path == "/logout" {
 			method = http.MethodPost
 		}
-		check(method, path, "", "", http.StatusUnauthorized, fiberdt.CodeNotLogin)
-		check(method, path, "", "invalid-token", http.StatusUnauthorized, fiberdt.CodeNotLogin)
+		check(method, path, "", "", http.StatusUnauthorized, dterror.CodeNotLogin)
+		check(method, path, "", "invalid-token", http.StatusUnauthorized, dterror.CodeNotLogin)
 	}
-	token, err := fiberdt.Login(ctx, "reader", "web")
+	token, err := dt2.Login(ctx, "reader", "web")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/admin", "/articles"} {
-		check(http.MethodGet, path, "", token, http.StatusForbidden, fiberdt.CodePermissionDenied)
+		check(http.MethodGet, path, "", token, http.StatusForbidden, dterror.CodePermissionDenied)
 	}
-	if err := fiberdt.DisableDevice(ctx, "reader", "web", time.Hour); err != nil {
+	if err := dt2.DisableDevice(ctx, "reader", "web", time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	check(http.MethodGet, "/me", "", token, http.StatusForbidden, fiberdt.CodeAccountDisabled)
+	check(http.MethodGet, "/me", "", token, http.StatusForbidden, dterror.CodeAccountDisabled)
 
-	fiberdt.DeleteAllManager()
-	check(http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "", http.StatusInternalServerError, fiberdt.CodeServerError)
-	check(http.MethodGet, "/admin", "", "", http.StatusInternalServerError, fiberdt.CodeServerError)
-
-	mgr, err := fiberdt.NewBuilder().SetStorage(&fiberFailingStorage{Storage: fiberdt.NewMemoryStorage()}).
+	dt2.DeleteAllManager()
+	check(http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "", http.StatusInternalServerError, dterror.CodeServerError)
+	check(http.MethodGet, "/admin", "", "", http.StatusInternalServerError, dterror.CodeServerError)
+	builtAuth1, err := dtoken.NewBuilder().Storage(&fiberFailingStorage{Storage: dt1.NewStorage()}).
 		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).Build()
+	mgr := builtAuth1.Manager()
+
 	if err != nil {
 		t.Fatal(err)
 	}
-	fiberdt.SetManager(mgr)
+	dt2.SetManager(mgr)
 	for _, path := range []string{"/me", "/admin", "/articles", "/logout"} {
 		method := http.MethodGet
 		if path == "/logout" {
 			method = http.MethodPost
 		}
-		check(method, path, "", "some-token", http.StatusInternalServerError, fiberdt.CodeServerError)
+		check(method, path, "", "some-token", http.StatusInternalServerError, dterror.CodeServerError)
 	}
 }

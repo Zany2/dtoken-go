@@ -1,5 +1,7 @@
 # 多认证体系
 
+代码片段的导入别名：dt = github.com/Zany2/dtoken-go, dtoken = github.com/Zany2/dtoken-go/global.
+
 [English](../core/multi-auth.md) | 中文文档
 
 多认证体系用于在同一个项目里维护多套互相隔离的认证逻辑，例如普通用户、后台管理员、开放平台客户端。DToken-Go 通过 `AuthType` 区分不同认证体系。
@@ -27,11 +29,11 @@ sharedOwnership := manager.WithComponentOwnership(manager.ComponentOwnership{
     Pool:    true,
 })
 
-userMgr, err := defaults.NewBuilder().
+userMgr, err := dt.NewBuilder().
     AuthType("user").
     KeyPrefix("dtoken").
     TokenName("user-token").
-    SetStorage(storage).
+    Storage(storage).
     UseManagerOption(sharedOwnership).
     Build()
 if err != nil {
@@ -39,11 +41,11 @@ if err != nil {
 }
 dtoken.SetManager(userMgr)
 
-adminMgr, err := defaults.NewBuilder().
+adminMgr, err := dt.NewBuilder().
     AuthType("admin").
     KeyPrefix("dtoken").
     TokenName("admin-token").
-    SetStorage(storage).
+    Storage(storage).
     UseManagerOption(sharedOwnership).
     Build()
 if err != nil {
@@ -63,9 +65,9 @@ Manager 默认持有并关闭通过 Builder 配置的 Storage、Logger 和 Pool�
 
 ```go
 _, err := dtoken.BuildAndSetManager(
-    defaults.NewBuilder().
+    dt.NewBuilder().
         KeyPrefix("dtoken").
-        SetStorage(storage).
+        Storage(storage).
         UseManagerOption(sharedOwnership),
     "admin",
 )
@@ -116,7 +118,7 @@ dtoken:admin:session:...
 如果希望不同项目、环境或测试批次完全隔离，可以同时区分 `KeyPrefix`：
 
 ```go
-defaults.NewBuilder().
+dt.NewBuilder().
     AuthType("admin").
     KeyPrefix("dtoken:prod")
 ```

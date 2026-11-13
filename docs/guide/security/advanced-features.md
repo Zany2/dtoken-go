@@ -2,14 +2,37 @@
 
 This page lists advanced DToken-Go capabilities that can be used on top of the normal login, logout, permission, and role APIs.
 
-Examples assume a registered Manager. Nonce, Ticket, and ShortKey are optional: enable the required modules with `EnableNonce()`, `EnableTicket()`, and `EnableShortKey()` on the Builder before `Build()`. See [Optional Modules](../reference/configuration.md#optional-modules). Token Introspection and business Refresh Token do not require these switches.
+
+
+## Explicit composition
+
+These examples use an authentication instance and independent capability services. Inject HTTP capabilities with WithCapabilities; no global Manager registration is required.
+
+```go
+import (
+    dt "github.com/Zany2/dtoken-go"
+    "github.com/Zany2/dtoken-go/nonce"
+    "github.com/Zany2/dtoken-go/ticket"
+    "github.com/Zany2/dtoken-go/shortkey"
+)
+
+auth, err := dt.NewBuilder().Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
+cfg := auth.Config()
+nonceService := nonce.NewService(nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage()), auth)
+ticketService := ticket.NewService(ticket.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
+shortKeyService := shortkey.NewService(shortkey.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
+```
 
 ## Token Introspection
 
 Token introspection checks whether a token is currently active without renewing it. It returns ownership information, TTL, permissions, roles, token extra data, and an inactive reason.
 
 ```go
-info, err := dtoken.IntrospectToken(ctx, token)
+info, err := auth.IntrospectToken(ctx, token)
 if err != nil {
 	return err
 }
@@ -20,7 +43,7 @@ if !info.Active {
 fmt.Println(info.LoginID, info.ExpiresIn, info.Permissions, info.Roles)
 ```
 
-Framework packages re-export the same API, so a GoFrame project can call `gfdt.IntrospectToken(...)` after importing `github.com/Zany2/dtoken-go/integrations/gf`.
+Use the request context from GetDTokenContext(r) for IntrospectToken. Global operations live in global; frameworks do not re-export them.
 
 ## Refresh Token
 
@@ -33,23 +56,23 @@ New reverse indexes from access tokens to refresh tokens use the refresh lifetim
 Consumption prefers `AtomicStorage.GetAndDelete`. Basic storage is serialized by the account lock within one Manager, without atomic consumption guarantees across instances or processes.
 
 ```go
-pair, err := dtoken.LoginWithRefreshToken(ctx, "user-1001")
+pair, err := auth.LoginWithRefreshToken(ctx, "user-1001")
 if err != nil {
 	return err
 }
 
-nextPair, err := dtoken.RefreshToken(ctx, pair.RefreshToken)
+nextPair, err := auth.RefreshToken(ctx, pair.RefreshToken)
 if err != nil {
 	return err
 }
 
-ttl, err := dtoken.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
+ttl, err := auth.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
 if err != nil {
 	return err
 }
 fmt.Println(ttl)
 
-_ = dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
+_ = auth.RevokeRefreshToken(ctx, nextPair.RefreshToken)
 ```
 
 The default refresh-token TTL is `30` days. You can override it globally with `RefreshTokenTimeout(...)` or per login with `LoginWithRefreshTokenOptions(...)`.
@@ -63,12 +86,12 @@ Ticket validation and state updates use the precise `ExpiresAt` deadline. `Creat
 Consumption prefers `adapter.AtomicStorage`. With plain `Storage`, consumption and revocation are serialized within one Ticket manager instance; this fallback does not provide atomic consumption across manager instances or processes. Use atomic storage when multiple instances share tickets.
 
 ```go
-createdTicket, err := dtoken.CreateTicket(ctx, "user-1001")
+createdTicket, err := ticketService.CreateTicket(ctx, ticket.CreateOptions{LoginID: "user-1001"})
 if err != nil {
 	return err
 }
 
-result, err := dtoken.ConsumeTicket(ctx, createdTicket.Ticket)
+result, err := ticketService.ConsumeTicket(ctx, createdTicket.Ticket)
 if err != nil {
 	return err
 }
@@ -84,17 +107,17 @@ Short keys use the precise `ExpiresAt` deadline for validation and state updates
 Creation writes, confirmation, consumption, and revocation are serialized within each ShortKey manager instance. Creation and consumption prefer `adapter.AtomicStorage`; plain `Storage` supports a local fallback. This instance lock does not coordinate separate managers or processes, and atomic create/consume operations do not make cross-instance confirmation and revocation transactional.
 
 ```go
-createdKey, err := dtoken.CreateShortKey(ctx)
+createdKey, err := shortKeyService.CreateShortKey(ctx, shortkey.CreateOptions{})
 if err != nil {
 	return err
 }
 
-confirmedKey, err := dtoken.ConfirmShortKey(ctx, createdKey.Key, "user-1001")
+confirmedKey, err := shortKeyService.ConfirmShortKey(ctx, createdKey.Key, shortkey.ConfirmOptions{LoginID: "user-1001"})
 if err != nil {
 	return err
 }
 
-result, err := dtoken.ConsumeShortKey(ctx, confirmedKey.Key)
+result, err := shortKeyService.ConsumeShortKey(ctx, confirmedKey.Key)
 if err != nil {
 	return err
 }
@@ -149,12 +172,12 @@ fmt.Println(info.LoginID)
 One-time random value generation, verification, and consumption to prevent replay attacks.
 
 ```go
-nonce, err := dtoken.GenerateNonce(ctx)
+nonce, err := nonceService.GenerateNonce(ctx)
 if err != nil {
 	return err
 }
 
-err = dtoken.VerifyAndConsumeNonce(ctx, nonce)
+err = nonceService.VerifyAndConsumeNonce(ctx, nonce)
 ```
 
 ## Event Listener
@@ -162,7 +185,7 @@ err = dtoken.VerifyAndConsumeNonce(ctx, nonce)
 The event system can listen to login, logout, renewal, permission, role, ban, unban, and other core lifecycle events.
 
 ```go
-eventMgr := mgr.GetEventManager()
+eventMgr := auth.EventManager()
 eventMgr.RegisterFunc(listener.EventAll, func(data *listener.EventData) {
 	fmt.Println(data.Event, data.LoginID, data.Token)
 })

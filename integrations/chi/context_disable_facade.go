@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/manager"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 )
 
 // CheckDisableByCtx checks current account disable state CheckDisableByCtx 校验当前账号封禁状态

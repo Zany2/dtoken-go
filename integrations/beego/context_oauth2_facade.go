@@ -2,7 +2,7 @@
 package beego
 
 import (
-	"github.com/Zany2/dtoken-go/core/oauth2"
+	"github.com/Zany2/dtoken-go/contract/oauth2"
 	beegocontext "github.com/beego/beego/v2/server/web/context"
 )
 

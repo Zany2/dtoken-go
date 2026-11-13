@@ -21,28 +21,28 @@ DToken-Go uses `TokenStyle` to control how Token strings are generated. Regardle
 ## Basic Usage
 
 ```go
-mgr, err := defaults.NewBuilder().
+mgr, err := dt.NewBuilder().
     TokenStyle(adapter.TokenStyleRandom64).
-    SetStorage(storage).
+    Storage(storage).
     Build()
 ```
 
 JWT style requires a signing secret:
 
 ```go
-mgr, err := defaults.NewBuilder().
+mgr, err := dt.NewBuilder().
     TokenStyle(adapter.TokenStyleJWT).
     JwtSecretKey("your-very-strong-secret").
-    SetStorage(storage).
+    Storage(storage).
     Build()
 ```
 
 Shortcut:
 
 ```go
-mgr, err := defaults.NewBuilder().
+mgr, err := dt.NewBuilder().
     JwtSecret("your-very-strong-secret").
-    SetStorage(storage).
+    Storage(storage).
     Build()
 ```
 
@@ -67,6 +67,7 @@ If built-in styles are not enough, implement `adapter.Generator`:
 
 ```go
 import (
+    dt "github.com/Zany2/dtoken-go"
     "crypto/rand"
     "encoding/hex"
 )
@@ -81,9 +82,9 @@ func (MyGenerator) Generate(loginID, device, deviceID string) (string, error) {
     return hex.EncodeToString(value[:]), nil
 }
 
-mgr, err := defaults.NewBuilder().
+mgr, err := dt.NewBuilder().
     SetGenerator(MyGenerator{}).
-    SetStorage(storage).
+    Storage(storage).
     Build()
 ```
 

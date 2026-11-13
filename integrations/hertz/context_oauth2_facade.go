@@ -2,7 +2,7 @@
 package hertz
 
 import (
-	"github.com/Zany2/dtoken-go/core/oauth2"
+	"github.com/Zany2/dtoken-go/contract/oauth2"
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 )
 

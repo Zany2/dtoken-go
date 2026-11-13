@@ -1,5 +1,7 @@
 # Core API Cheatsheet
 
+Import aliases for code fragments: dtoken = github.com/Zany2/dtoken-go/global.
+
 This page lists common `dtoken` global API calls. It is intended for quick lookup after the Manager has been initialized.
 
 ## Login Authentication

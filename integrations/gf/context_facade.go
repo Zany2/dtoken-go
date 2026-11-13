@@ -3,11 +3,13 @@ package gf
 
 import (
 	"context"
+	derror "github.com/Zany2/dtoken-go/errors"
+	requestcontext "github.com/Zany2/dtoken-go/httpauth/context"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/integrations/authcheck"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	authcheck "github.com/Zany2/dtoken-go/httpauth"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -20,7 +22,7 @@ func GetTokenValueByCtx(ctx context.Context) (string, error) {
 
 	tokenValue := dCtx.GetTokenValue()
 	if tokenValue == "" {
-		return "", ErrNotLogin
+		return "", derror.ErrNotLogin
 	}
 	return tokenValue, nil
 }
@@ -414,25 +416,25 @@ func VerifyAndConsumeNonceByCtx(ctx context.Context, nonce string) error {
 }
 
 // requireDTokenContextByCtx gets required DToken context requireDTokenContextByCtx 获取必需的 DToken 上下文。
-func requireDTokenContextByCtx(ctx context.Context, authType ...string) (*DTokenContext, error) {
+func requireDTokenContextByCtx(ctx context.Context, authType ...string) (*requestcontext.DTokenContext, error) {
 	if ctx == nil {
-		return nil, ErrNotLogin
+		return nil, derror.ErrNotLogin
 	}
 
 	dCtx, ok := GetDTokenContextByCtx(ctx)
 	if ok && len(authType) == 0 {
 		if mgr := dCtx.GetManager(); mgr == nil || mgr.IsClosed() {
-			return nil, ErrManagerNotFound
+			return nil, derror.ErrManagerNotFound
 		}
 		return dCtx, nil
 	}
 
 	r := g.RequestFromCtx(ctx)
 	if r == nil {
-		return nil, ErrNotLogin
+		return nil, derror.ErrNotLogin
 	}
 
-	mgr, err := authcheck.GetManager(firstAuthType(authType...))
+	mgr, err := authcheck.ResolveManagerFromContext(firstAuthType(authType...), dCtx)
 	if err != nil {
 		return nil, err
 	}

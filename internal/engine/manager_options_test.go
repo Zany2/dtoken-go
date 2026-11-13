@@ -1,0 +1,1013 @@
+package engine
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/Zany2/dtoken-go/config"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
+)
+
+// TestManagerLoginWithOptionsStoresOverrides verifies per-login metadata and timeout overrides are persisted. TestManagerLoginWithOptionsStoresOverrides 验证单次登录元数据与超时覆盖会被持久化。
+func TestManagerLoginWithOptionsStoresOverrides(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.Timeout = 600
+		cfg.IsConcurrent = true
+		cfg.IsShare = true
+	})
+
+	token, err := mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID:       "opt-user",
+		Device:        "web",
+		DeviceID:      "browser-1",
+		Timeout:       90 * time.Second,
+		ActiveTimeout: 30 * time.Second,
+		Token:         "custom-token",
+		Extra:         map[string]any{"trace": "token-extra"},
+		TerminalExtra: map[string]any{"terminal": "extra"},
+	})
+	if err != nil {
+		t.Fatalf("LoginWithOptions() error = %v", err)
+	}
+	if token != "custom-token" {
+		t.Fatalf("LoginWithOptions() token = %q, want custom-token", token)
+	}
+
+	info, err := mgr.GetTokenInfo(ctx, token)
+	if err != nil {
+		t.Fatalf("GetTokenInfo() error = %v", err)
+	}
+	if info.Timeout != 90 || info.ActiveTimeout != 30 {
+		t.Fatalf("TokenInfo timeout = %d active = %d, want 90 and 30", info.Timeout, info.ActiveTimeout)
+	}
+	if info.Extra["trace"] != "token-extra" {
+		t.Fatalf("TokenInfo.Extra = %+v, want trace", info.Extra)
+	}
+
+	terminal, err := mgr.GetTerminalInfoByToken(ctx, token)
+	if err != nil {
+		t.Fatalf("GetTerminalInfoByToken() error = %v", err)
+	}
+	if terminal.Extra["terminal"] != "extra" {
+		t.Fatalf("TerminalInfo.Extra = %+v, want terminal extra", terminal.Extra)
+	}
+}
+
+// TestManagerLoginWithOptionsMetadataOverridesDisableSharing verifies every token or terminal metadata override gets an independent token. TestManagerLoginWithOptionsMetadataOverridesDisableSharing 验证每个 Token 或终端元数据覆盖项都会获得独立 Token。
+func TestManagerLoginWithOptionsMetadataOverridesDisableSharing(t *testing.T) {
+	tests := []struct {
+		name string
+		opts LoginOptions
+	}{
+		{name: "timeout", opts: LoginOptions{Timeout: 90 * time.Second}},
+		{name: "active timeout", opts: LoginOptions{ActiveTimeout: 30 * time.Second}},
+		{name: "token extra", opts: LoginOptions{Extra: map[string]any{"trace": "new-token"}}},
+		{name: "terminal extra", opts: LoginOptions{TerminalExtra: map[string]any{"trace": "new-terminal"}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			mgr := newTestManager(t, func(cfg *config.Config) {
+				cfg.Timeout = 600
+				cfg.IsConcurrent = true
+				cfg.IsShare = true
+			})
+
+			first, err := mgr.Login(ctx, "metadata-share-user", "web", "browser")
+			if err != nil {
+				t.Fatalf("first Login() error = %v", err)
+			}
+			opts := tt.opts
+			opts.LoginID = "metadata-share-user"
+			opts.Device = "web"
+			opts.DeviceID = "browser"
+			second, err := mgr.LoginWithOptions(ctx, opts)
+			if err != nil {
+				t.Fatalf("LoginWithOptions() error = %v", err)
+			}
+			if second == first {
+				t.Fatalf("LoginWithOptions() shared token %q despite metadata override", second)
+			}
+		})
+	}
+}
+
+// TestManagerSharedLoginCleansInactiveTerminals verifies the shared fast path removes stale terminal records. TestManagerSharedLoginCleansInactiveTerminals 验证共享快速路径会移除失效终端记录。
+func TestManagerSharedLoginCleansInactiveTerminals(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.IsConcurrent = true
+		cfg.IsShare = false
+	})
+
+	aliveToken, err := mgr.Login(ctx, "shared-cleanup-user", "web", "browser")
+	if err != nil {
+		t.Fatalf("first Login() error = %v", err)
+	}
+	staleToken, err := mgr.Login(ctx, "shared-cleanup-user", "web", "browser")
+	if err != nil {
+		t.Fatalf("second Login() error = %v", err)
+	}
+	if err = requireManagerTestStorage(t, mgr).Delete(ctx, mgr.getTokenKey(staleToken)); err != nil {
+		t.Fatalf("Delete(stale token) error = %v", err)
+	}
+
+	mgr.config.IsShare = true
+	sharedToken, err := mgr.Login(ctx, "shared-cleanup-user", "web", "browser")
+	if err != nil {
+		t.Fatalf("shared Login() error = %v", err)
+	}
+	if sharedToken != aliveToken {
+		t.Fatalf("shared token = %q, want alive token %q", sharedToken, aliveToken)
+	}
+	terminals, err := mgr.GetTerminalListByLoginID(ctx, "shared-cleanup-user")
+	if err != nil {
+		t.Fatalf("GetTerminalListByLoginID() error = %v", err)
+	}
+	if len(terminals) != 1 || terminals[0].Token != aliveToken {
+		t.Fatalf("terminals after shared cleanup = %+v, want only %q", terminals, aliveToken)
+	}
+}
+
+// TestManagerLoginWithOptionsRejectsDuplicateToken verifies custom token collisions are rejected. TestManagerLoginWithOptionsRejectsDuplicateToken 验证自定义 Token 冲突会被拒绝。
+func TestManagerLoginWithOptionsRejectsDuplicateToken(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.IsConcurrent = true
+		cfg.IsShare = false
+	})
+
+	token, err := mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID:  "first-custom-token-user",
+		Device:   "web",
+		DeviceID: "first",
+		Token:    "duplicate-custom-token",
+	})
+	if err != nil {
+		t.Fatalf("first LoginWithOptions() error = %v", err)
+	}
+	if token != "duplicate-custom-token" {
+		t.Fatalf("first token = %q, want duplicate-custom-token", token)
+	}
+	if _, err = mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID:  "first-custom-token-user",
+		Device:   "mobile",
+		DeviceID: "second",
+		Token:    "duplicate-custom-token",
+	}); !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("second LoginWithOptions() error = %v, want ErrInvalidParam", err)
+	}
+	if err = mgr.CheckLogin(ctx, token); err != nil {
+		t.Fatalf("existing token CheckLogin() error = %v, want nil", err)
+	}
+	terminals, err := mgr.GetTerminalListByLoginID(ctx, "first-custom-token-user")
+	if err != nil {
+		t.Fatalf("GetTerminalListByLoginID() error = %v", err)
+	}
+	if len(terminals) != 1 || terminals[0].Token != token || terminals[0].Device != "web" {
+		t.Fatalf("terminals = %+v, want only original web terminal", terminals)
+	}
+}
+
+// TestManagerLoginWithOptionsRejectsDuplicateTokenBeforeConcurrency verifies duplicate tokens fail before concurrency side effects. TestManagerLoginWithOptionsRejectsDuplicateTokenBeforeConcurrency 验证重复 Token 会在并发策略产生副作用前失败。
+func TestManagerLoginWithOptionsRejectsDuplicateTokenBeforeConcurrency(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.IsConcurrent = false
+		cfg.IsShare = false
+		cfg.ReplacedLoginExitMode = config.ReplacedLoginExitModeOldDevice
+	})
+
+	oldToken, err := mgr.Login(ctx, "duplicate-before-concurrency", "web")
+	if err != nil {
+		t.Fatalf("first Login() error = %v", err)
+	}
+	duplicate, err := mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID: "duplicate-holder",
+		Device:  "pc",
+		Token:   "duplicate-before-concurrency-token",
+	})
+	if err != nil {
+		t.Fatalf("holder LoginWithOptions() error = %v", err)
+	}
+	if duplicate != "duplicate-before-concurrency-token" {
+		t.Fatalf("holder token = %q, want duplicate-before-concurrency-token", duplicate)
+	}
+
+	if _, err = mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID: "duplicate-before-concurrency",
+		Device:  "mobile",
+		Token:   "duplicate-before-concurrency-token",
+	}); !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("duplicate LoginWithOptions() error = %v, want ErrInvalidParam", err)
+	}
+	if err = mgr.CheckLogin(ctx, oldToken); err != nil {
+		t.Fatalf("old token CheckLogin() error = %v, want still alive", err)
+	}
+	terminals, err := mgr.GetTerminalListByLoginID(ctx, "duplicate-before-concurrency")
+	if err != nil {
+		t.Fatalf("GetTerminalListByLoginID() error = %v", err)
+	}
+	if len(terminals) != 1 || terminals[0].Token != oldToken {
+		t.Fatalf("terminals = %+v, want only old token %q", terminals, oldToken)
+	}
+}
+
+// TestManagerLoginWithOptionsCreatesFreshSessionAfterExpiredTerminals verifies expired terminals lead to a new session. TestManagerLoginWithOptionsCreatesFreshSessionAfterExpiredTerminals 验证终端全部过期后会创建新 Session。
+func TestManagerLoginWithOptionsCreatesFreshSessionAfterExpiredTerminals(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.IsConcurrent = true
+		cfg.IsShare = false
+	})
+
+	first, err := mgr.Login(ctx, "expired-session-user", "web")
+	if err != nil {
+		t.Fatalf("first Login() error = %v", err)
+	}
+	if err = mgr.SetSessionValue(ctx, "expired-session-user", "theme", "dark"); err != nil {
+		t.Fatalf("SetSessionValue() error = %v", err)
+	}
+	if err = requireManagerTestStorage(t, mgr).Delete(ctx, mgr.getTokenKey(first)); err != nil {
+		t.Fatalf("Delete(token) error = %v", err)
+	}
+
+	second, err := mgr.Login(ctx, "expired-session-user", "mobile")
+	if err != nil {
+		t.Fatalf("second Login() error = %v", err)
+	}
+	if second == first {
+		t.Fatalf("second token = %q, want a new token", second)
+	}
+	value, ok, err := mgr.GetSessionValue(ctx, "expired-session-user", "theme")
+	if err != nil {
+		t.Fatalf("GetSessionValue() error = %v", err)
+	}
+	if ok || value != nil {
+		t.Fatalf("GetSessionValue() = %v, %v, want fresh session without old data", value, ok)
+	}
+	terminals, err := mgr.GetTerminalListByLoginID(ctx, "expired-session-user")
+	if err != nil {
+		t.Fatalf("GetTerminalListByLoginID() error = %v", err)
+	}
+	if len(terminals) != 1 || terminals[0].Token != second {
+		t.Fatalf("terminals = %+v, want only new token %q", terminals, second)
+	}
+}
+
+// TestManagerNonConcurrentReplacementPreservesAccountSession verifies login replacement retains account-level session state. TestManagerNonConcurrentReplacementPreservesAccountSession 验证登录顶替会保留账号级 Session 状态。
+func TestManagerNonConcurrentReplacementPreservesAccountSession(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.IsConcurrent = false
+		cfg.ConcurrencyScope = config.ConcurrencyScopeAccount
+		cfg.ReplacedLoginExitMode = config.ReplacedLoginExitModeOldDevice
+	})
+
+	firstToken, err := mgr.Login(ctx, "replacement-session-user", "web")
+	if err != nil {
+		t.Fatalf("first Login() error = %v", err)
+	}
+	if err = mgr.SetSessionValue(ctx, "replacement-session-user", "theme", "dark"); err != nil {
+		t.Fatalf("SetSessionValue() error = %v", err)
+	}
+	if err = mgr.AddPermissions(ctx, "replacement-session-user", []string{"profile:read"}); err != nil {
+		t.Fatalf("AddPermissions() error = %v", err)
+	}
+	if err = mgr.AddRoles(ctx, "replacement-session-user", []string{"member"}); err != nil {
+		t.Fatalf("AddRoles() error = %v", err)
+	}
+	before, err := mgr.GetSession(ctx, "replacement-session-user")
+	if err != nil {
+		t.Fatalf("GetSession(before replacement) error = %v", err)
+	}
+
+	secondToken, err := mgr.Login(ctx, "replacement-session-user", "mobile")
+	if err != nil {
+		t.Fatalf("second Login() error = %v", err)
+	}
+	after, err := mgr.GetSession(ctx, "replacement-session-user")
+	if err != nil {
+		t.Fatalf("GetSession(after replacement) error = %v", err)
+	}
+	if after.CreateTime != before.CreateTime || after.HistoryTerminalCount != before.HistoryTerminalCount+1 {
+		t.Fatalf("session identity/history after replacement = %d/%d, want %d/%d", after.CreateTime, after.HistoryTerminalCount, before.CreateTime, before.HistoryTerminalCount+1)
+	}
+	if after.Data["theme"] != "dark" || !sameStrings(after.Permissions, []string{"profile:read"}) || !sameStrings(after.Roles, []string{"member"}) {
+		t.Fatalf("account session state after replacement = data:%+v permissions:%v roles:%v", after.Data, after.Permissions, after.Roles)
+	}
+	if len(after.TerminalInfos) != 1 || after.TerminalInfos[0].Token != secondToken {
+		t.Fatalf("terminals after replacement = %+v, want only %q", after.TerminalInfos, secondToken)
+	}
+	if err = mgr.CheckLogin(ctx, firstToken); !errors.Is(err, derror.ErrTokenReplaced) {
+		t.Fatalf("first token CheckLogin() error = %v, want ErrTokenReplaced", err)
+	}
+}
+
+// TestManagerLoginWithOptionsDoesNotShareForeignSessionToken verifies token sharing never crosses account sessions. TestManagerLoginWithOptionsDoesNotShareForeignSessionToken 验证 Token 共享不会跨账号 Session。
+func TestManagerLoginWithOptionsDoesNotShareForeignSessionToken(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.IsConcurrent = true
+		cfg.IsShare = true
+	})
+
+	foreignToken, err := mgr.Login(ctx, "foreign-session-owner", "web", "browser")
+	if err != nil {
+		t.Fatalf("foreign Login() error = %v", err)
+	}
+	originalInfo, err := mgr.GetTokenInfo(ctx, foreignToken)
+	if err != nil {
+		t.Fatalf("GetTokenInfo(foreign) error = %v", err)
+	}
+	staleSession := mgr.strategy.normalize().CreateSession(mgr.config.AuthType, "stale-session-owner", time.Now().Unix())
+	staleSession.HistoryTerminalCount = 1
+	staleSession.TerminalInfos = append(staleSession.TerminalInfos, TerminalInfo{
+		Token:      foreignToken,
+		LoginID:    "stale-session-owner",
+		Device:     "web",
+		DeviceID:   "browser",
+		CreateTime: time.Now().Unix(),
+		Index:      1,
+	})
+	if err = mgr.saveToStorage(ctx, mgr.getSessionKey("stale-session-owner"), *staleSession); err != nil {
+		t.Fatalf("save stale session error = %v", err)
+	}
+
+	newToken, err := mgr.Login(ctx, "stale-session-owner", "web", "browser")
+	if err != nil {
+		t.Fatalf("stale owner Login() error = %v", err)
+	}
+	if newToken == foreignToken {
+		t.Fatalf("Login() reused foreign token %q, want new token", newToken)
+	}
+	latestInfo, err := mgr.GetTokenInfo(ctx, foreignToken)
+	if err != nil {
+		t.Fatalf("GetTokenInfo(foreign after login) error = %v", err)
+	}
+	if latestInfo.LoginID != originalInfo.LoginID {
+		t.Fatalf("foreign token owner = %q, want %q", latestInfo.LoginID, originalInfo.LoginID)
+	}
+	terminals, err := mgr.GetTerminalListByLoginID(ctx, "stale-session-owner")
+	if err != nil {
+		t.Fatalf("GetTerminalListByLoginID() error = %v", err)
+	}
+	if len(terminals) != 1 || terminals[0].Token != newToken {
+		t.Fatalf("stale owner terminals = %+v, want only new token %q", terminals, newToken)
+	}
+}
+
+// TestManagerLoginWithOptionsNormalizesDeviceAndRejectsBlankToken verifies device normalization and blank-token rejection. TestManagerLoginWithOptionsNormalizesDeviceAndRejectsBlankToken 验证设备信息规范化与空白 Token 拒绝逻辑。
+func TestManagerLoginWithOptionsNormalizesDeviceAndRejectsBlankToken(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.IsConcurrent = true
+		cfg.IsShare = true
+	})
+
+	token, err := mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID:  "normalize-options",
+		Device:   " web ",
+		DeviceID: " browser ",
+	})
+	if err != nil {
+		t.Fatalf("LoginWithOptions() error = %v", err)
+	}
+	terminal, err := mgr.GetTerminalInfoByToken(ctx, token)
+	if err != nil {
+		t.Fatalf("GetTerminalInfoByToken() error = %v", err)
+	}
+	if terminal.Device != "web" || terminal.DeviceID != "browser" {
+		t.Fatalf("terminal device = %q/%q, want web/browser", terminal.Device, terminal.DeviceID)
+	}
+	shared, err := mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID:  "normalize-options",
+		Device:   "web",
+		DeviceID: "browser",
+	})
+	if err != nil {
+		t.Fatalf("second LoginWithOptions() error = %v", err)
+	}
+	if shared != token {
+		t.Fatalf("shared token = %q, want %q", shared, token)
+	}
+	if _, err = mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID: "normalize-options",
+		Token:   "   ",
+	}); !errors.Is(err, derror.ErrInvalidToken) {
+		t.Fatalf("blank token LoginWithOptions() error = %v, want ErrInvalidToken", err)
+	}
+}
+
+// TestManagerLoginWithOptionsRollsBackSessionAfterTokenStorageFailure verifies failed token persistence removes the appended terminal. TestManagerLoginWithOptionsRollsBackSessionAfterTokenStorageFailure 验证 Token 持久化失败时会移除本次追加的终端。
+func TestManagerLoginWithOptionsRollsBackSessionAfterTokenStorageFailure(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.Timeout = 60
+		cfg.IsConcurrent = true
+		cfg.IsShare = false
+	})
+
+	if _, err := mgr.Login(ctx, "login-write-failure", "web", "first"); err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	storage := requireManagerTestStorage(t, mgr)
+	sessionKey := mgr.getSessionKey("login-write-failure")
+	if err := storage.Expire(ctx, sessionKey, 5*time.Second); err != nil {
+		t.Fatalf("Expire(session) error = %v", err)
+	}
+	mgr.storage = &managerTestFailingSetStorage{
+		FullStorage:     storage,
+		failKey:         mgr.getTokenKey("failed-token"),
+		failSetIfAbsent: true,
+	}
+	if _, err := mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID: "login-write-failure",
+		Device:  "mobile",
+		Token:   "failed-token",
+		Timeout: time.Hour,
+	}); !errors.Is(err, derror.ErrStorageUnavailable) {
+		t.Fatalf("failed LoginWithOptions() error = %v, want ErrStorageUnavailable", err)
+	}
+	ttl, err := mgr.GetStorage().TTL(ctx, sessionKey)
+	if err != nil {
+		t.Fatalf("TTL(session) error = %v", err)
+	}
+	if ttl <= 0 || ttl > time.Hour {
+		t.Fatalf("session TTL after failed login = %v, want positive and no more than requested timeout", ttl)
+	}
+	terminals, err := mgr.GetTerminalListByLoginID(ctx, "login-write-failure")
+	if err != nil {
+		t.Fatalf("GetTerminalListByLoginID() error = %v", err)
+	}
+	if len(terminals) != 1 || terminals[0].Token == "failed-token" {
+		t.Fatalf("terminals after failed login = %+v, want failed terminal removed", terminals)
+	}
+}
+
+// TestManagerLoginWithOptionsRollsBackTokenAndMetadataAfterMetadataFailure verifies partial token persistence is cleaned up. TestManagerLoginWithOptionsRollsBackTokenAndMetadataAfterMetadataFailure 验证 Token 元数据部分写入失败时会清理全部残留数据。
+func TestManagerLoginWithOptionsRollsBackTokenAndMetadataAfterMetadataFailure(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.Timeout = 60
+		cfg.RenewInterval = 30
+		cfg.ActiveTimeout = 30
+		cfg.IsConcurrent = true
+		cfg.IsShare = false
+	})
+
+	firstToken, err := mgr.Login(ctx, "login-metadata-failure", "web", "first")
+	if err != nil {
+		t.Fatalf("first Login() error = %v", err)
+	}
+	storage := requireManagerTestStorage(t, mgr)
+	failing := &managerTestFailingSetStorage{
+		FullStorage: storage,
+		failKey:     mgr.getActiveKey("failed-metadata-token"),
+	}
+	mgr.storage = failing
+
+	if _, err = mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID: "login-metadata-failure",
+		Device:  "mobile",
+		Token:   "failed-metadata-token",
+		Timeout: time.Minute,
+	}); !errors.Is(err, derror.ErrStorageUnavailable) {
+		t.Fatalf("failed LoginWithOptions() error = %v, want ErrStorageUnavailable", err)
+	}
+
+	terminals, err := mgr.GetTerminalListByLoginID(ctx, "login-metadata-failure")
+	if err != nil {
+		t.Fatalf("GetTerminalListByLoginID() error = %v", err)
+	}
+	if len(terminals) != 1 || terminals[0].Token != firstToken {
+		t.Fatalf("terminals after metadata failure = %+v, want only %q", terminals, firstToken)
+	}
+	for _, key := range []string{
+		mgr.getTokenKey("failed-metadata-token"),
+		mgr.getRenewKey("failed-metadata-token"),
+		mgr.getActiveKey("failed-metadata-token"),
+	} {
+		if storage.Exists(ctx, key) {
+			t.Fatalf("storage key %q remains after failed login", key)
+		}
+	}
+}
+
+// TestManagerLoginWithOptionsOverridesConcurrencyPolicy verifies per-login concurrency policy overrides. TestManagerLoginWithOptionsOverridesConcurrencyPolicy 验证单次登录可以覆盖并发策略。
+func TestManagerLoginWithOptionsOverridesConcurrencyPolicy(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, func(cfg *config.Config) {
+		cfg.IsConcurrent = true
+		cfg.IsShare = true
+		cfg.MaxLoginCount = config.NoLimit
+	})
+
+	isShare := false
+	maxLoginCount := int64(1)
+	overflowMode := config.LogoutModeKickout
+
+	first, err := mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID:            "policy-user",
+		Device:             "web",
+		DeviceID:           "a",
+		IsShare:            &isShare,
+		MaxLoginCount:      &maxLoginCount,
+		OverflowLogoutMode: &overflowMode,
+	})
+	if err != nil {
+		t.Fatalf("first LoginWithOptions() error = %v", err)
+	}
+	second, err := mgr.LoginWithOptions(ctx, LoginOptions{
+		LoginID:            "policy-user",
+		Device:             "mobile",
+		DeviceID:           "b",
+		IsShare:            &isShare,
+		MaxLoginCount:      &maxLoginCount,
+		OverflowLogoutMode: &overflowMode,
+	})
+	if err != nil {
+		t.Fatalf("second LoginWithOptions() error = %v", err)
+	}
+	if first == second {
+		t.Fatalf("LoginWithOptions() reused token %q, want new token", second)
+	}
+	if err = mgr.CheckLogin(ctx, first); !errors.Is(err, derror.ErrTokenKickout) {
+		t.Fatalf("first CheckLogin() error = %v, want ErrTokenKickout", err)
+	}
+	if err = mgr.CheckLogin(ctx, second); err != nil {
+		t.Fatalf("second CheckLogin() error = %v", err)
+	}
+}
+
+// TestManagerLoginWithOptionsRejectsInvalidPolicyOverrides verifies invalid concurrency overrides are rejected before login. TestManagerLoginWithOptionsRejectsInvalidPolicyOverrides 验证非法并发策略覆盖会在登录前被拒绝。
+func TestManagerLoginWithOptionsRejectsInvalidPolicyOverrides(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, nil)
+
+	zeroMaxLoginCount := int64(0)
+	invalidMaxLoginCount := int64(-2)
+	invalidReplacedMode := config.ReplacedLoginExitMode("bad")
+	invalidOverflowMode := config.LogoutMode("bad")
+
+	tests := []struct {
+		name string
+		opts LoginOptions
+	}{
+		{
+			name: "zero max login count",
+			opts: LoginOptions{LoginID: "invalid-policy-zero", MaxLoginCount: &zeroMaxLoginCount},
+		},
+		{
+			name: "invalid max login count",
+			opts: LoginOptions{LoginID: "invalid-policy-negative", MaxLoginCount: &invalidMaxLoginCount},
+		},
+		{
+			name: "invalid replaced mode",
+			opts: LoginOptions{LoginID: "invalid-policy-replaced", ReplacedLoginExitMode: &invalidReplacedMode},
+		},
+		{
+			name: "invalid overflow mode",
+			opts: LoginOptions{LoginID: "invalid-policy-overflow", OverflowLogoutMode: &invalidOverflowMode},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := mgr.LoginWithOptions(ctx, tt.opts); !errors.Is(err, derror.ErrInvalidParam) {
+				t.Fatalf("LoginWithOptions() error = %v, want ErrInvalidParam", err)
+			}
+		})
+	}
+}
+
+// TestManagerSessionData verifies session data set, get, and delete operations. TestManagerSessionData 验证 Session 数据的设置、读取与删除操作。
+func TestManagerSessionData(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, nil)
+
+	if _, err := mgr.Login(ctx, "session-user"); err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if err := mgr.SetSessionValue(ctx, "session-user", "theme", "dark"); err != nil {
+		t.Fatalf("SetSessionValue() error = %v", err)
+	}
+	value, ok, err := mgr.GetSessionValue(ctx, "session-user", "theme")
+	if err != nil {
+		t.Fatalf("GetSessionValue() error = %v", err)
+	}
+	if !ok || value != "dark" {
+		t.Fatalf("GetSessionValue() = %v, %v, want dark, true", value, ok)
+	}
+	if err = mgr.DeleteSessionValue(ctx, "session-user", "theme"); err != nil {
+		t.Fatalf("DeleteSessionValue() error = %v", err)
+	}
+	value, ok, err = mgr.GetSessionValue(ctx, "session-user", "theme")
+	if err != nil {
+		t.Fatalf("GetSessionValue(after delete) error = %v", err)
+	}
+	if ok || value != nil {
+		t.Fatalf("GetSessionValue(after delete) = %v, %v, want nil, false", value, ok)
+	}
+
+	if err = mgr.SetSessionValue(ctx, "", "theme", "dark"); !errors.Is(err, derror.ErrIDIsEmpty) {
+		t.Fatalf("SetSessionValue(empty id) error = %v, want ErrIDIsEmpty", err)
+	}
+	if _, _, err = mgr.GetSessionValue(ctx, "session-user", ""); !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("GetSessionValue(empty key) error = %v, want ErrInvalidParam", err)
+	}
+}
+
+// TestManagerTerminate verifies option-driven terminal termination behavior. TestManagerTerminate 验证基于选项的终端下线行为。
+func TestManagerTerminate(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("default logout by token", func(t *testing.T) {
+		mgr := newTestManager(t, nil)
+		token, err := mgr.Login(ctx, "term-user", "web")
+		if err != nil {
+			t.Fatalf("Login() error = %v", err)
+		}
+		if err = mgr.Terminate(ctx, TerminateOptions{Token: token}); err != nil {
+			t.Fatalf("Terminate() error = %v", err)
+		}
+		if err = mgr.CheckLogin(ctx, token); !errors.Is(err, derror.ErrInvalidToken) {
+			t.Fatalf("CheckLogin() error = %v, want ErrInvalidToken", err)
+		}
+	})
+
+	t.Run("kickout by device id", func(t *testing.T) {
+		mgr := newTestManager(t, nil)
+		first, err := mgr.Login(ctx, "term-device-user", "web", "a")
+		if err != nil {
+			t.Fatalf("first Login() error = %v", err)
+		}
+		second, err := mgr.Login(ctx, "term-device-user", "web", "b")
+		if err != nil {
+			t.Fatalf("second Login() error = %v", err)
+		}
+		if err = mgr.Terminate(ctx, TerminateOptions{
+			Action:   TerminateActionKickout,
+			LoginID:  "term-device-user",
+			Device:   "web",
+			DeviceID: "a",
+		}); err != nil {
+			t.Fatalf("Terminate(kickout device id) error = %v", err)
+		}
+		if err = mgr.CheckLogin(ctx, first); !errors.Is(err, derror.ErrTokenKickout) {
+			t.Fatalf("first CheckLogin() error = %v, want ErrTokenKickout", err)
+		}
+		if err = mgr.CheckLogin(ctx, second); err != nil {
+			t.Fatalf("second CheckLogin() error = %v", err)
+		}
+	})
+
+	t.Run("invalid options", func(t *testing.T) {
+		mgr := newTestManager(t, nil)
+		if err := mgr.Terminate(ctx, TerminateOptions{}); !errors.Is(err, derror.ErrIDIsEmpty) {
+			t.Fatalf("Terminate(empty) error = %v, want ErrIDIsEmpty", err)
+		}
+		if err := mgr.Terminate(ctx, TerminateOptions{Token: "x", Action: "unknown"}); !errors.Is(err, derror.ErrInvalidParam) {
+			t.Fatalf("Terminate(invalid action) error = %v, want ErrInvalidParam", err)
+		}
+	})
+}
+
+// TestManagerStrategy verifies replaceable session and access matching strategies. TestManagerStrategy 验证可替换的 Session 创建与访问匹配策略。
+func TestManagerStrategy(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, nil)
+
+	strategy := mgr.GetStrategy()
+	if strategy == nil {
+		t.Fatal("GetStrategy() = nil, want default strategy")
+	}
+	if !strategy.PermissionMatcher("order/*", "order/read") {
+		t.Fatal("default PermissionMatcher(order/*, order/read) = false, want true")
+	}
+
+	customRoleMatcher := func(pattern, role string) bool {
+		return strings.EqualFold(pattern, role)
+	}
+	customMgr := newTestManagerWithStrategy(t, &Strategy{RoleMatcher: customRoleMatcher})
+	if _, err := customMgr.Login(ctx, "strategy-user"); err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if err := customMgr.AddRoles(ctx, "strategy-user", []string{"Admin"}); err != nil {
+		t.Fatalf("AddRoles() error = %v", err)
+	}
+	if !customMgr.HasRole(ctx, "strategy-user", "admin") {
+		t.Fatal("HasRole(admin) = false, want custom role matcher to ignore case")
+	}
+}
+
+// TestManagerStrategyOptionSnapshotsInput verifies strategy options do not mutate or retain caller-owned configuration. TestManagerStrategyOptionSnapshotsInput 验证策略选项不会修改或继续持有调用方配置。
+func TestManagerStrategyOptionSnapshotsInput(t *testing.T) {
+	customRoleMatcher := func(pattern, role string) bool {
+		return strings.EqualFold(pattern, role)
+	}
+	strategy := &Strategy{RoleMatcher: customRoleMatcher}
+	mgr := newTestManagerWithStrategy(t, strategy)
+
+	if strategy.PermissionMatcher != nil || strategy.CreateSession != nil {
+		t.Fatal("WithStrategy() mutated missing hooks on caller strategy")
+	}
+	strategy.RoleMatcher = func(string, string) bool { return false }
+
+	managerStrategy := mgr.GetStrategy()
+	if managerStrategy == strategy {
+		t.Fatal("GetStrategy() retained caller strategy pointer")
+	}
+	if !managerStrategy.RoleMatcher("Admin", "admin") {
+		t.Fatal("manager strategy changed after caller strategy mutation")
+	}
+	if managerStrategy.PermissionMatcher == nil || managerStrategy.CreateSession == nil {
+		t.Fatal("manager strategy defaults were not completed")
+	}
+}
+
+// TestManagerPermissionShortcutMatrix verifies permission shortcut methods across logic combinations. TestManagerPermissionShortcutMatrix 验证权限快捷方法的逻辑组合矩阵。
+func TestManagerPermissionShortcutMatrix(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, nil)
+	token, err := mgr.Login(ctx, "permission-shortcuts", "web", "browser")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if err = mgr.AddPermissions(ctx, "permission-shortcuts", []string{"article:*", "order:read", "profile:view"}); err != nil {
+		t.Fatalf("AddPermissions() error = %v", err)
+	}
+
+	permissions, err := mgr.GetPermissionsByToken(ctx, token)
+	if err != nil {
+		t.Fatalf("GetPermissionsByToken() error = %v", err)
+	}
+	if !sameStrings(permissions, []string{"article:*", "order:read", "profile:view"}) {
+		t.Fatalf("GetPermissionsByToken() = %v, want stored permissions", permissions)
+	}
+	if err = mgr.CheckPermission(ctx, "permission-shortcuts", "article:create"); err != nil {
+		t.Fatalf("CheckPermission(wildcard) error = %v", err)
+	}
+	if err = mgr.CheckPermissionAnd(ctx, "permission-shortcuts", []string{"article:update", "order:read"}); err != nil {
+		t.Fatalf("CheckPermissionAnd() error = %v", err)
+	}
+	if err = mgr.CheckPermissionAndByToken(ctx, token, []string{"article:delete", "profile:view"}); err != nil {
+		t.Fatalf("CheckPermissionAndByToken() error = %v", err)
+	}
+	if err = mgr.CheckPermissionOrByToken(ctx, token, []string{"missing", "order:read"}); err != nil {
+		t.Fatalf("CheckPermissionOrByToken() error = %v", err)
+	}
+	if !mgr.HasPermissionsOr(ctx, "permission-shortcuts", []string{"missing", "profile:view"}) {
+		t.Fatal("HasPermissionsOr() = false, want true")
+	}
+	if mgr.HasPermissionsOr(ctx, "permission-shortcuts", []string{"missing", ""}) {
+		t.Fatal("HasPermissionsOr(missing) = true, want false")
+	}
+	if err = mgr.RemovePermissions(ctx, "permission-shortcuts", []string{"order:read"}); err != nil {
+		t.Fatalf("RemovePermissions() error = %v", err)
+	}
+	if err = mgr.CheckPermissionOr(ctx, "permission-shortcuts", []string{"missing", "order:read"}); !errors.Is(err, derror.ErrPermissionDenied) {
+		t.Fatalf("CheckPermissionOr(removed) error = %v, want ErrPermissionDenied", err)
+	}
+	if err = mgr.CheckPermissionAnd(ctx, "permission-shortcuts", []string{"article:update", "order:read"}); !errors.Is(err, derror.ErrPermissionDenied) {
+		t.Fatalf("CheckPermissionAnd(removed) error = %v, want ErrPermissionDenied", err)
+	}
+	if err = mgr.CheckPermission(ctx, "permission-shortcuts", ""); !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("CheckPermission(empty) error = %v, want ErrInvalidParam", err)
+	}
+}
+
+// TestManagerRoleShortcutMatrix verifies role shortcut methods across logic combinations. TestManagerRoleShortcutMatrix 验证角色快捷方法的逻辑组合矩阵。
+func TestManagerRoleShortcutMatrix(t *testing.T) {
+	ctx := context.Background()
+	mgr := newTestManager(t, nil)
+	token, err := mgr.Login(ctx, "role-shortcuts", "web", "browser")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if err = mgr.AddRoles(ctx, "role-shortcuts", []string{"admin", "editor", "auditor"}); err != nil {
+		t.Fatalf("AddRoles() error = %v", err)
+	}
+
+	roles, err := mgr.GetRoles(ctx, "role-shortcuts")
+	if err != nil {
+		t.Fatalf("GetRoles() error = %v", err)
+	}
+	if !sameStrings(roles, []string{"admin", "editor", "auditor"}) {
+		t.Fatalf("GetRoles() = %v, want stored roles", roles)
+	}
+	if err = mgr.CheckRoleByToken(ctx, token, "admin"); err != nil {
+		t.Fatalf("CheckRoleByToken() error = %v", err)
+	}
+	if err = mgr.CheckRoleAnd(ctx, "role-shortcuts", []string{"admin", "editor"}); err != nil {
+		t.Fatalf("CheckRoleAnd() error = %v", err)
+	}
+	if err = mgr.CheckRoleAndByToken(ctx, token, []string{"admin", "auditor"}); err != nil {
+		t.Fatalf("CheckRoleAndByToken() error = %v", err)
+	}
+	if err = mgr.CheckRoleOr(ctx, "role-shortcuts", []string{"missing", "editor"}); err != nil {
+		t.Fatalf("CheckRoleOr() error = %v", err)
+	}
+	if err = mgr.CheckRoleOrByToken(ctx, token, []string{"missing", "auditor"}); err != nil {
+		t.Fatalf("CheckRoleOrByToken() error = %v", err)
+	}
+	if !mgr.HasRolesAndByToken(ctx, token, []string{"admin", "editor"}) {
+		t.Fatal("HasRolesAndByToken() = false, want true")
+	}
+	if !mgr.HasRolesOr(ctx, "role-shortcuts", []string{"missing", "auditor"}) {
+		t.Fatal("HasRolesOr() = false, want true")
+	}
+	if mgr.HasRolesOr(ctx, "role-shortcuts", []string{"missing", ""}) {
+		t.Fatal("HasRolesOr(missing) = true, want false")
+	}
+	if err = mgr.RemoveRoles(ctx, "role-shortcuts", []string{"editor"}); err != nil {
+		t.Fatalf("RemoveRoles() error = %v", err)
+	}
+	if err = mgr.CheckRoleOr(ctx, "role-shortcuts", []string{"missing", "editor"}); !errors.Is(err, derror.ErrRoleDenied) {
+		t.Fatalf("CheckRoleOr(removed) error = %v, want ErrRoleDenied", err)
+	}
+	if err = mgr.CheckRoleAnd(ctx, "role-shortcuts", []string{"admin", "editor"}); !errors.Is(err, derror.ErrRoleDenied) {
+		t.Fatalf("CheckRoleAnd(removed) error = %v, want ErrRoleDenied", err)
+	}
+	if err = mgr.CheckRole(ctx, "role-shortcuts", ""); !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("CheckRole(empty) error = %v, want ErrInvalidParam", err)
+	}
+}
+
+// TestManagerLifecycleHelpers verifies manager background helpers and idempotent resource cleanup. TestManagerLifecycleHelpers 验证 Manager 后台辅助能力与资源幂等释放。
+func TestManagerLifecycleHelpers(t *testing.T) {
+	logger := &managerLifecycleTestLogger{}
+	pool := &managerLifecycleTestPool{running: 1, capacity: 2, usage: 0.5}
+	mgr := newTestManagerWithRuntime(t, pool, logger)
+
+	mgr.StartRenewPoolStatusLogger(5 * time.Millisecond)
+	waitForManagerTest(t, 100*time.Millisecond, func() bool {
+		return logger.infofCount() > 0
+	})
+	mgr.CloseManager()
+	mgr.CloseManager()
+
+	if pool.stopCount() != 1 {
+		t.Fatalf("pool stop count = %d, want 1", pool.stopCount())
+	}
+	if logger.flushCount() != 1 || logger.closeCount() != 1 {
+		t.Fatalf("logger flush/close count = %d/%d, want 1/1", logger.flushCount(), logger.closeCount())
+	}
+	if mgr.background != nil {
+		t.Fatal("manager background state still exists after CloseManager")
+	}
+}
+
+func newTestManagerWithRuntime(t *testing.T, pool adapter.Pool, logger adapter.Log) *Manager {
+	t.Helper()
+
+	cfg := config.DefaultConfig()
+	cfg.IsPrintBanner = false
+	cfg.IsLog = false
+	cfg.AsyncEvent = false
+	cfg.AutoRenew = false
+	cfg.RenewInterval = config.NoLimit
+	cfg.ActiveTimeout = config.NoLimit
+	applyManagerTestStorageConfig(t, cfg)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("test config invalid: %v", err)
+	}
+
+	return NewManager(
+		cfg,
+		&managerTestGenerator{},
+		newManagerTestStorageForTest(t, cfg),
+		managerTestCodec{},
+		logger,
+		pool,
+		nil,
+	)
+}
+
+func newTestManagerWithStrategy(t *testing.T, strategy *Strategy) *Manager {
+	t.Helper()
+
+	cfg := config.DefaultConfig()
+	cfg.IsPrintBanner = false
+	cfg.IsLog = false
+	cfg.AsyncEvent = false
+	cfg.AutoRenew = false
+	cfg.RenewInterval = config.NoLimit
+	cfg.ActiveTimeout = config.NoLimit
+	applyManagerTestStorageConfig(t, cfg)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("test config invalid: %v", err)
+	}
+
+	mgr := NewManager(
+		cfg,
+		&managerTestGenerator{},
+		newManagerTestStorageForTest(t, cfg),
+		managerTestCodec{},
+		adapter.NewNopLogger(),
+		nil,
+		nil,
+		WithStrategy(strategy),
+	)
+	t.Cleanup(mgr.CloseManager)
+	return mgr
+}
+
+type managerLifecycleTestPool struct {
+	mu       sync.Mutex
+	running  int
+	capacity int
+	usage    float64
+	stop     int
+}
+
+func (p *managerLifecycleTestPool) Submit(task func()) error {
+	go task()
+	return nil
+}
+
+func (p *managerLifecycleTestPool) Stop() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stop++
+}
+
+func (p *managerLifecycleTestPool) Stats() (int, int, float64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.running, p.capacity, p.usage
+}
+
+func (p *managerLifecycleTestPool) stopCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.stop
+}
+
+type managerLifecycleTestLogger struct {
+	mu         sync.Mutex
+	infof      int
+	flush      int
+	close      int
+	lastFormat string
+}
+
+func (l *managerLifecycleTestLogger) Print(v ...any)                 {}
+func (l *managerLifecycleTestLogger) Printf(format string, v ...any) {}
+func (l *managerLifecycleTestLogger) Debug(v ...any)                 {}
+func (l *managerLifecycleTestLogger) Debugf(format string, v ...any) {}
+func (l *managerLifecycleTestLogger) Info(v ...any)                  {}
+func (l *managerLifecycleTestLogger) Warn(v ...any)                  {}
+func (l *managerLifecycleTestLogger) Warnf(format string, v ...any)  {}
+func (l *managerLifecycleTestLogger) Error(v ...any)                 {}
+func (l *managerLifecycleTestLogger) Errorf(format string, v ...any) {}
+
+func (l *managerLifecycleTestLogger) Infof(format string, v ...any) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.infof++
+	l.lastFormat = format
+}
+
+func (l *managerLifecycleTestLogger) Close() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.close++
+}
+
+func (l *managerLifecycleTestLogger) Flush() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.flush++
+}
+
+func (l *managerLifecycleTestLogger) SetLevel(adapter.LogLevel) {}
+func (l *managerLifecycleTestLogger) SetPrefix(string)          {}
+func (l *managerLifecycleTestLogger) SetStdout(bool)            {}
+func (l *managerLifecycleTestLogger) LogPath() string           { return "" }
+func (l *managerLifecycleTestLogger) DropCount() uint64         { return 0 }
+
+func (l *managerLifecycleTestLogger) infofCount() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.infof
+}
+
+func (l *managerLifecycleTestLogger) flushCount() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.flush
+}
+
+func (l *managerLifecycleTestLogger) closeCount() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.close
+}

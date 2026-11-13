@@ -41,8 +41,7 @@ func (s Signer) AttachSign(values url.Values) url.Values {
 	return copied
 }
 
-// Verify checks whether params carry a valid signature. Verify 校验参数签名是否有效。
-// Empty secrets and multiple signature values are rejected. 拒绝空密钥及多个签名值。
+// Verify validates parameter signatures and rejects empty secrets or multiple signature values. Verify 校验参数签名，并拒绝空密钥或多个签名值。
 func (s Signer) Verify(values url.Values) bool {
 	if s.secret == "" || len(values[s.params.Sign]) != 1 {
 		return false
@@ -70,7 +69,7 @@ func (s Signer) canonical(values url.Values) string {
 	for _, key := range keys {
 		// Preserve value order because URL.Values.Get reads the first value. 保留同名参数值的顺序，因为 URL.Values.Get 读取第一个值。
 		for _, value := range values[key] {
-			// URL-encode key and value to prevent signature collision对键值进行URL编码，防止签名碰撞
+			// URL-encode keys and values to prevent signature collisions. 对键和值进行 URL 编码，防止签名碰撞。
 			parts = append(parts, url.QueryEscape(key)+"="+url.QueryEscape(value))
 		}
 	}

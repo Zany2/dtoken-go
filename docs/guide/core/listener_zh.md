@@ -1,10 +1,10 @@
 # 事件监听指南
 
-[English](../core/listener.md) | 中文文档
+[English](../event.md) | 中文文档
 
 ## 当前状态
 
-当前项目内部已经实现了完整的事件系统，底层代码位于 `core/listener`。
+当前项目内部已经实现了完整的事件系统，底层代码位于 `event`。
 
 它覆盖认证与会话生命周期、访问检查与变更、刷新令牌、Nonce、Ticket、ShortKey 和 OAuth2 等流程。
 
@@ -25,7 +25,7 @@ coreEventMgr := mgr.GetEventManager()
 
 ## 内部事件类型
 
-当前定义在 `core/listener/consts.go` 中的内置事件有：
+当前定义在 `event/consts.go` 中的内置事件有：
 
 | 事件 | 说明 |
 |------|------|
@@ -72,7 +72,7 @@ coreEventMgr := mgr.GetEventManager()
 
 ## EventData 结构
 
-事件载荷结构在 `core/listener/listener.go` 中定义：
+事件载荷结构在 `event/listener.go` 中定义：
 
 ```go
 type EventData struct {
@@ -130,13 +130,13 @@ Ticket 和 ShortKey 事件中的 `ExtraKeyTTL` 表示事件生成时的剩余秒
 
 ## 事件管理器 API
 
-`core/listener` 是公开包，也可以独立使用。
+`event` 是公开包，也可以独立使用。
 
 ### 创建监听管理器
 
 ```go
 import (
-    "github.com/Zany2/dtoken-go/core/listener"
+    listener "github.com/Zany2/dtoken-go/event"
 )
 
 eventMgr := listener.NewManager()

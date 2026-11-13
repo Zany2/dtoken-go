@@ -2,7 +2,7 @@
 package hertz
 
 import (
-	"github.com/Zany2/dtoken-go/core/manager"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 )
 

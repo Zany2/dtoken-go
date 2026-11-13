@@ -2,7 +2,7 @@
 package gin
 
 import (
-	"github.com/Zany2/dtoken-go/core/manager"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	"github.com/gin-gonic/gin"
 )
 

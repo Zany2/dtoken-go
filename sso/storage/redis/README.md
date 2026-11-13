@@ -27,7 +27,7 @@ defer server.Close()
 You can also use a Redis config:
 
 ```go
-import redisstorage "github.com/Zany2/dtoken-go/com/storage/redis"
+import redisstorage "github.com/Zany2/dtoken-go/storage/redis"
 
 server, err := ssoredis.NewServerFromConfig(&redisstorage.Config{
 	Host:     "127.0.0.1",

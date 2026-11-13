@@ -2,14 +2,37 @@
 
 本页整理 DToken-Go 在普通登录、登出、权限和角色 API 之外可以直接使用的高级能力。
 
-示例假设已经注册 Manager。Nonce、Ticket 和 ShortKey 为可选模块，应在 Builder 调用 `Build()` 前，按需通过 `EnableNonce()`、`EnableTicket()` 和 `EnableShortKey()` 启用，详见[可选模块](../reference/configuration_zh.md)。Token Introspection 和业务 Refresh Token 无需这些开关。
+
+
+## 显式组合
+
+以下片段使用根认证实例和独立能力服务。HTTP 接入通过 WithCapabilities 注入，不需要注册全局 Manager。
+
+```go
+import (
+    dt "github.com/Zany2/dtoken-go"
+    "github.com/Zany2/dtoken-go/nonce"
+    "github.com/Zany2/dtoken-go/ticket"
+    "github.com/Zany2/dtoken-go/shortkey"
+)
+
+auth, err := dt.NewBuilder().Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
+cfg := auth.Config()
+nonceService := nonce.NewService(nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage()), auth)
+ticketService := ticket.NewService(ticket.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
+shortKeyService := shortkey.NewService(shortkey.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
+```
 
 ## Token Introspection
 
 Token Introspection 用来无续期副作用地检查 token 当前是否活跃，并返回归属信息、TTL、权限、角色、扩展数据和非活跃原因。
 
 ```go
-info, err := dtoken.IntrospectToken(ctx, token)
+info, err := auth.IntrospectToken(ctx, token)
 if err != nil {
 	return err
 }
@@ -20,7 +43,7 @@ if !info.Active {
 fmt.Println(info.LoginID, info.ExpiresIn, info.Permissions, info.Roles)
 ```
 
-各框架包也会导出同名 API。例如 GoFrame 项目只引入 `github.com/Zany2/dtoken-go/integrations/gf` 后，可以直接调用 `gfdt.IntrospectToken(...)`。
+框架请求使用 GetDTokenContext(r) 返回的上下文执行 IntrospectToken；全局调用使用 global 包，框架不再转导出。
 
 ## Refresh Token
 
@@ -33,23 +56,23 @@ fmt.Println(info.LoginID, info.ExpiresIn, info.Permissions, info.Roles)
 消费优先使用 `AtomicStorage.GetAndDelete`；基础存储通过同一 Manager 的账号锁串行处理，不保证跨实例或跨进程原子消费。
 
 ```go
-pair, err := dtoken.LoginWithRefreshToken(ctx, "user-1001")
+pair, err := auth.LoginWithRefreshToken(ctx, "user-1001")
 if err != nil {
 	return err
 }
 
-nextPair, err := dtoken.RefreshToken(ctx, pair.RefreshToken)
+nextPair, err := auth.RefreshToken(ctx, pair.RefreshToken)
 if err != nil {
 	return err
 }
 
-ttl, err := dtoken.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
+ttl, err := auth.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
 if err != nil {
 	return err
 }
 fmt.Println(ttl)
 
-_ = dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
+_ = auth.RevokeRefreshToken(ctx, nextPair.RefreshToken)
 ```
 
 默认 refresh token 有效期是 `30` 天。可以通过 `RefreshTokenTimeout(...)` 设置全局有效期，也可以通过 `LoginWithRefreshTokenOptions(...)` 为单次登录覆盖有效期。
@@ -63,12 +86,12 @@ Ticket 校验和状态回写使用精确截止时间 `ExpiresAt`。`CreateTime` 
 消费时优先使用 `adapter.AtomicStorage`。仅提供基础 `Storage` 时，消费和撤销在同一个 Ticket 管理器实例内串行执行；该回退不保证不同管理器实例或进程之间的原子消费。多个实例共享票据时应使用原子存储。
 
 ```go
-createdTicket, err := dtoken.CreateTicket(ctx, "user-1001")
+createdTicket, err := ticketService.CreateTicket(ctx, ticket.CreateOptions{LoginID: "user-1001"})
 if err != nil {
 	return err
 }
 
-result, err := dtoken.ConsumeTicket(ctx, createdTicket.Ticket)
+result, err := ticketService.ConsumeTicket(ctx, createdTicket.Ticket)
 if err != nil {
 	return err
 }
@@ -84,17 +107,17 @@ fmt.Println(result.Ticket.LoginID)
 创建写入、确认、消费和撤销在同一个 ShortKey 管理器实例内串行执行。创建和消费优先使用 `adapter.AtomicStorage`，基础 `Storage` 提供本地回退。实例锁不协调其他管理器实例或进程；原子创建和消费也不使跨实例的确认、撤销成为事务操作。
 
 ```go
-createdKey, err := dtoken.CreateShortKey(ctx)
+createdKey, err := shortKeyService.CreateShortKey(ctx, shortkey.CreateOptions{})
 if err != nil {
 	return err
 }
 
-confirmedKey, err := dtoken.ConfirmShortKey(ctx, createdKey.Key, "user-1001")
+confirmedKey, err := shortKeyService.ConfirmShortKey(ctx, createdKey.Key, shortkey.ConfirmOptions{LoginID: "user-1001"})
 if err != nil {
 	return err
 }
 
-result, err := dtoken.ConsumeShortKey(ctx, confirmedKey.Key)
+result, err := shortKeyService.ConsumeShortKey(ctx, confirmedKey.Key)
 if err != nil {
 	return err
 }
@@ -149,12 +172,12 @@ fmt.Println(info.LoginID)
 用于一次性随机值生成、校验和消费，防止请求重放。
 
 ```go
-nonce, err := dtoken.GenerateNonce(ctx)
+nonce, err := nonceService.GenerateNonce(ctx)
 if err != nil {
 	return err
 }
 
-err = dtoken.VerifyAndConsumeNonce(ctx, nonce)
+err = nonceService.VerifyAndConsumeNonce(ctx, nonce)
 ```
 
 ## 事件监听
@@ -162,7 +185,7 @@ err = dtoken.VerifyAndConsumeNonce(ctx, nonce)
 事件系统可以监听登录、登出、续期、权限、角色、封禁、解封等核心生命周期事件。
 
 ```go
-eventMgr := mgr.GetEventManager()
+eventMgr := auth.EventManager()
 eventMgr.RegisterFunc(listener.EventAll, func(data *listener.EventData) {
 	fmt.Println(data.Event, data.LoginID, data.Token)
 })

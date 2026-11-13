@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
-	"github.com/Zany2/dtoken-go/core/derror"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
 	gincoreapp "github.com/Zany2/dtoken-go/tests/gin_core_app"
 )
 

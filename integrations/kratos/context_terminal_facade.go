@@ -4,7 +4,7 @@ package kratos
 import (
 	"context"
 
-	"github.com/Zany2/dtoken-go/core/manager"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 )
 
 // KickoutByDeviceByCtx kicks out current user by device KickoutByDeviceByCtx 按设备踢出当前用户

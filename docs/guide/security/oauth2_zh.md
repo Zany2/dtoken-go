@@ -6,9 +6,8 @@
 
 当前项目内置了一个轻量级 OAuth2 服务端实现，核心代码位于：
 
-- `core/oauth2`
-- `core/manager/feature_oauth2.go`
-- `dtoken` 中对应的 OAuth2 包装函数
+- `oauth2`
+- oauth2.Service
 
 ## 当前支持的授权类型
 
@@ -36,7 +35,27 @@ oauth2.GrantTypePassword
 - Access Token：`2` 小时
 - Refresh Token：`30` 天
 
-使用全局入口前，需要通过 `dtoken.NewBuilder().EnableOAuth2()` 启用可选模块。授权码保存精确的 `ExpiresAt` 截止时间；不含该字段的旧记录继续按 `CreateTime + ExpiresIn` 校验。
+
+
+## 显式组合服务
+
+使用独立 OAuth2 Manager 与 Service；auth 仅提供共享组件和可选事件发布。
+
+```go
+import (
+    "github.com/Zany2/dtoken-go"
+    "github.com/Zany2/dtoken-go/oauth2"
+)
+
+auth, err := dtoken.NewBuilder().Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
+cfg := auth.Config()
+server := oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+service := oauth2.NewService(server, auth)
+```
 
 ## 客户端模型
 
@@ -56,7 +75,7 @@ client := &oauth2.Client{
 ## 注册客户端
 
 ```go
-err := dtoken.RegisterOAuth2Client(&oauth2.Client{
+err := service.RegisterOAuth2Client(&oauth2.Client{
 	ClientID:     "web-app",
 	ClientSecret: "secret",
 	RedirectURIs: []string{"http://localhost:3000/callback"},
@@ -70,10 +89,10 @@ err := dtoken.RegisterOAuth2Client(&oauth2.Client{
 
 ## 统一令牌入口
 
-当前 `dtoken` 提供统一入口：
+当前 `oauth2.Service` 提供统一入口：
 
 ```go
-token, err := dtoken.OAuth2Token(ctx, &oauth2.TokenRequest{
+token, err := service.OAuth2Token(ctx, &oauth2.TokenRequest{
 	GrantType:    oauth2.GrantTypeClientCredentials,
 	ClientID:     "server-app",
 	ClientSecret: "secret",
@@ -86,7 +105,7 @@ token, err := dtoken.OAuth2Token(ctx, &oauth2.TokenRequest{
 ### 生成授权码
 
 ```go
-authCode, err := dtoken.GenerateOAuth2AuthorizationCode(
+authCode, err := service.GenerateOAuth2AuthorizationCode(
 	ctx,
 	"web-app",
 	"10001",
@@ -105,7 +124,7 @@ authCode, err := dtoken.GenerateOAuth2AuthorizationCode(
 ### 交换 Token
 
 ```go
-token, err := dtoken.ExchangeOAuth2CodeForToken(
+token, err := service.ExchangeOAuth2CodeForToken(
 	ctx,
 	authCode.Code,
 	"web-app",
@@ -119,7 +138,7 @@ token, err := dtoken.ExchangeOAuth2CodeForToken(
 客户端可以把授权码和 proof key 绑定起来。
 
 ```go
-authCode, err := dtoken.GenerateOAuth2AuthorizationCodeWithPKCE(
+authCode, err := service.GenerateOAuth2AuthorizationCodeWithPKCE(
 	ctx,
 	"mobile-app",
 	"10001",
@@ -129,7 +148,7 @@ authCode, err := dtoken.GenerateOAuth2AuthorizationCodeWithPKCE(
 	oauth2.CodeChallengeMethodS256,
 )
 
-token, err := dtoken.ExchangeOAuth2CodeForTokenWithPKCE(
+token, err := service.ExchangeOAuth2CodeForTokenWithPKCE(
 	ctx,
 	authCode.Code,
 	"mobile-app",
@@ -160,7 +179,7 @@ type AccessToken struct {
 ## 客户端凭证模式
 
 ```go
-token, err := dtoken.OAuth2ClientCredentialsToken(
+token, err := service.OAuth2ClientCredentialsToken(
 	ctx,
 	"server-app",
 	"secret",
@@ -180,7 +199,7 @@ validateUser := func(username, password string) (string, error) {
 	return "", fmt.Errorf("invalid credentials")
 }
 
-token, err := dtoken.OAuth2PasswordGrantToken(
+token, err := service.OAuth2PasswordGrantToken(
 	ctx,
 	"native-app",
 	"secret",
@@ -196,7 +215,7 @@ token, err := dtoken.OAuth2PasswordGrantToken(
 ## 刷新 Access Token
 
 ```go
-newToken, err := dtoken.RefreshOAuth2AccessToken(
+newToken, err := service.RefreshOAuth2AccessToken(
 	ctx,
 	"web-app",
 	token.RefreshToken,
@@ -217,15 +236,15 @@ newToken, err := dtoken.RefreshOAuth2AccessToken(
 ## 校验 Access Token
 
 ```go
-valid := dtoken.ValidateOAuth2AccessToken(ctx, token.Token)
+valid := service.ValidateOAuth2AccessToken(ctx, token.Token)
 
-info, err := dtoken.ValidateOAuth2AccessTokenAndGetInfo(ctx, token.Token)
+info, err := service.ValidateOAuth2AccessTokenAndGetInfo(ctx, token.Token)
 ```
 
 ## 撤销 Token
 
 ```go
-err := dtoken.RevokeOAuth2Token(ctx, token.Token)
+err := service.RevokeOAuth2Token(ctx, token.Token)
 ```
 
 撤销时会同时清理：

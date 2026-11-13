@@ -1,0 +1,105 @@
+// @Author daixk 2025/12/22 15:56:00
+package engine
+
+import (
+	"context"
+	"strings"
+
+	derror "github.com/Zany2/dtoken-go/errors"
+)
+
+// Terminate applies one terminal operation by options Terminate 根据选项执行一次终端下线操作。
+func (m *Manager) Terminate(ctx context.Context, opts TerminateOptions) error {
+	// Remember explicit filters so whitespace cannot widen a destructive operation. 记录显式筛选字段，避免空白值扩大下线范围。
+	explicitToken, explicitDevice, explicitDeviceID := opts.Token != "", opts.Device != "", opts.DeviceID != ""
+
+	// Normalize option fields before dispatching 规范化选项字段后再分发。
+	opts.Token = strings.TrimSpace(opts.Token)
+	opts.Device = strings.TrimSpace(opts.Device)
+	opts.DeviceID = strings.TrimSpace(opts.DeviceID)
+	if explicitToken && opts.Token == "" {
+		return derror.ErrInvalidToken
+	}
+
+	// Use logout as the default terminal action 默认使用注销作为终端操作
+	action := opts.Action
+	if action == "" {
+		action = TerminateActionLogout
+	}
+
+	// Prefer direct token operations when token is specified 指定 Token 时优先按 Token 操作
+	if opts.Token != "" {
+		switch action {
+		case TerminateActionLogout:
+			return m.Logout(ctx, opts.Token)
+		case TerminateActionKickout:
+			return m.Kickout(ctx, opts.Token)
+		case TerminateActionReplace:
+			return m.Replace(ctx, opts.Token)
+		default:
+			return derror.ErrInvalidParam
+		}
+	}
+
+	// Require login ID for account or device scoped operations 账号或设备范围操作必须提供登录 ID
+	if opts.LoginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+	if (explicitDevice && opts.Device == "") || (explicitDeviceID && opts.DeviceID == "") {
+		return derror.ErrInvalidParam
+	}
+
+	// Dispatch operation by terminal action 根据终端操作类型分发处理
+	switch action {
+	case TerminateActionLogout:
+		return m.terminateLogout(ctx, opts)
+	case TerminateActionKickout:
+		return m.terminateKickout(ctx, opts)
+	case TerminateActionReplace:
+		return m.terminateReplace(ctx, opts)
+	default:
+		return derror.ErrInvalidParam
+	}
+}
+
+// terminateLogout dispatches logout by account or device scope terminateLogout 按账号或设备范围分发注销操作
+func (m *Manager) terminateLogout(ctx context.Context, opts TerminateOptions) error {
+	if opts.DeviceID != "" && opts.Device == "" {
+		return derror.ErrInvalidParam
+	}
+	if opts.Device != "" && opts.DeviceID != "" {
+		return m.LogoutByDeviceAndDeviceID(ctx, opts.LoginID, opts.Device, opts.DeviceID)
+	}
+	if opts.Device != "" {
+		return m.LogoutByDevice(ctx, opts.LoginID, opts.Device)
+	}
+	return m.LogoutByLoginID(ctx, opts.LoginID)
+}
+
+// terminateKickout dispatches kickout by account or device scope terminateKickout 按账号或设备范围分发踢下线操作。
+func (m *Manager) terminateKickout(ctx context.Context, opts TerminateOptions) error {
+	if opts.DeviceID != "" && opts.Device == "" {
+		return derror.ErrInvalidParam
+	}
+	if opts.Device != "" && opts.DeviceID != "" {
+		return m.KickoutByDeviceAndDeviceID(ctx, opts.LoginID, opts.Device, opts.DeviceID)
+	}
+	if opts.Device != "" {
+		return m.KickoutByDevice(ctx, opts.LoginID, opts.Device)
+	}
+	return m.KickoutByLoginID(ctx, opts.LoginID)
+}
+
+// terminateReplace dispatches replace by account or device scope terminateReplace 按账号或设备范围分发顶替下线操作
+func (m *Manager) terminateReplace(ctx context.Context, opts TerminateOptions) error {
+	if opts.DeviceID != "" && opts.Device == "" {
+		return derror.ErrInvalidParam
+	}
+	if opts.Device != "" && opts.DeviceID != "" {
+		return m.ReplaceByDeviceAndDeviceID(ctx, opts.LoginID, opts.Device, opts.DeviceID)
+	}
+	if opts.Device != "" {
+		return m.ReplaceByDevice(ctx, opts.LoginID, opts.Device)
+	}
+	return m.ReplaceByLoginID(ctx, opts.LoginID)
+}

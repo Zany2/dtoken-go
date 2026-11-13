@@ -26,15 +26,15 @@ const (
 var (
 	// cookie configures the demo SSO login cookie. cookie 配置示例 SSO 登录 Cookie。
 	cookie = sso.CookieOptions{
-		Name:      "dtoken_sso_gin_demo",
-		Path:      "/",
-		MaxAge:    2 * time.Hour,
-		HTTPOnly:  true,
-		SameSite:  http.SameSiteLaxMode,
-		SecretKey: rand.Text(), // Use a fresh process-local key. 使用进程独立的随机密钥。
+		Name:     "dtoken_sso_gin_demo",
+		Path:     "/",
+		MaxAge:   2 * time.Hour,
+		HTTPOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		// Use a fresh process-local key. 使用进程独立的随机密钥。
+		SecretKey: rand.Text(),
 	}
-	// loginPage stores the parsed login page template. loginPage 保存已解析的登录页模板。
-	loginPage = template.Must(template.New("login").Parse(loginHTML))
+	loginPage = template.Must(template.New("login").Parse(loginHTML)) // loginPage stores the parsed login page template. loginPage 保存已解析的登录页模板。
 )
 
 func main() {

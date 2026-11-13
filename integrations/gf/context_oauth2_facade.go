@@ -4,7 +4,7 @@ package gf
 import (
 	"context"
 
-	"github.com/Zany2/dtoken-go/core/oauth2"
+	"github.com/Zany2/dtoken-go/contract/oauth2"
 )
 
 // RegisterOAuth2ClientByCtx registers OAuth2 client RegisterOAuth2ClientByCtx 注册 OAuth2 客户端

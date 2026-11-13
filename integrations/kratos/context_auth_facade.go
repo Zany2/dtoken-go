@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/manager"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 )
 
 // LoginByCtx logs in current Kratos request LoginByCtx 在当前 Kratos 请求中登录。

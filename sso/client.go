@@ -16,21 +16,36 @@ import (
 
 // ClientConfig defines SSO client-side integration config. ClientConfig 定义 SSO 子应用接入配置。
 type ClientConfig struct {
-	Mode                 Mode          // Mode stores preferred SSO mode. Mode 存储首选 SSO 模式。
-	ClientID             string        // ClientID stores current application id. ClientID 存储当前应用 ID。
-	ClientSecret         string        // ClientSecret stores current application secret. ClientSecret 存储当前应用密钥。
-	ServerURL            string        // ServerURL stores an absolute HTTP(S) base URL without credentials, query, or fragment. ServerURL 存储不含凭据、查询串和片段的 HTTP(S) 绝对基础地址。
-	LoginURL             string        // LoginURL stores current client login URL. LoginURL 存储当前客户端登录地址。
-	LogoutCallbackURL    string        // LogoutCallbackURL stores current client logout callback URL. LogoutCallbackURL 存储当前客户端注销回调地址。
-	UseHTTPCheck         bool          // UseHTTPCheck enables remote ticket validation mode. UseHTTPCheck 启用远程 Ticket 校验模式。
-	EnableSLO            bool          // EnableSLO enables single logout. EnableSLO 启用单点注销。
-	RegisterCallback     bool          // RegisterCallback sends logout callback URL during login. RegisterCallback 登录时注册注销回调地址。
-	CheckSign            bool          // CheckSign enables request signature checks. CheckSign 启用请求签名校验。
-	SecretKey            string        // SecretKey stores request signing secret. SecretKey 存储请求签名密钥。
-	LogoutCallbackMaxAge time.Duration // LogoutCallbackMaxAge stores accepted logout callback clock skew. LogoutCallbackMaxAge 存储注销回调允许时间差。
-	HTTPClient           *http.Client  // HTTPClient overrides the default 10-second client; redirects require an explicit policy. HTTPClient 覆盖默认 10 秒超时客户端；重定向需要显式策略。
-	Endpoints            Endpoints     // Endpoints stores server/client protocol paths. Endpoints 存储服务端/客户端协议路径。
-	Params               ParamNames    // Params stores protocol parameter names. Params 存储协议参数名。
+	// Mode stores preferred SSO mode. Mode 存储首选 SSO 模式。
+	Mode Mode
+	// ClientID stores current application id. ClientID 存储当前应用 ID。
+	ClientID string
+	// ClientSecret stores current application secret. ClientSecret 存储当前应用密钥。
+	ClientSecret string
+	// ServerURL stores an absolute HTTP(S) base URL without credentials, query, or fragment. ServerURL 存储不含凭据、查询串和片段的 HTTP(S) 绝对基础地址。
+	ServerURL string
+	// LoginURL stores current client login URL. LoginURL 存储当前客户端登录地址。
+	LoginURL string
+	// LogoutCallbackURL stores current client logout callback URL. LogoutCallbackURL 存储当前客户端注销回调地址。
+	LogoutCallbackURL string
+	// UseHTTPCheck enables remote ticket validation mode. UseHTTPCheck 启用远程 Ticket 校验模式。
+	UseHTTPCheck bool
+	// EnableSLO enables single logout. EnableSLO 启用单点注销。
+	EnableSLO bool
+	// RegisterCallback sends logout callback URL during login. RegisterCallback 登录时注册注销回调地址。
+	RegisterCallback bool
+	// CheckSign enables request signature checks. CheckSign 启用请求签名校验。
+	CheckSign bool
+	// SecretKey stores request signing secret. SecretKey 存储请求签名密钥。
+	SecretKey string
+	// LogoutCallbackMaxAge stores accepted logout callback clock skew. LogoutCallbackMaxAge 存储注销回调允许时间差。
+	LogoutCallbackMaxAge time.Duration
+	// HTTPClient overrides the default 10-second client; redirects require an explicit policy. HTTPClient 覆盖默认 10 秒超时客户端；重定向需要显式策略。
+	HTTPClient *http.Client
+	// Endpoints stores server/client protocol paths. Endpoints 存储服务端/客户端协议路径。
+	Endpoints Endpoints
+	// Params stores protocol parameter names. Params 存储协议参数名。
+	Params ParamNames
 }
 
 // DefaultClientConfig returns default SSO client config. DefaultClientConfig 返回默认 SSO 客户端配置。
@@ -52,20 +67,30 @@ type ClientApp struct {
 
 // CredentialRequest defines a client-side SSO credential request. CredentialRequest 定义客户端侧 SSO 凭证请求。
 type CredentialRequest struct {
-	Mode        Mode   // Mode stores credential mode. Mode 存储凭证模式。
-	Ticket      string // Ticket stores one-time ticket. Ticket 存储一次性 Ticket。
-	TokenValue  string // TokenValue stores shared token. TokenValue 存储共享 Token。
-	SessionID   string // SessionID stores remote session id. SessionID 存储远程会话 ID。
-	Code        string // Code stores OAuth2 authorization code. Code 存储 OAuth2 授权码。
-	RedirectURI string // RedirectURI stores callback URI. RedirectURI 存储回调地址。
+	// Mode stores credential mode. Mode 存储凭证模式。
+	Mode Mode
+	// Ticket stores one-time ticket. Ticket 存储一次性 Ticket。
+	Ticket string
+	// TokenValue stores shared token. TokenValue 存储共享 Token。
+	TokenValue string
+	// SessionID stores remote session id. SessionID 存储远程会话 ID。
+	SessionID string
+	// Code stores OAuth2 authorization code. Code 存储 OAuth2 授权码。
+	Code string
+	// RedirectURI stores callback URI. RedirectURI 存储回调地址。
+	RedirectURI string
 }
 
 // LogoutCallback stores parsed single-logout callback data. LogoutCallback 存储解析后的单点注销回调数据。
 type LogoutCallback struct {
-	LoginID   string     // LoginID stores subject id at the login center. LoginID 存储认证中心登录主体 ID。
-	ClientID  string     // ClientID stores callback target client id. ClientID 存储回调目标客户端 ID。
-	Timestamp string     // Timestamp stores callback timestamp. Timestamp 存储回调时间戳。
-	Values    url.Values // Values stores raw callback form values. Values 存储原始回调表单参数。
+	// LoginID stores subject id at the login center. LoginID 存储认证中心登录主体 ID。
+	LoginID string
+	// ClientID stores callback target client id. ClientID 存储回调目标客户端 ID。
+	ClientID string
+	// Timestamp stores callback timestamp. Timestamp 存储回调时间戳。
+	Timestamp string
+	// Values stores raw callback form values. Values 存储原始回调表单参数。
+	Values url.Values
 }
 
 // LogoutCallbackFunc handles a verified single-logout callback. LogoutCallbackFunc 处理已校验的单点注销回调。
@@ -116,6 +141,7 @@ func (c *ClientApp) ExchangeTicketURL(ticket string, extra url.Values) (string, 
 }
 
 // ExchangeTicketURLWithRedirect returns a public-client ticket URL without embedding client secrets. ExchangeTicketURLWithRedirect 返回不嵌入客户端密钥的公开客户端 Ticket 地址。
+//
 // Deprecated: use ExchangeTicket so confidential credentials are sent with POST. Deprecated：请使用 ExchangeTicket，通过 POST 发送机密凭证。
 func (c *ClientApp) ExchangeTicketURLWithRedirect(ticket, redirectURI string, extra url.Values) (string, error) {
 	if c == nil {

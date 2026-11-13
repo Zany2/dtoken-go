@@ -17,10 +17,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
-	"github.com/Zany2/dtoken-go/core/config"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/core/listener"
+	"github.com/Zany2/dtoken-go/config"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
+	listener "github.com/Zany2/dtoken-go/event"
 	gincoreapp "github.com/Zany2/dtoken-go/tests/gin_core_app"
 )
 
@@ -76,6 +76,7 @@ func flowKeyPrefix(t *testing.T) string {
 	if _, err := rand.Read(id[:]); err != nil {
 		t.Fatalf("generate flow storage prefix: %v", err)
 	}
+
 	// Avoid separators that StorageNamespace escapes and isolate independent test processes. 避开 StorageNamespace 会转义的分隔符，并隔离独立测试进程。
 	return fmt.Sprintf("dt-gcf-%x:", id)
 }

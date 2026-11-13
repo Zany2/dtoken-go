@@ -18,7 +18,7 @@ English | [中文文档](README_zh.md)
 - [Disable System](guide/core/disable.md) - Account, service, level, and device disable
 - [Multi-Auth Systems](guide/core/multi-auth.md) - Isolate multiple auth systems with AuthType
 - [Token Styles](guide/core/token-style.md) - UUID, random string, JWT, and other Token generation styles
-- [Event Listener](guide/core/listener.md) - Event system usage guide
+- [Event Listener](guide/event.md) - Event system usage guide
 
 ### Security And Protocols
 

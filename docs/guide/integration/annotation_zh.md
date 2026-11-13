@@ -36,12 +36,15 @@
 
 ```go
 ctx := context.Background()
+auth, err := gindt.NewBuilder().Build()
+if err != nil { panic(err) }
+defer auth.Close()
 
 r := gin.Default()
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(auth)))
 ```
 
-后续注解中间件会复用请求里缓存的 `DTokenContext`。如果该上下文由 `WithManager` 创建，`AuthType` 为空的注解会继续使用同一个显式 Manager；注解显式填写 `AuthType` 时，仍保留通过全局注册表选择认证体系的行为。
+注解复用请求绑定的实例。切换 AuthType 需要显式配置 ManagerResolver，例如注册中间件的 WithManagerResolver(global.GetManager)；缺少绑定或解析器时返回 ErrManagerNotFound。
 
 Gin 的 `GetHandler` 显式收到空注解指针（`nil`）时会返回参数错误并终止请求；需要跳过检查时使用 `IgnoreMiddleware` 或 `Ignore: true`。
 

@@ -4,7 +4,7 @@ package kratos
 import (
 	"context"
 
-	"github.com/Zany2/dtoken-go/core/manager"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 )
 
 // LoginWithRefreshTokenByCtx logs in and issues refresh token LoginWithRefreshTokenByCtx 登录并签发刷新 Token

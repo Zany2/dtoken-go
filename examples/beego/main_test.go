@@ -1,23 +1,24 @@
 package main
 
 import (
+	dterror "github.com/Zany2/dtoken-go/errors"
+	dt1 "github.com/Zany2/dtoken-go/global"
+
 	"context"
 	"encoding/json"
+	web "github.com/beego/beego/v2/server/web"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	beegodt "github.com/Zany2/dtoken-go/integrations/beego"
-	web "github.com/beego/beego/v2/server/web"
 )
 
 // TestLoginValidationAndAuthorizationSeed verifies login validation and demo authorization data. TestLoginValidationAndAuthorizationSeed 验证登录校验与示例授权数据初始化。
 func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	setupBeegoManager(t)
 	router := newBeegoExampleRouter()
-	assertBeegoResponse(t, requestBeego(router, http.MethodPost, "/login?username=alice", "", ""), http.StatusBadRequest, beegodt.CodeBadRequest)
-	assertBeegoResponse(t, requestBeego(router, http.MethodPost, "/login?username=alice&password=bad", "", ""), http.StatusUnauthorized, beegodt.CodeNotLogin)
+	assertBeegoResponse(t, requestBeego(router, http.MethodPost, "/login?username=alice", "", ""), http.StatusBadRequest, dterror.CodeBadRequest)
+	assertBeegoResponse(t, requestBeego(router, http.MethodPost, "/login?username=alice&password=bad", "", ""), http.StatusUnauthorized, dterror.CodeNotLogin)
 
 	for _, form := range []bool{false, true} {
 		path, body := "/login?username=alice&password=123456", ""
@@ -25,7 +26,7 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 			path, body = "/login", "username=alice&password=123456"
 		}
 		login := requestBeego(router, http.MethodPost, path, body, "")
-		assertBeegoResponse(t, login, http.StatusOK, beegodt.CodeSuccess)
+		assertBeegoResponse(t, login, http.StatusOK, dterror.CodeSuccess)
 		var envelope struct {
 			Data struct {
 				Token string `json:"token"`
@@ -34,11 +35,11 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 		if err := json.Unmarshal(login.Body.Bytes(), &envelope); err != nil {
 			t.Fatal(err)
 		}
-		if id, err := beegodt.GetLoginID(context.Background(), envelope.Data.Token); err != nil || id != "alice" {
+		if id, err := dt1.GetLoginID(context.Background(), envelope.Data.Token); err != nil || id != "alice" {
 			t.Fatalf("returned token login ID=%q error=%v", id, err)
 		}
 	}
-	if !beegodt.HasRole(context.Background(), "alice", "admin") || !beegodt.HasPermission(context.Background(), "alice", "article:read") {
+	if !dt1.HasRole(context.Background(), "alice", "admin") || !dt1.HasPermission(context.Background(), "alice", "article:read") {
 		t.Fatal("login did not seed demo authorization")
 	}
 }
@@ -47,14 +48,14 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 func TestProtectedRoutesAndLogout(t *testing.T) {
 	setupBeegoManager(t)
 	ctx := context.Background()
-	token, err := beegodt.Login(ctx, "alice")
+	token, err := dt1.Login(ctx, "alice")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := beegodt.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
+	if err := dt1.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := beegodt.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
+	if err := dt1.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
 		t.Fatal(err)
 	}
 	router := newBeegoExampleRouter()
@@ -65,7 +66,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 				req.Header.Set(header, value)
 				rec := httptest.NewRecorder()
 				router.ServeHTTP(rec, req)
-				assertBeegoResponse(t, rec, http.StatusOK, beegodt.CodeSuccess)
+				assertBeegoResponse(t, rec, http.StatusOK, dterror.CodeSuccess)
 			}
 		}
 	}
@@ -75,24 +76,24 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 			method = http.MethodPost
 		}
 		for _, invalid := range []string{"", "invalid-token"} {
-			assertBeegoResponse(t, requestBeego(router, method, path, "", invalid), http.StatusUnauthorized, beegodt.CodeNotLogin)
+			assertBeegoResponse(t, requestBeego(router, method, path, "", invalid), http.StatusUnauthorized, dterror.CodeNotLogin)
 		}
 	}
-	bobToken, err := beegodt.Login(ctx, "bob")
+	bobToken, err := dt1.Login(ctx, "bob")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/admin", "/articles"} {
-		assertBeegoResponse(t, requestBeego(router, http.MethodGet, path, "", bobToken), http.StatusForbidden, beegodt.CodePermissionDenied)
+		assertBeegoResponse(t, requestBeego(router, http.MethodGet, path, "", bobToken), http.StatusForbidden, dterror.CodePermissionDenied)
 	}
-	assertBeegoResponse(t, requestBeego(router, http.MethodPost, "/logout", "", token), http.StatusOK, beegodt.CodeSuccess)
-	assertBeegoResponse(t, requestBeego(router, http.MethodGet, "/me", "", token), http.StatusUnauthorized, beegodt.CodeNotLogin)
+	assertBeegoResponse(t, requestBeego(router, http.MethodPost, "/logout", "", token), http.StatusOK, dterror.CodeSuccess)
+	assertBeegoResponse(t, requestBeego(router, http.MethodGet, "/me", "", token), http.StatusUnauthorized, dterror.CodeNotLogin)
 }
 
 func setupBeegoManager(t *testing.T) {
 	t.Helper()
-	beegodt.DeleteAllManager()
-	t.Cleanup(beegodt.DeleteAllManager)
+	dt1.DeleteAllManager()
+	t.Cleanup(dt1.DeleteAllManager)
 	initDToken()
 }
 

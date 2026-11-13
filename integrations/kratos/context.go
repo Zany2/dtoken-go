@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
 	"github.com/go-kratos/kratos/v2/transport"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	"google.golang.org/grpc/credentials"

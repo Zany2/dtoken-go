@@ -27,7 +27,7 @@ defer server.Close()
 也可以使用 Redis 配置对象：
 
 ```go
-import redisstorage "github.com/Zany2/dtoken-go/com/storage/redis"
+import redisstorage "github.com/Zany2/dtoken-go/storage/redis"
 
 server, err := ssoredis.NewServerFromConfig(&redisstorage.Config{
 	Host:     "127.0.0.1",

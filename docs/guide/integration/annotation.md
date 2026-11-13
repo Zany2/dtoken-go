@@ -36,12 +36,15 @@ Using `integrations/gin` as the example, the current `Annotation` struct support
 
 ```go
 ctx := context.Background()
+auth, err := gindt.NewBuilder().Build()
+if err != nil { panic(err) }
+defer auth.Close()
 
 r := gin.Default()
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(auth)))
 ```
 
-The annotation middleware then reuses the cached `DTokenContext` on the request. If that context was created with `WithManager`, annotations with an empty `AuthType` use the same explicit manager; an annotation that sets `AuthType` keeps the global multi-auth lookup behavior.
+Annotations reuse the bound request instance. Switching AuthType requires an explicit ManagerResolver, such as WithManagerResolver(global.GetManager) on registration middleware. Missing bindings or resolvers return ErrManagerNotFound.
 
 Passing an explicit nil annotation pointer to Gin's `GetHandler` returns an invalid-parameter error and aborts the request. Use `IgnoreMiddleware` or `Ignore: true` when authentication should be skipped.
 

@@ -2,7 +2,7 @@
 package echo
 
 import (
-	"github.com/Zany2/dtoken-go/core/oauth2"
+	"github.com/Zany2/dtoken-go/contract/oauth2"
 	echo4 "github.com/labstack/echo/v4"
 )
 

@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/ticket"
+	"github.com/Zany2/dtoken-go/contract/ticket"
 )
 
 // CreateTicketByCtx creates ticket CreateTicketByCtx 创建 Ticket

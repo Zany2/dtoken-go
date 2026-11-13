@@ -2,7 +2,7 @@
 package beego
 
 import (
-	"github.com/Zany2/dtoken-go/core/manager"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	beegocontext "github.com/beego/beego/v2/server/web/context"
 )
 

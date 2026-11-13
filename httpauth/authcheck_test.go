@@ -1,0 +1,433 @@
+package httpauth
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/Zany2/dtoken-go/config"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
+	dtoken "github.com/Zany2/dtoken-go/global"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
+)
+
+// TestNeedAuth verifies empty requests skip auth checks TestNeedAuth 验证空请求会跳过认证校验。
+func TestNeedAuth(t *testing.T) {
+	if NeedAuth(Request{}) {
+		t.Fatal("NeedAuth(empty) = true, want false")
+	}
+	if !NeedAuth(Request{CheckLogin: true}) {
+		t.Fatal("NeedAuth(CheckLogin) = false, want true")
+	}
+	if !NeedAuth(Request{Permissions: []string{"read"}}) {
+		t.Fatal("NeedAuth(Permissions) = false, want true")
+	}
+}
+
+// TestResolveManagerPrefersExplicit verifies explicit manager injection bypasses the global registry. TestResolveManagerPrefersExplicit 验证显式注入的 Manager 会优先于全局注册表。
+func TestResolveManagerPrefersExplicit(t *testing.T) {
+	explicit := newAuthcheckTestManager(t)
+	resolved, err := ResolveManager(explicit, "missing-auth-type")
+	if err != nil {
+		t.Fatalf("ResolveManager() error = %v", err)
+	}
+	if resolved != explicit {
+		t.Fatalf("ResolveManager() = %p, want %p", resolved, explicit)
+	}
+}
+
+// TestResolveManagerFromContextPrefersCached verifies implicit auth reuses the request manager. TestResolveManagerFromContextPrefersCached 验证隐式认证会复用请求级 Manager。
+func TestResolveManagerFromContextPrefersCached(t *testing.T) {
+	cached := newAuthcheckTestManager(t)
+	resolved, err := ResolveManagerFromContext("", managerSource{manager: cached})
+	if err != nil {
+		t.Fatalf("ResolveManagerFromContext() error = %v", err)
+	}
+	if resolved != cached {
+		t.Fatalf("ResolveManagerFromContext() = %p, want %p", resolved, cached)
+	}
+}
+
+// TestResolveManagerFromContextUnknownAuthTypeRequiresResolver verifies an unknown namespace cannot reuse the cached manager. TestResolveManagerFromContextUnknownAuthTypeRequiresResolver 验证未知命名空间不能复用缓存 Manager。
+func TestResolveManagerFromContextUnknownAuthTypeRequiresResolver(t *testing.T) {
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+
+	cached := newAuthcheckTestManager(t)
+	if _, err := ResolveManagerFromContext("missing-auth-type", managerSource{manager: cached}); !errors.Is(err, derror.ErrManagerNotFound) {
+		t.Fatalf("ResolveManagerFromContext() error = %v, want ErrManagerNotFound", err)
+	}
+}
+
+type managerSource struct {
+	manager *manager.Manager
+}
+
+func (s managerSource) GetManager() *manager.Manager {
+	return s.manager
+}
+
+// TestCheckLoginDisablePermissionsAndRoles verifies shared auth decision behavior TestCheckLoginDisablePermissionsAndRoles 验证公共认证决策行为。
+func TestCheckLoginDisablePermissionsAndRoles(t *testing.T) {
+	ctx := context.Background()
+	mgr := newAuthcheckTestManager(t)
+
+	token, err := mgr.Login(ctx, "u1")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if err = mgr.AddPermissions(ctx, "u1", []string{"profile:read", "order:*"}); err != nil {
+		t.Fatalf("AddPermissions() error = %v", err)
+	}
+	if err = mgr.AddRoles(ctx, "u1", []string{"member", "admin"}); err != nil {
+		t.Fatalf("AddRoles() error = %v", err)
+	}
+
+	result, err := Check(ctx, mgr, Request{
+		TokenValue:  token,
+		CheckLogin:  true,
+		Permissions: []string{"profile:read", "order:update"},
+		Roles:       []string{"admin"},
+		LogicType:   LogicAnd,
+	})
+	if err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if result.LoginID != "u1" {
+		t.Fatalf("LoginID = %q, want u1", result.LoginID)
+	}
+
+	_, err = Check(ctx, mgr, Request{
+		TokenValue:  token,
+		CheckLogin:  true,
+		Permissions: []string{"missing"},
+	})
+	if !errors.Is(err, derror.ErrPermissionDenied) {
+		t.Fatalf("Check(missing permission) error = %v, want ErrPermissionDenied", err)
+	}
+
+	_, err = Check(ctx, mgr, Request{
+		TokenValue: token,
+		CheckLogin: true,
+		Roles:      []string{"missing"},
+	})
+	if !errors.Is(err, derror.ErrRoleDenied) {
+		t.Fatalf("Check(missing role) error = %v, want ErrRoleDenied", err)
+	}
+
+	if err = mgr.Disable(ctx, "u1", time.Minute); err != nil {
+		t.Fatalf("Disable() error = %v", err)
+	}
+	_, err = Check(ctx, mgr, Request{TokenValue: token, CheckLogin: true, CheckDisable: true})
+	if !errors.Is(err, derror.ErrNotLogin) && !errors.Is(err, derror.ErrAccountDisabled) {
+		t.Fatalf("Check(disabled) error = %v, want auth failure", err)
+	}
+}
+
+// TestCheckWithoutExplicitLoginUsesTokenChecks verifies middleware-style token checks TestCheckWithoutExplicitLoginUsesTokenChecks 验证中间件风格的 token 校验。
+func TestCheckWithoutExplicitLoginUsesTokenChecks(t *testing.T) {
+	ctx := context.Background()
+	mgr := newAuthcheckTestManager(t)
+
+	token, err := mgr.Login(ctx, "u2")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if err = mgr.AddPermissionsByToken(ctx, token, []string{"report:read"}); err != nil {
+		t.Fatalf("AddPermissionsByToken() error = %v", err)
+	}
+
+	result, err := Check(ctx, mgr, Request{
+		TokenValue:  token,
+		Permissions: []string{"report:read"},
+		LogicType:   LogicAnd,
+	})
+	if err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if result.LoginID != "" {
+		t.Fatalf("LoginID = %q, want empty when login ID is not needed", result.LoginID)
+	}
+}
+
+// TestGetErrorCodeAndMessage verifies stable error mapping TestGetErrorCodeAndMessage 验证稳定错误映射。
+func TestGetErrorCodeAndMessage(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		code int
+	}{
+		{name: "dtoken error", err: derror.NewDTokenError(499, "custom", derror.ErrInvalidParam), code: 499},
+		{name: "not login", err: derror.ErrNotLogin, code: derror.CodeNotLogin},
+		{name: "invalid token", err: derror.ErrInvalidToken, code: derror.CodeTokenInvalid},
+		{name: "permission", err: derror.ErrPermissionDenied, code: derror.CodePermissionDenied},
+		{name: "disabled", err: derror.ErrDeviceDisabled, code: derror.CodeAccountDisabled},
+		{name: "bad request", err: derror.ErrIDIsEmpty, code: derror.CodeBadRequest},
+		{name: "storage", err: derror.ErrStorageUnavailable, code: derror.CodeStorageError},
+		{name: "not found", err: derror.ErrClientNotFound, code: derror.CodeNotFound},
+		{name: "oauth2 token", err: derror.ErrInvalidAccessToken, code: derror.CodeTokenInvalid},
+		{name: "oauth2 code expired", err: derror.ErrAuthCodeExpired, code: derror.CodeTokenExpired},
+		{name: "wrapped oauth2 code expired", err: fmt.Errorf("exchange: %w", derror.ErrAuthCodeExpired), code: derror.CodeTokenExpired},
+		{name: "ticket expired", err: derror.ErrTicketExpired, code: derror.CodeTokenExpired},
+		{name: "short key pending", err: derror.ErrShortKeyPending, code: derror.CodeBadRequest},
+		{name: "server", err: errors.New("boom"), code: derror.CodeServerError},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			code, message := GetErrorCodeAndMessage(tt.err)
+			if code != tt.code {
+				t.Fatalf("code = %d, want %d", code, tt.code)
+			}
+			if message == "" {
+				t.Fatal("message is empty")
+			}
+		})
+	}
+}
+
+func newAuthcheckTestManager(t *testing.T) *manager.Manager {
+	t.Helper()
+
+	cfg := config.DefaultConfig()
+	cfg.IsPrintBanner = false
+	cfg.IsLog = false
+	cfg.AsyncEvent = false
+	cfg.AutoRenew = false
+	cfg.RenewInterval = config.NoLimit
+	cfg.ActiveTimeout = config.NoLimit
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("config invalid: %v", err)
+	}
+
+	mgr := manager.NewManager(
+		cfg,
+		&authcheckTestGenerator{},
+		newAuthcheckTestStorage(),
+		authcheckTestCodec{},
+		adapter.NewNopLogger(),
+		nil,
+		nil,
+	)
+	t.Cleanup(mgr.CloseManager)
+	return mgr
+}
+
+type authcheckTestGenerator struct {
+	mu  sync.Mutex
+	seq int
+}
+
+// Generate creates deterministic tokens for integration checks. Generate 为集成检查生成确定性 Token。
+func (g *authcheckTestGenerator) Generate(loginID, device, deviceID string) (string, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.seq++
+	return fmt.Sprintf("token-%s-%s-%s-%d", loginID, device, deviceID, g.seq), nil
+}
+
+type authcheckTestCodec struct{}
+
+// Name returns the test codec name. Name 返回测试编解码器名称。
+func (authcheckTestCodec) Name() string { return "json-test" }
+
+// Encode serializes test values as JSON. Encode 将测试值序列化为 JSON。
+func (authcheckTestCodec) Encode(v any) ([]byte, error) { return json.Marshal(v) }
+
+// Decode deserializes test values from JSON. Decode 从 JSON 反序列化测试值。
+func (authcheckTestCodec) Decode(data []byte, v any) error { return json.Unmarshal(data, v) }
+
+type authcheckTestStorage struct {
+	mu    sync.RWMutex
+	items map[string]authcheckTestStorageItem
+}
+
+type authcheckTestStorageItem struct {
+	value    any
+	expireAt time.Time
+}
+
+func newAuthcheckTestStorage() *authcheckTestStorage {
+	return &authcheckTestStorage{items: map[string]authcheckTestStorageItem{}}
+}
+
+// Set stores a test value with optional expiration. Set 存储带可选过期时间的测试值。
+func (s *authcheckTestStorage) Set(_ context.Context, key string, value any, expiration time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var expireAt time.Time
+	if expiration > 0 {
+		expireAt = time.Now().Add(expiration)
+	}
+	s.items[key] = authcheckTestStorageItem{value: value, expireAt: expireAt}
+	return nil
+}
+
+// Get returns a live test value and removes expired entries. Get 返回有效测试值并清理过期项。
+func (s *authcheckTestStorage) Get(_ context.Context, key string) (any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if !ok {
+		return nil, nil
+	}
+	if item.expired() {
+		delete(s.items, key)
+		return nil, nil
+	}
+	return item.value, nil
+}
+
+// Delete removes test values by key. Delete 按键删除测试值。
+func (s *authcheckTestStorage) Delete(_ context.Context, keys ...string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, key := range keys {
+		delete(s.items, key)
+	}
+	return nil
+}
+
+// Exists reports whether a live test value exists. Exists 判断有效测试值是否存在。
+func (s *authcheckTestStorage) Exists(_ context.Context, key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if !ok {
+		return false
+	}
+	if item.expired() {
+		delete(s.items, key)
+		return false
+	}
+	return true
+}
+
+// Expire updates a test value expiration. Expire 更新测试值的过期时间。
+func (s *authcheckTestStorage) Expire(_ context.Context, key string, expiration time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if !ok || item.expired() {
+		delete(s.items, key)
+		return derror.ErrInvalidToken
+	}
+	if expiration > 0 {
+		item.expireAt = time.Now().Add(expiration)
+	} else {
+		item.expireAt = time.Time{}
+	}
+	s.items[key] = item
+	return nil
+}
+
+// TTL returns the remaining lifetime of a test value. TTL 返回测试值的剩余有效期。
+func (s *authcheckTestStorage) TTL(_ context.Context, key string) (time.Duration, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[key]
+	if !ok {
+		return adapter.TTLNotFound, nil
+	}
+	if item.expired() {
+		delete(s.items, key)
+		return adapter.TTLNotFound, nil
+	}
+	if item.expireAt.IsZero() {
+		return adapter.TTLNoExpire, nil
+	}
+	ttl := time.Until(item.expireAt)
+	if ttl <= 0 {
+		delete(s.items, key)
+		return adapter.TTLNotFound, nil
+	}
+	return ttl, nil
+}
+
+// Ping reports that the test storage is available. Ping 表示测试存储可用。
+func (s *authcheckTestStorage) Ping(context.Context) error { return nil }
+
+// GetAndDelete returns and removes a test value. GetAndDelete 返回并删除测试值。
+func (s *authcheckTestStorage) GetAndDelete(ctx context.Context, key string) (any, error) {
+	value, err := s.Get(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	_ = s.Delete(ctx, key)
+	return value, nil
+}
+
+// SetIfAbsent stores a test value only when the key is absent. SetIfAbsent 仅在键不存在时存储测试值。
+func (s *authcheckTestStorage) SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	if s.Exists(ctx, key) {
+		return false, nil
+	}
+	if err := s.Set(ctx, key, value, expiration); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// Keys returns sorted live keys matching a pattern. Keys 返回按模式匹配并排序的有效键。
+func (s *authcheckTestStorage) Keys(_ context.Context, pattern string) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	keys := make([]string, 0, len(s.items))
+	for key, item := range s.items {
+		if item.expired() {
+			delete(s.items, key)
+			continue
+		}
+		if matchAuthcheckTestPattern(pattern, key) {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	return keys, nil
+}
+
+// Clear removes all test values. Clear 删除全部测试值。
+func (s *authcheckTestStorage) Clear(context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.items = map[string]authcheckTestStorageItem{}
+	return nil
+}
+
+func (item authcheckTestStorageItem) expired() bool {
+	return !item.expireAt.IsZero() && time.Now().After(item.expireAt)
+}
+
+func matchAuthcheckTestPattern(pattern, value string) bool {
+	parts := strings.Split(pattern, "*")
+	if len(parts) == 1 {
+		return pattern == value
+	}
+	if !strings.HasPrefix(value, parts[0]) {
+		return false
+	}
+	value = strings.TrimPrefix(value, parts[0])
+	for _, part := range parts[1 : len(parts)-1] {
+		idx := strings.Index(value, part)
+		if idx < 0 {
+			return false
+		}
+		value = value[idx+len(part):]
+	}
+	last := parts[len(parts)-1]
+	return last == "" || strings.HasSuffix(value, last)
+}

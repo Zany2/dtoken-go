@@ -34,8 +34,7 @@ var (
 		// A process-local key prevents reuse of publicly known demo signatures. 进程独立密钥避免复用公开示例签名。
 		SecretKey: rand.Text(),
 	}
-	// loginPage stores the parsed login page template. loginPage 保存已解析的登录页模板。
-	loginPage = template.Must(template.New("login").Parse(loginHTML))
+	loginPage = template.Must(template.New("login").Parse(loginHTML)) // loginPage stores the parsed login page template. loginPage 保存已解析的登录页模板。
 )
 
 func main() {

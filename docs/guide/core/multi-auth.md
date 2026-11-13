@@ -1,5 +1,7 @@
 # Multi-Auth Systems
 
+Import aliases for code fragments: dt = github.com/Zany2/dtoken-go, dtoken = github.com/Zany2/dtoken-go/global.
+
 **[中文文档](../core/multi-auth_zh.md)**
 
 Multi-auth systems let one project maintain multiple isolated authentication systems, such as end users, administrators, and open-platform clients. DToken-Go separates them with `AuthType`.
@@ -27,11 +29,11 @@ sharedOwnership := manager.WithComponentOwnership(manager.ComponentOwnership{
     Pool:    true,
 })
 
-userMgr, err := defaults.NewBuilder().
+userMgr, err := dt.NewBuilder().
     AuthType("user").
     KeyPrefix("dtoken").
     TokenName("user-token").
-    SetStorage(storage).
+    Storage(storage).
     UseManagerOption(sharedOwnership).
     Build()
 if err != nil {
@@ -39,11 +41,11 @@ if err != nil {
 }
 dtoken.SetManager(userMgr)
 
-adminMgr, err := defaults.NewBuilder().
+adminMgr, err := dt.NewBuilder().
     AuthType("admin").
     KeyPrefix("dtoken").
     TokenName("admin-token").
-    SetStorage(storage).
+    Storage(storage).
     UseManagerOption(sharedOwnership).
     Build()
 if err != nil {
@@ -63,9 +65,9 @@ Call `CloseManager()` from the application's external shutdown flow after stoppi
 
 ```go
 _, err := dtoken.BuildAndSetManager(
-    defaults.NewBuilder().
+    dt.NewBuilder().
         KeyPrefix("dtoken").
-        SetStorage(storage).
+        Storage(storage).
         UseManagerOption(sharedOwnership),
     "admin",
 )
@@ -116,7 +118,7 @@ dtoken:admin:session:...
 If projects, environments, or test runs need stronger isolation, separate `KeyPrefix` too:
 
 ```go
-defaults.NewBuilder().
+dt.NewBuilder().
     AuthType("admin").
     KeyPrefix("dtoken:prod")
 ```

@@ -2,7 +2,7 @@
 package sso
 
 import (
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
 	jsoncodec "github.com/Zany2/dtoken-go/sso/codec/json"
 	"github.com/Zany2/dtoken-go/sso/storage/memory"
 )

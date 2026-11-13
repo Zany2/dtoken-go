@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
 )
 
 var (
@@ -24,6 +24,7 @@ var (
 	// ErrTypeConvert indicates stored payload cannot be converted to bytes. ErrTypeConvert 表示存储载荷无法转换为字节。
 	ErrTypeConvert = errors.New("type conversion failed")
 	// ErrStorageCapabilityUnsupported is kept for compatibility; one-time credentials now fall back to ordinary Storage. ErrStorageCapabilityUnsupported 为兼容保留；一次性凭证现已支持普通 Storage 回退。
+	//
 	// Deprecated: consumption no longer requires AtomicStorage. Deprecated：消费流程不再强制要求 AtomicStorage。
 	ErrStorageCapabilityUnsupported = errors.New("storage capability unsupported")
 	// ErrServerNotInitialized indicates the SSO server is not initialized. ErrServerNotInitialized 表示 SSO 服务端未初始化。
@@ -137,28 +138,46 @@ func (c *Config) Clone() *Config {
 
 // Client defines an SSO client application registered by the login center. Client 定义统一登录中心注册的 SSO 子应用客户端。
 type Client struct {
-	ClientID     string         `json:"clientId"`               // ClientID stores the unique application id. ClientID 存储唯一应用 ID。
-	ClientSecret string         `json:"clientSecret,omitempty"` // ClientSecret stores the optional application secret. ClientSecret 存储可选的应用密钥。
-	Name         string         `json:"name,omitempty"`         // Name stores the display name for operators. Name 存储面向管理者的展示名称。
-	RedirectURIs []string       `json:"redirectUris,omitempty"` // RedirectURIs stores allowed callback URIs. RedirectURIs 存储允许的回调地址。
-	AllowOrigins []string       `json:"allowOrigins,omitempty"` // AllowOrigins stores allowed front-end origins for future browser flows. AllowOrigins 存储预留给浏览器流程的前端来源。
-	Modes        []Mode         `json:"modes,omitempty"`        // Modes stores allowed SSO modes; empty means ticket mode only. Modes 存储允许的 SSO 模式，空值表示仅允许 Ticket 模式。
-	Scopes       []string       `json:"scopes,omitempty"`       // Scopes stores allowed scopes; empty means all requested scopes are accepted. Scopes 存储允许的权限范围，空值表示接受所有请求范围。
-	Extra        map[string]any `json:"extra,omitempty"`        // Extra stores custom application metadata. Extra 存储自定义应用元数据。
+	// ClientID stores the unique application id. ClientID 存储唯一应用 ID。
+	ClientID string `json:"clientId"`
+	// ClientSecret stores the optional application secret. ClientSecret 存储可选的应用密钥。
+	ClientSecret string `json:"clientSecret,omitempty"`
+	// Name stores the display name for operators. Name 存储面向管理者的展示名称。
+	Name string `json:"name,omitempty"`
+	// RedirectURIs stores allowed callback URIs. RedirectURIs 存储允许的回调地址。
+	RedirectURIs []string `json:"redirectUris,omitempty"`
+	// AllowOrigins stores allowed front-end origins for future browser flows. AllowOrigins 存储预留给浏览器流程的前端来源。
+	AllowOrigins []string `json:"allowOrigins,omitempty"`
+	// Modes stores allowed SSO modes; empty means ticket mode only. Modes 存储允许的 SSO 模式，空值表示仅允许 Ticket 模式。
+	Modes []Mode `json:"modes,omitempty"`
+	// Scopes stores allowed scopes; empty means all requested scopes are accepted. Scopes 存储允许的权限范围，空值表示接受所有请求范围。
+	Scopes []string `json:"scopes,omitempty"`
+	// Extra stores custom application metadata. Extra 存储自定义应用元数据。
+	Extra map[string]any `json:"extra,omitempty"`
 }
 
 // Ticket defines an SSO one-time ticket exchanged between the login center and a client app. Ticket 定义统一登录中心和子应用之间交换的一次性 SSO 票据。
 type Ticket struct {
-	Ticket      string         `json:"ticket"`           // Ticket stores the random ticket value. Ticket 存储随机票据值。
-	Mode        Mode           `json:"mode"`             // Mode stores SSO mode. Mode 存储 SSO 模式。
-	LoginID     string         `json:"loginId"`          // LoginID stores logged-in subject id at the SSO center. LoginID 存储统一登录中心的登录主体 ID。
-	ClientID    string         `json:"clientId"`         // ClientID stores target client id. ClientID 存储目标客户端 ID。
-	RedirectURI string         `json:"redirectUri"`      // RedirectURI stores callback URI. RedirectURI 存储回调地址。
-	Scopes      []string       `json:"scopes,omitempty"` // Scopes stores requested scopes. Scopes 存储请求范围。
-	CreateTime  int64          `json:"createTime"`       // CreateTime stores creation unix time. CreateTime 存储创建时间戳。
-	ExpiresIn   int64          `json:"expiresIn"`        // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
-	Used        bool           `json:"used"`             // Used stores consume state after successful exchange. Used 存储成功换票后的消费状态。
-	Extra       map[string]any `json:"extra,omitempty"`  // Extra stores extension data. Extra 存储扩展数据。
+	// Ticket stores the random ticket value. Ticket 存储随机票据值。
+	Ticket string `json:"ticket"`
+	// Mode stores SSO mode. Mode 存储 SSO 模式。
+	Mode Mode `json:"mode"`
+	// LoginID stores logged-in subject id at the SSO center. LoginID 存储统一登录中心的登录主体 ID。
+	LoginID string `json:"loginId"`
+	// ClientID stores target client id. ClientID 存储目标客户端 ID。
+	ClientID string `json:"clientId"`
+	// RedirectURI stores callback URI. RedirectURI 存储回调地址。
+	RedirectURI string `json:"redirectUri"`
+	// Scopes stores requested scopes. Scopes 存储请求范围。
+	Scopes []string `json:"scopes,omitempty"`
+	// CreateTime stores creation unix time. CreateTime 存储创建时间戳。
+	CreateTime int64 `json:"createTime"`
+	// ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
+	ExpiresIn int64 `json:"expiresIn"`
+	// Used stores consume state after successful exchange. Used 存储成功换票后的消费状态。
+	Used bool `json:"used"`
+	// Extra stores extension data. Extra 存储扩展数据。
+	Extra map[string]any `json:"extra,omitempty"`
 
 	// ExpiresAt stores the precise deadline; zero supports legacy records. ExpiresAt 存储精确截止时间；零值兼容旧记录。
 	ExpiresAt time.Time `json:"expiresAt,omitempty"`
@@ -166,14 +185,22 @@ type Ticket struct {
 
 // SharedToken defines a reusable SSO token shared by trusted apps. SharedToken 定义可信应用间共享复用的 SSO Token。
 type SharedToken struct {
-	Token      string         `json:"token"`            // Token stores the random shared token value. Token 存储随机共享 Token 值。
-	Mode       Mode           `json:"mode"`             // Mode stores SSO mode. Mode 存储 SSO 模式。
-	LoginID    string         `json:"loginId"`          // LoginID stores logged-in subject id at the SSO center. LoginID 存储统一登录中心的登录主体 ID。
-	ClientID   string         `json:"clientId"`         // ClientID stores the client receiving the shared token. ClientID 存储接收共享 Token 的客户端 ID。
-	Scopes     []string       `json:"scopes,omitempty"` // Scopes stores granted scopes. Scopes 存储授权范围。
-	CreateTime int64          `json:"createTime"`       // CreateTime stores creation unix time. CreateTime 存储创建时间戳。
-	ExpiresIn  int64          `json:"expiresIn"`        // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
-	Extra      map[string]any `json:"extra,omitempty"`  // Extra stores extension data. Extra 存储扩展数据。
+	// Token stores the random shared token value. Token 存储随机共享 Token 值。
+	Token string `json:"token"`
+	// Mode stores SSO mode. Mode 存储 SSO 模式。
+	Mode Mode `json:"mode"`
+	// LoginID stores logged-in subject id at the SSO center. LoginID 存储统一登录中心的登录主体 ID。
+	LoginID string `json:"loginId"`
+	// ClientID stores the client receiving the shared token. ClientID 存储接收共享 Token 的客户端 ID。
+	ClientID string `json:"clientId"`
+	// Scopes stores granted scopes. Scopes 存储授权范围。
+	Scopes []string `json:"scopes,omitempty"`
+	// CreateTime stores creation unix time. CreateTime 存储创建时间戳。
+	CreateTime int64 `json:"createTime"`
+	// ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
+	ExpiresIn int64 `json:"expiresIn"`
+	// Extra stores extension data. Extra 存储扩展数据。
+	Extra map[string]any `json:"extra,omitempty"`
 
 	// ExpiresAt stores the precise deadline; zero supports legacy records. ExpiresAt 存储精确截止时间；零值兼容旧记录。
 	ExpiresAt time.Time `json:"expiresAt,omitempty"`
@@ -181,14 +208,22 @@ type SharedToken struct {
 
 // RemoteSession defines a centralized SSO session checked by client apps remotely. RemoteSession 定义由子应用远程校验的中心化 SSO 会话。
 type RemoteSession struct {
-	SessionID  string         `json:"sessionId"`        // SessionID stores the random remote session id. SessionID 存储随机远程会话 ID。
-	Mode       Mode           `json:"mode"`             // Mode stores SSO mode. Mode 存储 SSO 模式。
-	LoginID    string         `json:"loginId"`          // LoginID stores logged-in subject id at the SSO center. LoginID 存储统一登录中心的登录主体 ID。
-	ClientID   string         `json:"clientId"`         // ClientID stores the client that owns this remote view. ClientID 存储拥有该远程视图的客户端 ID。
-	Scopes     []string       `json:"scopes,omitempty"` // Scopes stores granted scopes. Scopes 存储授权范围。
-	CreateTime int64          `json:"createTime"`       // CreateTime stores creation unix time. CreateTime 存储创建时间戳。
-	ExpiresIn  int64          `json:"expiresIn"`        // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
-	Extra      map[string]any `json:"extra,omitempty"`  // Extra stores extension data. Extra 存储扩展数据。
+	// SessionID stores the random remote session id. SessionID 存储随机远程会话 ID。
+	SessionID string `json:"sessionId"`
+	// Mode stores SSO mode. Mode 存储 SSO 模式。
+	Mode Mode `json:"mode"`
+	// LoginID stores logged-in subject id at the SSO center. LoginID 存储统一登录中心的登录主体 ID。
+	LoginID string `json:"loginId"`
+	// ClientID stores the client that owns this remote view. ClientID 存储拥有该远程视图的客户端 ID。
+	ClientID string `json:"clientId"`
+	// Scopes stores granted scopes. Scopes 存储授权范围。
+	Scopes []string `json:"scopes,omitempty"`
+	// CreateTime stores creation unix time. CreateTime 存储创建时间戳。
+	CreateTime int64 `json:"createTime"`
+	// ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
+	ExpiresIn int64 `json:"expiresIn"`
+	// Extra stores extension data. Extra 存储扩展数据。
+	Extra map[string]any `json:"extra,omitempty"`
 
 	// ExpiresAt stores the precise deadline; zero supports legacy records. ExpiresAt 存储精确截止时间；零值兼容旧记录。
 	ExpiresAt time.Time `json:"expiresAt,omitempty"`
@@ -196,16 +231,26 @@ type RemoteSession struct {
 
 // OAuth2Code defines an SSO OAuth2 authorization code. OAuth2Code 定义 SSO OAuth2 授权码。
 type OAuth2Code struct {
-	Code        string         `json:"code"`             // Code stores the random authorization code. Code 存储随机授权码。
-	Mode        Mode           `json:"mode"`             // Mode stores SSO mode. Mode 存储 SSO 模式。
-	LoginID     string         `json:"loginId"`          // LoginID stores logged-in subject id at the SSO center. LoginID 存储统一登录中心的登录主体 ID。
-	ClientID    string         `json:"clientId"`         // ClientID stores target client id. ClientID 存储目标客户端 ID。
-	RedirectURI string         `json:"redirectUri"`      // RedirectURI stores callback URI. RedirectURI 存储回调地址。
-	Scopes      []string       `json:"scopes,omitempty"` // Scopes stores requested scopes. Scopes 存储请求范围。
-	CreateTime  int64          `json:"createTime"`       // CreateTime stores creation unix time. CreateTime 存储创建时间戳。
-	ExpiresIn   int64          `json:"expiresIn"`        // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
-	Used        bool           `json:"used"`             // Used stores consume state after exchange. Used 存储换取后的消费状态。
-	Extra       map[string]any `json:"extra,omitempty"`  // Extra stores extension data. Extra 存储扩展数据。
+	// Code stores the random authorization code. Code 存储随机授权码。
+	Code string `json:"code"`
+	// Mode stores SSO mode. Mode 存储 SSO 模式。
+	Mode Mode `json:"mode"`
+	// LoginID stores logged-in subject id at the SSO center. LoginID 存储统一登录中心的登录主体 ID。
+	LoginID string `json:"loginId"`
+	// ClientID stores target client id. ClientID 存储目标客户端 ID。
+	ClientID string `json:"clientId"`
+	// RedirectURI stores callback URI. RedirectURI 存储回调地址。
+	RedirectURI string `json:"redirectUri"`
+	// Scopes stores requested scopes. Scopes 存储请求范围。
+	Scopes []string `json:"scopes,omitempty"`
+	// CreateTime stores creation unix time. CreateTime 存储创建时间戳。
+	CreateTime int64 `json:"createTime"`
+	// ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
+	ExpiresIn int64 `json:"expiresIn"`
+	// Used stores consume state after exchange. Used 存储换取后的消费状态。
+	Used bool `json:"used"`
+	// Extra stores extension data. Extra 存储扩展数据。
+	Extra map[string]any `json:"extra,omitempty"`
 
 	// ExpiresAt stores the precise deadline; zero supports legacy records. ExpiresAt 存储精确截止时间；零值兼容旧记录。
 	ExpiresAt time.Time `json:"expiresAt,omitempty"`
@@ -213,11 +258,16 @@ type OAuth2Code struct {
 
 // ClientSession stores one client login binding for single logout. ClientSession 存储用于单点注销的客户端登录绑定。
 type ClientSession struct {
-	LoginID           string `json:"loginId"`                     // LoginID stores subject id at the login center. LoginID 存储认证中心登录主体 ID。
-	ClientID          string `json:"clientId"`                    // ClientID stores client application id. ClientID 存储客户端应用 ID。
-	LogoutCallbackURL string `json:"logoutCallbackUrl,omitempty"` // LogoutCallbackURL stores client logout callback URL. LogoutCallbackURL 存储客户端注销回调地址。
-	CreateTime        int64  `json:"createTime"`                  // CreateTime stores creation unix time. CreateTime 存储创建时间戳。
-	UpdateTime        int64  `json:"updateTime"`                  // UpdateTime stores update unix time. UpdateTime 存储更新时间戳。
+	// LoginID stores subject id at the login center. LoginID 存储认证中心登录主体 ID。
+	LoginID string `json:"loginId"`
+	// ClientID stores client application id. ClientID 存储客户端应用 ID。
+	ClientID string `json:"clientId"`
+	// LogoutCallbackURL stores client logout callback URL. LogoutCallbackURL 存储客户端注销回调地址。
+	LogoutCallbackURL string `json:"logoutCallbackUrl,omitempty"`
+	// CreateTime stores creation unix time. CreateTime 存储创建时间戳。
+	CreateTime int64 `json:"createTime"`
+	// UpdateTime stores update unix time. UpdateTime 存储更新时间戳。
+	UpdateTime int64 `json:"updateTime"`
 }
 
 // Server handles SSO client registration and ticket operations. Server 处理 SSO 客户端注册与 Ticket 操作。
@@ -231,10 +281,11 @@ type Server struct {
 	storage                 adapter.Storage // storage stores clients and SSO credentials. storage 存储客户端和 SSO 凭证。
 	storageOwned            bool            // storageOwned controls whether Server closes storage. storageOwned 控制 Server 是否关闭存储。
 	serializer              adapter.Codec   // serializer encodes clients and credentials before storage. serializer 在存储前编解码客户端和凭证。
-	credentialConsumeMu     sync.Mutex      // credentialConsumeMu serializes non-atomic one-time credential consumption. credentialConsumeMu 串行化非原子存储的一次性凭证消费。
-	clientSessionMu         sync.Mutex      // clientSessionMu serializes local client-session index updates. clientSessionMu 串行化当前实例的客户端会话索引更新。
-	closeOnce               sync.Once       // closeOnce makes Server.Close idempotent. closeOnce 确保 Server.Close 幂等。
-	closeErr                error           // closeErr stores the first storage close error. closeErr 存储首次关闭存储时的错误。
+	// credentialConsumeMu serializes non-atomic one-time credential consumption. credentialConsumeMu 串行化非原子存储的一次性凭证消费。
+	credentialConsumeMu sync.Mutex
+	clientSessionMu     sync.Mutex // clientSessionMu serializes local client-session index updates. clientSessionMu 串行化当前实例的客户端会话索引更新。
+	closeOnce           sync.Once  // closeOnce makes Server.Close idempotent. closeOnce 确保 Server.Close 幂等。
+	closeErr            error      // closeErr stores the first storage close error. closeErr 存储首次关闭存储时的错误。
 }
 
 // NewDefaultServer creates SSO server with default config. NewDefaultServer 使用默认配置创建 SSO 服务端。
@@ -309,6 +360,7 @@ func (s *Server) RegisterClient(client *Client) error {
 	if client == nil || client.ClientID == "" {
 		return ErrClientOrClientIDEmpty
 	}
+
 	// Store client metadata before any ticket can be issued. 先保存客户端元数据，后续签发 Ticket 时依赖它做校验。
 	return s.saveClient(context.Background(), client)
 }
@@ -348,14 +400,17 @@ func (s *Server) GenerateTicketWithTimeout(ctx context.Context, clientID, loginI
 	if err != nil {
 		return nil, err
 	}
+
 	// Enforce the per-client mode allow-list before issuing a ticket. 签发 Ticket 前先校验客户端允许的模式。
 	if !s.isModeAllowed(client, ModeTicket) {
 		return nil, ErrModeUnsupported
 	}
+
 	// Prevent tickets from being delivered to unregistered callback addresses. 防止 Ticket 被投递到未登记的回调地址。
 	if !s.isValidRedirectURI(client, redirectURI) {
 		return nil, ErrInvalidRedirectURI
 	}
+
 	// Keep requested scopes within the client allow-list when one is configured. 配置客户端权限范围时，限制请求范围不能越权。
 	if !s.isValidScopes(client, scopes) {
 		return nil, ErrInvalidScope
@@ -481,6 +536,7 @@ func (s *Server) RevokeTicket(ctx context.Context, ticketValue string) error {
 	if ticketValue == "" {
 		return nil
 	}
+
 	// Revocation is idempotent: deleting a missing key is treated as success by storage adapters. 撤销保持幂等：删除不存在的键由存储适配器按成功处理。
 	if err := s.storage.Delete(ctx, s.getTicketKey(ticketValue)); err != nil {
 		return fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
@@ -497,6 +553,7 @@ func (s *Server) GetTicketTTL(ctx context.Context, ticketValue string) (int64, e
 	if err != nil {
 		return 0, fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
 	}
+
 	// Normalize storage TTL sentinel values to Redis-like seconds. 将存储 TTL 哨兵值统一转换为类似 Redis 的秒级返回值。
 	switch {
 	case ttl == adapter.TTLNotFound:
@@ -1068,8 +1125,7 @@ func (s *Server) saveOAuth2Code(ctx context.Context, code *OAuth2Code) error {
 	return nil
 }
 
-// saveClientSession serializes and stores a client session in the login index. saveClientSession 将客户端会话序列化并保存到登录索引。
-// Note: the server lock protects one process; concurrent registrations across server instances still need storage-level atomic merge support. 注意：Server 锁只保护单进程；跨实例并发注册仍需要存储层提供原子合并能力。
+// saveClientSession serializes and stores a client session in the login index; its lock protects one process, while concurrent cross-instance registrations require storage-level atomic merging. saveClientSession 序列化客户端会话并写入登录索引，锁仅保护单进程，跨实例并发注册需要存储层原子合并支持。
 func (s *Server) saveClientSession(ctx context.Context, session *ClientSession) error {
 	sessions, err := s.GetClientSessions(ctx, session.LoginID)
 	if err != nil {

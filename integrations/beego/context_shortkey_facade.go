@@ -4,7 +4,7 @@ package beego
 import (
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/shortkey"
+	"github.com/Zany2/dtoken-go/contract/shortkey"
 	beegocontext "github.com/beego/beego/v2/server/web/context"
 )
 

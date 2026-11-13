@@ -4,7 +4,7 @@ package echo
 import (
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/shortkey"
+	"github.com/Zany2/dtoken-go/contract/shortkey"
 	echo4 "github.com/labstack/echo/v4"
 )
 

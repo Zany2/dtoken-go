@@ -3,11 +3,12 @@ package hertz
 
 import (
 	"context"
+	derror "github.com/Zany2/dtoken-go/errors"
+	requestcontext "github.com/Zany2/dtoken-go/httpauth/context"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/integrations/authcheck"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 )
 
@@ -20,7 +21,7 @@ func GetTokenValueByContext(ctx *hertzapp.RequestContext) (string, error) {
 
 	tokenValue := dCtx.GetTokenValue()
 	if tokenValue == "" {
-		return "", ErrNotLogin
+		return "", derror.ErrNotLogin
 	}
 	return tokenValue, nil
 }
@@ -463,20 +464,16 @@ func requestContext(ctx *hertzapp.RequestContext) context.Context {
 }
 
 // requireDTokenContextByContext gets required DToken context requireDTokenContextByContext 获取必需的 DToken 上下文。
-func requireDTokenContextByContext(ctx *hertzapp.RequestContext) (*DTokenContext, error) {
+func requireDTokenContextByContext(ctx *hertzapp.RequestContext) (*requestcontext.DTokenContext, error) {
 	dCtx, ok := GetDTokenContext(ctx)
 	if !ok {
 		if ctx == nil {
-			return nil, ErrNotLogin
+			return nil, derror.ErrNotLogin
 		}
-		mgr, err := authcheck.GetManager("")
-		if err != nil {
-			return nil, err
-		}
-		return getDTokenContext(ctx, mgr), nil
+		return nil, derror.ErrManagerNotFound
 	}
 	if mgr := dCtx.GetManager(); mgr == nil || mgr.IsClosed() {
-		return nil, ErrManagerNotFound
+		return nil, derror.ErrManagerNotFound
 	}
 	return dCtx, nil
 }

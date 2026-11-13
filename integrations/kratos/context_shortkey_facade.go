@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/shortkey"
+	"github.com/Zany2/dtoken-go/contract/shortkey"
 )
 
 // CreateShortKeyByCtx creates short key CreateShortKeyByCtx 创建 ShortKey

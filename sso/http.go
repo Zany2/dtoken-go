@@ -21,9 +21,12 @@ type LoginIDResolver func(r *http.Request) (string, bool)
 type HTTPOptions struct {
 	// ServerOptions carries protocol-level server behavior. ServerOptions 包含协议层服务端行为配置。
 	ServerOptions
-	LoginIDResolver LoginIDResolver // LoginIDResolver resolves current center login id. LoginIDResolver 解析当前中心登录 ID。
-	LoginPageURL    string          // LoginPageURL stores the fallback login page URL. LoginPageURL 存储未登录时跳转的登录页地址。
-	Cookie          CookieOptions   // Cookie stores optional shared-cookie settings. Cookie 存储可选共享 Cookie 配置。
+	// LoginIDResolver resolves current center login id. LoginIDResolver 解析当前中心登录 ID。
+	LoginIDResolver LoginIDResolver
+	// LoginPageURL stores the fallback login page URL. LoginPageURL 存储未登录时跳转的登录页地址。
+	LoginPageURL string
+	// Cookie stores optional shared-cookie settings. Cookie 存储可选共享 Cookie 配置。
+	Cookie CookieOptions
 }
 
 // DefaultHTTPOptions returns default standalone HTTP options. DefaultHTTPOptions 返回默认独立 HTTP 选项。
@@ -42,8 +45,7 @@ type HTTPServer struct {
 	clientSessionMu sync.Mutex // clientSessionMu serializes session-limit checks and registrations. clientSessionMu 串行化会话上限检查和注册。
 }
 
-// NewHTTPServer creates a standalone HTTP SSO handler. NewHTTPServer 创建独立 HTTP SSO 处理器。
-// Client registration failures are retained and make handlers return HTTP 500. 客户端注册失败会被保留，并使处理器返回 HTTP 500。
+// NewHTTPServer creates a standalone HTTP SSO handler that retains client registration failures and returns HTTP 500 for them. NewHTTPServer 创建独立 HTTP SSO 处理器，保留客户端注册错误并据此返回 HTTP 500。
 func NewHTTPServer(server *Server, options HTTPOptions) *HTTPServer {
 	defaults := DefaultHTTPOptions()
 	options.ServerOptions.Endpoints = normalizeEndpoints(options.ServerOptions.Endpoints)
@@ -769,7 +771,8 @@ func (h *HTTPServer) redirectToLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := target.Query()
-	// Only pass relative path to prevent open redirect只传递相对路径，防止开放重定向
+
+	// Pass only a relative path to prevent open redirects. 仅传递相对路径，防止开放重定向。
 	backPath := r.URL.Path
 	if r.URL.RawQuery != "" {
 		backPath += "?" + r.URL.RawQuery
@@ -849,14 +852,22 @@ func statusFromError(err error) int {
 
 // CookieOptions defines shared-cookie behavior for same-site SSO. CookieOptions 定义同站 SSO 的共享 Cookie 行为。
 type CookieOptions struct {
-	Name      string        // Name stores cookie name. Name 存储 Cookie 名称。
-	Domain    string        // Domain stores shared cookie domain. Domain 存储共享 Cookie 域名。
-	Path      string        // Path stores cookie path. Path 存储 Cookie 路径。
-	MaxAge    time.Duration // MaxAge stores cookie lifetime. MaxAge 存储 Cookie 有效期。
-	Secure    bool          // Secure restricts cookie to HTTPS. Secure 限制 Cookie 仅通过 HTTPS 发送。
-	HTTPOnly  bool          // HTTPOnly hides cookie from scripts. HTTPOnly 禁止脚本读取 Cookie。
-	SameSite  http.SameSite // SameSite stores browser same-site policy. SameSite 存储浏览器同站策略。
-	SecretKey string        // SecretKey signs the cookie payload; empty disables cookie-based identity resolution. SecretKey 对 Cookie 载荷签名；为空时禁用基于 Cookie 的身份解析。
+	// Name stores cookie name. Name 存储 Cookie 名称。
+	Name string
+	// Domain stores shared cookie domain. Domain 存储共享 Cookie 域名。
+	Domain string
+	// Path stores cookie path. Path 存储 Cookie 路径。
+	Path string
+	// MaxAge stores cookie lifetime. MaxAge 存储 Cookie 有效期。
+	MaxAge time.Duration
+	// Secure restricts cookie to HTTPS. Secure 限制 Cookie 仅通过 HTTPS 发送。
+	Secure bool
+	// HTTPOnly hides cookie from scripts. HTTPOnly 禁止脚本读取 Cookie。
+	HTTPOnly bool
+	// SameSite stores browser same-site policy. SameSite 存储浏览器同站策略。
+	SameSite http.SameSite
+	// SecretKey signs the cookie payload; empty disables cookie-based identity resolution. SecretKey 对 Cookie 载荷签名；为空时禁用基于 Cookie 的身份解析。
+	SecretKey string
 }
 
 // DefaultCookieOptions returns default shared-cookie options. DefaultCookieOptions 返回默认共享 Cookie 配置。
@@ -912,8 +923,10 @@ func SetLoginIDCookie(w http.ResponseWriter, options CookieOptions, loginID stri
 
 // loginCookieClaims binds the identity to a server-verified deadline. loginCookieClaims 将身份绑定到服务端校验的截止时间。
 type loginCookieClaims struct {
-	LoginID   string    `json:"loginId"`   // LoginID stores the authenticated subject. LoginID 存储已认证主体。
-	ExpiresAt time.Time `json:"expiresAt"` // ExpiresAt stores the signed deadline. ExpiresAt 存储签名截止时间。
+	// LoginID stores the authenticated subject. LoginID 存储已认证主体。
+	LoginID string `json:"loginId"`
+	// ExpiresAt stores the signed deadline. ExpiresAt 存储签名截止时间。
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 // encodeLoginIDCookie signs the versioned identity and expiry payload. encodeLoginIDCookie 对带版本的身份与过期时间载荷签名。

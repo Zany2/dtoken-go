@@ -15,7 +15,7 @@ require (
 )
 
 require (
-	github.com/Zany2/dtoken-go/com/storage/redis v0.0.3
+	github.com/Zany2/dtoken-go/storage/redis v0.0.3
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -51,6 +51,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/Zany2/dtoken-go/com/storage/redis => ../../com/storage/redis
+replace github.com/Zany2/dtoken-go/storage/redis => ../../storage/redis
 
 replace github.com/Zany2/dtoken-go => ../..

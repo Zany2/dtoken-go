@@ -4,8 +4,6 @@ go 1.25.0
 
 require (
 	github.com/Zany2/dtoken-go v0.0.3
-	github.com/Zany2/dtoken-go/com/codec/msgpack v0.0.3
-	github.com/Zany2/dtoken-go/com/storage/redis v0.0.3
 	github.com/go-kratos/kratos/v2 v2.9.1
 	google.golang.org/grpc v1.71.0
 )

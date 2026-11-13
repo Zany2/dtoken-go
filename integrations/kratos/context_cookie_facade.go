@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/manager"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 )
 
 // SetTokenCookieByCtx writes token cookie SetTokenCookieByCtx 写入 Token Cookie

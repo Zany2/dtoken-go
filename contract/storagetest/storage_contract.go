@@ -1,0 +1,267 @@
+// @Author daixk 2025/12/22 15:56:00
+package storagetest
+
+import (
+	"context"
+	"errors"
+	"reflect"
+	"sort"
+	"testing"
+	"time"
+
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
+)
+
+// StorageFactory creates a fresh storage instance for each contract run. StorageFactory 为每次契约测试创建新的存储实例。
+type StorageFactory func(t *testing.T) adapter.FullStorage
+
+// RunStorageContract verifies shared storage semantics. RunStorageContract 验证通用存储语义契约。
+func RunStorageContract(t *testing.T, factory StorageFactory) {
+	t.Helper()
+
+	t.Run("basic operations", func(t *testing.T) {
+		ctx := context.Background()
+		storage := factory(t)
+
+		// Verify set, exists, and get semantics 验证写入、存在检查和读取语义。
+		if err := storage.Set(ctx, "contract:user:1", "alice", 0); err != nil {
+			t.Fatalf("Set() error = %v", err)
+		}
+		if !storage.Exists(ctx, "contract:user:1") {
+			t.Fatal("Exists() should return true")
+		}
+		got, err := storage.Get(ctx, "contract:user:1")
+		if err != nil {
+			t.Fatalf("Get() error = %v", err)
+		}
+		if got != "alice" {
+			t.Fatalf("Get() = %v, want alice", got)
+		}
+
+		// Verify missing key read semantics 验证缺失键读取语义。
+		got, err = storage.Get(ctx, "contract:missing")
+		if err != nil || got != nil {
+			t.Fatalf("Get(missing) = %v, %v, want nil nil", got, err)
+		}
+	})
+
+	t.Run("atomic get and delete", func(t *testing.T) {
+		ctx := context.Background()
+		storage := factory(t)
+
+		// Verify atomic read-delete removes the stored key 验证原子读删会移除已存储键。
+		if err := storage.Set(ctx, "contract:atomic", "value", 0); err != nil {
+			t.Fatalf("Set() error = %v", err)
+		}
+		got, err := storage.GetAndDelete(ctx, "contract:atomic")
+		if err != nil {
+			t.Fatalf("GetAndDelete() error = %v", err)
+		}
+		if got != "value" {
+			t.Fatalf("GetAndDelete() = %v, want value", got)
+		}
+		if storage.Exists(ctx, "contract:atomic") {
+			t.Fatal("GetAndDelete() should remove key")
+		}
+
+		// Verify missing key read-delete semantics 验证缺失键读删语义。
+		got, err = storage.GetAndDelete(ctx, "contract:missing")
+		if err != nil || got != nil {
+			t.Fatalf("GetAndDelete(missing) = %v, %v, want nil nil", got, err)
+		}
+	})
+
+	t.Run("atomic set if absent", func(t *testing.T) {
+		ctx := context.Background()
+		storage := factory(t)
+
+		// Verify first set wins when key is absent 验证键缺失时首次写入成功。
+		ok, err := storage.SetIfAbsent(ctx, "contract:setnx", "first", 0)
+		if err != nil {
+			t.Fatalf("SetIfAbsent(first) error = %v", err)
+		}
+		if !ok {
+			t.Fatal("SetIfAbsent(first) = false, want true")
+		}
+
+		// Verify existing key rejects later writes 验证键已存在时拒绝后续写入。
+		ok, err = storage.SetIfAbsent(ctx, "contract:setnx", "second", 0)
+		if err != nil {
+			t.Fatalf("SetIfAbsent(second) error = %v", err)
+		}
+		if ok {
+			t.Fatal("SetIfAbsent(second) = true, want false")
+		}
+		got, err := storage.Get(ctx, "contract:setnx")
+		if err != nil {
+			t.Fatalf("Get(setnx) error = %v", err)
+		}
+		if got != "first" {
+			t.Fatalf("Get(setnx) = %v, want first", got)
+		}
+
+		// Verify non-positive atomic expiration means no expiry 验证原子写入的非正过期时间表示永不过期。
+		ok, err = storage.SetIfAbsent(ctx, "contract:setnx:forever", "value", -time.Second)
+		if err != nil || !ok {
+			t.Fatalf("SetIfAbsent(negative expiration) = %v, %v, want true nil", ok, err)
+		}
+		if ttl, err := storage.TTL(ctx, "contract:setnx:forever"); err != nil || ttl != adapter.TTLNoExpire {
+			t.Fatalf("TTL(setnx negative expiration) = %v, %v, want %v nil", ttl, err, adapter.TTLNoExpire)
+		}
+	})
+
+	t.Run("ttl and expire", func(t *testing.T) {
+		ctx := context.Background()
+		storage := factory(t)
+
+		// Verify missing TTL sentinel 验证缺失键 TTL 哨兵值。
+		if ttl, err := storage.TTL(ctx, "contract:missing"); err != nil || ttl != adapter.TTLNotFound {
+			t.Fatalf("TTL(missing) = %v, %v, want %v nil", ttl, err, adapter.TTLNotFound)
+		}
+
+		// Verify no-expire TTL sentinel 验证永不过期 TTL 哨兵值。
+		if err := storage.Set(ctx, "contract:forever", "value", 0); err != nil {
+			t.Fatalf("Set(no-expire) error = %v", err)
+		}
+		if ttl, err := storage.TTL(ctx, "contract:forever"); err != nil || ttl != adapter.TTLNoExpire {
+			t.Fatalf("TTL(no-expire) = %v, %v, want %v nil", ttl, err, adapter.TTLNoExpire)
+		}
+		if err := storage.Set(ctx, "contract:negative-expiration", "value", -time.Second); err != nil {
+			t.Fatalf("Set(negative expiration) error = %v", err)
+		}
+		if ttl, err := storage.TTL(ctx, "contract:negative-expiration"); err != nil || ttl != adapter.TTLNoExpire {
+			t.Fatalf("TTL(negative expiration) = %v, %v, want %v nil", ttl, err, adapter.TTLNoExpire)
+		}
+
+		// Verify positive TTL and shorter expire behavior 验证正 TTL 和缩短过期时间行为。
+		if err := storage.Set(ctx, "contract:ttl", "value", time.Second); err != nil {
+			t.Fatalf("Set(ttl) error = %v", err)
+		}
+		if ttl, err := storage.TTL(ctx, "contract:ttl"); err != nil || ttl <= 0 || ttl > time.Second {
+			t.Fatalf("TTL(ttl) = %v, %v, want within (0, 1s]", ttl, err)
+		}
+
+		if err := storage.Expire(ctx, "contract:ttl", 500*time.Millisecond); err != nil {
+			t.Fatalf("Expire() error = %v", err)
+		}
+		if ttl, err := storage.TTL(ctx, "contract:ttl"); err != nil || ttl <= 0 || ttl > 500*time.Millisecond {
+			t.Fatalf("TTL(after Expire) = %v, %v, want within (0, 500ms]", ttl, err)
+		}
+
+		// Verify immediate expiration removes key 验证立即过期会移除键。
+		if err := storage.Expire(ctx, "contract:ttl", 0); err != nil {
+			t.Fatalf("Expire(immediate) error = %v", err)
+		}
+		if storage.Exists(ctx, "contract:ttl") {
+			t.Fatal("Expire(immediate) should remove key")
+		}
+		if ttl, err := storage.TTL(ctx, "contract:ttl"); err != nil || ttl != adapter.TTLNotFound {
+			t.Fatalf("TTL(after immediate Expire) = %v, %v, want %v nil", ttl, err, adapter.TTLNotFound)
+		}
+
+		// Verify missing expire error semantics 验证缺失键设置过期时间的错误语义。
+		if err := storage.Expire(ctx, "contract:missing", time.Second); !errors.Is(err, derror.ErrKeyNotFound) {
+			t.Fatalf("Expire(missing) error = %v, want %v", err, derror.ErrKeyNotFound)
+		}
+	})
+
+	t.Run("keys delete and clear", func(t *testing.T) {
+		ctx := context.Background()
+		storage := factory(t)
+
+		// Prepare mixed keys for scan and deletion checks 准备混合键用于扫描和删除检查。
+		if err := storage.Set(ctx, "contract:user:1", "a", 0); err != nil {
+			t.Fatalf("Set() error = %v", err)
+		}
+		if err := storage.Set(ctx, "contract:user:2", "b", 0); err != nil {
+			t.Fatalf("Set() error = %v", err)
+		}
+		if err := storage.Set(ctx, "contract:team:1", "c", 0); err != nil {
+			t.Fatalf("Set() error = %v", err)
+		}
+
+		// Verify key scan returns matching keys 验证键扫描返回匹配键。
+		keys, err := storage.Keys(ctx, "contract:user:?")
+		if err != nil {
+			t.Fatalf("Keys() error = %v", err)
+		}
+		sort.Strings(keys)
+		if !reflect.DeepEqual(keys, []string{"contract:user:1", "contract:user:2"}) {
+			t.Fatalf("Keys(user:?) = %v", keys)
+		}
+
+		// Verify missing scan returns empty non-nil slice 验证无匹配扫描返回非 nil 空切片。
+		keys, err = storage.Keys(ctx, "contract:missing:*")
+		if err != nil {
+			t.Fatalf("Keys(missing) error = %v", err)
+		}
+		if keys == nil || len(keys) != 0 {
+			t.Fatalf("Keys(missing) = %#v, want empty non-nil slice", keys)
+		}
+
+		// Verify empty delete and multi-key delete semantics 验证空删除和多键删除语义。
+		if err := storage.Delete(ctx); err != nil {
+			t.Fatalf("Delete(empty) error = %v, want nil", err)
+		}
+		if err := storage.Delete(ctx, "contract:user:1", "contract:user:2"); err != nil {
+			t.Fatalf("Delete() error = %v", err)
+		}
+		if storage.Exists(ctx, "contract:user:1") || storage.Exists(ctx, "contract:user:2") {
+			t.Fatal("Delete() should remove provided keys")
+		}
+
+		// Verify clear removes all remaining contract keys 验证清空会移除全部剩余契约键。
+		if err := storage.Clear(ctx); err != nil {
+			t.Fatalf("Clear() error = %v", err)
+		}
+		keys, err = storage.Keys(ctx, "contract:*")
+		if err != nil {
+			t.Fatalf("Keys(after Clear) error = %v", err)
+		}
+		if keys == nil || len(keys) != 0 {
+			t.Fatalf("Keys(after Clear) = %#v, want empty non-nil slice", keys)
+		}
+	})
+
+	t.Run("context cancellation", func(t *testing.T) {
+		storage := factory(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		// Verify all operations honor canceled context 验证所有操作都遵守已取消上下文。
+		if err := storage.Set(ctx, "contract:canceled", "v", 0); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Set(canceled) error = %v, want %v", err, context.Canceled)
+		}
+		if _, err := storage.GetAndDelete(ctx, "contract:canceled"); !errors.Is(err, context.Canceled) {
+			t.Fatalf("GetAndDelete(canceled) error = %v, want %v", err, context.Canceled)
+		}
+		if _, err := storage.SetIfAbsent(ctx, "contract:canceled", "v", 0); !errors.Is(err, context.Canceled) {
+			t.Fatalf("SetIfAbsent(canceled) error = %v, want %v", err, context.Canceled)
+		}
+		if _, err := storage.Get(ctx, "contract:canceled"); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Get(canceled) error = %v, want %v", err, context.Canceled)
+		}
+		if err := storage.Delete(ctx, "contract:canceled"); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Delete(canceled) error = %v, want %v", err, context.Canceled)
+		}
+		if storage.Exists(ctx, "contract:canceled") {
+			t.Fatal("Exists(canceled) should return false")
+		}
+		if _, err := storage.Keys(ctx, "contract:*"); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Keys(canceled) error = %v, want %v", err, context.Canceled)
+		}
+		if err := storage.Expire(ctx, "contract:canceled", time.Second); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Expire(canceled) error = %v, want %v", err, context.Canceled)
+		}
+		if _, err := storage.TTL(ctx, "contract:canceled"); !errors.Is(err, context.Canceled) {
+			t.Fatalf("TTL(canceled) error = %v, want %v", err, context.Canceled)
+		}
+		if err := storage.Clear(ctx); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Clear(canceled) error = %v, want %v", err, context.Canceled)
+		}
+		if err := storage.Ping(ctx); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Ping(canceled) error = %v, want %v", err, context.Canceled)
+		}
+	})
+}

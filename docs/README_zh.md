@@ -18,7 +18,7 @@
 - [封禁体系](guide/core/disable_zh.md) - 账号、服务、等级、设备封禁
 - [多认证体系](guide/core/multi-auth_zh.md) - AuthType 隔离多套认证系统
 - [Token 风格](guide/core/token-style_zh.md) - UUID、随机串、JWT 等 Token 生成方式
-- [事件监听](guide/core/listener_zh.md) - 事件系统使用指南
+- [事件监听](guide/event_zh.md) - 事件系统使用指南
 
 ### 安全与协议
 

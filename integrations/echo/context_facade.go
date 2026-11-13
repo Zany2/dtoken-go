@@ -3,11 +3,12 @@ package echo
 
 import (
 	"context"
+	derror "github.com/Zany2/dtoken-go/errors"
+	requestcontext "github.com/Zany2/dtoken-go/httpauth/context"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/integrations/authcheck"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	echo4 "github.com/labstack/echo/v4"
 )
 
@@ -20,7 +21,7 @@ func GetTokenValueByContext(c echo4.Context) (string, error) {
 
 	tokenValue := dCtx.GetTokenValue()
 	if tokenValue == "" {
-		return "", ErrNotLogin
+		return "", derror.ErrNotLogin
 	}
 	return tokenValue, nil
 }
@@ -449,20 +450,16 @@ func requestContext(c echo4.Context) context.Context {
 }
 
 // requireDTokenContextByContext gets required DToken context requireDTokenContextByContext 获取必需的 DToken 上下文。
-func requireDTokenContextByContext(c echo4.Context) (*DTokenContext, error) {
+func requireDTokenContextByContext(c echo4.Context) (*requestcontext.DTokenContext, error) {
 	dCtx, ok := GetDTokenContext(c)
 	if !ok {
 		if c == nil {
-			return nil, ErrNotLogin
+			return nil, derror.ErrNotLogin
 		}
-		mgr, err := authcheck.GetManager("")
-		if err != nil {
-			return nil, err
-		}
-		return getDTokenContext(c, mgr), nil
+		return nil, derror.ErrManagerNotFound
 	}
 	if mgr := dCtx.GetManager(); mgr == nil || mgr.IsClosed() {
-		return nil, ErrManagerNotFound
+		return nil, derror.ErrManagerNotFound
 	}
 	return dCtx, nil
 }

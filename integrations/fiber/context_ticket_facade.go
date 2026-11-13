@@ -4,7 +4,7 @@ package fiber
 import (
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/ticket"
+	"github.com/Zany2/dtoken-go/contract/ticket"
 	gofiber "github.com/gofiber/fiber/v2"
 )
 

@@ -107,8 +107,8 @@ dtoken.GetDevice(ctx, token)
 ### Enable Auto-Renew
 
 ```go
-defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+dt.NewBuilder().
+    Storage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
     Build()
@@ -117,8 +117,8 @@ defaults.NewBuilder().
 ### Set Renew Trigger Threshold
 
 ```go
-defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+dt.NewBuilder().
+    Storage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
     RenewMaxRefresh(3600). // only renew within the last hour
@@ -128,8 +128,8 @@ defaults.NewBuilder().
 ### Set Minimum Renew Interval
 
 ```go
-defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+dt.NewBuilder().
+    Storage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
     RenewMaxRefresh(3600).
@@ -140,8 +140,8 @@ defaults.NewBuilder().
 ### Combine with Active Timeout
 
 ```go
-defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+dt.NewBuilder().
+    Storage(memory.NewStorage()).
     Timeout(86400).
     ActiveTimeout(1800).
     AutoRenew(true).
@@ -175,7 +175,7 @@ type Storage interface {
 
 When auto-renew is enabled, renew work prefers a renew task pool:
 
-- `com/pool/ants`
+- `pool/ants`
 - `adapter.Pool`
 - `Builder.SetPool(...)`
 
@@ -202,8 +202,8 @@ Async renew failure does not directly block the current request:
 ### Recommended Production Configuration
 
 ```go
-defaults.NewBuilder().
-    SetStorage(redisStorage).
+dt.NewBuilder().
+    Storage(redisStorage).
     Timeout(86400).
     ActiveTimeout(1800).
     AutoRenew(true).
@@ -215,8 +215,8 @@ defaults.NewBuilder().
 ### Recommended Development Configuration
 
 ```go
-defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+dt.NewBuilder().
+    Storage(memory.NewStorage()).
     Timeout(7200).
     AutoRenew(true).
     Build()
@@ -225,8 +225,8 @@ defaults.NewBuilder().
 ### Security-First Configuration
 
 ```go
-defaults.NewBuilder().
-    SetStorage(redisStorage).
+dt.NewBuilder().
+    Storage(redisStorage).
     Timeout(1800).
     AutoRenew(false).
     Build()

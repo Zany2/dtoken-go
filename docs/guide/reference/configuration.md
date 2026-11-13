@@ -1,13 +1,15 @@
 # Configuration Guide
 
+Import aliases for code fragments: dt = github.com/Zany2/dtoken-go.
+
 **[中文文档](../reference/configuration_zh.md)**
 
-This page summarizes common DToken-Go configuration options, default behavior, and validation rules. Most projects can start with `defaults.NewBuilder()` and override only the options they need.
+This page summarizes common DToken-Go configuration options, default behavior, and validation rules. Most projects can start with `dt.NewBuilder()` and override only the options they need.
 
 ## Basic Example
 
 ```go
-mgr, err := defaults.NewBuilder().
+mgr, err := dt.NewBuilder().
     // AuthType separates auth systems such as user, admin, and app.
     AuthType("user").
     // KeyPrefix is the shared storage key prefix for a project or environment.
@@ -38,7 +40,7 @@ mgr, err := defaults.NewBuilder().
     // Banner and logging can be adjusted for production needs.
     IsLog(false).
     IsPrintBanner(false).
-    SetStorage(storage).
+    Storage(storage).
     Build()
 ```
 
@@ -76,7 +78,7 @@ mgr, err := defaults.NewBuilder().
 `AuthType` and `KeyPrefix` automatically receive a trailing `:`:
 
 ```go
-defaults.NewBuilder().
+dt.NewBuilder().
     AuthType("admin").
     KeyPrefix("dtoken")
 ```
@@ -144,7 +146,7 @@ Auto-renew has additional rules:
 Token and refresh-token timeouts can also be configured with `time.Duration`. Positive durations are rounded up to whole seconds:
 
 ```go
-defaults.NewBuilder().
+dt.NewBuilder().
     TimeoutDuration(2 * time.Hour).
     RefreshTokenTimeoutDuration(30 * 24 * time.Hour)
 ```
@@ -156,7 +158,7 @@ Enabled sources are checked in this order: the header named by `TokenName`, `Aut
 DToken-Go must have at least one Token source enabled:
 
 ```go
-defaults.NewBuilder().
+dt.NewBuilder().
     IsReadHeader(true).
     IsReadCookie(false).
     IsReadQuery(false).
@@ -167,34 +169,14 @@ Manager construction fails if all four sources are disabled.
 
 ## Optional Modules
 
-The base manager enables core login, logout, session, permission, role, refresh token, disable, and terminal management by default. The following modules are opt-in:
-
-| Module | Default | Enable API |
-| --- | --- | --- |
-| Nonce | Disabled | `EnableNonce()`, `NonceConfig(...)`, `NonceTTL(...)`, or `SetNonceManager(...)` |
-| OAuth2 | Disabled | `EnableOAuth2()`, `OAuth2Config(...)`, `OAuth2CodeExpiration(...)`, `OAuth2TokenExpiration(...)`, `OAuth2RefreshExpiration(...)`, or `SetOAuth2Manager(...)` |
-| Ticket | Disabled | `EnableTicket()`, `TicketConfig(...)`, `TicketTTL(...)`, or `SetTicketManager(...)` |
-| ShortKey | Disabled | `EnableShortKey()`, `ShortKeyConfig(...)`, `ShortKeyTTL(...)`, `ShortKeyLength(...)`, or `SetShortKeyManager(...)` |
-| SSO | Separate module | Import and initialize `github.com/Zany2/dtoken-go/sso` explicitly |
-
-Example:
-
-```go
-mgr, err := defaults.NewBuilder().
-    EnableNonce().
-    EnableTicket().
-    ShortKeyTTL(5 * time.Minute). // also enables ShortKey
-    Build()
-```
-
-Calling a module-specific config method enables that module automatically. Refresh Token is part of the core manager and can be used through `LoginWithRefreshToken` when needed.
+Configure Nonce, OAuth2, Ticket, and ShortKey in their own packages and compose their Managers with NewService. The root builder configures authentication and basic components, with no capability switches. Services can reuse auth.Config(), auth.Storage(), and auth.Codec(), with auth as the event emitter. Inject HTTP services with WithCapabilities. See the [capability guide](../security/advanced-features.md).
 
 ## Cookie Configuration
 
 When cookie reading is enabled, cookie attributes can be configured:
 
 ```go
-mgr, err := defaults.NewBuilder().
+mgr, err := dt.NewBuilder().
     IsReadHeader(false).
     IsReadCookie(true).
     CookieDomain("example.com").
@@ -203,7 +185,7 @@ mgr, err := defaults.NewBuilder().
     CookieHttpOnly(true).
     CookieSameSite(config.SameSiteNone).
     CookieMaxAge(7200).
-    SetStorage(storage).
+    Storage(storage).
     Build()
 ```
 

@@ -2,6 +2,8 @@
 
 # Refresh Token 指南
 
+代码片段的导入别名：dt = github.com/Zany2/dtoken-go.
+
 ## 概览
 
 DToken-Go 在两个地方支持 Refresh Token：
@@ -90,7 +92,7 @@ ttl, err := dtoken.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
 默认 refresh token 有效期是 `30` 天。可以设置全局有效期：
 
 ```go
-mgr, err := dtoken.NewBuilder().
+mgr, err := dt.NewBuilder().
 	RefreshTokenTimeout(30 * 24 * 60 * 60).
 	Build()
 ```
@@ -98,35 +100,35 @@ mgr, err := dtoken.NewBuilder().
 也可以使用 `time.Duration`：
 
 ```go
-mgr, err := dtoken.NewBuilder().
+mgr, err := dt.NewBuilder().
 	RefreshTokenTimeoutDuration(30 * 24 * time.Hour).
 	Build()
 ```
 
 ## 框架门面示例
 
-各框架包会导出这些 API。例如 GoFrame：
+全局 API 从 global 包显式导入，并在注册实例后使用：
 
 ```go
-import gfdt "github.com/Zany2/dtoken-go/integrations/gf"
+import global "github.com/Zany2/dtoken-go/global"
 
-pair, err := gfdt.LoginWithRefreshToken(ctx, "user-1001")
+pair, err := global.LoginWithRefreshToken(ctx, "user-1001")
 if err != nil {
 	return err
 }
 
-nextPair, err := gfdt.RefreshToken(ctx, pair.RefreshToken)
+nextPair, err := global.RefreshToken(ctx, pair.RefreshToken)
 if err != nil {
 	return err
 }
 
-ttl, err := gfdt.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
+ttl, err := global.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
 if err != nil {
 	return err
 }
 fmt.Println(ttl)
 
-if err := gfdt.RevokeRefreshToken(ctx, nextPair.RefreshToken); err != nil {
+if err := global.RevokeRefreshToken(ctx, nextPair.RefreshToken); err != nil {
 	return err
 }
 ```
@@ -135,7 +137,7 @@ if err := gfdt.RevokeRefreshToken(ctx, nextPair.RefreshToken); err != nil {
 
 ```go
 func (c *AuthController) Login(r *ghttp.Request) {
-	pair, err := gfdt.LoginWithRefreshToken(r.Context(), "user-1001", "web", "browser-1")
+	pair, err := global.LoginWithRefreshToken(r.Context(), "user-1001", "web", "browser-1")
 	if err != nil {
 		r.Response.WriteJsonExit(g.Map{"code": 401, "message": err.Error()})
 	}
@@ -143,7 +145,7 @@ func (c *AuthController) Login(r *ghttp.Request) {
 }
 
 func (c *AuthController) Refresh(r *ghttp.Request) {
-	pair, err := gfdt.RefreshToken(r.Context(), r.Get("refreshToken").String())
+	pair, err := global.RefreshToken(r.Context(), r.Get("refreshToken").String())
 	if err != nil {
 		r.Response.WriteJsonExit(g.Map{"code": 401, "message": err.Error()})
 	}

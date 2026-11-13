@@ -5,10 +5,10 @@ import (
 	"context"
 	"net/http"
 
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/integrations/authcheck"
+	derror "github.com/Zany2/dtoken-go/errors"
+	authcheck "github.com/Zany2/dtoken-go/httpauth"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	gofiber "github.com/gofiber/fiber/v2"
 )
 
@@ -123,8 +123,12 @@ func (req *RouteAccessRequest) SetLogicType(logicType LogicType) {
 type AuthOptions struct {
 	// AuthType selects the auth type. AuthType 指定认证类型。
 	AuthType string
-	// Manager selects the manager explicitly. Auth checks otherwise prefer AuthType, the request manager, then the registry. Manager 显式指定 Manager；鉴权未显式指定时依次使用 AuthType、请求 Manager 和全局注册表。
+	// Manager selects an explicit instance before request-scope resolution. Manager 在请求作用域解析之前显式选择实例。
 	Manager *manager.Manager
+	// ManagerResolver explicitly enables registry lookup. ManagerResolver 显式启用注册表查找。
+	ManagerResolver authcheck.ManagerResolver
+	// Capabilities binds independently composed services to this request scope. Capabilities 为请求作用域绑定独立组合的服务。
+	Capabilities *corecontext.Capabilities
 	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
 	LogicType LogicType
 	// FailFunc writes an authentication failure response and must not call c.Next(). FailFunc 输出认证失败响应，不应调用 c.Next() 放行请求。
@@ -153,6 +157,21 @@ func WithManager(mgr *manager.Manager) AuthOption {
 		if mgr != nil {
 			o.Manager = mgr
 		}
+	}
+}
+
+// WithManagerResolver selects a registry, such as global.GetManager. WithManagerResolver 选择注册表，例如 global.GetManager。
+func WithManagerResolver(resolver authcheck.ManagerResolver) AuthOption {
+	return func(o *AuthOptions) {
+		o.ManagerResolver = resolver
+	}
+}
+
+// WithCapabilities binds services composed for the selected authentication instance. WithCapabilities 绑定为所选认证实例组合的服务。
+func WithCapabilities(capabilities corecontext.Capabilities) AuthOption {
+	return func(o *AuthOptions) {
+		bindings := capabilities
+		o.Capabilities = &bindings
 	}
 }
 
@@ -196,7 +215,7 @@ func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) go
 			return nil
 		}
 
-		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
+		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType, options.ManagerResolver)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, err)
@@ -205,7 +224,7 @@ func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) go
 			return writeErrorResponse(c, err)
 		}
 
-		_ = getDTokenContext(c, mgr)
+		_ = getDTokenContext(c, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 		return c.Next()
 	}
 }
@@ -233,7 +252,7 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) gofiber.Handler {
 			return authReq.result
 		}
 
-		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
+		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType, options.ManagerResolver)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, err)
@@ -242,7 +261,7 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) gofiber.Handler {
 			return writeErrorResponse(c, err)
 		}
 
-		dCtx := getDTokenContext(c, mgr)
+		dCtx := getDTokenContext(c, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 		tokenValue := dCtx.GetTokenValue()
 
 		_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
@@ -286,7 +305,7 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) gofiber.Handler {
 			return c.Next()
 		}
 
-		mgr, err := resolveRequestManager(c, options.Manager, accessReq.AuthType)
+		mgr, err := resolveRequestManager(c, options.Manager, accessReq.AuthType, options.ManagerResolver)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, err)
@@ -295,7 +314,7 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) gofiber.Handler {
 			return writeErrorResponse(c, err)
 		}
 
-		dCtx := getDTokenContext(c, mgr)
+		dCtx := getDTokenContext(c, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 		tokenValue := dCtx.GetTokenValue()
 
 		req := authcheck.Request{
@@ -355,7 +374,7 @@ func PermissionMiddleware(
 			return c.Next()
 		}
 
-		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
+		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType, options.ManagerResolver)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, err)
@@ -364,7 +383,7 @@ func PermissionMiddleware(
 			return writeErrorResponse(c, err)
 		}
 
-		dCtx := getDTokenContext(c, mgr)
+		dCtx := getDTokenContext(c, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 		tokenValue := dCtx.GetTokenValue()
 
 		_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
@@ -415,7 +434,7 @@ func RoleMiddleware(
 			return c.Next()
 		}
 
-		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
+		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType, options.ManagerResolver)
 		if err != nil {
 			if options.FailFunc != nil {
 				options.FailFunc(c, err)
@@ -424,7 +443,7 @@ func RoleMiddleware(
 			return writeErrorResponse(c, err)
 		}
 
-		dCtx := getDTokenContext(c, mgr)
+		dCtx := getDTokenContext(c, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 		tokenValue := dCtx.GetTokenValue()
 
 		_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
@@ -497,17 +516,20 @@ func getDTokenContext(c *gofiber.Ctx, mgr *manager.Manager) *corecontext.DTokenC
 	}
 
 	dCtx := corecontext.NewContext(NewFiberContext(c), mgr)
+	if previous, ok := GetDTokenContext(c); ok {
+		dCtx.WithManagerResolver(previous.GetManagerResolver())
+	}
 	c.Locals(DTokenCtxKey, dCtx)
 	return dCtx
 }
 
 // resolveRequestManager honors explicit selection before inheriting the request manager. resolveRequestManager 优先使用显式配置，否则继承请求 Manager。
-func resolveRequestManager(c *gofiber.Ctx, explicit *manager.Manager, authType string) (*manager.Manager, error) {
+func resolveRequestManager(c *gofiber.Ctx, explicit *manager.Manager, authType string, resolvers ...authcheck.ManagerResolver) (*manager.Manager, error) {
 	if explicit != nil {
 		return authcheck.ResolveManager(explicit, authType)
 	}
 	cached, _ := GetDTokenContext(c)
-	return authcheck.ResolveManagerFromContext(authType, cached)
+	return authcheck.ResolveManagerFromContext(authType, cached, resolvers...)
 }
 
 // isRequestAborted checks the shared adapter before continuing DToken handling. isRequestAborted 在继续 DToken 处理前检查共享适配器的终止状态。
@@ -528,7 +550,7 @@ func writeErrorResponse(c *gofiber.Ctx, err error) error {
 	return c.Status(httpStatus).JSON(gofiber.Map{
 		"code":    code,
 		"message": message,
-		"data":    err.Error(),
+		"data":    message,
 	})
 }
 

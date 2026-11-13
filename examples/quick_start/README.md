@@ -1,6 +1,6 @@
 # DToken Quick Start
 
-This example shows the core `dtoken` facade without a framework-specific integration package. It uses Gin only as a small HTTP wrapper and calls `github.com/Zany2/dtoken-go/dtoken` directly.
+This example shows the core `dtoken` facade without a framework-specific integration package. It uses Gin only as a small HTTP wrapper and calls `github.com/Zany2/dtoken-go` directly.
 
 ## Run
 

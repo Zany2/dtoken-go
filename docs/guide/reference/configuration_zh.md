@@ -1,13 +1,15 @@
 # 配置指南
 
+代码片段的导入别名：dt = github.com/Zany2/dtoken-go.
+
 [English](../reference/configuration.md) | 中文文档
 
-本页整理 DToken-Go 常用配置项、默认行为和配置约束。大多数业务只需要使用 `defaults.NewBuilder()`，按需覆盖少量配置即可。
+本页整理 DToken-Go 常用配置项、默认行为和配置约束。大多数业务只需要使用 `dt.NewBuilder()`，按需覆盖少量配置即可。
 
 ## 基本示例
 
 ```go
-mgr, err := defaults.NewBuilder().
+mgr, err := dt.NewBuilder().
     // AuthType 用于区分多套认证体系，如 user、admin、app。
     AuthType("user").
     // KeyPrefix 是存储层 key 的公共前缀，用于区分项目或环境。
@@ -38,7 +40,7 @@ mgr, err := defaults.NewBuilder().
     // 生产环境一般建议关闭 Banner，日志按业务需要开启。
     IsLog(false).
     IsPrintBanner(false).
-    SetStorage(storage).
+    Storage(storage).
     Build()
 ```
 
@@ -76,7 +78,7 @@ mgr, err := defaults.NewBuilder().
 `AuthType` 和 `KeyPrefix` 会自动补齐结尾的 `:`：
 
 ```go
-defaults.NewBuilder().
+dt.NewBuilder().
     AuthType("admin").
     KeyPrefix("dtoken")
 ```
@@ -101,7 +103,7 @@ dtoken:admin:token:xxx
 dtoken:admin:session:10001
 ```
 
-两个命名空间分别编码：移除一个末尾分隔符，将内部 `\` 转为 `\\`、内部 `:` 转为 `\:`，再补上末尾 `:`。例如 `AuthType = "admin:token:"` 的存储片段为 `admin\:token:`，不会与 `admin:` 下的 Token 键混淆。普通名称的键格式不变；Manager、Nonce、OAuth2、Ticket、ShortKey 共用此规则。自定义存储操作可调用 `utils.StorageNamespace(keyPrefix, authType)` 获取命名空间前缀。
+两个命名空间分别编码：移除一个末尾分隔符，将内部 `\` 转为 `\\`、内部 `:` 转为 `\:`，再补上末尾 `:`。例如 `AuthType = "admin:token:"` 的存储片段为 `admin\:token:`，不会与 `admin:` 下的 Token 键混淆。普通名称的键格式不变；Manager、Nonce、OAuth2、Ticket、ShortKey 共用此规则。命名空间编码由各组件的内部实现统一处理。
 
 升级已有部署时，含内部冒号或反斜杠的命名空间，以及直接使用未带末尾分隔符的旧扩展模块构造器所产生的键，需要显式迁移；不会自动回退读取有歧义的旧命名空间。应先停止旧版本写入，核对数据归属后迁移相关键并保留剩余 TTL，再启用新版本。不要只迁移 Token 而遗漏 Session、封禁及刷新凭证；若重新建立登录态，也仍须保留原封禁策略。
 
@@ -144,7 +146,7 @@ dtoken:admin:session:10001
 Token 和 Refresh Token 有效期也可以使用 `time.Duration` 配置，正数时长会向上取整到整秒：
 
 ```go
-defaults.NewBuilder().
+dt.NewBuilder().
     TimeoutDuration(2 * time.Hour).
     RefreshTokenTimeoutDuration(30 * 24 * time.Hour)
 ```
@@ -156,7 +158,7 @@ defaults.NewBuilder().
 DToken-Go 至少需要开启一个 Token 来源：
 
 ```go
-defaults.NewBuilder().
+dt.NewBuilder().
     IsReadHeader(true).
     IsReadCookie(false).
     IsReadQuery(false).
@@ -167,34 +169,14 @@ defaults.NewBuilder().
 
 ## 可选模块
 
-默认情况下，基础 Manager 会启用登录、登出、会话、权限、角色、Refresh Token、封禁和终端管理等核心能力。下面这些模块需要显式开启：
-
-| 模块 | 默认状态 | 开启方式 |
-| --- | --- | --- |
-| Nonce | 关闭 | `EnableNonce()`、`NonceConfig(...)`、`NonceTTL(...)` 或 `SetNonceManager(...)` |
-| OAuth2 | 关闭 | `EnableOAuth2()`、`OAuth2Config(...)`、`OAuth2CodeExpiration(...)`、`OAuth2TokenExpiration(...)`、`OAuth2RefreshExpiration(...)` 或 `SetOAuth2Manager(...)` |
-| Ticket | 关闭 | `EnableTicket()`、`TicketConfig(...)`、`TicketTTL(...)` 或 `SetTicketManager(...)` |
-| ShortKey | 关闭 | `EnableShortKey()`、`ShortKeyConfig(...)`、`ShortKeyTTL(...)`、`ShortKeyLength(...)` 或 `SetShortKeyManager(...)` |
-| SSO | 独立模块 | 显式导入并初始化 `github.com/Zany2/dtoken-go/sso` |
-
-示例：
-
-```go
-mgr, err := defaults.NewBuilder().
-    EnableNonce().
-    EnableTicket().
-    ShortKeyTTL(5 * time.Minute). // 调用 ShortKey 配置方法也会自动启用 ShortKey
-    Build()
-```
-
-调用某个模块的专属配置方法时，会自动启用对应模块。Refresh Token 属于核心 Manager 能力，需要时直接使用 `LoginWithRefreshToken` 即可。
+Nonce、OAuth2、Ticket 和 ShortKey 在各自包中配置，通过 Manager 构造器和 NewService 显式组合。根 Builder 只配置认证引擎和基础组件，不提供能力开关。服务可复用 auth.Config()、auth.Storage() 和 auth.Codec()，以 auth 作为事件发布器；HTTP 上下文通过 WithCapabilities 注入。详见[能力指南](../security/advanced-features_zh.md)。
 
 ## Cookie 配置
 
 开启 Cookie 读取时，可以配置 Cookie 属性：
 
 ```go
-mgr, err := defaults.NewBuilder().
+mgr, err := dt.NewBuilder().
     IsReadHeader(false).
     IsReadCookie(true).
     CookieDomain("example.com").
@@ -203,7 +185,7 @@ mgr, err := defaults.NewBuilder().
     CookieHttpOnly(true).
     CookieSameSite(config.SameSiteNone).
     CookieMaxAge(7200).
-    SetStorage(storage).
+    Storage(storage).
     Build()
 ```
 

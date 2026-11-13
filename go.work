@@ -2,10 +2,8 @@ go 1.27.0
 
 use (
 	.
-	./com/codec/jsonv2
-	./com/codec/msgpack
-	./com/log/gf
-	./com/storage/redis
+	./codec/jsonv2
+	./codec/msgpack
 	./examples/beego
 	./examples/chi
 	./examples/echo
@@ -27,8 +25,18 @@ use (
 	./integrations/gin
 	./integrations/hertz
 	./integrations/kratos
+	./logging/gf
 	./sso
 	./sso/storage/redis
+	./storage/redis
 	./tests/gin_core_app
 	./tests/gin_core_flow
 )
+
+replace github.com/Zany2/dtoken-go/codec/msgpack v0.0.3 => ./codec/msgpack
+
+replace github.com/Zany2/dtoken-go/codec/jsonv2 v0.0.3 => ./codec/jsonv2
+
+replace github.com/Zany2/dtoken-go/logging/gf v0.0.3 => ./logging/gf
+
+replace github.com/Zany2/dtoken-go/storage/redis v0.0.3 => ./storage/redis

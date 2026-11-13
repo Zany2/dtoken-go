@@ -5,10 +5,10 @@ import (
 	"context"
 	"net/http"
 
-	DContext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/integrations/authcheck"
+	derror "github.com/Zany2/dtoken-go/errors"
+	authcheck "github.com/Zany2/dtoken-go/httpauth"
+	DContext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	web "github.com/beego/beego/v2/server/web"
 	beegocontext "github.com/beego/beego/v2/server/web/context"
 )
@@ -135,6 +135,10 @@ type AuthOptions struct {
 	AuthType string
 	// Manager overrides auth type, request cache and global selection. Manager 优先于认证类型、请求缓存及全局选择。
 	Manager *manager.Manager
+	// ManagerResolver explicitly enables registry lookup. ManagerResolver 显式启用注册表查找。
+	ManagerResolver authcheck.ManagerResolver
+	// Capabilities binds independently composed services to this request scope. Capabilities 为请求作用域绑定独立组合的服务。
+	Capabilities *DContext.Capabilities
 	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
 	LogicType LogicType
 	// FailFunc handles authentication failures. FailFunc 处理认证失败。
@@ -150,7 +154,7 @@ func defaultAuthOptions() *AuthOptions {
 	return &AuthOptions{LogicType: LogicAnd}
 }
 
-// WithAuthType sets auth type WithAuthType 设置认证类型
+// WithAuthType selects a namespace through the configured resolver or matches the current scope. WithAuthType 通过已配置的解析器选择命名空间，或匹配当前作用域。
 func WithAuthType(authType string) AuthOption {
 	return func(o *AuthOptions) {
 		o.AuthType = authType
@@ -163,6 +167,21 @@ func WithManager(mgr *manager.Manager) AuthOption {
 		if mgr != nil {
 			o.Manager = mgr
 		}
+	}
+}
+
+// WithManagerResolver selects a registry, such as global.GetManager. WithManagerResolver 选择注册表，例如 global.GetManager。
+func WithManagerResolver(resolver authcheck.ManagerResolver) AuthOption {
+	return func(o *AuthOptions) {
+		o.ManagerResolver = resolver
+	}
+}
+
+// WithCapabilities binds services composed for the selected authentication instance. WithCapabilities 绑定为所选认证实例组合的服务。
+func WithCapabilities(capabilities DContext.Capabilities) AuthOption {
+	return func(o *AuthOptions) {
+		bindings := capabilities
+		o.Capabilities = &bindings
 	}
 }
 
@@ -206,13 +225,13 @@ func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) we
 			return
 		}
 
-		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
+		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType, options.ManagerResolver)
 		if err != nil {
 			dispatchFail(c, options, err)
 			return
 		}
 
-		_ = getDContext(c, mgr)
+		_ = getDContext(c, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 	}
 }
 
@@ -236,13 +255,13 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) web.FilterFunc {
 			return
 		}
 
-		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
+		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType, options.ManagerResolver)
 		if err != nil {
 			dispatchFail(c, options, err)
 			return
 		}
 
-		dCtx := getDContext(c, mgr)
+		dCtx := getDContext(c, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 		tokenValue := dCtx.GetTokenValue()
 
 		_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
@@ -285,13 +304,13 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) web.FilterFunc {
 			return
 		}
 
-		mgr, err := resolveRequestManager(c, options.Manager, accessReq.AuthType)
+		mgr, err := resolveRequestManager(c, options.Manager, accessReq.AuthType, options.ManagerResolver)
 		if err != nil {
 			dispatchFail(c, options, err)
 			return
 		}
 
-		dCtx := getDContext(c, mgr)
+		dCtx := getDContext(c, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 		tokenValue := dCtx.GetTokenValue()
 
 		req := authcheck.Request{
@@ -338,13 +357,13 @@ func PermissionMiddleware(ctx context.Context, permissions []string, opts ...Aut
 			return
 		}
 
-		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
+		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType, options.ManagerResolver)
 		if err != nil {
 			dispatchFail(c, options, err)
 			return
 		}
 
-		dCtx := getDContext(c, mgr)
+		dCtx := getDContext(c, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 		tokenValue := dCtx.GetTokenValue()
 
 		_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
@@ -385,13 +404,13 @@ func PermissionPathMiddleware(ctx context.Context, permissions []string, opts ..
 			return
 		}
 
-		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
+		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType, options.ManagerResolver)
 		if err != nil {
 			dispatchFail(c, options, err)
 			return
 		}
 
-		dCtx := getDContext(c, mgr)
+		dCtx := getDContext(c, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 		tokenValue := dCtx.GetTokenValue()
 
 		_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
@@ -429,13 +448,13 @@ func RoleMiddleware(ctx context.Context, roles []string, opts ...AuthOption) web
 			return
 		}
 
-		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
+		mgr, err := resolveRequestManager(c, options.Manager, options.AuthType, options.ManagerResolver)
 		if err != nil {
 			dispatchFail(c, options, err)
 			return
 		}
 
-		dCtx := getDContext(c, mgr)
+		dCtx := getDContext(c, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 		tokenValue := dCtx.GetTokenValue()
 
 		_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
@@ -499,7 +518,7 @@ func isRequestAborted(c *beegocontext.Context) bool {
 }
 
 // resolveRequestManager honors explicit selection before inheriting the request manager. resolveRequestManager 优先使用显式配置，否则继承请求 Manager。
-func resolveRequestManager(c *beegocontext.Context, explicit *manager.Manager, authType string) (*manager.Manager, error) {
+func resolveRequestManager(c *beegocontext.Context, explicit *manager.Manager, authType string, resolvers ...authcheck.ManagerResolver) (*manager.Manager, error) {
 	if explicit != nil {
 		return authcheck.ResolveManager(explicit, authType)
 	}
@@ -507,7 +526,7 @@ func resolveRequestManager(c *beegocontext.Context, explicit *manager.Manager, a
 	if authType == "" && cached != nil && cached.GetManager() == nil {
 		return nil, derror.ErrManagerNotFound
 	}
-	return authcheck.ResolveManagerFromContext(authType, cached)
+	return authcheck.ResolveManagerFromContext(authType, cached, resolvers...)
 }
 
 // GetDTokenContext gets cached DToken context GetDTokenContext 获取缓存的 DToken 上下文
@@ -535,6 +554,9 @@ func getDContext(c *beegocontext.Context, mgr *manager.Manager) *DContext.DToken
 	}
 
 	dCtx := DContext.NewContext(NewBeegoContext(c), mgr)
+	if previous, ok := GetDTokenContext(c); ok {
+		dCtx.WithManagerResolver(previous.GetManagerResolver())
+	}
 	c.Input.SetData(DTokenCtxKey, dCtx)
 
 	return dCtx
@@ -548,7 +570,7 @@ func writeErrorResponse(c *beegocontext.Context, err error) {
 	writeJSON(c, httpStatus, map[string]any{
 		"code":    code,
 		"message": message,
-		"data":    err.Error(),
+		"data":    message,
 	})
 }
 

@@ -2,6 +2,8 @@ English | [中文文档](../security/refresh-token_zh.md)
 
 # Refresh Token Guide
 
+Import aliases for code fragments: dt = github.com/Zany2/dtoken-go.
+
 ## Overview
 
 DToken-Go supports refresh tokens in two places:
@@ -90,7 +92,7 @@ ttl, err := dtoken.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
 The default refresh-token TTL is `30` days. Configure it globally:
 
 ```go
-mgr, err := dtoken.NewBuilder().
+mgr, err := dt.NewBuilder().
 	RefreshTokenTimeout(30 * 24 * 60 * 60).
 	Build()
 ```
@@ -98,44 +100,44 @@ mgr, err := dtoken.NewBuilder().
 Or use duration:
 
 ```go
-mgr, err := dtoken.NewBuilder().
+mgr, err := dt.NewBuilder().
 	RefreshTokenTimeoutDuration(30 * 24 * time.Hour).
 	Build()
 ```
 
 ## Framework Facade Example
 
-Framework packages re-export these APIs. For GoFrame:
+Global APIs are imported explicitly from global after registration:
 
 ```go
-import gfdt "github.com/Zany2/dtoken-go/integrations/gf"
+import global "github.com/Zany2/dtoken-go/global"
 
-pair, err := gfdt.LoginWithRefreshToken(ctx, "user-1001")
+pair, err := global.LoginWithRefreshToken(ctx, "user-1001")
 if err != nil {
 	return err
 }
 
-nextPair, err := gfdt.RefreshToken(ctx, pair.RefreshToken)
+nextPair, err := global.RefreshToken(ctx, pair.RefreshToken)
 if err != nil {
 	return err
 }
 
-ttl, err := gfdt.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
+ttl, err := global.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
 if err != nil {
 	return err
 }
 fmt.Println(ttl)
 
-if err := gfdt.RevokeRefreshToken(ctx, nextPair.RefreshToken); err != nil {
+if err := global.RevokeRefreshToken(ctx, nextPair.RefreshToken); err != nil {
 	return err
 }
 ```
 
-In a GoFrame controller, the login and refresh handlers can keep using the same framework package:
+A GoFrame controller can explicitly use the registered global API:
 
 ```go
 func (c *AuthController) Login(r *ghttp.Request) {
-	pair, err := gfdt.LoginWithRefreshToken(r.Context(), "user-1001", "web", "browser-1")
+	pair, err := global.LoginWithRefreshToken(r.Context(), "user-1001", "web", "browser-1")
 	if err != nil {
 		r.Response.WriteJsonExit(g.Map{"code": 401, "message": err.Error()})
 	}
@@ -143,7 +145,7 @@ func (c *AuthController) Login(r *ghttp.Request) {
 }
 
 func (c *AuthController) Refresh(r *ghttp.Request) {
-	pair, err := gfdt.RefreshToken(r.Context(), r.Get("refreshToken").String())
+	pair, err := global.RefreshToken(r.Context(), r.Get("refreshToken").String())
 	if err != nil {
 		r.Response.WriteJsonExit(g.Map{"code": 401, "message": err.Error()})
 	}

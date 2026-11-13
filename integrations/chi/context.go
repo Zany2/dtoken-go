@@ -9,7 +9,7 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
 )
 
 // ChiContext adapts request context ChiContext 适配 Chi 请求上下文

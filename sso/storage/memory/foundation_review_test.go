@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
 )
 
 // TestWritesReclaimUnvisitedExpiredKeys verifies both write paths reclaim expired entries without reading them. TestWritesReclaimUnvisitedExpiredKeys 验证两种写入路径无需读取旧键即可回收过期条目。
@@ -20,6 +20,7 @@ func TestWritesReclaimUnvisitedExpiredKeys(t *testing.T) {
 			if err := storage.Set(ctx, "live", "keep", time.Hour); err != nil {
 				t.Fatal(err)
 			}
+
 			// Seed elapsed deadlines without relying on wall-clock sleeps. 直接设置已过去的截止时间，避免依赖等待。
 			storage.values["expired"] = item{value: "old", expireAt: time.Now().Add(-time.Hour)}
 			storage.nextCleanup = time.Now().Add(-time.Minute)

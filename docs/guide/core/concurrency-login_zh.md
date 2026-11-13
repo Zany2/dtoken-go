@@ -1,5 +1,7 @@
 # 并发登录策略
 
+代码片段的导入别名：dt = github.com/Zany2/dtoken-go.
+
 [English](../core/concurrency-login.md) | 中文文档
 
 ## 概览
@@ -20,7 +22,7 @@ DToken-Go 的并发登录由几个配置共同决定：
 `IsConcurrent(true)` 允许同一账号同时存在多个在线终端。
 
 ```go
-mgr, err := dtoken.NewBuilder().
+mgr, err := dt.NewBuilder().
     IsConcurrent(true).
     Build()
 ```
@@ -45,7 +47,7 @@ mgr, err := dtoken.NewBuilder().
 `MaxLoginCount` 控制同一作用域下允许保留的最大登录数量。
 
 ```go
-mgr, err := dtoken.NewBuilder().
+mgr, err := dt.NewBuilder().
     IsConcurrent(true).
     IsShare(false).
     MaxLoginCount(2).
@@ -102,7 +104,7 @@ builder.ConcurrencyScope(config.ConcurrencyScopeDevice)
 ### 常见多端登录
 
 ```go
-dtoken.NewBuilder().
+dt.NewBuilder().
     IsConcurrent(true).
     IsShare(false).
     MaxLoginCount(5).
@@ -114,7 +116,7 @@ dtoken.NewBuilder().
 ### 同设备复用 Token
 
 ```go
-dtoken.NewBuilder().
+dt.NewBuilder().
     IsConcurrent(true).
     IsShare(true).
     ConcurrencyScope(config.ConcurrencyScopeDevice)
@@ -125,7 +127,7 @@ dtoken.NewBuilder().
 ### 新登录顶掉旧登录
 
 ```go
-dtoken.NewBuilder().
+dt.NewBuilder().
     IsConcurrent(false).
     ReplacedLoginExitMode(config.ReplacedLoginExitModeOldDevice)
 ```
@@ -135,7 +137,7 @@ dtoken.NewBuilder().
 ### 保留旧登录，拒绝新登录
 
 ```go
-dtoken.NewBuilder().
+dt.NewBuilder().
     IsConcurrent(false).
     ReplacedLoginExitMode(config.ReplacedLoginExitModeNewDevice)
 ```

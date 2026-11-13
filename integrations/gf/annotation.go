@@ -4,13 +4,15 @@ package gf
 import (
 	"context"
 
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/integrations/authcheck"
+	derror "github.com/Zany2/dtoken-go/errors"
+	authcheck "github.com/Zany2/dtoken-go/httpauth"
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
 // Annotation defines annotation config Annotation 定义注解配置
 type Annotation struct {
+	// ManagerResolver explicitly selects a registry for this annotation. ManagerResolver 为此注解显式选择注册表。
+	ManagerResolver authcheck.ManagerResolver `json:"-"`
 	// AuthType specifies auth type AuthType 指定认证类型
 	AuthType string `json:"authType"`
 	// CheckLogin indicates login check CheckLogin 表示是否检查登录
@@ -63,13 +65,13 @@ func GetHandler(ctx context.Context, handler ghttp.HandlerFunc, failFunc func(r 
 		}
 
 		cached, _ := GetDTokenContext(r)
-		mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached)
+		mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached, ann.ManagerResolver)
 		if err != nil {
 			dispatchFail(r, &AuthOptions{FailFunc: failFunc}, err)
 			return
 		}
 
-		dCtx := getDContext(r, mgr)
+		dCtx := getDContext(r, mgr).WithManagerResolver(ann.ManagerResolver)
 		token := dCtx.GetTokenValue()
 
 		_, err = authcheck.Check(r.Context(), mgr, authcheck.Request{

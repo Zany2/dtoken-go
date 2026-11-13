@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
 	echo4 "github.com/labstack/echo/v4"
 )
 

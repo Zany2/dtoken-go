@@ -1,0 +1,528 @@
+// @Author daixk 2025/12/22 15:56:00
+package engine
+
+import (
+	"context"
+	"fmt"
+
+	derror "github.com/Zany2/dtoken-go/errors"
+	listener "github.com/Zany2/dtoken-go/event"
+)
+
+// AddPermissions adds permissions to a user. AddPermissions 为用户添加权限。
+func (m *Manager) AddPermissions(ctx context.Context, loginID string, permissions []string) error {
+	return m.mutateAccessByLoginID(ctx, loginID, permissions, accessChange{
+		apply:  sessionAddPermissions,
+		event:  listener.EventPermissionChange,
+		key:    listener.ExtraKeyPermissions,
+		action: listener.ActionAdd,
+	})
+}
+
+// AddPermissionsByToken adds permissions to a user by token. AddPermissionsByToken 根据 Token 为用户添加权限。
+func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, permissions []string) error {
+	return m.mutateAccessByToken(ctx, tokenValue, permissions, accessChange{
+		apply:  sessionAddPermissions,
+		event:  listener.EventPermissionChange,
+		key:    listener.ExtraKeyPermissions,
+		action: listener.ActionAdd,
+	})
+}
+
+// RemovePermissions removes permissions from a user. RemovePermissions 删除用户的指定权限。
+func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permissions []string) error {
+	return m.mutateAccessByLoginID(ctx, loginID, permissions, accessChange{
+		apply:  sessionRemovePermissions,
+		event:  listener.EventPermissionChange,
+		key:    listener.ExtraKeyPermissions,
+		action: listener.ActionRemove,
+	})
+}
+
+// RemovePermissionsByToken removes permissions from a user by token. RemovePermissionsByToken 根据 Token 删除用户的指定权限。
+func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue string, permissions []string) error {
+	return m.mutateAccessByToken(ctx, tokenValue, permissions, accessChange{
+		apply:  sessionRemovePermissions,
+		event:  listener.EventPermissionChange,
+		key:    listener.ExtraKeyPermissions,
+		action: listener.ActionRemove,
+	})
+}
+
+// GetPermissions retrieves the permission list for a user. GetPermissions 获取用户的权限列表。
+func (m *Manager) GetPermissions(ctx context.Context, loginID string) ([]string, error) {
+	// Validate login ID 校验登录 ID。
+	if loginID == "" {
+		return nil, derror.ErrIDIsEmpty
+	}
+
+	// Load permissions by login ID 按登录 ID 加载权限。
+	return m.loadPermissionsByLoginID(ctx, loginID)
+}
+
+// GetPermissionsByToken retrieves the permission list by token. GetPermissionsByToken 根据 Token 获取权限列表。
+func (m *Manager) GetPermissionsByToken(ctx context.Context, tokenValue string) ([]string, error) {
+	// Validate token and load context 校验 Token 并加载上下文。
+	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resolve permissions by token 根据 Token 解析权限。
+	return m.loadPermissions(ctx, sess.Permissions, AccessSubject{
+		LoginID:  sess.LoginID,
+		Device:   tokenInfo.Device,
+		DeviceID: tokenInfo.DeviceID,
+		Token:    tokenValue,
+	})
+}
+
+// HasPermission checks if a user has a specific permission. HasPermission 检查用户是否拥有指定权限。
+func (m *Manager) HasPermission(ctx context.Context, loginID string, permission string) bool {
+	// Validate required parameters 校验必要参数。
+	if loginID == "" || permission == "" {
+		return false
+	}
+
+	// Load permissions 加载权限。
+	permissions, err := m.loadPermissionsByLoginID(ctx, loginID)
+	if err != nil {
+		m.logger.Errorf("manager.HasPermission: failed to load permissions, loginID=%s, error=%v", loginID, err)
+		return false
+	}
+
+	// Calculate permission result 计算权限结果。
+	hasPermission := m.hasPermissionInList(permissions, permission)
+
+	// Trigger permission check event 触发权限校验事件。
+	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
+		listener.ExtraKeyPermission: permission,
+		listener.ExtraKeyResult:     hasPermission,
+	})
+
+	return hasPermission
+}
+
+// HasPermissionByToken checks if a user has a specific permission by token. HasPermissionByToken 根据 Token 检查用户是否拥有指定权限。
+func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, permission string) bool {
+	// Validate permission 校验权限。
+	if permission == "" {
+		return false
+	}
+
+	// Validate token and load context 校验 Token 并加载上下文。
+	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	if err != nil {
+		m.logger.Errorf("manager.HasPermissionByToken: failed to get token info, token=%s, error=%v", tokenValue, err)
+		return false
+	}
+
+	// Build access subject 构建访问主体。
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
+	// Load permissions by token 根据 Token 加载权限。
+	permissions, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
+		LoginID:  sess.LoginID,
+		Device:   device,
+		DeviceID: deviceID,
+		Token:    tokenValue,
+	})
+	if err != nil {
+		m.logger.Errorf("manager.HasPermissionByToken: failed to load permissions, loginID=%s, error=%v", sess.LoginID, err)
+		return false
+	}
+
+	// Calculate permission result 计算权限结果。
+	hasPermission := m.hasPermissionInList(permissions, permission)
+
+	// Trigger permission check event 触发权限校验事件。
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
+		listener.ExtraKeyPermission: permission,
+		listener.ExtraKeyResult:     hasPermission,
+	})
+
+	return hasPermission
+}
+
+// HasPermissionsAnd checks if a user has all specified permissions. HasPermissionsAnd 检查用户是否拥有全部指定权限。
+func (m *Manager) HasPermissionsAnd(ctx context.Context, loginID string, permissions []string) bool {
+	// Validate login ID 校验登录 ID。
+	if loginID == "" {
+		return false
+	}
+
+	// Load permissions 加载权限。
+	permList, err := m.loadPermissionsByLoginID(ctx, loginID)
+	if err != nil {
+		m.logger.Errorf("manager.HasPermissionsAnd: failed to load permissions, loginID=%s, error=%v", loginID, err)
+		return false
+	}
+
+	// Calculate AND result 计算 AND 结果。
+	hasAll := m.hasAllPermissions(permList, permissions)
+
+	// Trigger permission check event 触发权限校验事件。
+	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyLogic:       listener.LogicAnd,
+		listener.ExtraKeyResult:      hasAll,
+	})
+
+	return hasAll
+}
+
+// HasPermissionsAndByToken checks if a token user has all specified permissions. HasPermissionsAndByToken 根据 Token 检查全部权限。
+func (m *Manager) HasPermissionsAndByToken(ctx context.Context, tokenValue string, permissions []string) bool {
+	// Validate token and load context 校验 Token 并加载上下文。
+	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	if err != nil {
+		m.logger.Errorf("manager.HasPermissionsAndByToken: failed to get token info, token=%s, error=%v", tokenValue, err)
+		return false
+	}
+
+	// Build access subject 构建访问主体。
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
+	// Load permissions by token 根据 Token 加载权限。
+	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
+		LoginID:  sess.LoginID,
+		Device:   device,
+		DeviceID: deviceID,
+		Token:    tokenValue,
+	})
+	if err != nil {
+		m.logger.Errorf("manager.HasPermissionsAndByToken: failed to load permissions, loginID=%s, error=%v", sess.LoginID, err)
+		return false
+	}
+
+	// Calculate AND result 计算 AND 结果。
+	hasAll := m.hasAllPermissions(permList, permissions)
+
+	// Trigger permission check event 触发权限校验事件。
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyLogic:       listener.LogicAnd,
+		listener.ExtraKeyResult:      hasAll,
+	})
+
+	return hasAll
+}
+
+// HasPermissionsOr checks if a user has any specified permission. HasPermissionsOr 检查用户是否拥有任一指定权限。
+func (m *Manager) HasPermissionsOr(ctx context.Context, loginID string, permissions []string) bool {
+	// Validate login ID 校验登录 ID。
+	if loginID == "" {
+		return false
+	}
+
+	// Load permissions 加载权限。
+	permList, err := m.loadPermissionsByLoginID(ctx, loginID)
+	if err != nil {
+		m.logger.Errorf("manager.HasPermissionsOr: failed to load permissions, loginID=%s, error=%v", loginID, err)
+		return false
+	}
+
+	// Calculate OR result 计算 OR 结果。
+	hasAny := m.hasAnyPermission(permList, permissions)
+
+	// Trigger permission check event 触发权限校验事件。
+	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyLogic:       listener.LogicOr,
+		listener.ExtraKeyResult:      hasAny,
+	})
+
+	return hasAny
+}
+
+// HasPermissionsOrByToken checks if a token user has any specified permission. HasPermissionsOrByToken 根据 Token 检查任一权限。
+func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string, permissions []string) bool {
+	// Validate token and load context 校验 Token 并加载上下文。
+	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	if err != nil {
+		m.logger.Errorf("manager.HasPermissionsOrByToken: failed to get token info, token=%s, error=%v", tokenValue, err)
+		return false
+	}
+
+	// Build access subject 构建访问主体。
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
+	// Load permissions by token 根据 Token 加载权限。
+	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
+		LoginID:  sess.LoginID,
+		Device:   device,
+		DeviceID: deviceID,
+		Token:    tokenValue,
+	})
+	if err != nil {
+		m.logger.Errorf("manager.HasPermissionsOrByToken: failed to load permissions, loginID=%s, error=%v", sess.LoginID, err)
+		return false
+	}
+
+	// Calculate OR result 计算 OR 结果。
+	hasAny := m.hasAnyPermission(permList, permissions)
+
+	// Trigger permission check event 触发权限校验事件。
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyLogic:       listener.LogicOr,
+		listener.ExtraKeyResult:      hasAny,
+	})
+
+	return hasAny
+}
+
+// CheckPermission checks if a user has a specific permission. CheckPermission 校验用户是否拥有指定权限。
+func (m *Manager) CheckPermission(ctx context.Context, loginID string, permission string) error {
+	// Validate login ID 校验登录 ID。
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+
+	// Validate permission is not empty 校验权限不为空。
+	if permission == "" {
+		return derror.ErrInvalidParam
+	}
+
+	// Load permissions 加载权限。
+	permissions, err := m.loadPermissionsByLoginID(ctx, loginID)
+	if err != nil {
+		return err
+	}
+
+	// Calculate permission result 计算权限结果。
+	hasPermission := m.hasPermissionInList(permissions, permission)
+
+	// Trigger permission check event 触发权限校验事件。
+	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
+		listener.ExtraKeyPermission: permission,
+		listener.ExtraKeyResult:     hasPermission,
+	})
+
+	if !hasPermission {
+		return fmt.Errorf("%w: %s", derror.ErrPermissionDenied, permission)
+	}
+	return nil
+}
+
+// CheckPermissionByToken checks if a token user has a specific permission. CheckPermissionByToken 根据 Token 校验用户是否拥有指定权限。
+func (m *Manager) CheckPermissionByToken(ctx context.Context, tokenValue string, permission string) error {
+	// Validate permission is not empty 校验权限不为空。
+	if permission == "" {
+		return derror.ErrInvalidParam
+	}
+
+	// Validate token and load context 校验 Token 并加载上下文。
+	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	if err != nil {
+		return err
+	}
+
+	// Build access subject 构建访问主体。
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
+	// Load permissions by token 根据 Token 加载权限。
+	permissions, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
+		LoginID:  sess.LoginID,
+		Device:   device,
+		DeviceID: deviceID,
+		Token:    tokenValue,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Calculate permission result 计算权限结果。
+	hasPermission := m.hasPermissionInList(permissions, permission)
+
+	// Trigger permission check event 触发权限校验事件。
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
+		listener.ExtraKeyPermission: permission,
+		listener.ExtraKeyResult:     hasPermission,
+	})
+
+	if !hasPermission {
+		return fmt.Errorf("%w: %s", derror.ErrPermissionDenied, permission)
+	}
+	return nil
+}
+
+// CheckPermissionAnd checks if a user has all specified permissions. CheckPermissionAnd 校验用户是否拥有全部权限。
+func (m *Manager) CheckPermissionAnd(ctx context.Context, loginID string, permissions []string) error {
+	// Validate login ID 校验登录 ID。
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+
+	// Load permissions 加载权限。
+	permList, err := m.loadPermissionsByLoginID(ctx, loginID)
+	if err != nil {
+		return err
+	}
+
+	// Calculate AND result 计算 AND 结果。
+	hasAll := m.hasAllPermissions(permList, permissions)
+
+	// Trigger permission check event 触发权限校验事件。
+	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyLogic:       listener.LogicAnd,
+		listener.ExtraKeyResult:      hasAll,
+	})
+
+	if !hasAll {
+		return derror.ErrPermissionDenied
+	}
+	return nil
+}
+
+// CheckPermissionAndByToken checks if a token user has all specified permissions. CheckPermissionAndByToken 根据 Token 校验用户是否拥有全部权限。
+func (m *Manager) CheckPermissionAndByToken(ctx context.Context, tokenValue string, permissions []string) error {
+	// Validate token and load context 校验 Token 并加载上下文。
+	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	if err != nil {
+		return err
+	}
+
+	// Build access subject 构建访问主体。
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
+	// Load permissions by token 根据 Token 加载权限。
+	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
+		LoginID:  sess.LoginID,
+		Device:   device,
+		DeviceID: deviceID,
+		Token:    tokenValue,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Calculate AND result 计算 AND 结果。
+	hasAll := m.hasAllPermissions(permList, permissions)
+
+	// Trigger permission check event 触发权限校验事件。
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyLogic:       listener.LogicAnd,
+		listener.ExtraKeyResult:      hasAll,
+	})
+
+	if !hasAll {
+		return derror.ErrPermissionDenied
+	}
+	return nil
+}
+
+// CheckPermissionOr checks if a user has any specified permission. CheckPermissionOr 校验用户是否拥有任一权限。
+func (m *Manager) CheckPermissionOr(ctx context.Context, loginID string, permissions []string) error {
+	// Validate login ID 校验登录 ID。
+	if loginID == "" {
+		return derror.ErrIDIsEmpty
+	}
+
+	// Load permissions 加载权限。
+	permList, err := m.loadPermissionsByLoginID(ctx, loginID)
+	if err != nil {
+		return err
+	}
+
+	// Calculate OR result 计算 OR 结果。
+	hasAny := m.hasAnyPermission(permList, permissions)
+
+	// Trigger permission check event 触发权限校验事件。
+	m.triggerEvent(listener.EventPermissionCheck, loginID, "", "", "", map[string]any{
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyLogic:       listener.LogicOr,
+		listener.ExtraKeyResult:      hasAny,
+	})
+
+	if !hasAny {
+		return derror.ErrPermissionDenied
+	}
+	return nil
+}
+
+// CheckPermissionOrByToken checks if a token user has any specified permission. CheckPermissionOrByToken 根据 Token 校验用户是否拥有任一权限。
+func (m *Manager) CheckPermissionOrByToken(ctx context.Context, tokenValue string, permissions []string) error {
+	// Validate token and load context 校验 Token 并加载上下文。
+	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	if err != nil {
+		return err
+	}
+
+	// Build access subject 构建访问主体。
+	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
+
+	// Load permissions by token 根据 Token 加载权限。
+	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
+		LoginID:  sess.LoginID,
+		Device:   device,
+		DeviceID: deviceID,
+		Token:    tokenValue,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Calculate OR result 计算 OR 结果。
+	hasAny := m.hasAnyPermission(permList, permissions)
+
+	// Trigger permission check event 触发权限校验事件。
+	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
+		listener.ExtraKeyPermissions: permissions,
+		listener.ExtraKeyLogic:       listener.LogicOr,
+		listener.ExtraKeyResult:      hasAny,
+	})
+
+	if !hasAny {
+		return derror.ErrPermissionDenied
+	}
+	return nil
+}
+
+// hasPermissionInList checks if permission exists in permission list. hasPermissionInList 判断权限是否存在。
+func (m *Manager) hasPermissionInList(perms []string, permission string) bool {
+	matcher := m.strategy.normalize().PermissionMatcher
+
+	// Check each permission 逐个检查权限。
+	for _, p := range perms {
+		if matcher(p, permission) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasAllPermissions checks whether all permissions exist. hasAllPermissions 检查是否拥有全部权限。
+func (m *Manager) hasAllPermissions(perms []string, required []string) bool {
+	// Reject empty requirement 空需求直接拒绝。
+	if len(required) == 0 {
+		return false
+	}
+
+	// Check each required permission 逐个检查必需权限。
+	for _, need := range required {
+		if need == "" {
+			return false
+		}
+		if !m.hasPermissionInList(perms, need) {
+			return false
+		}
+	}
+	return true
+}
+
+// hasAnyPermission checks whether any permission exists. hasAnyPermission 检查是否拥有任一权限。
+func (m *Manager) hasAnyPermission(perms []string, required []string) bool {
+	// Check each candidate 逐个检查候选权限。
+	for _, need := range required {
+		if need == "" {
+			continue
+		}
+		if m.hasPermissionInList(perms, need) {
+			return true
+		}
+	}
+	return false
+}

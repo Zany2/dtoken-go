@@ -2,7 +2,7 @@
 package fiber
 
 import (
-	"github.com/Zany2/dtoken-go/core/oauth2"
+	"github.com/Zany2/dtoken-go/contract/oauth2"
 	gofiber "github.com/gofiber/fiber/v2"
 )
 

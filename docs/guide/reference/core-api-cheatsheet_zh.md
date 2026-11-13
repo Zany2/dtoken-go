@@ -1,5 +1,7 @@
 # Core API 速查
 
+代码片段的导入别名：dtoken = github.com/Zany2/dtoken-go/global.
+
 本页整理 `dtoken` 全局 API 的常用调用方式，适合在已经完成 Manager 初始化后快速查阅。
 
 ## 登录认证

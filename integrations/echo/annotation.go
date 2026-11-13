@@ -4,20 +4,29 @@ package echo
 import (
 	"context"
 
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/integrations/authcheck"
+	derror "github.com/Zany2/dtoken-go/errors"
+	authcheck "github.com/Zany2/dtoken-go/httpauth"
 	echo4 "github.com/labstack/echo/v4"
 )
 
 // Annotation describes declarative auth requirements Annotation 描述声明式认证要求
 type Annotation struct {
-	AuthType        string    // Optional: specify auth type 可选：指定认证类型
-	CheckLogin      bool      // Check login 检查登录
-	CheckRole       []string  // Check roles 检查角色
-	CheckPermission []string  // Check permissions 检查权限
-	CheckDisable    bool      // Check disable status 检查封禁状态
-	Ignore          bool      // Ignore authentication 忽略认证
-	LogicType       LogicType // OR or AND logic (default: OR) OR 或 AND 逻辑（默认：OR）
+	// ManagerResolver explicitly selects a registry for this annotation. ManagerResolver 为此注解显式选择注册表。
+	ManagerResolver authcheck.ManagerResolver `json:"-"`
+	// Optional: specify auth type 可选：指定认证类型
+	AuthType string
+	// Check login 检查登录
+	CheckLogin bool
+	// Check roles 检查角色
+	CheckRole []string
+	// Check permissions 检查权限
+	CheckPermission []string
+	// Check disable status 检查封禁状态
+	CheckDisable bool
+	// Ignore authentication 忽略认证
+	Ignore bool
+	// OR or AND logic (default: OR) OR 或 AND 逻辑（默认：OR）
+	LogicType LogicType
 }
 
 // GetHandler wraps Echo handler with annotation checks GetHandler 使用注解检查包装 Echo 处理器
@@ -54,7 +63,7 @@ func GetHandler(ctx context.Context, handler echo4.HandlerFunc, failFunc func(c 
 		}
 
 		cached, _ := GetDTokenContext(c)
-		mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached)
+		mgr, err := authcheck.ResolveManagerFromContext(ann.AuthType, cached, ann.ManagerResolver)
 		if err != nil {
 			if failFunc != nil {
 				return failFunc(c, err)
@@ -63,7 +72,7 @@ func GetHandler(ctx context.Context, handler echo4.HandlerFunc, failFunc func(c 
 		}
 
 		// Get DTokenContext (reuse cached context) 获取 DTokenContext（复用缓存上下文）
-		dCtx := getDTokenContext(c, mgr)
+		dCtx := getDTokenContext(c, mgr).WithManagerResolver(ann.ManagerResolver)
 		token := dCtx.GetTokenValue()
 
 		_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{

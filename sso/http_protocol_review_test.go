@@ -83,6 +83,7 @@ func TestHTTPExchangeRejectsConflictingModes(t *testing.T) {
 			t.Fatalf("conflicting form status = %d, body = %s", response.Code, response.Body.String())
 		}
 	}
+
 	// Omitted mode remains compatible with both credential kinds. 省略模式时仍兼容两类凭证。
 	for key, value := range map[string]string{"ticket": ticket.Ticket, "code": code.Code} {
 		values := cloneValues(base)
