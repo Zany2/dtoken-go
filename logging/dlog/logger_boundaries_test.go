@@ -1,7 +1,6 @@
 package dlog
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,205 +10,201 @@ import (
 	"time"
 )
 
-// TestLoggerPlainOutputAndInvalidLevel verifies plain output bypasses filtering and invalid levels preserve the threshold. TestLoggerPlainOutputAndInvalidLevel 验证普通输出绕过级别过滤，非法级别不会改变阈值。
-func TestLoggerPlainOutputAndInvalidLevel(t *testing.T) {
-	dir := t.TempDir()
-	l, err := NewLoggerWithConfig(&LoggerConfig{Path: dir, FileFormat: "plain.log", Level: LevelError})
+// TestLoggerConcurrentReconfigurationPreservesWrites verifies every completed call survives concurrent output replacement. TestLoggerConcurrentReconfigurationPreservesWrites 验证并发替换输出时每次已完成的日志调用均被保留。
+func TestLoggerConcurrentReconfigurationPreservesWrites(t *testing.T) {
+	first, second := t.TempDir(), t.TempDir()
+	logger, err := NewLoggerWithConfig(&LoggerConfig{Path: first, Filename: "switch.log"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer l.Close()
-	for _, level := range []LogLevel{0, -1, 99} {
-		l.SetLevel(level)
-		if l.currentCfg().Level != LevelError {
-			t.Fatalf("SetLevel(%d) changed the threshold", level)
-		}
-	}
-	l.Print("plain", 7)
-	l.Printf("formatted %s=%d", "value", 8)
-	l.Info("filtered")
-	l.Error("visible error")
-	l.Flush()
-	data, err := os.ReadFile(filepath.Join(dir, "plain.log"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(data)
-	for _, want := range []string{"plain 7", "formatted value=8", "[ERROR]"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("missing %q in %q", want, text)
-		}
-	}
-	if strings.Contains(text, "filtered") || strings.Contains(text, "[INFO]") || strings.Contains(text, "UNKNOWN") {
-		t.Fatalf("unexpected filtering or level label: %q", text)
-	}
-}
-
-// TestLoggerSubsecondTimestamp verifies fractional timestamps are not frozen by the second cache. TestLoggerSubsecondTimestamp 验证亚秒时间戳不会被秒级缓存冻结。
-func TestLoggerSubsecondTimestamp(t *testing.T) {
-	l := &Logger{}
-	first := time.Date(2026, time.September, 23, 10, 20, 30, 123000000, time.UTC)
-	second := first.Add(500 * time.Millisecond)
-	for _, format := range []string{time.RFC3339Nano, "15:04:05.000", "15:04:05,999", DefaultTimeFormat} {
-		for _, now := range []time.Time{first, second} {
-			if got := l.getTimeString(now, now.Unix(), format); got != now.Format(format) {
-				t.Fatalf("timestamp(%q) = %q, want %q", format, got, now.Format(format))
-			}
-		}
-	}
-}
-
-// panicLogError exercises fmt's protection against unsafe Error methods. panicLogError 覆盖 fmt 对不安全 Error 方法的保护。
-type panicLogError struct{}
-
-// Error intentionally panics for both nil and non-nil receivers. Error 对 nil 和非 nil 接收者均故意触发 panic。
-func (*panicLogError) Error() string { panic("broken error") }
-
-// TestLoggerErrorFormattingDoesNotPanic verifies error arguments retain standard fmt safety. TestLoggerErrorFormattingDoesNotPanic 验证错误参数保留标准 fmt 的安全处理。
-func TestLoggerErrorFormattingDoesNotPanic(t *testing.T) {
-	var nilError *panicLogError
-	for _, value := range []error{nilError, &panicLogError{}} {
-		var buf bytes.Buffer
-		appendValue(&buf, value)
-		if got, want := buf.String(), fmt.Sprint(value); got != want {
-			t.Fatalf("error formatting = %q, want %q", got, want)
-		}
-	}
-}
-
-// TestLoggerCleanupMatchesFileFamily verifies retention cannot delete files that merely share a prefix. TestLoggerCleanupMatchesFileFamily 验证保留策略不会删除仅前缀相似的文件。
-func TestLoggerCleanupMatchesFileFamily(t *testing.T) {
-	for _, format := range []string{"APP_{Y}-{m}-{d}.log", "{Y}-{m}-{d}_APP.log", "APP.log"} {
-		t.Run(format, func(t *testing.T) {
-			dir := t.TempDir()
-			cfg := LoggerConfig{Path: dir, FileFormat: format, RotateBackupDays: 1, RotateBackupLimit: 10}
-			l := &Logger{}
-			current := l.formatFileName(time.Now(), cfg)
-			l.curName = current
-			backup := strings.TrimSuffix(current, ".log") + "_20260923_102030_123_123456789.log"
-			unrelated := []string{"APPLICATION.log", "APP_audit.log", "APP_2026-09-23_audit.log", "OTHER.log"}
-			old := time.Now().Add(-72 * time.Hour)
-			for _, name := range append([]string{current, backup}, unrelated...) {
-				path := filepath.Join(dir, name)
-				if err := os.WriteFile(path, []byte(name), 0600); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.Chtimes(path, old, old); err != nil {
-					t.Fatal(err)
-				}
-			}
-			l.cleanup(cfg)
-			if _, err := os.Stat(filepath.Join(dir, backup)); !os.IsNotExist(err) {
-				t.Fatalf("expired backup remains: %v", err)
-			}
-			for _, name := range append(unrelated, current) {
-				if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
-					t.Fatalf("cleanup removed %q: %v", name, err)
-				}
-			}
-		})
-	}
-}
-
-// TestLoggerRapidRotationPreservesEveryLine verifies rotations and Close retain accepted logs without backup collisions. TestLoggerRapidRotationPreservesEveryLine 验证快速轮转和关闭会保留所有已接收日志，不发生备份名称碰撞。
-func TestLoggerRapidRotationPreservesEveryLine(t *testing.T) {
-	const count = 64
-	dir := t.TempDir()
-	l, err := NewLoggerWithConfig(&LoggerConfig{
-		Path: dir, FileFormat: "rapid.log", QueueSize: count,
-		RotateSize: 1, RotateBackupLimit: count + 1,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer l.Close()
-	for i := 0; i < count; i++ {
-		l.Infof("entry-%03d", i)
-	}
-	l.Close()
-	var all strings.Builder
-	for _, name := range listLogFiles(t, dir) {
-		data, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		all.Write(data)
-	}
-	for i := 0; i < count; i++ {
-		if n := strings.Count(all.String(), fmt.Sprintf("entry-%03d", i)); n != 1 {
-			t.Fatalf("entry %d appears %d times, want 1", i, n)
-		}
-	}
-}
-
-// TestLoggerConcurrentCloseAndFlush verifies close drains admitted writes and leaves no stranded queue entries. TestLoggerConcurrentCloseAndFlush 验证并发关闭会清空已入队日志，不遗留队列条目。
-func TestLoggerConcurrentCloseAndFlush(t *testing.T) {
-	dir := t.TempDir()
-	l, err := NewLoggerWithConfig(&LoggerConfig{Path: dir, FileFormat: "close.log", QueueSize: 512})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer l.Close()
-	l.Info("accepted before close")
+	defer logger.Close()
 	var workers sync.WaitGroup
 	start := make(chan struct{})
-	for i := 0; i < 8; i++ {
+	for i := 0; i < 6; i++ {
 		workers.Add(1)
-		go func() {
+		go func(index int) {
 			defer workers.Done()
 			<-start
 			for j := 0; j < 32; j++ {
-				l.Info("concurrent")
-				l.Flush()
+				logger.Infof("entry-%d-%d;", index, j)
 			}
-		}()
+		}(i)
 	}
 	workers.Add(1)
 	go func() {
 		defer workers.Done()
 		<-start
-		l.Close()
+		for i := 0; i < 16; i++ {
+			path := first
+			if i%2 == 0 {
+				path = second
+			}
+			logger.SetConfig(&LoggerConfig{Path: path, Filename: "switch.log"})
+			logger.Flush()
+		}
 	}()
+	close(start)
+	workers.Wait()
+	logger.Close()
+	text := readLog(t, filepath.Join(first, "switch.log")) + readLog(t, filepath.Join(second, "switch.log"))
+	for i := 0; i < 6; i++ {
+		for j := 0; j < 32; j++ {
+			entry := fmt.Sprintf("entry-%d-%d;", i, j)
+			if count := strings.Count(text, entry); count != 1 {
+				t.Fatalf("%s occurred %d times, want once", entry, count)
+			}
+		}
+	}
+}
+
+// TestLoggerConcurrentLifecycle verifies writes, reconfiguration, and shutdown cannot reopen a closed file. TestLoggerConcurrentLifecycle 验证写入、配置变更与关闭并发时不会重新打开已关闭文件。
+func TestLoggerConcurrentLifecycle(t *testing.T) {
+	first, second := t.TempDir(), t.TempDir()
+	logger, err := NewLoggerWithConfig(&LoggerConfig{Path: first, Filename: "race.log"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger.Info("accepted-before-close")
+	var workers sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < 6; i++ {
+		workers.Add(1)
+		go func(index int) {
+			defer workers.Done()
+			<-start
+			for j := 0; j < 32; j++ {
+				logger.Infof("worker-%d-%d", index, j)
+				logger.Flush()
+			}
+		}(i)
+	}
+	workers.Add(2)
+	go func() {
+		defer workers.Done()
+		<-start
+		for i := 0; i < 8; i++ {
+			path := first
+			if i%2 == 0 {
+				path = second
+			}
+			logger.SetConfig(&LoggerConfig{Path: path, Filename: "race.log"})
+			logger.SetLevel(LevelDebug)
+			logger.SetPrefix("[LIVE] ")
+			logger.SetStdout(false)
+		}
+	}()
+	go func() { defer workers.Done(); <-start; logger.Close() }()
 	close(start)
 	done := make(chan struct{})
 	go func() { workers.Wait(); close(done) }()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("concurrent Close/Flush blocked")
+		t.Fatal("concurrent lifecycle blocked")
 	}
-	if len(l.queue) != 0 {
-		t.Fatalf("closed logger has %d stranded entries", len(l.queue))
+	logger.Info("ignored-after-close")
+	logger.Close()
+	logger.Flush()
+	unused := filepath.Join(t.TempDir(), "closed-config")
+	logger.SetConfig(&LoggerConfig{Path: unused})
+	if _, err := os.Stat(unused); !os.IsNotExist(err) {
+		t.Fatal("closed logger created a new directory")
 	}
-	data, err := os.ReadFile(filepath.Join(dir, "close.log"))
-	if err != nil || !strings.Contains(string(data), "accepted before close") {
-		t.Fatalf("Close lost an accepted log: %q, %v", data, err)
+	text := readLog(t, filepath.Join(first, "race.log"))
+	if data, err := os.ReadFile(filepath.Join(second, "race.log")); err == nil {
+		text += string(data)
+	}
+	if !strings.Contains(text, "accepted-before-close") || strings.Contains(text, "ignored-after-close") || logger.DropCount() != 0 {
+		t.Fatal("shutdown lost completed output or accepted new output")
+	}
+	for _, dir := range []string{first, second} {
+		path := filepath.Join(dir, "race.log")
+		if _, err := os.Stat(path); err == nil {
+			if err := os.Rename(path, filepath.Join(dir, "released.log")); err != nil {
+				t.Fatalf("closed file is still held: %v", err)
+			}
+		}
 	}
 }
 
-// TestLoggerConfigSwitchKeepsRoutingAndQueueConsistent verifies runtime changes reopen the correct file without pretending to resize the queue. TestLoggerConfigSwitchKeepsRoutingAndQueueConsistent 验证运行时变更重新打开正确文件，并保留实际队列容量。
-func TestLoggerConfigSwitchKeepsRoutingAndQueueConsistent(t *testing.T) {
-	first, second := t.TempDir(), t.TempDir()
-	l, err := NewLoggerWithConfig(&LoggerConfig{Path: first, FileFormat: "first.log", QueueSize: 8})
+// reconfiguringMessage changes runtime controls while fmt evaluates a user argument. reconfiguringMessage 在 fmt 处理用户参数时修改运行时控制。
+type reconfiguringMessage struct{ logger *Logger }
+
+// String exercises reentrant formatting outside logger locks. String 验证格式化发生在日志锁外，允许重入控制方法。
+func (m reconfiguringMessage) String() string { m.logger.SetPrefix("[REENTRANT] "); return "message" }
+
+// TestLoggerFormattingAllowsRuntimeControls verifies user formatting cannot deadlock the logger. TestLoggerFormattingAllowsRuntimeControls 验证用户格式化不会导致日志器死锁。
+func TestLoggerFormattingAllowsRuntimeControls(t *testing.T) {
+	dir := t.TempDir()
+	logger, err := NewLoggerWithConfig(&LoggerConfig{Path: dir, Filename: "format.log"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer l.Close()
-	l.Info("first output")
-	l.Flush()
-	l.SetConfig(&LoggerConfig{Path: second, FileFormat: "second.log", QueueSize: 64})
-	l.Info("second output")
-	l.Flush()
-	if l.currentCfg().QueueSize != cap(l.queue) || cap(l.queue) != 8 {
-		t.Fatal("runtime config misrepresents queue capacity")
+	done := make(chan struct{})
+	go func() {
+		logger.Info(reconfiguringMessage{logger})
+		logger.Infof("%s", reconfiguringMessage{logger})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("formatting deadlocked")
 	}
-	for path, want := range map[string]string{
-		filepath.Join(first, "first.log"):   "first output",
-		filepath.Join(second, "second.log"): "second output",
-	} {
-		data, err := os.ReadFile(path)
-		if err != nil || !strings.Contains(string(data), want) {
-			t.Fatalf("output at %q = %q, %v", path, data, err)
+	defer logger.Close()
+	if strings.Count(readLog(t, filepath.Join(dir, "format.log")), "[REENTRANT] message") != 2 {
+		t.Fatal("reentrant formatting did not reach both outputs")
+	}
+}
+
+// panickingLogError exercises fmt's protection against unsafe Error methods. panickingLogError 验证 fmt 对不安全 Error 方法的保护。
+type panickingLogError struct{}
+
+// Error deliberately panics to simulate a broken application error. Error 故意触发 panic，模拟应用错误对象异常。
+func (*panickingLogError) Error() string { panic("broken error") }
+
+// TestLoggerErrorFormatting verifies standard fmt behavior for nil and panicking error values. TestLoggerErrorFormatting 验证空值与触发 panic 的错误对象使用标准 fmt 行为。
+func TestLoggerErrorFormatting(t *testing.T) {
+	dir := t.TempDir()
+	logger, err := NewLoggerWithConfig(&LoggerConfig{Path: dir, Filename: "errors.log"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer logger.Close()
+	var nilError *panickingLogError
+	for _, value := range []error{nilError, &panickingLogError{}} {
+		logger.Error(value)
+	}
+	text := readLog(t, filepath.Join(dir, "errors.log"))
+	for _, value := range []error{nilError, &panickingLogError{}} {
+		if !strings.Contains(text, fmt.Sprint(value)) {
+			t.Fatal("error formatting differs from fmt")
+		}
+	}
+}
+
+// TestNilAndZeroLoggerMethods verifies harmless calls before initialization or after shutdown. TestNilAndZeroLoggerMethods 验证初始化前或关闭后的调用安全。
+func TestNilAndZeroLoggerMethods(t *testing.T) {
+	for _, logger := range []*Logger{nil, {}} {
+		logger.Print("plain")
+		logger.Printf("%s", "plain")
+		logger.Debug("debug")
+		logger.Debugf("%s", "debug")
+		logger.Info("info")
+		logger.Infof("%s", "info")
+		logger.Warn("warn")
+		logger.Warnf("%s", "warn")
+		logger.Error("error")
+		logger.Errorf("%s", "error")
+		logger.SetLevel(LevelDebug)
+		logger.SetPrefix("prefix")
+		logger.SetStdout(false)
+		logger.Flush()
+		logger.Close()
+		logger.Close()
+		logger.SetConfig(&LoggerConfig{StdoutOnly: true})
+		if logger.DropCount() != 0 || logger.LogPath() != "" {
+			t.Fatal("uninitialized logger reported resources")
 		}
 	}
 }

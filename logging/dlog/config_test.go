@@ -1,95 +1,53 @@
-// @Author daixk 2025/12/22 15:56:00
 package dlog
 
 import (
-	"reflect"
+	"math"
 	"testing"
 	"time"
 )
 
-// TestDefaultLoggerConfig verifies default values 测试默认日志配置
-func TestDefaultLoggerConfig(t *testing.T) {
+// TestLoggerConfigDefaults verifies native units, zero retention limits, and independent configuration copies. TestLoggerConfigDefaults 验证原生单位、零值保留策略及独立配置副本。
+func TestLoggerConfigDefaults(t *testing.T) {
 	cfg := DefaultLoggerConfig()
-	if cfg.TimeFormat != DefaultTimeFormat {
-		t.Fatalf("TimeFormat = %q, want %q", cfg.TimeFormat, DefaultTimeFormat)
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
 	}
-	if cfg.FileFormat != DefaultFileFormat {
-		t.Fatalf("FileFormat = %q, want %q", cfg.FileFormat, DefaultFileFormat)
+	if cfg.Filename != "DTOKEN.log" || cfg.MaxSize != 10 || cfg.MaxBackups != 10 || cfg.MaxAge != 7 {
+		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
-	if cfg.Level != LevelInfo {
-		t.Fatalf("Level = %v, want %v", cfg.Level, LevelInfo)
-	}
-	if !cfg.Stdout {
-		t.Fatal("Stdout should be enabled by default")
-	}
-}
-
-// TestLoggerConfigSettersAndClone verifies fluent setters and clone behavior 测试链式配置与克隆行为
-func TestLoggerConfigSettersAndClone(t *testing.T) {
-	cfg := DefaultLoggerConfig().
-		SetPath("logs").
-		SetFileFormat("app.log").
-		SetPrefix("[APP] ").
-		SetLevel(LevelDebug).
-		SetTimeFormat(time.RFC3339).
-		SetStdout(false).
-		SetStdoutOnly(true).
-		SetQueueSize(8).
-		SetRotateSize(1024).
-		SetRotateExpire(time.Hour).
-		SetRotateBackupLimit(3).
-		SetRotateBackupDays(2)
-
-	want := &LoggerConfig{
-		Path:              "logs",
-		FileFormat:        "app.log",
-		Prefix:            "[APP] ",
-		Level:             LevelDebug,
-		TimeFormat:        time.RFC3339,
-		Stdout:            true,
-		StdoutOnly:        true,
-		QueueSize:         8,
-		RotateSize:        1024,
-		RotateExpire:      time.Hour,
-		RotateBackupLimit: 3,
-		RotateBackupDays:  2,
-	}
-	if !reflect.DeepEqual(cfg, want) {
-		t.Fatalf("config = %+v, want %+v", cfg, want)
-	}
-
 	clone := cfg.Clone()
-	clone.SetPrefix("[CLONE] ")
-	if cfg.Prefix == clone.Prefix {
-		t.Fatal("Clone() should return an independent copy")
+	clone.Filename = "other.log"
+	if cfg.Filename != "DTOKEN.log" {
+		t.Fatal("Clone changed the source")
 	}
-	if nilClone := (*LoggerConfig)(nil).Clone(); nilClone == nil {
-		t.Fatal("Clone() on nil should return empty config")
+	partial := normalizeConfig(&LoggerConfig{Path: t.TempDir(), MaxBackups: 0, MaxAge: 0})
+	if partial.MaxSize != DefaultMaxSize || partial.MaxBackups != 0 || partial.MaxAge != 0 {
+		t.Fatalf("zero retention limits were overridden: %+v", partial)
+	}
+	if err := (*LoggerConfig)(nil).Validate(); err != nil {
+		t.Fatal(err)
 	}
 }
 
-// TestLoggerConfigValidate verifies invalid logger config detection TestLoggerConfigValidate 验证日志配置非法值检测
-func TestLoggerConfigValidate(t *testing.T) {
-	if err := DefaultLoggerConfig().Validate(); err != nil {
-		t.Fatalf("Validate(default) error = %v", err)
-	}
-	if err := (&LoggerConfig{}).Validate(); err != nil {
-		t.Fatalf("Validate(zero) error = %v", err)
-	}
-	if err := (&LoggerConfig{Path: "logs"}).Validate(); err != nil {
-		t.Fatalf("Validate(partial) error = %v", err)
-	}
-
+// TestLoggerConfigValidation rejects invalid output paths, legacy templates, and unsupported rotation values. TestLoggerConfigValidation 拒绝非法输出路径、旧日期模板和不受支持的轮转值。
+func TestLoggerConfigValidation(t *testing.T) {
 	tests := []LoggerConfig{
-		{TimeFormat: DefaultTimeFormat, Path: "   ", Level: LevelInfo, QueueSize: 1, RotateSize: 1},
-		{TimeFormat: DefaultTimeFormat, FileFormat: "   ", Level: LevelInfo, QueueSize: 1, RotateSize: 1},
-		{TimeFormat: DefaultTimeFormat, FileFormat: "logs/app.log", Level: LevelInfo, QueueSize: 1, RotateSize: 1},
-		{TimeFormat: DefaultTimeFormat, Level: LogLevel(99), QueueSize: 1, RotateSize: 1},
+		{Path: " "}, {Filename: " "}, {Filename: "."}, {Filename: ".."},
+		{Filename: "nested/app.log"}, {Filename: `nested\app.log`}, {Filename: "APP_{Y}.log"},
+		{Level: LogLevel(99)}, {TimeFormat: " "}, {MaxSize: -1}, {MaxBackups: -1}, {MaxAge: -1},
+		{MaxAge: int(math.MaxInt64/int64(24*time.Hour)) + 1},
 	}
-	for _, tt := range tests {
-		cfg := tt
+	for _, cfg := range tests {
 		if err := cfg.Validate(); err == nil {
-			t.Fatalf("Validate(%+v) should fail", cfg)
+			t.Fatalf("Validate(%+v) accepted an invalid value", cfg)
 		}
+	}
+}
+
+// TestLoggerConfigRetentionBoundary verifies the largest duration-safe retention remains valid. TestLoggerConfigRetentionBoundary 验证不会导致时长溢出的最大保留天数仍然有效。
+func TestLoggerConfigRetentionBoundary(t *testing.T) {
+	cfg := &LoggerConfig{MaxAge: int(math.MaxInt64 / int64(24*time.Hour))}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
 	}
 }

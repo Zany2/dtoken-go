@@ -384,10 +384,10 @@ func (b *Builder) LoggerPath(path string) *Builder {
 	return b
 }
 
-// LoggerFileFormat sets log file format LoggerFileFormat 设置日志文件格式
-func (b *Builder) LoggerFileFormat(format string) *Builder {
+// LoggerFilename sets the fixed active log filename. LoggerFilename 设置固定的活动日志文件名。
+func (b *Builder) LoggerFilename(filename string) *Builder {
 	b.ensureBuilder()
-	b.loggerConfig.FileFormat = format
+	b.loggerConfig.Filename = filename
 	return b
 }
 
@@ -429,38 +429,38 @@ func (b *Builder) LoggerStdoutOnly(stdoutOnly bool) *Builder {
 	return b
 }
 
-// LoggerQueueSize sets async log queue size LoggerQueueSize 设置异步日志队列大小
-func (b *Builder) LoggerQueueSize(size int) *Builder {
+// LoggerMaxSize limits each log file in MiB. LoggerMaxSize 以 MiB 限制单个日志文件大小。
+func (b *Builder) LoggerMaxSize(size int) *Builder {
 	b.ensureBuilder()
-	b.loggerConfig.QueueSize = size
+	b.loggerConfig.MaxSize = size
 	return b
 }
 
-// LoggerRotateSize sets log rotate size LoggerRotateSize 设置日志滚动大小
-func (b *Builder) LoggerRotateSize(size int64) *Builder {
+// LoggerMaxBackups limits retained backups; zero disables the count limit. LoggerMaxBackups 限制保留的备份数量，零值表示不按数量限制。
+func (b *Builder) LoggerMaxBackups(count int) *Builder {
 	b.ensureBuilder()
-	b.loggerConfig.RotateSize = size
+	b.loggerConfig.MaxBackups = count
 	return b
 }
 
-// LoggerRotateExpire sets log rotate interval LoggerRotateExpire 设置日志滚动间隔
-func (b *Builder) LoggerRotateExpire(expire time.Duration) *Builder {
+// LoggerMaxAge limits backup retention in days; zero disables age-based deletion. LoggerMaxAge 以天限制备份保留时间，零值表示不按时间删除。
+func (b *Builder) LoggerMaxAge(days int) *Builder {
 	b.ensureBuilder()
-	b.loggerConfig.RotateExpire = expire
+	b.loggerConfig.MaxAge = days
 	return b
 }
 
-// LoggerRotateBackupLimit sets log backup count LoggerRotateBackupLimit 设置日志备份数量
-func (b *Builder) LoggerRotateBackupLimit(limit int) *Builder {
+// LoggerCompress enables gzip compression of rotated log files. LoggerCompress 启用轮转日志文件的 gzip 压缩。
+func (b *Builder) LoggerCompress(enable bool) *Builder {
 	b.ensureBuilder()
-	b.loggerConfig.RotateBackupLimit = limit
+	b.loggerConfig.Compress = enable
 	return b
 }
 
-// LoggerRotateBackupDays sets log retention days LoggerRotateBackupDays 设置日志保留天数
-func (b *Builder) LoggerRotateBackupDays(days int) *Builder {
+// LoggerLocalTime uses local time in rotated log filenames. LoggerLocalTime 在轮转日志文件名中使用本地时间。
+func (b *Builder) LoggerLocalTime(enable bool) *Builder {
 	b.ensureBuilder()
-	b.loggerConfig.RotateBackupDays = days
+	b.loggerConfig.LocalTime = enable
 	return b
 }
 

@@ -1,156 +1,67 @@
-// @Author daixk 2025/12/22 15:55:00
 package dlog
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 )
 
-// LoggerConfig defines logger configuration. LoggerConfig 定义日志配置。
+// LoggerConfig configures Zap output and Lumberjack's native rotation policy. LoggerConfig 配置 Zap 输出与 Lumberjack 原生轮转策略。
 type LoggerConfig struct {
-	// Log directory path 日志文件目录
+	// Path selects the directory for file output. Path 指定文件输出目录。
 	Path string
-	// Log file naming format 日志文件命名格式
-	FileFormat string
-	// Log line prefix 日志前缀
+	// Filename selects a fixed basename without directory separators or date templates. Filename 指定不含目录分隔符和日期模板的固定文件名。
+	Filename string
+	// Prefix is prepended to each message. Prefix 添加在每条消息之前。
 	Prefix string
-	// Minimum output level 最低输出级别
+	// Level selects the minimum severity. Level 指定最低日志级别。
 	Level LogLevel
-	// Timestamp format 时间戳格式
+	// TimeFormat uses Go's timestamp layout syntax. TimeFormat 使用 Go 时间布局语法。
 	TimeFormat string
-	// Print logs to console 是否输出到控制台
+	// Stdout also writes to standard output. Stdout 同时写入标准输出。
 	Stdout bool
-	// Only print to console, skip file output 仅输出到控制台，不写入文件
+	// StdoutOnly disables file output and initially enables stdout. StdoutOnly 禁用文件输出并在初始化时启用标准输出。
 	StdoutOnly bool
-	// Async queue capacity fixed at construction 异步队列容量，在创建时确定
-	QueueSize int
-	// File size threshold before rotation in bytes 文件大小滚动阈值
-	RotateSize int64
-	// Rotation interval by time duration 文件时间滚动间隔
-	RotateExpire time.Duration
-	// Maximum number of rotated backup files 最大备份文件数量
-	RotateBackupLimit int
-	// Retention days for old log files 备份文件保留天数
-	RotateBackupDays int
+	// MaxSize limits each file in MiB; zero selects the framework default. MaxSize 以 MiB 限制单个文件大小，零值使用框架默认值。
+	MaxSize int
+	// MaxBackups limits retained backups; zero disables the count limit. MaxBackups 限制保留的备份数量，零值表示不按数量限制。
+	MaxBackups int
+	// MaxAge limits backup age to 0–106751 days; zero disables age-based deletion. MaxAge 以天限制备份保留时间，范围为 0–106751，零值表示不按时间删除。
+	MaxAge int
+	// Compress enables gzip compression of rotated files. Compress 启用轮转文件的 gzip 压缩。
+	Compress bool
+	// LocalTime uses local time in backup filenames; otherwise Lumberjack uses UTC. LocalTime 在备份文件名中使用本地时间，否则 Lumberjack 使用 UTC。
+	LocalTime bool
 }
 
-// DefaultLoggerConfig returns default logger configuration. DefaultLoggerConfig 返回默认日志配置。
+// DefaultLoggerConfig returns the bundled synchronous logging defaults. DefaultLoggerConfig 返回内置同步日志默认配置。
 func DefaultLoggerConfig() *LoggerConfig {
 	return &LoggerConfig{
-		TimeFormat:        DefaultTimeFormat,
-		FileFormat:        DefaultFileFormat,
-		Prefix:            DefaultPrefix,
-		Level:             LevelInfo,
-		Stdout:            true,
-		StdoutOnly:        false,
-		QueueSize:         DefaultQueueSize,
-		RotateSize:        DefaultRotateSize,
-		RotateExpire:      DefaultRotateExpire,
-		RotateBackupLimit: DefaultRotateBackupLimit,
-		RotateBackupDays:  DefaultRotateBackupDays,
+		Path: DefaultDirName, Filename: DefaultFilename,
+		Prefix: DefaultPrefix, Level: LevelInfo,
+		TimeFormat: DefaultTimeFormat, Stdout: true,
+		MaxSize: DefaultMaxSize, MaxBackups: DefaultMaxBackups, MaxAge: DefaultMaxAge,
 	}
 }
 
-// Validate validates logger configuration. Validate 校验日志配置。
-func (c *LoggerConfig) Validate() error {
-	cfg := normalizeConfig(c)
-	return validateNormalizedConfig(cfg)
-}
-
-// SetPath sets the log output directory. SetPath 设置日志输出目录。
-func (c *LoggerConfig) SetPath(path string) *LoggerConfig {
-	c.Path = path
-	return c
-}
-
-// SetFileFormat sets the log file naming format. SetFileFormat 设置日志文件命名格式。
-func (c *LoggerConfig) SetFileFormat(format string) *LoggerConfig {
-	c.FileFormat = format
-	return c
-}
-
-// SetPrefix sets the log line prefix. SetPrefix 设置日志输出前缀。
-func (c *LoggerConfig) SetPrefix(prefix string) *LoggerConfig {
-	c.Prefix = prefix
-	return c
-}
-
-// SetLevel sets the minimum output log level. SetLevel 设置日志最低输出级别。
-func (c *LoggerConfig) SetLevel(level LogLevel) *LoggerConfig {
-	c.Level = level
-	return c
-}
-
-// SetTimeFormat sets the timestamp format in log lines. SetTimeFormat 设置日志时间戳格式。
-func (c *LoggerConfig) SetTimeFormat(format string) *LoggerConfig {
-	c.TimeFormat = format
-	return c
-}
-
-// SetStdout enables or disables console output. SetStdout 设置是否输出到控制台。
-func (c *LoggerConfig) SetStdout(enable bool) *LoggerConfig {
-	c.Stdout = enable
-	return c
-}
-
-// SetStdoutOnly enables console-only mode. SetStdoutOnly 设置仅输出到控制台模式。
-func (c *LoggerConfig) SetStdoutOnly(enable bool) *LoggerConfig {
-	c.StdoutOnly = enable
-	if enable {
-		c.Stdout = true
-	}
-	return c
-}
-
-// SetQueueSize sets the async write queue size. SetQueueSize 设置异步写入队列大小。
-func (c *LoggerConfig) SetQueueSize(size int) *LoggerConfig {
-	c.QueueSize = size
-	return c
-}
-
-// SetRotateSize sets the file size threshold for log rotation. SetRotateSize 设置日志文件大小滚动阈值。
-func (c *LoggerConfig) SetRotateSize(size int64) *LoggerConfig {
-	c.RotateSize = size
-	return c
-}
-
-// SetRotateExpire sets the time based rotation interval. SetRotateExpire 设置时间滚动间隔。
-func (c *LoggerConfig) SetRotateExpire(d time.Duration) *LoggerConfig {
-	c.RotateExpire = d
-	return c
-}
-
-// SetRotateBackupLimit sets the maximum number of retained backup files. SetRotateBackupLimit 设置最大备份文件数量。
-func (c *LoggerConfig) SetRotateBackupLimit(limit int) *LoggerConfig {
-	c.RotateBackupLimit = limit
-	return c
-}
-
-// SetRotateBackupDays sets the backup retention days. SetRotateBackupDays 设置日志备份保留天数。
-func (c *LoggerConfig) SetRotateBackupDays(days int) *LoggerConfig {
-	c.RotateBackupDays = days
-	return c
-}
-
-// Clone returns a copy of the current logger configuration. Clone 返回当前日志配置副本。
+// Clone returns an independent configuration copy. Clone 返回独立配置副本。
 func (c *LoggerConfig) Clone() *LoggerConfig {
 	if c == nil {
-		return &LoggerConfig{}
+		return DefaultLoggerConfig()
 	}
-	copyCfg := *c
-	return &copyCfg
+	copy := *c
+	return &copy
 }
 
-// normalizeConfig applies logger defaults. normalizeConfig 应用日志默认配置。
+// normalizeConfig fills unspecified scalar values without overriding explicit retention limits. normalizeConfig 补齐未指定的标量值，不覆盖显式保留策略。
 func normalizeConfig(cfg *LoggerConfig) *LoggerConfig {
-	if cfg == nil {
-		cfg = &LoggerConfig{}
+	c := cfg.Clone()
+	if c.Path == "" {
+		c.Path = DefaultDirName
 	}
-
-	c := *cfg
-	if c.TimeFormat == "" {
-		c.TimeFormat = DefaultTimeFormat
+	if c.Filename == "" {
+		c.Filename = DefaultFilename
 	}
 	if c.Prefix == "" {
 		c.Prefix = DefaultPrefix
@@ -158,70 +69,46 @@ func normalizeConfig(cfg *LoggerConfig) *LoggerConfig {
 	if c.Level == 0 {
 		c.Level = LevelInfo
 	}
-	if c.QueueSize <= 0 {
-		c.QueueSize = DefaultQueueSize
+	if c.TimeFormat == "" {
+		c.TimeFormat = DefaultTimeFormat
 	}
-
+	if c.MaxSize == 0 {
+		c.MaxSize = DefaultMaxSize
+	}
 	if c.StdoutOnly {
 		c.Stdout = true
-		return &c
 	}
-
-	if c.FileFormat == "" {
-		c.FileFormat = DefaultFileFormat
-	}
-	if c.RotateSize <= 0 {
-		c.RotateSize = DefaultRotateSize
-	}
-	if c.RotateExpire < 0 {
-		c.RotateExpire = 0
-	}
-	if c.RotateBackupLimit <= 0 {
-		c.RotateBackupLimit = DefaultRotateBackupLimit
-	}
-	if c.RotateBackupDays < 0 {
-		c.RotateBackupDays = 0
-	}
-
-	return &c
+	return c
 }
 
-// validateNormalizedConfig checks normalized logger config. validateNormalizedConfig 校验归一化后的日志配置。
-func validateNormalizedConfig(c *LoggerConfig) error {
-	if c == nil {
-		return nil
+// Validate checks configuration without creating directories or opening files. Validate 校验配置，不创建目录或打开文件。
+func (c *LoggerConfig) Validate() error {
+	cfg := normalizeConfig(c)
+	if strings.TrimSpace(cfg.Path) == "" {
+		return fmt.Errorf("dlog: Path must not be whitespace")
 	}
-	if strings.TrimSpace(c.TimeFormat) == "" {
-		return fmt.Errorf("LoggerConfig.TimeFormat must not be empty")
+	if strings.TrimSpace(cfg.Filename) == "" || cfg.Filename == "." || cfg.Filename == ".." || strings.ContainsAny(cfg.Filename, `/\{}`) {
+		return fmt.Errorf("dlog: Filename must be a fixed basename without date templates")
 	}
-	if c.Path != "" && strings.TrimSpace(c.Path) == "" {
-		return fmt.Errorf("LoggerConfig.Path must not be whitespace")
+	if !validLevel(cfg.Level) {
+		return fmt.Errorf("dlog: invalid Level %v", cfg.Level)
 	}
-	if c.FileFormat != "" && strings.TrimSpace(c.FileFormat) == "" {
-		return fmt.Errorf("LoggerConfig.FileFormat must not be whitespace")
+	if strings.TrimSpace(cfg.TimeFormat) == "" {
+		return fmt.Errorf("dlog: TimeFormat must not be whitespace")
 	}
-	if strings.ContainsAny(c.FileFormat, `/\`) {
-		return fmt.Errorf("LoggerConfig.FileFormat must be a file name, not a path")
+	if cfg.MaxSize < 0 || int64(cfg.MaxSize) > math.MaxInt64/(1024*1024) {
+		return fmt.Errorf("dlog: MaxSize is outside the supported MiB range")
 	}
-	switch c.Level {
-	case LevelDebug, LevelInfo, LevelWarn, LevelError:
-	default:
-		return fmt.Errorf("LoggerConfig.Level is invalid: %v", c.Level)
+	if cfg.MaxBackups < 0 || cfg.MaxAge < 0 {
+		return fmt.Errorf("dlog: MaxBackups and MaxAge must not be negative")
 	}
-	if c.QueueSize <= 0 {
-		return fmt.Errorf("LoggerConfig.QueueSize must be > 0")
-	}
-	if !c.StdoutOnly && c.RotateSize <= 0 {
-		return fmt.Errorf("LoggerConfig.RotateSize must be > 0")
-	}
-	if c.RotateExpire < 0 {
-		return fmt.Errorf("LoggerConfig.RotateExpire must not be negative")
-	}
-	if !c.StdoutOnly && c.RotateBackupLimit <= 0 {
-		return fmt.Errorf("LoggerConfig.RotateBackupLimit must be > 0")
-	}
-	if c.RotateBackupDays < 0 {
-		return fmt.Errorf("LoggerConfig.RotateBackupDays must not be negative")
+	if int64(cfg.MaxAge) > math.MaxInt64/int64(24*time.Hour) {
+		return fmt.Errorf("dlog: MaxAge exceeds the supported retention duration")
 	}
 	return nil
+}
+
+// validLevel reports whether a framework severity is supported. validLevel 判断框架日志级别是否受支持。
+func validLevel(level LogLevel) bool {
+	return level >= LevelDebug && level <= LevelError
 }
