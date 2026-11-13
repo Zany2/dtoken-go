@@ -3,20 +3,21 @@ package hertz
 import (
 	"context"
 	"errors"
+	dtglobal "github.com/Zany2/dtoken-go/global"
 	"net/http"
 	"testing"
 
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
+	derror "github.com/Zany2/dtoken-go/errors"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 )
 
 // TestHertzRegisterContextMiddlewareStopsAfterManagerFailure verifies manager resolution failures abort the request. TestHertzRegisterContextMiddlewareStopsAfterManagerFailure 验证 Manager 解析失败时请求会中断。
 func TestHertzRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	requestContext := hertzapp.NewContext(0)
 	var gotErr error
@@ -36,11 +37,12 @@ func TestHertzRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
 
 // TestHertzAnnotationHandlerControlFlow verifies annotation success and failure callbacks. TestHertzAnnotationHandlerControlFlow 验证注解成功路径与失败回调。
 func TestHertzAnnotationHandlerControlFlow(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -106,11 +108,12 @@ func TestHertzTypedNilContextIsSafe(t *testing.T) {
 
 // TestHertzContextFacadeUsesCachedManager verifies request-context facade operations use the cached manager. TestHertzContextFacadeUsesCachedManager 验证请求上下文门面会复用缓存的 Manager。
 func TestHertzContextFacadeUsesCachedManager(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	mgr := builtAuth2.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

@@ -3,12 +3,13 @@ package gin
 import (
 	"context"
 	"errors"
+	dtglobal "github.com/Zany2/dtoken-go/global"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	"github.com/gin-gonic/gin"
 )
 
@@ -137,8 +138,8 @@ func TestFailFuncOption(t *testing.T) {
 // TestRegisterContextMiddlewareStopsAfterManagerFailure verifies manager resolution failures abort Gin chains. TestRegisterContextMiddlewareStopsAfterManagerFailure 验证 Manager 解析失败时 Gin 链路会中止。
 func TestRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	router := gin.New()
 	downstreamCalled := false
@@ -161,11 +162,12 @@ func TestRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
 // TestAuthMiddlewareSuccessAndFailure verifies authenticated and rejected requests. TestAuthMiddlewareSuccessAndFailure 验证认证成功与失败请求。
 func TestAuthMiddlewareSuccessAndFailure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

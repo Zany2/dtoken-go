@@ -19,7 +19,7 @@ The server listens on `http://localhost:8080`.
 - `GET /articles`: requires the `article:read` permission.
 - `POST /logout`: logs out the current token.
 
-The example uses bundled memory storage through `echodt.NewBuilder()`, so no Redis service is required. Login and authorization data are lost on restart. Demo credentials and permission grants illustrate the API; real applications must verify their own accounts and load their own authorization rules.
+The example uses bundled memory storage through `dtoken.NewBuilder()`, so no Redis service is required. Login and authorization data are lost on restart. Demo credentials and permission grants illustrate the API; real applications must verify their own accounts and load their own authorization rules.
 
 Tokens have a two-hour timeout, with automatic renewal during authentication checks when one hour or less remains. Repeated logins for the same username may reuse a token under the default sharing policy; logging out invalidates that shared token.
 
@@ -51,8 +51,16 @@ Handlers and authentication middleware share the same error response callback. R
 
 ## Key APIs
 
+Build an instance first and keep it open while the server handles requests. These fragments use the handlers and error callbacks from `main.go`.
+
 ```go
-e.Use(echodt.RegisterDTokenContextMiddleware(ctx, echodt.WithFailFunc(writeAuthError)))
+authInstance, err := dtoken.NewBuilder().TokenName("Authorization").Build()
+if err != nil { panic(err) }
+defer authInstance.Close()
+```
+
+```go
+e.Use(echodt.RegisterDTokenContextMiddleware(ctx, echodt.WithAuth(authInstance), echodt.WithFailFunc(writeAuthError)))
 auth.Use(echodt.AuthMiddleware(ctx, echodt.WithFailFunc(writeAuthError)))
 auth.GET("/admin", handleAdmin, echodt.RoleMiddleware(ctx, []string{"admin"}, echodt.WithFailFunc(writeAuthError)))
 auth.GET("/articles", handleArticles, echodt.PermissionMiddleware(ctx, []string{"article:read"}, echodt.WithFailFunc(writeAuthError)))

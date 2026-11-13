@@ -5,19 +5,19 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	dtglobal "github.com/Zany2/dtoken-go/global"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	"github.com/Zany2/dtoken-go/internal/defaults"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
+	"github.com/Zany2/dtoken-go/storage/memory"
+	gofiber "github.com/gofiber/fiber/v2"
+	"github.com/valyala/fasthttp"
 	"mime/multipart"
 	"net/http"
 	"net/url"
 	"testing"
 	"time"
-
-	"github.com/Zany2/dtoken-go/com/storage/memory"
-	"github.com/Zany2/dtoken-go/core/adapter"
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
-	gofiber "github.com/gofiber/fiber/v2"
-	"github.com/valyala/fasthttp"
 )
 
 // fiberReviewChecks exercises all auth entry points through Fiber routing. fiberReviewChecks 通过 Fiber 路由覆盖全部鉴权入口。
@@ -39,7 +39,8 @@ var fiberReviewChecks = []struct {
 			opt(options)
 		}
 		return GetHandler(ctx, nil, options.FailFunc, &Annotation{
-			AuthType: options.AuthType, CheckLogin: true, CheckPermission: []string{"read"},
+			ManagerResolver: options.ManagerResolver,
+			AuthType:        options.AuthType, CheckLogin: true, CheckPermission: []string{"read"},
 		})
 	}},
 }
@@ -66,12 +67,12 @@ func newFiberReviewContext(t *testing.T) *gofiber.Ctx {
 // newFiberReviewManager creates an isolated manager without background maintenance. newFiberReviewManager 创建不执行后台维护的独立 Manager。
 func newFiberReviewManager(t *testing.T, authType string, storage adapter.Storage) *manager.Manager {
 	t.Helper()
-	b := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
+	b := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
 	if authType != "" {
 		b.AuthType(authType)
 	}
 	if storage != nil {
-		b.SetStorage(storage)
+		b.Storage(storage)
 	}
 	mgr, err := b.Build()
 	if err != nil {
@@ -98,8 +99,8 @@ func fiberReviewLogin(t *testing.T, mgr *manager.Manager, token string) {
 
 // TestFiberReviewUserContext verifies user values, deadlines and cancellation reach checks and facades. TestFiberReviewUserContext 验证用户上下文值、截止时间与取消信号传入鉴权及门面。
 func TestFiberReviewUserContext(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	for _, check := range fiberReviewChecks {
 		t.Run(check.name, func(t *testing.T) {
 			storage := &fiberReviewStorage{Storage: memory.NewStorage()}
@@ -181,13 +182,13 @@ func (s *fiberReviewStorage) Get(ctx context.Context, key string) (any, error) {
 
 // TestFiberReviewManagerSelection verifies precedence, inheritance and closed-manager rejection. TestFiberReviewManagerSelection 验证选择优先级、请求继承与已关闭 Manager 的拒绝行为。
 func TestFiberReviewManagerSelection(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	global := newFiberReviewManager(t, "", nil)
 	local := newFiberReviewManager(t, "fiber-local", nil)
 	closed := newFiberReviewManager(t, "fiber-closed", nil)
 	closed.CloseManager()
-	dtoken.SetManager(global)
+	dtglobal.SetManager(global)
 	const token = "same-token"
 	fiberReviewLogin(t, global, token)
 	fiberReviewLogin(t, local, token)
@@ -199,8 +200,8 @@ func TestFiberReviewManagerSelection(t *testing.T) {
 			want   *manager.Manager
 		}{
 			{"cached", local, nil, local},
-			{"global", nil, nil, global},
-			{"auth_type", local, []AuthOption{WithAuthType(global.GetConfig().AuthType)}, global},
+			{"global", nil, []AuthOption{WithManagerResolver(dtglobal.GetManager)}, global},
+			{"auth_type", local, []AuthOption{WithManagerResolver(dtglobal.GetManager), WithAuthType(global.GetConfig().AuthType)}, global},
 			{"explicit", local, []AuthOption{WithManager(global), WithAuthType("missing")}, global},
 			{"missing_type", local, []AuthOption{WithAuthType("missing")}, nil},
 			{"closed", closed, nil, nil},
@@ -242,11 +243,11 @@ func TestFiberReviewManagerSelection(t *testing.T) {
 
 // TestFiberReviewRenewalUsesRequestManager protects identical tokens in different namespaces. TestFiberReviewRenewalUsesRequestManager 验证不同认证空间内同值 Token 的续期归属。
 func TestFiberReviewRenewalUsesRequestManager(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	global := newFiberReviewManager(t, "", nil)
 	local := newFiberReviewManager(t, "fiber-renew", nil)
-	dtoken.SetManager(global)
+	dtglobal.SetManager(global)
 	const token = "renew-token"
 	fiberReviewLogin(t, global, token)
 	fiberReviewLogin(t, local, token)
@@ -269,18 +270,18 @@ func TestFiberReviewRenewalUsesRequestManager(t *testing.T) {
 
 // TestFiberReviewCachedContextValidation rejects unusable cached managers and replaces typed nils. TestFiberReviewCachedContextValidation 拒绝不可用的缓存 Manager 并替换带类型空值。
 func TestFiberReviewCachedContextValidation(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	global := newFiberReviewManager(t, "", nil)
-	dtoken.SetManager(global)
+	dtglobal.SetManager(global)
 	c := newFiberReviewContext(t)
 	var typedNil *corecontext.DTokenContext
 	c.Locals(DTokenCtxKey, typedNil)
 	if got, ok := GetDTokenContext(c); got != nil || ok {
 		t.Fatalf("typed nil lookup=%v,%v", got, ok)
 	}
-	if got, err := GetManagerByContext(c); err != nil || got != global {
-		t.Fatalf("typed nil fallback=%p,%v", got, err)
+	if got, err := GetManagerByContext(c); !errors.Is(err, ErrManagerNotFound) {
+		t.Fatalf("typed nil missing binding=%p,%v", got, err)
 	}
 	c.Locals(DTokenCtxKey, typedNil)
 	if got := getDTokenContext(c, global); got == nil || got.GetManager() != global {
@@ -373,7 +374,7 @@ func TestFiberReviewHookControlFlow(t *testing.T) {
 
 // TestFiberReviewBodyTokenIsolation keeps query values out of body-only authentication. TestFiberReviewBodyTokenIsolation 验证仅允许请求体 Token 时不会混入查询参数。
 func TestFiberReviewBodyTokenIsolation(t *testing.T) {
-	mgr, err := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+	mgr, err := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
 		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).Build()
 	if err != nil {
 		t.Fatal(err)

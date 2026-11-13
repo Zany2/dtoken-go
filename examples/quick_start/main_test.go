@@ -4,14 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	dtglobal "github.com/Zany2/dtoken-go/global"
+	"github.com/Zany2/dtoken-go/internal/defaults"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"github.com/Zany2/dtoken-go/defaults"
-	"github.com/Zany2/dtoken-go/dtoken"
-	"github.com/gin-gonic/gin"
 )
 
 func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
@@ -50,13 +49,13 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	if !ok || token == "" {
 		t.Fatal("login response did not contain a token")
 	}
-	if loginID, err := dtoken.GetLoginID(context.Background(), token); err != nil || loginID != "alice" {
+	if loginID, err := dtglobal.GetLoginID(context.Background(), token); err != nil || loginID != "alice" {
 		t.Fatalf("returned token loginID = %q, error = %v", loginID, err)
 	}
-	if !dtoken.HasRole(context.Background(), "alice", "admin") {
+	if !dtglobal.HasRole(context.Background(), "alice", "admin") {
 		t.Fatal("login did not seed admin role")
 	}
-	if !dtoken.HasPermission(context.Background(), "alice", "article:read") {
+	if !dtglobal.HasPermission(context.Background(), "alice", "article:read") {
 		t.Fatal("login did not seed article permission")
 	}
 }
@@ -65,14 +64,14 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupQuickStartManager(t)
 	ctx := context.Background()
-	token, err := dtoken.Login(ctx, "alice")
+	token, err := dtglobal.Login(ctx, "alice")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
-	if err = dtoken.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
+	if err = dtglobal.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
 		t.Fatalf("AddRoles() error = %v", err)
 	}
-	if err = dtoken.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
+	if err = dtglobal.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
 		t.Fatalf("AddPermissions() error = %v", err)
 	}
 
@@ -105,14 +104,14 @@ func TestMiddlewareUsesRequestContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupQuickStartManager(t)
 	ctx := context.Background()
-	token, err := dtoken.Login(ctx, "context-user")
+	token, err := dtglobal.Login(ctx, "context-user")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := dtoken.AddRoles(ctx, "context-user", []string{"admin"}); err != nil {
+	if err := dtglobal.AddRoles(ctx, "context-user", []string{"admin"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := dtoken.AddPermissions(ctx, "context-user", []string{"article:read"}); err != nil {
+	if err := dtglobal.AddPermissions(ctx, "context-user", []string{"article:read"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, check := range []struct {
@@ -160,7 +159,7 @@ func TestMiddlewareUsesRequestContext(t *testing.T) {
 func TestAccessDenialStopsHandlers(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupQuickStartManager(t)
-	token, err := dtoken.Login(context.Background(), "unprivileged-user")
+	token, err := dtglobal.Login(context.Background(), "unprivileged-user")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,8 +198,8 @@ func TestAccessDenialStopsHandlers(t *testing.T) {
 
 func setupQuickStartManager(t *testing.T) {
 	t.Helper()
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	mgr, err := defaults.NewBuilder().
 		TokenName(tokenHeader).
@@ -212,7 +211,7 @@ func setupQuickStartManager(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	dtglobal.SetManager(mgr)
 }
 
 func requestQuickStart(t *testing.T, router *gin.Engine, method, path, body, token string) *httptest.ResponseRecorder {

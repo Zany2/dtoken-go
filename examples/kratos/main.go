@@ -2,8 +2,12 @@
 package main
 
 import (
+	dterror "github.com/Zany2/dtoken-go/errors"
+	dt1 "github.com/Zany2/dtoken-go/global"
+
 	"context"
 	"errors"
+	"github.com/Zany2/dtoken-go"
 	"log"
 	"net/http"
 	"time"
@@ -34,7 +38,7 @@ type LoginRequest struct {
 
 func main() {
 	initDToken()
-	defer kratosdt.DeleteAllManager()
+	defer dt1.DeleteAllManager()
 
 	srv := newKratosExampleServer()
 	app := kratos.New(
@@ -51,7 +55,7 @@ func main() {
 func newKratosExampleServer() *khttp.Server {
 	srv := khttp.NewServer(
 		khttp.Address(":8080"),
-		khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware()),
+		khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware(kratosdt.WithManagerResolver(dt1.GetManager))),
 	)
 
 	r := srv.Route("/")
@@ -66,16 +70,18 @@ func newKratosExampleServer() *khttp.Server {
 
 // initDToken initializes integration manager initDToken 初始化集成管理器
 func initDToken() {
-	mgr, err := kratosdt.NewBuilder().
+	builtAuth1, err := dtoken.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
+	mgr := builtAuth1.Manager()
+
 	if err != nil {
 		panic(err)
 	}
 
-	kratosdt.SetManager(mgr)
+	dt1.SetManager(mgr)
 }
 
 // wrapHandler applies Kratos middleware to a plain handler wrapHandler 为普通处理函数应用 Kratos 中间件
@@ -97,34 +103,34 @@ func wrapHandler(handler func(context.Context, khttp.Context) error, mws ...midd
 func handleLogin(ctx context.Context, httpCtx khttp.Context) error {
 	var req LoginRequest
 	if err := httpCtx.Bind(&req); err != nil || req.Username == "" || req.Password == "" {
-		return writeJSON(httpCtx, http.StatusBadRequest, kratosdt.CodeBadRequest, "username and password are required", nil)
+		return writeJSON(httpCtx, http.StatusBadRequest, dterror.CodeBadRequest, "username and password are required", nil)
 	}
 
 	if req.Password != "123456" {
-		return writeJSON(httpCtx, http.StatusUnauthorized, kratosdt.CodeNotLogin, "invalid username or password", nil)
+		return writeJSON(httpCtx, http.StatusUnauthorized, dterror.CodeNotLogin, "invalid username or password", nil)
 	}
 
-	token, err := kratosdt.Login(ctx, req.Username)
+	token, err := dt1.Login(ctx, req.Username)
 	if err != nil {
 		return err
 	}
 
 	// Grant every demo user the same role and permission; real apps must load their own access rules. 为每个演示用户授予相同角色和权限；实际应用应加载自身的授权规则。
-	if err = kratosdt.AddRoles(ctx, req.Username, []string{"admin"}); err != nil {
+	if err = dt1.AddRoles(ctx, req.Username, []string{"admin"}); err != nil {
 		return err
 	}
-	if err = kratosdt.AddPermissions(ctx, req.Username, []string{"article:read"}); err != nil {
+	if err = dt1.AddPermissions(ctx, req.Username, []string{"article:read"}); err != nil {
 		return err
 	}
 
-	return writeJSON(httpCtx, http.StatusOK, kratosdt.CodeSuccess, "ok", map[string]interface{}{"token": token})
+	return writeJSON(httpCtx, http.StatusOK, dterror.CodeSuccess, "ok", map[string]interface{}{"token": token})
 }
 
 // handleMe returns current login information handleMe 返回当前登录信息
 func handleMe(ctx context.Context, httpCtx khttp.Context) error {
 	dCtx, ok := kratosdt.GetDTokenContext(ctx)
 	if !ok {
-		return writeJSON(httpCtx, http.StatusUnauthorized, kratosdt.CodeNotLogin, "not logged in", nil)
+		return writeJSON(httpCtx, http.StatusUnauthorized, dterror.CodeNotLogin, "not logged in", nil)
 	}
 
 	loginID, err := dCtx.Auth().GetLoginID(ctx)
@@ -141,7 +147,7 @@ func handleMe(ctx context.Context, httpCtx khttp.Context) error {
 		return err
 	}
 
-	return writeJSON(httpCtx, http.StatusOK, kratosdt.CodeSuccess, "ok", map[string]interface{}{
+	return writeJSON(httpCtx, http.StatusOK, dterror.CodeSuccess, "ok", map[string]interface{}{
 		"loginId":     loginID,
 		"roles":       roles,
 		"permissions": permissions,
@@ -150,43 +156,43 @@ func handleMe(ctx context.Context, httpCtx khttp.Context) error {
 
 // handleAdmin returns admin data handleAdmin 返回管理员数据
 func handleAdmin(_ context.Context, httpCtx khttp.Context) error {
-	return writeJSON(httpCtx, http.StatusOK, kratosdt.CodeSuccess, "ok", map[string]interface{}{"scope": "admin"})
+	return writeJSON(httpCtx, http.StatusOK, dterror.CodeSuccess, "ok", map[string]interface{}{"scope": "admin"})
 }
 
 // handleArticles returns protected article data handleArticles 返回受保护的文章数据
 func handleArticles(_ context.Context, httpCtx khttp.Context) error {
-	return writeJSON(httpCtx, http.StatusOK, kratosdt.CodeSuccess, "ok", []string{"article-a", "article-b"})
+	return writeJSON(httpCtx, http.StatusOK, dterror.CodeSuccess, "ok", []string{"article-a", "article-b"})
 }
 
 // handleLogout logs out current token handleLogout 注销当前 Token
 func handleLogout(ctx context.Context, httpCtx khttp.Context) error {
 	dCtx, ok := kratosdt.GetDTokenContext(ctx)
 	if !ok {
-		return writeJSON(httpCtx, http.StatusUnauthorized, kratosdt.CodeNotLogin, "not logged in", nil)
+		return writeJSON(httpCtx, http.StatusUnauthorized, dterror.CodeNotLogin, "not logged in", nil)
 	}
 
 	if err := dCtx.Auth().Logout(ctx); err != nil {
 		return err
 	}
 
-	return writeJSON(httpCtx, http.StatusOK, kratosdt.CodeSuccess, "ok", nil)
+	return writeJSON(httpCtx, http.StatusOK, dterror.CodeSuccess, "ok", nil)
 }
 
 // writeAuthError classifies both core errors and their Kratos wrappers through the error chain. writeAuthError 沿错误链统一分类核心错误及 Kratos 包装错误。
 func writeAuthError(httpCtx khttp.Context, err error) error {
 	switch {
-	case errors.Is(err, kratosdt.ErrNotLogin), errors.Is(err, kratosdt.ErrInvalidToken),
-		errors.Is(err, kratosdt.ErrTokenExpired), errors.Is(err, kratosdt.ErrActiveTimeout),
-		errors.Is(err, kratosdt.ErrTokenKickout), errors.Is(err, kratosdt.ErrTokenReplaced):
-		return writeJSON(httpCtx, http.StatusUnauthorized, kratosdt.CodeNotLogin, "not logged in or token invalid", nil)
-	case errors.Is(err, kratosdt.ErrAccountDisabled), errors.Is(err, kratosdt.ErrDeviceDisabled):
-		return writeJSON(httpCtx, http.StatusForbidden, kratosdt.CodeAccountDisabled, "account or device disabled", nil)
-	case errors.Is(err, kratosdt.ErrPermissionDenied), errors.Is(err, kratosdt.ErrRoleDenied):
-		return writeJSON(httpCtx, http.StatusForbidden, kratosdt.CodePermissionDenied, "permission denied", nil)
+	case errors.Is(err, dterror.ErrNotLogin), errors.Is(err, dterror.ErrInvalidToken),
+		errors.Is(err, dterror.ErrTokenExpired), errors.Is(err, dterror.ErrActiveTimeout),
+		errors.Is(err, dterror.ErrTokenKickout), errors.Is(err, dterror.ErrTokenReplaced):
+		return writeJSON(httpCtx, http.StatusUnauthorized, dterror.CodeNotLogin, "not logged in or token invalid", nil)
+	case errors.Is(err, dterror.ErrAccountDisabled), errors.Is(err, dterror.ErrDeviceDisabled):
+		return writeJSON(httpCtx, http.StatusForbidden, dterror.CodeAccountDisabled, "account or device disabled", nil)
+	case errors.Is(err, dterror.ErrPermissionDenied), errors.Is(err, dterror.ErrRoleDenied):
+		return writeJSON(httpCtx, http.StatusForbidden, dterror.CodePermissionDenied, "permission denied", nil)
 	default:
 		// Keep server details in logs rather than HTTP responses. 将服务端详情保留在日志中，不在 HTTP 响应中暴露。
 		log.Printf("dtoken request failed: %v", err)
-		return writeJSON(httpCtx, http.StatusInternalServerError, kratosdt.CodeServerError, "internal server error", nil)
+		return writeJSON(httpCtx, http.StatusInternalServerError, dterror.CodeServerError, "internal server error", nil)
 	}
 }
 

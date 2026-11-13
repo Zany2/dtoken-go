@@ -4,16 +4,18 @@
 
 ## 概览
 
-DToken-Go 会区分核心认证 API 和框架集成包。登录、登出、会话、权限、角色以及全局 Manager API 使用 `dtoken`；带默认组件的 Manager 构建使用 `defaults`；`integrations/*` 只负责框架中间件、注解式检查和请求上下文辅助方法。
+根包提供实例 API，global 提供全局 API。应用通过根包 NewBuilder().Build() 创建实例，框架通过 WithAuth(auth) 或 WithManager(auth.Manager()) 注入。独立服务通过 WithCapabilities 显式接入请求。
 
-各框架的上下文注册与鉴权中间件遵循同一 Manager 选择顺序：显式 `WithManager`、显式 `WithAuthType`、已有请求 Manager、全局默认实例。未指定实例的重复注册会保留请求 Manager。请求上下文不存在（包括带类型的 nil）时允许回退；已有请求上下文中的 Manager 为空或已关闭时返回 `ErrManagerNotFound`，不会隐式切换到全局实例。显式选择仍可覆盖已有请求作用域。
+框架只提供 HTTP 适配、中间件和请求快捷方法。框架 NewBuilder() 与根包一致，Build() 返回 Auth。全局 API 从 global 导入；Redis、MsgPack 等组件从各自包导入。
+
+实例选择顺序：显式 WithAuth/WithManager；已有请求实例；显式配置的 ManagerResolver。WithAuthType 通过配置的解析器切换认证类型，未配置解析器时只能匹配当前请求的认证类型。请求未绑定实例且未配置解析器时返回 ErrManagerNotFound。未指定覆盖的中间件保留请求实例与能力绑定；切换实例时清空能力绑定。
 
 ## 安装
 
 ```bash
-go get github.com/Zany2/dtoken-go/defaults
+go get github.com/Zany2/dtoken-go
 go get github.com/Zany2/dtoken-go/integrations/gin
-go get github.com/Zany2/dtoken-go/com/storage/memory
+go get github.com/Zany2/dtoken-go/storage/memory
 ```
 
 其他集成包同理：
@@ -36,17 +38,17 @@ go get github.com/Zany2/dtoken-go/integrations/beego
 
 ```go
 ctx := context.Background()
-mgr, err := gfdt.NewBuilder().IsPrintBanner(false).Build()
+authInstance, err := gfdt.NewBuilder().IsPrintBanner(false).Build()
 if err != nil {
     panic(err)
 }
-gfdt.SetManager(mgr)
+defer authInstance.Close()
 
 s := g.Server()
-s.Use(gfdt.RegisterDTokenContextMiddleware(ctx))
+s.Use(gfdt.RegisterDTokenContextMiddleware(ctx, gfdt.WithAuth(authInstance)))
 s.Group("/", func(group *ghttp.RouterGroup) {
     group.POST("/login", func(r *ghttp.Request) {
-        token, _ := gfdt.Login(r.Context(), "1000")
+        token, _ := authInstance.LoginID(r.Context(), "1000")
         r.Response.WriteJson(g.Map{"token": token})
     })
     group.Group("/", func(group *ghttp.RouterGroup) {
@@ -68,22 +70,22 @@ Gin 鉴权中间件、注解检查及鉴权钩子使用当前 `c.Request.Context
 
 Query 和 Body Token 同样从当前请求读取，不沿用替换前 Gin 缓存中的凭据。Body Token 仅使用表单字段，multipart 解析仍遵循 Gin 的 `MaxMultipartMemory` 配置。
 
-通过 `RegisterDTokenContextMiddleware(ctx, WithManager(mgr))` 注入 Manager 后，未指定 Manager 或 `AuthType` 的鉴权中间件会沿用请求中的实例。显式 `WithManager` 优先，其次是 `WithAuthType` 指定的注册实例；没有请求缓存时才使用全局默认实例。`...ByContext` 方法也使用请求中的 Manager，并拒绝已关闭的实例。
+通过 `RegisterDTokenContextMiddleware(ctx, WithManager(mgr))` 注入 Manager 后，未指定 Manager 或 `AuthType` 的鉴权中间件会沿用请求中的实例。`...ByContext` 方法也使用请求中的 Manager，并拒绝已关闭的实例。未绑定请求不会自动查全局；注册表查找须显式配置 ManagerResolver。
 
 鉴权失败时会先中止 Gin 处理链，再执行失败回调，因此失败回调中的 `c.Next()` 不会进入业务处理器。前置鉴权钩子或路由规则钩子调用 `c.Abort()` 后，鉴权流程直接结束。
 
 ```go
 ctx := context.Background()
-mgr, err := gindt.NewBuilder().IsPrintBanner(false).Build()
+authInstance, err := gindt.NewBuilder().IsPrintBanner(false).Build()
 if err != nil {
     panic(err)
 }
-gindt.SetManager(mgr)
+defer authInstance.Close()
 
 r := gin.Default()
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(authInstance)))
 r.POST("/login", func(c *gin.Context) {
-    token, _ := gindt.Login(c.Request.Context(), "1000")
+    token, _ := authInstance.LoginID(c.Request.Context(), "1000")
     c.JSON(http.StatusOK, gin.H{"token": token})
 })
 
@@ -100,16 +102,16 @@ auth.GET("/me", func(c *gin.Context) {
 
 ```go
 ctx := context.Background()
-mgr, err := echodt.NewBuilder().IsPrintBanner(false).Build()
+authInstance, err := echodt.NewBuilder().IsPrintBanner(false).Build()
 if err != nil {
     panic(err)
 }
-echodt.SetManager(mgr)
+defer authInstance.Close()
 
 e := echo4.New()
-e.Use(echodt.RegisterDTokenContextMiddleware(ctx))
+e.Use(echodt.RegisterDTokenContextMiddleware(ctx, echodt.WithAuth(authInstance)))
 e.POST("/login", func(c echo4.Context) error {
-    token, _ := echodt.Login(c.Request().Context(), "1000")
+    token, _ := authInstance.LoginID(c.Request().Context(), "1000")
     return c.JSON(http.StatusOK, echo4.Map{"token": token})
 })
 
@@ -126,16 +128,16 @@ auth.GET("/me", func(c echo4.Context) error {
 
 ```go
 ctx := context.Background()
-mgr, err := fiberdt.NewBuilder().IsPrintBanner(false).Build()
+authInstance, err := fiberdt.NewBuilder().IsPrintBanner(false).Build()
 if err != nil {
     panic(err)
 }
-fiberdt.SetManager(mgr)
+defer authInstance.Close()
 
 app := gofiber.New()
-app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx))
+app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx, fiberdt.WithAuth(authInstance)))
 app.Post("/login", func(c *gofiber.Ctx) error {
-    token, _ := fiberdt.Login(c.UserContext(), "1000")
+    token, _ := authInstance.LoginID(c.UserContext(), "1000")
     return c.JSON(gofiber.Map{"token": token})
 })
 
@@ -149,16 +151,17 @@ auth.Get("/me", func(c *gofiber.Ctx) error {
 ```
 ## Gin 示例
 
+<!-- dtoken-compile: complete-example -->
 ```go
 package main
 
 import (
+    dt "github.com/Zany2/dtoken-go"
+    dtoken "github.com/Zany2/dtoken-go/global"
     "context"
     "net/http"
 
-    "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/defaults"
-    "github.com/Zany2/dtoken-go/dtoken"
+    "github.com/Zany2/dtoken-go/storage/memory"
     gindt "github.com/Zany2/dtoken-go/integrations/gin"
     "github.com/gin-gonic/gin"
 )
@@ -167,18 +170,18 @@ func main() {
     ctx := context.Background()
     storage := memory.NewStorage()
 
-    mgr, err := defaults.NewBuilder().
-        SetStorage(storage).
+    mgr, err := dt.NewBuilder().
+        Storage(storage).
         TokenName("token").
         Timeout(2 * 60 * 60).
         Build()
     if err != nil {
         panic(err)
     }
-    dtoken.SetManager(mgr)
+    dtoken.SetManager(mgr.Manager())
 
     r := gin.Default()
-    r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
+    r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(mgr)))
 
     r.POST("/login", func(c *gin.Context) {
         token, err := dtoken.Login(ctx, "1000")
@@ -207,7 +210,7 @@ func main() {
 核心认证 API 来自 `dtoken`：
 
 ```go
-dtoken.SetManager(mgr)
+dtoken.SetManager(mgr.Manager())
 mgr, err := dtoken.GetManager()
 
 token, err := dtoken.Login(ctx, "1000")
@@ -225,7 +228,7 @@ hasRole := dtoken.HasRole(ctx, "1000", "admin")
 框架集成包提供中间件：
 
 ```go
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(authInstance)))
 r.Use(gindt.AuthMiddleware(ctx))
 r.Use(gindt.PermissionMiddleware(ctx, []string{"user:read"}))
 r.Use(gindt.RoleMiddleware(ctx, []string{"admin"}))
@@ -265,21 +268,21 @@ r.GET("/admin",
 
 ```go
 userGroup := r.Group("/api")
-userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuthType("user")))
+userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("user")))
 
 adminGroup := r.Group("/admin")
-adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuthType("admin")))
-adminGroup.Use(gindt.PermissionMiddleware(ctx, []string{"admin:read"}, gindt.WithAuthType("admin")))
+adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("admin")))
+adminGroup.Use(gindt.PermissionMiddleware(ctx, []string{"admin:read"}, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("admin")))
 ```
 
 如果应用不使用全局 Manager 注册表，可以通过 `WithManager` 直接注入 Manager。显式注入的 Manager 优先于 `WithAuthType`，并适用于上下文、认证、访问、权限和角色中间件：
 
 ```go
-auth.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithManager(mgr)))
-auth.Use(gindt.AuthMiddleware(ctx, gindt.WithManager(mgr)))
+auth.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(mgr)))
+auth.Use(gindt.AuthMiddleware(ctx, gindt.WithAuth(mgr)))
 ```
 
-当注解的 `AuthType` 为空时，注解处理器会复用请求上下文中已经保存的 Manager；显式填写 `AuthType` 时，仍通过全局注册表解析，适合多认证体系路由。
+注解沿用请求实例；指定其他 AuthType 时，须在注册中间件或注解上配置 ManagerResolver。
 
 ### 权限和角色逻辑
 
@@ -333,7 +336,7 @@ Fiber 鉴权、注解、钩子和上下文门面使用 `c.UserContext()`。需�
 
 ## GoFrame 请求处理
 
-GoFrame 鉴权中间件、注解处理器及钩子使用当前 `r.Context()`，保留请求上下文值、截止时间和取消信号；注册时的 `ctx` 参数保留以兼容现有调用。通过 `RegisterDTokenContextMiddleware(ctx, WithManager(mgr))` 注入实例后，未显式指定 Manager 或认证类型的检查会继承请求 Manager。显式 `WithManager` 优先，其次是 `WithAuthType`；没有请求实例时使用全局默认实例。上下文门面（包括续期）使用请求 Manager，并拒绝缓存中的空实例或已关闭实例。
+GoFrame 鉴权中间件、注解处理器及钩子使用当前 `r.Context()`，保留请求上下文值、截止时间和取消信号；注册时的 `ctx` 参数保留以兼容现有调用。通过 `RegisterDTokenContextMiddleware(ctx, WithManager(mgr))` 注入实例后，未显式指定 Manager 或认证类型的检查会继承请求 Manager。上下文门面（包括续期）使用请求 Manager，并拒绝缓存中的空实例或已关闭实例。未绑定请求不会自动查全局；注册表查找须显式配置 ManagerResolver。
 
 鉴权失败时，在执行失败回调前通过 `ExitAll()` 标记整条 GoFrame 处理链已退出，因此回调中的 `r.Middleware.Next()` 无法继续执行受保护处理器。默认失败响应使用 JSON 和对应的 HTTP 状态码。钩子的 `req.Next()` 最多放行一次，`req.Exit()` 退出处理链。调用已注册适配器的 `Abort()` 会停止 DToken 处理，但不会立即退出当前 Go 函数；写完响应后应返回，不要再调用原生 `r.Middleware.Next()`。显式传入空注解会返回参数错误。
 
@@ -343,7 +346,7 @@ GoFrame 鉴权中间件、注解处理器及钩子使用当前 `r.Context()`，�
 
 Hertz 鉴权、注解及钩子使用当前处理器收到的标准 `context.Context`，保留上下文值、截止时间和取消信号；注册时的 `ctx` 参数保留以兼容现有调用。DToken 中间件和注解还会为下游 `...ByContext` 门面绑定该标准上下文，嵌套调用返回后恢复外层绑定。应将 DToken 中间件放在派生标准上下文的中间件之后；如果后续处理器又派生新上下文且没有再进入 DToken 中间件或注解，请显式传给 `dCtx.Auth()` 等上下文门面分组。没有 DToken 绑定时，`...ByContext` 保留 `context.Background()` 兜底行为。Hertz 的请求键值不会自动合并到标准上下文，该绑定也不会自行产生客户端断开连接的取消信号。
 
-通过 `RegisterDTokenContextMiddleware(ctx, WithManager(mgr))` 注入实例后，未显式选择实例的鉴权会继承请求 Manager。显式 `WithManager` 优先于 `WithAuthType`，没有请求实例时使用全局默认实例。上下文门面拒绝缓存中的空 Manager 或已关闭 Manager。鉴权失败时先 `Abort()` 再执行失败回调，回调中的 `Next()` 无法进入受保护处理器。钩子的 `req.Next()` 最多放行一次，原生或适配器 `Abort()` 都会停止 DToken 检查。显式空注解返回参数错误。
+通过 `RegisterDTokenContextMiddleware(ctx, WithManager(mgr))` 注入实例后，未显式选择实例的鉴权会继承请求 Manager。上下文门面拒绝缓存中的空 Manager 或已关闭 Manager。鉴权失败时先 `Abort()` 再执行失败回调，回调中的 `Next()` 无法进入受保护处理器。钩子的 `req.Next()` 最多放行一次，原生或适配器 `Abort()` 都会停止 DToken 检查。显式空注解返回参数错误。未绑定请求不会自动查全局；注册表查找须显式配置 ManagerResolver。
 
 Cookie 读取会解码 Hertz 写入时的转义，使包含 `+`、`/`、`%` 的自定义 Token 能正确往返。Body Token 只读取表单字段（含 multipart），不会回退到 Query。`IsTLS()` 依据实际连接是否实现 Hertz TLS 接口判断，URL 协议名或转发头不能证明连接已经加密。
 
@@ -351,7 +354,7 @@ Cookie 读取会解码 Hertz 写入时的转义，使包含 `+`、`/`、`%` 的�
 
 ## Kratos 请求处理
 
-Kratos HTTP 与一元 gRPC 鉴权中间件、注解、钩子和上下文门面使用当前处理器的 `context.Context`，保留值、截止时间及取消信号。通过 `RegisterDTokenContextMiddleware(WithManager(mgr))` 注册后，未显式选择实例的检查继承请求 Manager。优先级依次为显式 `WithManager`、`WithAuthType`、请求缓存、全局默认实例。上下文门面拒绝缓存中的空 Manager 或已关闭 Manager，续期也使用所选实例。切换 Manager 时保留请求适配器中的值及中止状态。
+Kratos HTTP 与一元 gRPC 鉴权中间件、注解、钩子和上下文门面使用当前处理器的 `context.Context`，保留值、截止时间及取消信号。通过 `RegisterDTokenContextMiddleware(WithManager(mgr))` 注册后，未显式选择实例的检查继承请求 Manager。上下文门面拒绝缓存中的空 Manager 或已关闭 Manager，续期也使用所选实例。切换 Manager 时保留请求适配器中的值及中止状态。未绑定请求不会自动查全局；注册表查找须显式配置 ManagerResolver。
 
 钩子的 `req.Next()` 最多调用一次下游处理器，并保留其返回值和错误；`req.Exit()` 在自定义处理后退出。DToken 入口及钩子遵守已注册适配器的 `Abort()` 状态。失败分发会先将适配器标为中止，再调用 `FailFunc`；回调返回的错误交给 Kratos，返回 nil 表示回调已自行处理响应，两种情况都不会执行受保护处理器。默认失败保留原始错误链，并转换为 Kratos 的 HTTP/gRPC 状态错误。显式空注解返回参数错误；未传注解仍直接放行。默认 AND 逻辑只应用到请求内副本，不修改共享路由注解配置。
 
@@ -363,7 +366,7 @@ HTTP 客户端 IP 使用 `RemoteAddr`，gRPC 使用连接对端地址，不自�
 
 ## Beego 请求处理
 
-Beego 鉴权过滤器及钩子使用当前 `c.Request.Context()`，保留请求值、截止时间和取消信号；注册时的 `ctx` 参数保留以兼容现有 API。通过 `RegisterDTokenContextMiddleware(ctx, WithManager(mgr))` 注册后，未显式指定 Manager 或认证类型的过滤器继承请求 Manager。优先级依次为显式 `WithManager`、`WithAuthType`、请求缓存、全局默认实例。上下文门面拒绝缓存中的空 Manager 或已关闭 Manager，续期使用请求 Manager。
+Beego 鉴权过滤器及钩子使用当前 `c.Request.Context()`，保留请求值、截止时间和取消信号；注册时的 `ctx` 参数保留以兼容现有 API。通过 `RegisterDTokenContextMiddleware(ctx, WithManager(mgr))` 注册后，未显式指定 Manager 或认证类型的过滤器继承请求 Manager。上下文门面拒绝缓存中的空 Manager 或已关闭 Manager，续期使用请求 Manager。未绑定请求不会自动查全局；注册表查找须显式配置 ManagerResolver。
 
 鉴权失败会先标记 `ResponseWriter.Started`，再调用 `FailFunc`。即使回调不输出响应，原生过滤器链也会停止；回调仍可写入自己的状态码和响应体。适配器 `Abort()` 和钩子 `req.Exit()` 使用相同的原生状态，上游钩子已输出响应时，DToken 过滤器也会停止。Beego 过滤器没有嵌套的 `Next` 调用：`req.Next()` 仅跳过当前 DToken 检查，后续过滤器仍由 Beego 分发。`Next()` 和 `Exit()` 只遵循第一次选择。
 
@@ -388,7 +391,7 @@ Query Token 仅读取 URL 查询参数，Body Token 仅读取 URL 编码或 mult
 
 ## 什么时候直接导入 core
 
-如果你在编写与框架无关的基础设施、测试、共享库或业务 Handler，可以导入 `defaults`、`core/builder`、`core/manager` 或 `dtoken`。只有想自己注入全部适配器时才直接使用 `core/builder`。只有需要框架请求处理时，才导入对应的集成包。
+如果你在编写与框架无关的基础设施、测试、共享库或业务 Handler，可以导入 `defaults`、`internal/builder`、`internal/engine` 或 `dtoken`。只有想自己注入全部适配器时才直接使用 `internal/builder`。只有需要框架请求处理时，才导入对应的集成包。
 
 ## 相关文档
 
@@ -397,3 +400,5 @@ Query Token 仅读取 URL 查询参数，Body Token 仅读取 URL 编码或 mult
 - [注解使用](../integration/annotation_zh.md)
 - [多认证体系](../core/multi-auth_zh.md)
 - [AccessProvider](../core/access-provider_zh.md)
+
+默认响应保留业务错误码，使用标准消息。存储、序列化和未知故障返回 `internal server error`，`message` 和 `data` 均不包含包装的底层详情。自定义失败回调仍接收原始错误，便于服务端记录日志。自定义 `DTokenError.Message` 视为公开消息，但 `CodeServerError` 和 `CodeStorageError` 除外。

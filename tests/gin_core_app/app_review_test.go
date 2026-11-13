@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Zany2/dtoken-go/com/storage/memory"
-	"github.com/Zany2/dtoken-go/core/adapter"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
+	"github.com/Zany2/dtoken-go/storage/memory"
 	"github.com/gin-gonic/gin"
 )
 
@@ -166,8 +166,10 @@ func TestMePropagatesAccessProviderErrors(t *testing.T) {
 					return nil, errors.New("private permission backend failure")
 				},
 			}
-			mgr, err := dtoken.NewBuilder().AutoRenew(false).ActiveTimeout(-1).AsyncEvent(false).
+			builtAuth1, err := dtoken.NewBuilder().AutoRenew(false).ActiveTimeout(-1).AsyncEvent(false).
 				IsLog(false).IsPrintBanner(false).SetAccessProvider(provider).Build()
+			mgr := builtAuth1.Manager()
+
 			if err != nil {
 				t.Fatal(err)
 			}

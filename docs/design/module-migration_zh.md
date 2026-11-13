@@ -2,68 +2,66 @@
 
 [English](module-migration.md) | 中文文档
 
-## 模块归属
+## 当前边界
 
-仓库共 30 个模块，包含示例与测试应用。根模块 `github.com/Zany2/dtoken-go` 统一发布以下包，共用一个版本。
+根模块发布实例门面、公共契约、内部认证实现、基础组件、共享 HTTP 鉴权，以及 Nonce、OAuth2、Ticket、ShortKey 独立能力包。能力包显式组合，不是单独的 Go 模块。工作区共 30 个模块。
 
-- `core`
-- `dtoken`
-- `defaults`
-- `com/codec/base64`、`com/codec/json`
-- `com/generator/dgenerator`
-- `com/log/dlog`、`com/log/nop`
-- `com/pool/ants`
-- `com/storage/memory`
-- `integrations/authcheck`
+框架集成、codec/jsonv2、codec/msgpack、logging/gf、storage/redis、sso 和 sso/storage/redis 独立发布。示例与应用测试保留独立模块。
 
-独立库模块包括 `com/codec/jsonv2`、`com/codec/msgpack`、`com/log/gf`、`com/storage/redis`、八个框架集成、`sso` 和 `sso/storage/redis`。示例和应用流程测试继续使用独立模块，隔离各自的框架依赖。
+## 包路径迁移
 
-包导入路径继续适用。例如 `github.com/Zany2/dtoken-go/core/manager` 和 `github.com/Zany2/dtoken-go/dtoken` 现在属于根模块，统一使用仓库根目录的 `go.mod`。
+这是完整的包边界和 API 迁移，旧路径不再作为兼容入口。
 
-## 构建入口
-
-| 入口 | 使用场景 |
+| Previous entry | Current entry |
 | --- | --- |
-| `dtoken.NewBuilder()` | 应用首选入口，提供默认组件和可选功能的高层配置 |
-| `defaults.NewBuilder()` | 使用默认组件的底层核心构建器 |
-| `core/builder` 的 `builder.NewBuilder()` | 显式配置组件与工厂 |
-| 框架包的 `NewBuilder()` | 现有框架便捷入口，返回默认核心构建器 |
+| dtoken subdirectory | Root instance API and explicit global package |
+| core/adapter | contract |
+| core/config, core/derror, core/listener | config, errors, event |
+| core/manager, core/builder, defaults | Root NewBuilder and public extension types |
+| core/context, integrations/authcheck | httpauth/context, httpauth |
+| core/nonce, core/oauth2, core/ticket, core/shortkey | nonce, oauth2, ticket, shortkey |
+| com/codec, com/generator, com/log, com/pool, com/storage | codec, generator, logging, pool, storage |
 
-应用通过 `dtoken.NewBuilder().Build()` 创建 Manager，通过 `dtoken.New(mgr)` 使用实例 API，或通过 `dtoken.SetManager(mgr)` 注册全局调用入口。各 Builder 返回类型和现有 API 按当前契约使用。
+## 应用构建
 
-快速开始示例采用应用首选构建器。框架集成通过 `integrations/authcheck` 复用鉴权规则。组件实现 `core/adapter` 的扩展契约，由 `defaults` 装配默认实现。
+```go
+import (
+    "github.com/Zany2/dtoken-go"
+    "github.com/Zany2/dtoken-go/global"
+)
 
-## 使用方迁移
+auth, err := dtoken.NewBuilder().AuthType("user").Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 
-从独立核心模块升级时，需要清理应用 `go.mod` 中上述十一个合并模块的直接、间接依赖和本地替换规则，再添加目标版本的根模块依赖。独立扩展继续保留自己的依赖声明，并选择已改为依赖根模块的扩展版本。
+// Optional global registration. 可选全局注册。
+global.SetAuth(auth)
+defer global.DeleteManager("user")
+```
 
-旧子模块与根模块可能同时提供同一包，导致导入歧义。升级时需要检查应用及其传递依赖的模块声明。现有代码中的包导入路径可以继续使用。
+Build() 返回 *dtoken.Auth；auth.Manager() 提供底层管理器。框架优先使用 WithAuth(auth) 或 Context(auth)。策略、装配选项和工厂类型从根包导入，不要导入 internal。所有框架 NewBuilder() 均转发根包构建器，Build() 统一返回 Auth。框架不再转导出全局 API 或组件构造器。HTTP 中间件默认要求绑定实例；全局使用须显式配置 WithManagerResolver(global.GetManager)。
 
-选定兼容的发布版本后，执行 `go mod tidy` 和应用验证命令。本分支源码开发使用仓库工作区，独立模块 CI 通过临时本地替换映射当前源码。
+## 独立能力
 
-## 发布协调
+Builder 不提供能力开关。通过各自的构造器创建能力 Manager，再通过 NewService(manager, auth) 接入实例事件。使用所属认证实例的 AuthType、KeyPrefix、Storage 和 Codec。httpauth/context.Capabilities 和框架 WithCapabilities 将服务绑定到请求。未绑定的能力返回 ErrModuleNotEnabled。同一 Manager 的后续中间件未指定覆盖配置时保留请求绑定；切换 Manager 时创建新作用域。
 
-本分支的根模块依赖暂沿用原有源码基线 `v0.0.3`。使用方通过远程解析新结构前，需要先发布包含根模块的版本，分支中的依赖声明本身不能证明远程版本已经可用。
+## 依赖与发布
 
-正式发布时，选择可用的根版本，更新扩展模块的根依赖，使用 `vX.Y.Z` 形式的仓库 tag 发布根模块。独立模块使用目录前缀 tag，例如 `integrations/gin/vX.Y.Z` 和 `com/storage/redis/vX.Y.Z`。先发布被依赖模块，再发布扩展与示例所依赖的版本。
-
-对外公布前，在仓库之外创建干净的使用方模块，设置 `GOWORK=off`，安装目标版本的门面包与框架集成，并验证登录、受保护访问和退出。此步骤用于确认远程发布内容与版本依赖。
+清理旧子模块依赖和替换规则，再添加根模块及所需扩展的新版本。根模块使用 vX.Y.Z tag，扩展使用当前目录前缀，例如 integrations/gin/vX.Y.Z 和 storage/redis/vX.Y.Z。源码中的 v0.0.3 依赖基线不能证明新结构已远程发布。先发布被依赖模块，再更新并发布扩展。运行时版本位于 contract/version.go。
 
 ## 验证
 
-在仓库根目录执行以下命令，检查合并后的主模块。
+维护者显式执行以下命令。独立模块检查将模块复制到仓库外并排除嵌套模块，通过 GOWORK=off 和临时替换验证当前源码；消费者检查在仓库外创建临时模块，覆盖实例、公共扩展类型、全局注册、HTTP 能力绑定与退出。
 
 ```bash
-go vet ./...
-go test -count=1 -timeout=5m ./...
+go run ./.github/scripts/check-modules
+go run ./.github/scripts/check-docs
+bash .github/scripts/check-consumer.sh
+bash .github/scripts/check-consumer.sh "$ROOT_VERSION" "$GIN_VERSION"
 ```
 
-独立扩展从各自模块目录验证，`com/codec/jsonv2` 需要启用 `GOEXPERIMENT=jsonv2`。CI 会遍历工作区模块，并运行核心、存储、SSO 和 HTTP 流程的 Redis 场景。
+最后一个命令需同时传入两个已发布版本，并核对远程解析后的选中版本。JSON v2 需要 GOEXPERIMENT=jsonv2。Redis CI 覆盖根模块、storage/redis、sso/storage/redis 和 tests/gin_core_flow。
 
-以下 Bash 命令使用 `GOWORK=off` 与临时本地替换检查全部模块，执行 vet 和测试，依赖解析使用临时模块文件。
-
-```bash
-bash .github/scripts/check-modules.sh
-```
-
-该检查验证当前源码的独立依赖关系，仓库外的使用方验证用于确认远程发布。
+公开 API 定位、组件所有权及注册表替换规则见 [API 与生命周期](api-lifecycle_zh.md)。HTTP 能力绑定依赖 contract 下的服务接口，不依赖具体实现。

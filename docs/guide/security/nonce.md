@@ -1,41 +1,10 @@
-English | [中文文档](../security/nonce_zh.md)
+# Nonce replay protection
 
-# Nonce Anti-Replay
+English | [中文文档](nonce_zh.md)
 
-## Overview
+Nonce is an independent capability composed through the nonce package Manager and Service. It requires no global registration or builder switches. The Manager handles credentials; the Service publishes events through an optional emitter.
 
-The project already includes built-in nonce support to prevent replayed requests.
-
-Public APIs:
-
-- `GenerateNonce`
-- `GenerateNonceWithTimeout`
-- `VerifyNonce`
-- `VerifyAndConsumeNonce`
-- `IsNonceValid`
-- `GetNonceTTL`
-
-## How It Works
-
-The current implementation works like this:
-
-1. generate a random nonce
-2. store it with a TTL
-3. verify it through an atomic `GetAndDelete`
-4. allow it to succeed only once
-
-Consumption requires `adapter.AtomicStorage`. Built-in memory and Redis storage support it. A custom storage must implement a truly atomic `GetAndDelete` across all callers sharing that storage. Storage without this interface returns `ErrStorageCapabilityUnsupported` on consumption. `IsNonceValid` is only a pre-check and does not reserve a nonce.
-
-## Default Behavior
-
-Based on the current `core/nonce` implementation:
-
-- the raw nonce uses `32` random bytes
-- the output is a `64`-character hexadecimal string
-- the default TTL is `5` minutes
-- the module must be enabled with `dtoken.NewBuilder().EnableNonce()`, or supplied through `SetNonceManager`
-
-## Basic Usage
+## Basic use
 
 ```go
 package main
@@ -43,117 +12,47 @@ package main
 import (
     "context"
     "fmt"
+    "time"
 
-    "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/dtoken"
+    "github.com/Zany2/dtoken-go"
+    "github.com/Zany2/dtoken-go/nonce"
 )
 
-func initDToken() {
-    if _, err := dtoken.BuildAndSetManager(
-        dtoken.NewBuilder().
-            EnableNonce().
-            SetStorage(memory.NewStorage()),
-    ); err != nil {
-        panic(err)
-    }
-}
-
 func main() {
-    initDToken()
-    defer dtoken.DeleteAllManager()
-
-    ctx := context.Background()
-
-    nonce, err := dtoken.GenerateNonce(ctx)
+    auth, err := dtoken.NewBuilder().IsPrintBanner(false).Build()
     if err != nil {
         panic(err)
     }
-    fmt.Println(nonce)
-
-    ok := dtoken.VerifyNonce(ctx, nonce)
-    fmt.Println(ok) // true
-
-    ok = dtoken.VerifyNonce(ctx, nonce)
-    fmt.Println(ok) // false
+    defer auth.Close()
+    cfg := auth.Config()
+    manager := nonce.NewNonceManagerWithConfig(
+        cfg.AuthType, cfg.KeyPrefix, auth.Storage(),
+        &nonce.Config{TTL: 30 * time.Second},
+    )
+    service := nonce.NewService(manager, auth)
+    ctx := context.Background()
+    value, err := service.GenerateNonce(ctx)
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println(service.IsNonceValid(ctx, value))
+    fmt.Println(service.VerifyNonce(ctx, value))
+    fmt.Println(service.VerifyNonce(ctx, value))
 }
 ```
 
-## Custom TTL
+The default TTL is five minutes. Values use 32 random bytes encoded as 64 hexadecimal characters. The example sets 30 seconds through the config constructor. Use service.GenerateNonceWithTimeout(ctx, timeout) for a single operation override.
 
-```go
-ctx := context.Background()
+## Validation and consumption
 
-nonce, err := dtoken.GenerateNonceWithTimeout(ctx, 30*time.Second)
-_ = nonce
-_ = err
-```
+- GenerateNonce / GenerateNonceWithTimeout: generate and store a value.
+- IsNonceValid: check existence without reserving it.
+- VerifyNonce: validate and consume, returning bool.
+- VerifyAndConsumeNonce: validate and consume with error details.
+- GetNonceTTL: report remaining seconds.
 
-If the timeout is less than or equal to `0`, the implementation falls back to the manager's configured TTL (`5` minutes by default).
+Consumption explicitly requires contract.AtomicStorage. Built-in memory and Redis storage support it. Custom storage without atomic extensions returns ErrStorageCapabilityUnsupported; this is an explicit Nonce contract. Expired or consumed values cannot be consumed again.
 
-## Non-Consuming Validation
+## HTTP injection
 
-```go
-ctx := context.Background()
-
-nonce, _ := dtoken.GenerateNonce(ctx)
-
-valid := dtoken.IsNonceValid(ctx, nonce) // validate only
-err := dtoken.VerifyAndConsumeNonce(ctx, nonce)
-```
-
-Difference:
-
-- `IsNonceValid`: validate only
-- `VerifyNonce`: validate and consume, returning `bool`
-- `VerifyAndConsumeNonce`: validate and consume, returning `ErrInvalidNonce` for a missing, expired, or consumed nonce; storage failures return `ErrStorageUnavailable`, and missing atomic capability returns `ErrStorageCapabilityUnsupported`
-
-## TTL Query
-
-```go
-ctx := context.Background()
-
-ttl, err := dtoken.GetNonceTTL(ctx, nonce)
-```
-
-Return values:
-
-- `-2`: nonce does not exist
-- `-1`: no expiration
-- `>=0`: remaining whole seconds, rounded down; `0` can mean a nonce is still valid for less than one second
-
-## HTTP Example
-
-```go
-r.GET("/nonce", func(c *gin.Context) {
-    nonce, err := dtoken.GenerateNonce(ctx)
-    if err != nil {
-        c.JSON(500, gin.H{"error": err.Error()})
-        return
-    }
-    c.JSON(200, gin.H{"nonce": nonce})
-})
-
-r.POST("/transfer", func(c *gin.Context) {
-    nonce := c.GetHeader("X-Nonce")
-
-    if err := dtoken.VerifyAndConsumeNonce(ctx, nonce); err != nil {
-        c.JSON(401, gin.H{"error": "invalid_nonce"})
-        return
-    }
-
-    c.JSON(200, gin.H{"message": "ok"})
-})
-```
-
-## Best Practices
-
-1. Use nonce for sensitive write operations such as payment, transfer, password change, and delete
-2. Combine nonce checks with normal login checks instead of using nonce alone
-3. A TTL around 5 minutes is usually enough for form submissions and one-time confirmations
-4. If the client needs a pre-check, use `IsNonceValid` first and only consume on final submit
-
-## Related Documentation
-
-- [OAuth2 Guide](../security/oauth2.md)
-- [Authentication Guide](../core/authentication.md)
-- [Refresh Token Guide](../security/refresh-token.md)
+Use framework WithCapabilities(requestcontext.Capabilities{Nonce: service}), with requestcontext importing httpauth/context. Request facades expose dCtx.Nonce().Generate, Verify, and VerifyAndConsume. Missing bindings return ErrModuleNotEnabled. See the [root README](../../../README.md) and [migration guide](../../design/module-migration.md).

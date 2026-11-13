@@ -1,24 +1,28 @@
 package main
 
 import (
+	dtoken "github.com/Zany2/dtoken-go"
+	dt1 "github.com/Zany2/dtoken-go/contract"
+	dterror "github.com/Zany2/dtoken-go/errors"
+	dt2 "github.com/Zany2/dtoken-go/storage/memory"
+
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	dtglobal "github.com/Zany2/dtoken-go/global"
+	chidt "github.com/Zany2/dtoken-go/integrations/chi"
+	"github.com/go-chi/chi/v5"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"github.com/Zany2/dtoken-go/dtoken"
-	chidt "github.com/Zany2/dtoken-go/integrations/chi"
-	"github.com/go-chi/chi/v5"
 )
 
 // TestInitDTokenConfiguration verifies that the example can initialize with a valid renewal threshold. TestInitDTokenConfiguration 验证示例能使用有效的续期阈值完成初始化。
 func TestInitDTokenConfiguration(t *testing.T) {
 	setupChiManager(t)
-	mgr, err := chidt.GetManager()
+	mgr, err := dtglobal.GetManager()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,16 +64,16 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	if err := json.Unmarshal(login.Body.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode login response: %v", err)
 	}
-	if envelope.Code != chidt.CodeSuccess || envelope.Data.Token == "" {
+	if envelope.Code != dterror.CodeSuccess || envelope.Data.Token == "" {
 		t.Fatalf("login envelope = %+v, want success and token", envelope)
 	}
-	if loginID, err := dtoken.GetLoginID(context.Background(), envelope.Data.Token); err != nil || loginID != "alice" {
+	if loginID, err := dtglobal.GetLoginID(context.Background(), envelope.Data.Token); err != nil || loginID != "alice" {
 		t.Fatalf("returned token login ID = %q, error = %v, want alice", loginID, err)
 	}
-	if !dtoken.HasRole(context.Background(), "alice", "admin") {
+	if !dtglobal.HasRole(context.Background(), "alice", "admin") {
 		t.Fatal("login did not seed admin role")
 	}
-	if !dtoken.HasPermission(context.Background(), "alice", "article:read") {
+	if !dtglobal.HasPermission(context.Background(), "alice", "article:read") {
 		t.Fatal("login did not seed article permission")
 	}
 }
@@ -78,14 +82,14 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 func TestProtectedRoutesAndLogout(t *testing.T) {
 	setupChiManager(t)
 	ctx := context.Background()
-	token, err := dtoken.Login(ctx, "alice")
+	token, err := dtglobal.Login(ctx, "alice")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
-	if err = dtoken.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
+	if err = dtglobal.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
 		t.Fatalf("AddRoles() error = %v", err)
 	}
-	if err = dtoken.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
+	if err = dtglobal.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
 		t.Fatalf("AddPermissions() error = %v", err)
 	}
 
@@ -113,7 +117,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 		}
 	}
 
-	bobToken, err := dtoken.Login(ctx, "bob")
+	bobToken, err := dtglobal.Login(ctx, "bob")
 	if err != nil {
 		t.Fatalf("Login(bob) error = %v", err)
 	}
@@ -159,12 +163,12 @@ func TestLoginRejectsInvalidJSON(t *testing.T) {
 			if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 				t.Fatal(err)
 			}
-			if rec.Code != http.StatusBadRequest || response.Code != chidt.CodeBadRequest || response.Data != nil {
+			if rec.Code != http.StatusBadRequest || response.Code != dterror.CodeBadRequest || response.Data != nil {
 				t.Fatalf("invalid JSON status=%d response=%+v", rec.Code, response)
 			}
 		})
 	}
-	if _, err := dtoken.GetSession(context.Background(), "alice"); !errors.Is(err, chidt.ErrSessionNotFound) {
+	if _, err := dtglobal.GetSession(context.Background(), "alice"); !errors.Is(err, dterror.ErrSessionNotFound) {
 		t.Fatalf("invalid JSON created a session: error = %v", err)
 	}
 }
@@ -172,7 +176,7 @@ func TestLoginRejectsInvalidJSON(t *testing.T) {
 // TestLoginRejectsDisabledAccount verifies an account restriction returns forbidden without issuing a token. TestLoginRejectsDisabledAccount 验证账号封禁返回禁止访问且不签发 Token。
 func TestLoginRejectsDisabledAccount(t *testing.T) {
 	setupChiManager(t)
-	if err := chidt.Disable(context.Background(), "alice", time.Hour, ""); err != nil {
+	if err := dtglobal.Disable(context.Background(), "alice", time.Hour, ""); err != nil {
 		t.Fatal(err)
 	}
 	router := chi.NewRouter()
@@ -182,27 +186,29 @@ func TestLoginRejectsDisabledAccount(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if rec.Code != http.StatusForbidden || response.Code != chidt.CodeAccountDisabled || response.Data != nil {
+	if rec.Code != http.StatusForbidden || response.Code != dterror.CodeAccountDisabled || response.Data != nil {
 		t.Fatalf("disabled login status=%d response=%+v", rec.Code, response)
 	}
 }
 
 // TestHandlersReportStorageFailures verifies backend errors remain server errors and expose no internal details. TestHandlersReportStorageFailures 验证后端故障返回服务端错误且不暴露内部详情。
 func TestHandlersReportStorageFailures(t *testing.T) {
-	chidt.DeleteAllManager()
-	t.Cleanup(chidt.DeleteAllManager)
-	mgr, err := chidt.NewBuilder().
-		SetStorage(&chiFailingStorage{Storage: chidt.NewMemoryStorage()}).
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
+	builtAuth1, err := dtoken.NewBuilder().
+		Storage(&chiFailingStorage{Storage: dt2.NewStorage()}).
 		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).
 		Build()
+	mgr := builtAuth1.Manager()
+
 	if err != nil {
 		t.Fatal(err)
 	}
-	chidt.SetManager(mgr)
+	dtglobal.SetManager(mgr)
 
 	// Register only request context to exercise each handler's own failure path. 仅注册请求上下文，以覆盖各处理器自身的错误分支。
 	router := chi.NewRouter()
-	router.Use(chidt.RegisterDTokenContextMiddleware())
+	router.Use(chidt.RegisterDTokenContextMiddleware(chidt.WithAuth(builtAuth1)))
 	router.Post("/login", handleLogin)
 	router.Get("/me", handleMe)
 	router.Post("/logout", handleLogout)
@@ -221,7 +227,7 @@ func TestHandlersReportStorageFailures(t *testing.T) {
 			if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 				t.Fatal(err)
 			}
-			if rec.Code != http.StatusInternalServerError || response.Code != chidt.CodeServerError ||
+			if rec.Code != http.StatusInternalServerError || response.Code != dterror.CodeServerError ||
 				response.Message != "internal server error" || response.Data != nil {
 				t.Fatalf("storage failure status=%d response=%+v", rec.Code, response)
 			}
@@ -231,7 +237,7 @@ func TestHandlersReportStorageFailures(t *testing.T) {
 
 // chiFailingStorage keeps initialization valid but fails every authentication read. chiFailingStorage 允许正常初始化，但使每次鉴权读取失败。
 type chiFailingStorage struct {
-	chidt.Storage
+	dt1.Storage
 }
 
 func (s *chiFailingStorage) Get(context.Context, string) (any, error) {
@@ -240,8 +246,8 @@ func (s *chiFailingStorage) Get(context.Context, string) (any, error) {
 
 func setupChiManager(t *testing.T) {
 	t.Helper()
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	initDToken()
 }
 

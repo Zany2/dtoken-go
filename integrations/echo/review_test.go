@@ -4,6 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	dtglobal "github.com/Zany2/dtoken-go/global"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	"github.com/Zany2/dtoken-go/internal/defaults"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
+	"github.com/Zany2/dtoken-go/storage/memory"
+	echo4 "github.com/labstack/echo/v4"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -11,13 +18,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/Zany2/dtoken-go/com/storage/memory"
-	"github.com/Zany2/dtoken-go/core/adapter"
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
-	echo4 "github.com/labstack/echo/v4"
 )
 
 // echoReviewChecks exercises middleware and annotations with the same HTTP scenarios. echoReviewChecks 使用相同 HTTP 场景覆盖中间件与注解。
@@ -40,7 +40,8 @@ var echoReviewChecks = []struct {
 		}
 		return func(next echo4.HandlerFunc) echo4.HandlerFunc {
 			return GetHandler(ctx, next, options.FailFunc, &Annotation{
-				AuthType: options.AuthType, CheckLogin: true, CheckPermission: []string{"read"},
+				ManagerResolver: options.ManagerResolver,
+				AuthType:        options.AuthType, CheckLogin: true, CheckPermission: []string{"read"},
 			})
 		}
 	}},
@@ -49,12 +50,12 @@ var echoReviewChecks = []struct {
 // newEchoReviewManager creates an isolated manager with synchronous events. newEchoReviewManager 创建事件同步执行的独立 Manager。
 func newEchoReviewManager(t *testing.T, authType string, storage adapter.Storage) *manager.Manager {
 	t.Helper()
-	b := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
+	b := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
 	if authType != "" {
 		b.AuthType(authType)
 	}
 	if storage != nil {
-		b.SetStorage(storage)
+		b.Storage(storage)
 	}
 	mgr, err := b.Build()
 	if err != nil {
@@ -81,8 +82,8 @@ func echoReviewLogin(t *testing.T, mgr *manager.Manager, token string) {
 
 // TestEchoReviewRequestContext verifies per-request values, deadlines and cancellation reach hooks and storage. TestEchoReviewRequestContext 验证请求值、截止时间与取消信号传入钩子及存储。
 func TestEchoReviewRequestContext(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	for _, check := range echoReviewChecks {
 		t.Run(check.name, func(t *testing.T) {
 			storage := &echoReviewStorage{Storage: memory.NewStorage()}
@@ -157,13 +158,13 @@ func (s *echoReviewStorage) Get(ctx context.Context, key string) (any, error) {
 
 // TestEchoReviewManagerSelection verifies explicit precedence, inheritance and closed-manager rejection. TestEchoReviewManagerSelection 验证显式配置优先级、请求继承与已关闭 Manager 的拒绝行为。
 func TestEchoReviewManagerSelection(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	global := newEchoReviewManager(t, "", nil)
 	local := newEchoReviewManager(t, "echo-local", nil)
 	closed := newEchoReviewManager(t, "echo-closed", nil)
 	closed.CloseManager()
-	dtoken.SetManager(global)
+	dtglobal.SetManager(global)
 	const token = "same-token"
 	echoReviewLogin(t, global, token)
 	echoReviewLogin(t, local, token)
@@ -175,8 +176,8 @@ func TestEchoReviewManagerSelection(t *testing.T) {
 			want   *manager.Manager
 		}{
 			{"cached", local, nil, local},
-			{"global", nil, nil, global},
-			{"auth_type", local, []AuthOption{WithAuthType(global.GetConfig().AuthType)}, global},
+			{"global", nil, []AuthOption{WithManagerResolver(dtglobal.GetManager)}, global},
+			{"auth_type", local, []AuthOption{WithManagerResolver(dtglobal.GetManager), WithAuthType(global.GetConfig().AuthType)}, global},
 			{"explicit", local, []AuthOption{WithManager(global), WithAuthType("missing")}, global},
 			{"missing_type", local, []AuthOption{WithAuthType("missing")}, nil},
 			{"closed", closed, nil, nil},
@@ -221,11 +222,11 @@ func TestEchoReviewManagerSelection(t *testing.T) {
 
 // TestEchoReviewRenewalUsesRequestManager protects identical tokens in different auth namespaces. TestEchoReviewRenewalUsesRequestManager 验证不同认证空间内同值 Token 的续期归属。
 func TestEchoReviewRenewalUsesRequestManager(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	global := newEchoReviewManager(t, "", nil)
 	local := newEchoReviewManager(t, "echo-renew", nil)
-	dtoken.SetManager(global)
+	dtglobal.SetManager(global)
 	const token = "renew-token"
 	echoReviewLogin(t, global, token)
 	echoReviewLogin(t, local, token)
@@ -249,18 +250,18 @@ func TestEchoReviewRenewalUsesRequestManager(t *testing.T) {
 
 // TestEchoReviewCachedContextValidation checks typed nils and unusable cached managers. TestEchoReviewCachedContextValidation 检查带类型空值与不可用的缓存 Manager。
 func TestEchoReviewCachedContextValidation(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	global := newEchoReviewManager(t, "", nil)
-	dtoken.SetManager(global)
+	dtglobal.SetManager(global)
 	c := echo4.New().NewContext(httptest.NewRequest(http.MethodGet, "/", nil), httptest.NewRecorder())
 	var typedNil *corecontext.DTokenContext
 	c.Set(DTokenCtxKey, typedNil)
 	if got, ok := GetDTokenContext(c); got != nil || ok {
 		t.Fatalf("typed nil lookup=%v,%v", got, ok)
 	}
-	if got, err := GetManagerByContext(c); err != nil || got != global {
-		t.Fatalf("typed nil fallback=%p,%v", got, err)
+	if got, err := GetManagerByContext(c); !errors.Is(err, ErrManagerNotFound) {
+		t.Fatalf("typed nil missing binding=%p,%v", got, err)
 	}
 	c.Set(DTokenCtxKey, typedNil)
 	if got := getDTokenContext(c, global); got == nil || got.GetManager() != global {
@@ -347,7 +348,7 @@ func TestEchoReviewHookControlFlow(t *testing.T) {
 
 // TestEchoReviewBodyTokenIsolation rejects query-only tokens when query reading is disabled. TestEchoReviewBodyTokenIsolation 验证关闭查询参数读取后拒绝仅来自查询的 Token。
 func TestEchoReviewBodyTokenIsolation(t *testing.T) {
-	mgr, err := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+	mgr, err := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
 		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).Build()
 	if err != nil {
 		t.Fatal(err)
@@ -405,7 +406,7 @@ func TestEchoReviewBodyTokenIsolation(t *testing.T) {
 
 // TestEchoReviewReplacedQuery ignores Echo's stale query cache after request replacement. TestEchoReviewReplacedQuery 验证替换请求后不会继续读取 Echo 的旧查询缓存。
 func TestEchoReviewReplacedQuery(t *testing.T) {
-	mgr, err := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+	mgr, err := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
 		IsReadHeader(false).IsReadCookie(false).IsReadQuery(true).IsReadBody(false).Build()
 	if err != nil {
 		t.Fatal(err)

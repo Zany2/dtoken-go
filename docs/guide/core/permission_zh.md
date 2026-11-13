@@ -7,7 +7,7 @@
 当前版本的权限与角色数据主要有两种来源：
 
 1. `Session` 中维护的 `Permissions`、`Roles`
-2. 通过 `defaults.NewBuilder()` 注入的自定义回调
+2. 通过 `dt.NewBuilder()` 注入的自定义回调
 
 优先级方面：
 
@@ -16,21 +16,21 @@
 
 ## 初始化
 
+<!-- dtoken-compile: complete-example -->
 ```go
 package main
 
 import (
-    "context"
+    dt "github.com/Zany2/dtoken-go"
+    dtoken "github.com/Zany2/dtoken-go/global"
 
-    "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/defaults"
-    "github.com/Zany2/dtoken-go/dtoken"
+    "github.com/Zany2/dtoken-go/storage/memory"
 )
 
 func initDToken() {
     if _, err := dtoken.BuildAndSetManager(
-        defaults.NewBuilder().
-            SetStorage(memory.NewStorage()),
+        dt.NewBuilder().
+            Storage(memory.NewStorage()),
     ); err != nil {
         panic(err)
     }
@@ -225,8 +225,8 @@ _ = dtoken.UntieService(ctx, "10001", "comment")
 
 ```go
 if _, err := dtoken.BuildAndSetManager(
-    defaults.NewBuilder().
-        SetStorage(memory.NewStorage()).
+    dt.NewBuilder().
+        Storage(memory.NewStorage()).
         SetCustomPermissionListFunc(func(loginID, authType string) ([]string, error) {
             if loginID == "10001" {
                 return []string{"user:read", "user:write"}, nil
@@ -247,7 +247,7 @@ if _, err := dtoken.BuildAndSetManager(
 扩展回调还支持拿到 `device`、`deviceID`：
 
 ```go
-defaults.NewBuilder().
+dt.NewBuilder().
     SetCustomPermissionListExtFunc(func(loginID, device, deviceID, authType string) ([]string, error) {
         if device == "app" {
             return []string{"mobile:read", "mobile:write"}, nil
@@ -267,7 +267,11 @@ defaults.NewBuilder().
 ```go
 ctx := context.Background()
 
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
+auth, err := dt.NewBuilder().Build()
+if err != nil { panic(err) }
+defer auth.Close()
+
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(auth)))
 
 r.GET("/users",
     gindt.CheckPermissionMiddleware(ctx, []string{"user:read"}, nil, nil),

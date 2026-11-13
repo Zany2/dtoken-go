@@ -6,9 +6,9 @@
 
 当前项目支持把 Token 生成风格切换为 `JWT`，入口是：
 
-- `defaults.NewBuilder().TokenStyle(TokenStyleJWT)`
-- `defaults.NewBuilder().JwtSecretKey(...)`
-- `defaults.NewBuilder().JwtSecret(...)`
+- `dt.NewBuilder().TokenStyle(TokenStyleJWT)`
+- `dt.NewBuilder().JwtSecretKey(...)`
+- `dt.NewBuilder().JwtSecret(...)`
 
 ## 重要说明
 
@@ -57,18 +57,18 @@
 package main
 
 import (
+    dt "github.com/Zany2/dtoken-go"
+    dtoken "github.com/Zany2/dtoken-go/global"
     "context"
 
-    "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/core/adapter"
-    "github.com/Zany2/dtoken-go/defaults"
-    "github.com/Zany2/dtoken-go/dtoken"
+    "github.com/Zany2/dtoken-go/storage/memory"
+    adapter "github.com/Zany2/dtoken-go/contract"
 )
 
 func initDToken() {
     if _, err := dtoken.BuildAndSetManager(
-        defaults.NewBuilder().
-            SetStorage(memory.NewStorage()).
+        dt.NewBuilder().
+            Storage(memory.NewStorage()).
             TokenStyle(adapter.TokenStyleJWT).
             JwtSecretKey("your-very-strong-secret-key").
             Timeout(2 * 60 * 60),
@@ -90,8 +90,8 @@ func main() {
 ### 使用快捷方式
 
 ```go
-defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+dt.NewBuilder().
+    Storage(memory.NewStorage()).
     JwtSecret("your-very-strong-secret-key").
     Timeout(2 * 60 * 60).
     Build()

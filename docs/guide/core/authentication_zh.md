@@ -6,21 +6,22 @@
 
 ### 初始化
 
+<!-- dtoken-compile: complete-example -->
 ```go
 package main
 
 import (
+    dt "github.com/Zany2/dtoken-go"
+    dtoken "github.com/Zany2/dtoken-go/global"
     "context"
 
-    "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/defaults"
-    "github.com/Zany2/dtoken-go/dtoken"
+    "github.com/Zany2/dtoken-go/storage/memory"
 )
 
 func initDToken() {
     if _, err := dtoken.BuildAndSetManager(
-        defaults.NewBuilder().
-            SetStorage(memory.NewStorage()),
+        dt.NewBuilder().
+            Storage(memory.NewStorage()),
     ); err != nil {
         panic(err)
     }
@@ -224,8 +225,8 @@ singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001
 
 ```go
 if _, err := dtoken.BuildAndSetManager(
-    defaults.NewBuilder().
-        SetStorage(memory.NewStorage()).
+    dt.NewBuilder().
+        Storage(memory.NewStorage()).
         IsConcurrent(true),
 ); err != nil {
     panic(err)
@@ -239,8 +240,8 @@ if _, err := dtoken.BuildAndSetManager(
 
 ```go
 if _, err := dtoken.BuildAndSetManager(
-    defaults.NewBuilder().
-        SetStorage(memory.NewStorage()).
+    dt.NewBuilder().
+        Storage(memory.NewStorage()).
         IsConcurrent(true).
         IsShare(true),
 ); err != nil {
@@ -255,8 +256,8 @@ if _, err := dtoken.BuildAndSetManager(
 
 ```go
 if _, err := dtoken.BuildAndSetManager(
-    defaults.NewBuilder().
-        SetStorage(memory.NewStorage()).
+    dt.NewBuilder().
+        Storage(memory.NewStorage()).
         IsConcurrent(true).
         IsShare(false).
         MaxLoginCount(3),
@@ -273,8 +274,8 @@ if _, err := dtoken.BuildAndSetManager(
 
 ```go
 if _, err := dtoken.BuildAndSetManager(
-    defaults.NewBuilder().
-        SetStorage(memory.NewStorage()).
+    dt.NewBuilder().
+        Storage(memory.NewStorage()).
         Timeout(24 * 60 * 60).
         AutoRenew(true).
         RenewMaxRefresh(30 * 60).
@@ -301,8 +302,8 @@ if _, err := dtoken.BuildAndSetManager(
 
 ```go
 if _, err := dtoken.BuildAndSetManager(
-    defaults.NewBuilder().
-        SetStorage(memory.NewStorage()).
+    dt.NewBuilder().
+        Storage(memory.NewStorage()).
         Timeout(24 * 60 * 60).
         ActiveTimeout(30 * 60),
 ); err != nil {
@@ -325,8 +326,8 @@ if _, err := dtoken.BuildAndSetManager(
 
 ```go
 if _, err := dtoken.BuildAndSetManager(
-    defaults.NewBuilder().
-        SetStorage(memory.NewStorage()).
+    dt.NewBuilder().
+        Storage(memory.NewStorage()).
         TokenName("dtoken").
         Timeout(24 * 60 * 60).
         ActiveTimeout(30 * 60).

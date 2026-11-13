@@ -19,7 +19,7 @@ The server listens on `http://localhost:8080`.
 - `GET /articles`: requires the `article:read` permission.
 - `POST /logout`: logs out the current token.
 
-The example uses bundled memory storage through `fiberdt.NewBuilder()`, so no Redis service is required. Login and authorization data are lost on restart. Demo credentials and permission grants illustrate the API; real applications must verify their own accounts and load their own authorization rules.
+The example uses bundled memory storage through `dtoken.NewBuilder()`, so no Redis service is required. Login and authorization data are lost on restart. Demo credentials and permission grants illustrate the API; real applications must verify their own accounts and load their own authorization rules.
 
 Tokens have a two-hour timeout, with automatic renewal during authentication checks when one hour or less remains. Repeated logins for the same username may reuse a token under the default sharing policy; logging out invalidates that shared token.
 
@@ -51,9 +51,17 @@ Handlers and authentication middleware share the same error response callback. R
 
 ## Key APIs
 
+Build an instance first and keep it open while the server handles requests. These fragments use the handlers and error callbacks from `main.go`.
+
+```go
+authInstance, err := dtoken.NewBuilder().TokenName("Authorization").Build()
+if err != nil { panic(err) }
+defer authInstance.Close()
+```
+
 ```go
 fail := func(c *gofiber.Ctx, err error) { _ = writeAuthError(c, err) }
-app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx, fiberdt.WithFailFunc(fail)))
+app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx, fiberdt.WithAuth(authInstance), fiberdt.WithFailFunc(fail)))
 auth.Use(fiberdt.AuthMiddleware(ctx, fiberdt.WithFailFunc(fail)))
 auth.Get("/admin", fiberdt.RoleMiddleware(ctx, []string{"admin"}, fiberdt.WithFailFunc(fail)), handleAdmin)
 auth.Get("/articles", fiberdt.PermissionMiddleware(ctx, []string{"article:read"}, fiberdt.WithFailFunc(fail)), handleArticles)

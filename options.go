@@ -4,7 +4,7 @@ package dtoken
 import (
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/config"
+	"github.com/Zany2/dtoken-go/config"
 )
 
 // LoginOptions describes a typed login request. LoginOptions 描述类型化登录请求。

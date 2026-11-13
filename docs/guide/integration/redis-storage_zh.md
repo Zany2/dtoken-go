@@ -6,7 +6,7 @@
 
 当前 Redis 存储实现位于：
 
-- `com/storage/redis`
+- `storage/redis`
 
 公开构造方式只有 3 种：
 
@@ -17,7 +17,7 @@
 ## 安装
 
 ```bash
-go get github.com/Zany2/dtoken-go/com/storage/redis
+go get github.com/Zany2/dtoken-go/storage/redis
 go get github.com/redis/go-redis/v9
 ```
 
@@ -29,9 +29,9 @@ go get github.com/redis/go-redis/v9
 package main
 
 import (
-    "github.com/Zany2/dtoken-go/com/storage/redis"
-    "github.com/Zany2/dtoken-go/defaults"
-    "github.com/Zany2/dtoken-go/dtoken"
+    dt "github.com/Zany2/dtoken-go"
+    dtoken "github.com/Zany2/dtoken-go/global"
+    "github.com/Zany2/dtoken-go/storage/redis"
 )
 
 func initDToken() {
@@ -41,8 +41,8 @@ func initDToken() {
     }
 
     if _, err = dtoken.BuildAndSetManager(
-        defaults.NewBuilder().
-            SetStorage(storage),
+        dt.NewBuilder().
+            Storage(storage),
     ); err != nil {
         panic(err)
     }
@@ -68,8 +68,8 @@ if err != nil {
 }
 
 if _, err = dtoken.BuildAndSetManager(
-    defaults.NewBuilder().
-        SetStorage(storage),
+    dt.NewBuilder().
+        Storage(storage),
 ); err != nil {
     panic(err)
 }
@@ -87,8 +87,8 @@ rdb := goredis.NewClient(&goredis.Options{
 storage := redis.NewStorageFromClient(rdb)
 
 if _, err := dtoken.BuildAndSetManager(
-    defaults.NewBuilder().
-        SetStorage(storage),
+    dt.NewBuilder().
+        Storage(storage),
 ); err != nil {
     panic(err)
 }
@@ -124,8 +124,8 @@ if err != nil {
 }
 
 if _, err = dtoken.BuildAndSetManager(
-    defaults.NewBuilder().
-        SetStorage(storage).
+    dt.NewBuilder().
+        Storage(storage).
         TokenName("dtoken").
         Timeout(2 * 60 * 60).
         ActiveTimeout(30 * 60).

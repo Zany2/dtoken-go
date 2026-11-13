@@ -11,23 +11,25 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Zany2/dtoken-go/com/storage/memory"
-	redisstorage "github.com/Zany2/dtoken-go/com/storage/redis"
-	"github.com/Zany2/dtoken-go/core/adapter"
-	"github.com/Zany2/dtoken-go/core/config"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/core/oauth2"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
+	"github.com/Zany2/dtoken-go/config"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
+	"github.com/Zany2/dtoken-go/nonce"
+	"github.com/Zany2/dtoken-go/oauth2"
+	"github.com/Zany2/dtoken-go/storage/memory"
+	redisstorage "github.com/Zany2/dtoken-go/storage/redis"
 	"github.com/gin-gonic/gin"
 )
 
 // App owns the Gin router and core auth facade. App 持有 Gin 路由和核心认证门面。
 type App struct {
-	auth      *dtoken.Auth
-	userAuth  *dtoken.Auth
-	adminAuth *dtoken.Auth
-	router    *gin.Engine
+	auth          *dtoken.Auth
+	userAuth      *dtoken.Auth
+	adminAuth     *dtoken.Auth
+	router        *gin.Engine
+	nonceService  *nonce.Service
+	oauth2Service *oauth2.Service
 }
 
 // Config controls the demo app auth timings. Config 控制示例应用认证时间配置。
@@ -242,6 +244,11 @@ func NewApp(cfg Config) (*App, error) {
 		userAuth:  dtoken.New(userMgr),
 		adminAuth: dtoken.New(adminMgr),
 	}
+
+	// Compose capabilities with the primary auth instance before serving requests. 在接收请求前组合主认证实例的独立能力。
+	authConfig := app.auth.Config()
+	app.nonceService = nonce.NewService(nonce.NewDefaultNonceManager(authConfig.AuthType, authConfig.KeyPrefix, app.auth.Storage()), app.auth)
+	app.oauth2Service = oauth2.NewService(oauth2.NewDefaultOAuth2Server(authConfig.AuthType, authConfig.KeyPrefix, app.auth.Storage(), app.auth.Codec()), app.auth)
 	if err = app.registerDemoOAuth2Client(); err != nil {
 		flowMgr.CloseManager()
 		userMgr.CloseManager()
@@ -267,7 +274,7 @@ func newDemoStorageFactory(cfg Config) func() (adapter.Storage, error) {
 }
 
 // newDemoManager builds one isolated auth manager for the demo app. newDemoManager 为示例应用构建隔离的认证管理器。
-func newDemoManager(cfg Config, authType string, storage adapter.Storage) (*manager.Manager, error) {
+func newDemoManager(cfg Config, authType string, storage adapter.Storage) (*dtoken.Manager, error) {
 	autoRenew := false
 	if cfg.AutoRenew != nil {
 		autoRenew = *cfg.AutoRenew
@@ -283,9 +290,7 @@ func newDemoManager(cfg Config, authType string, storage adapter.Storage) (*mana
 		IsPrintBanner(false).
 		IsLog(false).
 		AsyncEvent(false).
-		EnableNonce().
-		EnableOAuth2().
-		SetStorage(storage)
+		Storage(storage)
 	if cfg.KeyPrefix != "" {
 		builder.KeyPrefix(cfg.KeyPrefix)
 	}
@@ -324,7 +329,7 @@ func newDemoManager(cfg Config, authType string, storage adapter.Storage) (*mana
 		}
 		return nil, err
 	}
-	return mgr, nil
+	return mgr.Manager(), nil
 }
 
 // MustNewApp creates an app or panics. MustNewApp 创建应用，失败时 panic。
@@ -833,7 +838,7 @@ func (a *App) handleSessionTerminals(c *gin.Context) {
 	loginID := loginIDFromContext(c)
 	device := c.Query("device")
 	var (
-		terminals []manager.TerminalInfo
+		terminals []dtoken.TerminalInfo
 		err       error
 	)
 	if device != "" {
@@ -854,7 +859,7 @@ func (a *App) handleSessionForEach(c *gin.Context) {
 	device := c.Query("device")
 	limit := parsePositiveInt(c.Query("limit"))
 	visited := make([]string, 0)
-	visitor := func(terminal manager.TerminalInfo) bool {
+	visitor := func(terminal dtoken.TerminalInfo) bool {
 		visited = append(visited, terminal.Token)
 		return limit <= 0 || len(visited) < limit
 	}
@@ -1250,7 +1255,7 @@ func (a *App) handleOperatorDeviceDisableInfo(c *gin.Context) {
 	deviceID := c.Param("deviceId")
 	mgr := a.auth.Manager()
 	var (
-		info *manager.DeviceDisableInfo
+		info *dtoken.DeviceDisableInfo
 		ttl  int64
 		err  error
 	)
@@ -1280,7 +1285,7 @@ func (a *App) handleOperatorDeviceDisableInfo(c *gin.Context) {
 
 // handleNonce handles the Nonce test endpoint. handleNonce 处理 Nonce 测试端点。
 func (a *App) handleNonce(c *gin.Context) {
-	nonce, err := a.auth.GenerateNonce(c.Request.Context())
+	nonce, err := a.nonceService.GenerateNonce(c.Request.Context())
 	if err != nil {
 		writeDTokenError(c, err)
 		return
@@ -1295,7 +1300,7 @@ func (a *App) handleNonceWithTimeout(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "seconds must be positive and fit in time.Duration")
 		return
 	}
-	nonce, err := a.auth.GenerateNonceWithTimeout(c.Request.Context(), time.Duration(req.Seconds)*time.Second)
+	nonce, err := a.nonceService.GenerateNonceWithTimeout(c.Request.Context(), time.Duration(req.Seconds)*time.Second)
 	if err != nil {
 		writeDTokenError(c, err)
 		return
@@ -1306,13 +1311,13 @@ func (a *App) handleNonceWithTimeout(c *gin.Context) {
 // handleNonceStatus handles the Nonce Status test endpoint. handleNonceStatus 处理 Nonce Status 测试端点。
 func (a *App) handleNonceStatus(c *gin.Context) {
 	nonceValue := c.Param("nonce")
-	ttl, err := a.auth.Manager().GetNonceTTL(c.Request.Context(), nonceValue)
+	ttl, err := a.nonceService.GetNonceTTL(c.Request.Context(), nonceValue)
 	if err != nil {
 		writeDTokenError(c, err)
 		return
 	}
 	writeOK(c, gin.H{
-		"valid": a.auth.Manager().IsNonceValid(c.Request.Context(), nonceValue),
+		"valid": a.nonceService.IsNonceValid(c.Request.Context(), nonceValue),
 		"ttl":   ttl,
 	})
 }
@@ -1324,7 +1329,7 @@ func (a *App) handleNonceVerify(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "nonce is required")
 		return
 	}
-	if err := a.auth.VerifyAndConsumeNonce(c.Request.Context(), req.Nonce); err != nil {
+	if err := a.nonceService.VerifyAndConsumeNonce(c.Request.Context(), req.Nonce); err != nil {
 		writeDTokenError(c, err)
 		return
 	}
@@ -1338,7 +1343,7 @@ func (a *App) handleOAuth2Authorize(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "clientId, userId and redirectUri are required")
 		return
 	}
-	code, err := a.auth.Manager().GenerateOAuth2AuthorizationCode(c.Request.Context(), req.ClientID, req.UserID, req.RedirectURI, req.Scopes)
+	code, err := a.oauth2Service.GenerateOAuth2AuthorizationCode(c.Request.Context(), req.ClientID, req.UserID, req.RedirectURI, req.Scopes)
 	if err != nil {
 		writeDTokenError(c, err)
 		return
@@ -1353,7 +1358,7 @@ func (a *App) handleOAuth2Token(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "invalid oauth2 token request")
 		return
 	}
-	token, err := a.auth.OAuth2Token(c.Request.Context(), &oauth2.TokenRequest{
+	token, err := a.oauth2Service.OAuth2Token(c.Request.Context(), &oauth2.TokenRequest{
 		GrantType:    oauth2.GrantType(req.GrantType),
 		ClientID:     req.ClientID,
 		ClientSecret: req.ClientSecret,
@@ -1386,7 +1391,7 @@ func (a *App) handleOAuth2Revoke(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, derror.CodeBadRequest, "token is required")
 		return
 	}
-	if err := a.auth.Manager().RevokeOAuth2Token(c.Request.Context(), req.Token); err != nil {
+	if err := a.oauth2Service.RevokeOAuth2Token(c.Request.Context(), req.Token); err != nil {
 		writeDTokenError(c, err)
 		return
 	}
@@ -1400,7 +1405,7 @@ func (a *App) handleOAuth2Introspect(c *gin.Context) {
 		writeError(c, http.StatusUnauthorized, derror.CodeNotLogin, "missing oauth2 token")
 		return
 	}
-	info, err := a.auth.Manager().ValidateOAuth2AccessTokenAndGetInfo(c.Request.Context(), token)
+	info, err := a.oauth2Service.ValidateOAuth2AccessTokenAndGetInfo(c.Request.Context(), token)
 	if err != nil {
 		writeDTokenError(c, err)
 		return
@@ -1424,7 +1429,7 @@ func (a *App) handleOAuth2RegisterClient(c *gin.Context) {
 	for i, grantType := range req.GrantTypes {
 		grantTypes[i] = oauth2.GrantType(grantType)
 	}
-	if err := a.auth.RegisterOAuth2Client(&oauth2.Client{
+	if err := a.oauth2Service.RegisterOAuth2Client(&oauth2.Client{
 		ClientID:     req.ClientID,
 		ClientSecret: req.ClientSecret,
 		RedirectURIs: req.RedirectURIs,
@@ -1439,7 +1444,7 @@ func (a *App) handleOAuth2RegisterClient(c *gin.Context) {
 
 // handleOAuth2GetClient handles the OAuth2 Get Client test endpoint. handleOAuth2GetClient 处理 OAuth2 Get Client 测试端点。
 func (a *App) handleOAuth2GetClient(c *gin.Context) {
-	client, err := a.auth.Manager().GetOAuth2Client(c.Param("clientId"))
+	client, err := a.oauth2Service.GetOAuth2Client(c.Param("clientId"))
 	if err != nil {
 		writeDTokenError(c, err)
 		return
@@ -1459,7 +1464,7 @@ func (a *App) handleOAuth2GetClient(c *gin.Context) {
 
 // handleOAuth2UnregisterClient handles the OAuth2 Unregister Client test endpoint. handleOAuth2UnregisterClient 处理 OAuth2 Unregister Client 测试端点。
 func (a *App) handleOAuth2UnregisterClient(c *gin.Context) {
-	if err := a.auth.Manager().UnregisterOAuth2Client(c.Param("clientId")); err != nil {
+	if err := a.oauth2Service.UnregisterOAuth2Client(c.Param("clientId")); err != nil {
 		writeDTokenError(c, err)
 		return
 	}
@@ -1830,7 +1835,7 @@ func writeDTokenError(c *gin.Context, err error) {
 }
 
 // Manager exposes the underlying manager for advanced demo checks. Manager 暴露底层管理器用于高级示例检查。
-func (a *App) Manager() *manager.Manager {
+func (a *App) Manager() *dtoken.Manager {
 	if a == nil || a.auth == nil {
 		return nil
 	}
@@ -1839,7 +1844,7 @@ func (a *App) Manager() *manager.Manager {
 
 // registerDemoOAuth2Client registers the OAuth2 client used by flow tests. registerDemoOAuth2Client 注册流程测试使用的 OAuth2 客户端。
 func (a *App) registerDemoOAuth2Client() error {
-	return a.auth.RegisterOAuth2Client(&oauth2.Client{
+	return a.oauth2Service.RegisterOAuth2Client(&oauth2.Client{
 		ClientID:     "demo-client",
 		ClientSecret: "demo-secret",
 		RedirectURIs: []string{
@@ -1867,7 +1872,7 @@ func demoOAuth2UserValidator(username, password string) (string, error) {
 type demoAccessProvider struct{}
 
 // Permissions returns deterministic permissions for a demo subject. Permissions 返回示例主体的确定性权限。
-func (demoAccessProvider) Permissions(_ context.Context, subject manager.AccessSubject) ([]string, error) {
+func (demoAccessProvider) Permissions(_ context.Context, subject dtoken.AccessSubject) ([]string, error) {
 	switch subject.LoginID {
 	case "provider-user":
 		return []string{"provider:read"}, nil
@@ -1882,7 +1887,7 @@ func (demoAccessProvider) Permissions(_ context.Context, subject manager.AccessS
 }
 
 // Roles returns deterministic roles for a demo subject. Roles 返回示例主体的确定性角色。
-func (demoAccessProvider) Roles(_ context.Context, subject manager.AccessSubject) ([]string, error) {
+func (demoAccessProvider) Roles(_ context.Context, subject dtoken.AccessSubject) ([]string, error) {
 	switch subject.LoginID {
 	case "provider-user":
 		return []string{"provider-role"}, nil

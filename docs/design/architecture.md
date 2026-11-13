@@ -1,112 +1,59 @@
 English | [中文文档](architecture_zh.md)
 
-# Architecture Design
-
-## Overall Architecture
+# Architecture
 
 ```mermaid
 flowchart TD
-    App[Application] --> Facade[dtoken facade]
-    App --> Integrations[Framework integrations]
-    Integrations --> Facade
-    Integrations --> Core[Core auth]
-    Facade --> Core
-    Facade --> Defaults[Default wiring]
-    Defaults --> Core
-    Defaults --> Components[Component implementations]
-    Components --> Contracts[core/adapter contracts]
-    Core --> Contracts
-    SSO[SSO] --> Core
+    App[Application] --> Auth[Root instance facade]
+    App --> Global[Global registry]
+    Global --> Auth
+    Auth --> Engine[Internal auth engine]
+    App --> Services[Nonce OAuth2 Ticket ShortKey services]
+    Services --> Contracts[Public contracts]
+    Engine --> Contracts
+    HTTP[Framework integrations] --> Context[HTTP auth context]
+    Context --> Engine
+    Context --> Services
 ```
-Arrows represent code dependencies. The root module publishes core, facade, default wiring, basic components, and shared auth checks together. Framework integrations, SSO, and optional components use independent modules. See the [module migration guide](module-migration.md) for builder selection and version migration.
 
+The root package provides instance APIs and construction; `global` owns registration and global convenience calls. Authentication implementation lives in `internal/engine`; applications import public extension types from the root or `contract`.
+
+Compose capabilities through their Manager and Service constructors, then bind request services with `WithCapabilities`. The engine does not depend on capabilities. Framework packages adapt requests, responses, and middleware. Instance APIs require no global registration.
+
+## Manager implementation boundaries
+
+`internal/engine` keeps the public facade in `manager.go` and public persisted models in `model.go`. Internal files organize state ownership and shared operations inside the same package.
+
+| File | Responsibility |
+| --- | --- |
+| `constructor.go` | Component assembly, options, default ownership |
+| `internal_lifecycle.go` | Task admission, instance-owned background tasks, shutdown and resource release |
+| `internal_account_lock.go` | Account write lock registry and lock lifetime |
+| `internal_maintenance.go` | Token maintenance generations and merged activity timestamps |
+| `internal_storage.go` | Persistence, expiration conversion and renewal primitives |
+| `internal_access_mutation.go` | Permission/role changes, locked token revalidation, persistence and event sequencing |
+| `internal_access_values.go` | Session permission/role list operations |
+| `internal_terminal.go` | Session terminal selection and mutation |
+
+Manager owns three private state groups for account locks, token maintenance, and runtime shutdown. Background logging state belongs directly to each instance. Shutdown rejects new tasks, drains background workers, accepted work and listeners, then releases owned pool, storage and logging resources in order.
+
+Permission and role mutation APIs delegate to two common flows, by account or by token. Token mutations capture the lifecycle before locking and revalidate under the account lock. The flow saves actual changes, releases the lock before listener callbacks, and submits prepared maintenance after unlocking. Existing login, refresh and termination operations continue using the shared account locks and token lifecycle primitives.
 
 ## Module Division
 
-### 1. Core Layer (core/)
+The root owns instance APIs; global owns registration. Authentication implementation lives in internal/engine, with public contracts in contract. Nonce, OAuth2, Ticket, and ShortKey compose as independent services. HTTP contexts bind services explicitly; frameworks adapt requests and middleware.
 
-**Responsibilities**: provide core authentication and authorization capability.
+Components live in codec, generator, logging, pool, and storage. SSO retains its independent module and lifecycle. See [modular design](modular.md) and the [migration guide](module-migration.md).
 
-**Main components**:
-- `manager` - core authentication manager implementation
-- `context` - `DTokenContext` wrapper
-- `config` - config definitions and defaults
-- `builder` - builder
-- `listener` - event listener system
-- `nonce` - nonce anti-replay capability
-- `oauth2` - OAuth2 implementation
-- `derror` - error definitions
-
-**Dependency characteristics**:
-- no dependency on any web framework
-- no dependency on any concrete storage implementation
-- Storage, Codec, Log, Pool, and Generator are abstracted through `adapter`
-
-### 2. Global Utility Layer (dtoken/)
-
-**Responsibilities**: expose a unified global entry for application code.
-
-**Main capabilities**:
-- login, logout, kickout, replace
-- permissions, roles, disable, session operations
-- nonce and OAuth2 support
-- multi-auth-system support via `authType`
-
-**Features**:
-- uses `context.Context` as the unified entry
-- manages different auth systems through the global manager registry
-
-### 3. SSO Layer (sso/)
-
-**Responsibilities**: provide cross-service single sign-on flows without coupling the core manager to a web framework.
-
-**Main capabilities**:
-- server-issued login tickets and one-time OAuth2 codes
-- client registration and single logout callbacks
-- pluggable storage, with Redis support for multi-instance deployments
-
-**Dependency characteristics**:
-- depends on core auth contracts and storage adapters
-- keeps SSO lifecycle and storage ownership inside `sso.Server`
-
-### 4. Component Layer (com/)
-
-**Responsibilities**: provide replaceable component implementations.
-
-**Current modules**:
-- `com/storage/*` - storage implementations
-- `com/codec/*` - codec implementations
-- `com/generator/dgenerator` - token generator
-- `com/log/*` - log implementations
-- `com/pool/ants` - renew task pool implementation
-
-### 5. Framework Integration Layer (integrations/)
-
-**Responsibilities**: provide web framework adapters.
-
-**Current integrations**:
-- `gin`
-- `gf`
-- `echo`
-- `fiber`
-- `chi`
-- `hertz`
-- `kratos`
-- `beego`
-
-**Main features**:
-- request context adaptation
-- `DTokenContext` injection
-- middleware wrappers
-- annotation-style checking middleware wrappers
+In code fragments, dt aliases the root and dtoken aliases global.
 
 ## Design Patterns
 
 ### 1. Builder Pattern
 
 ```go
-mgr, err := defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+mgr, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
     TokenName("Authorization").
     Timeout(86400).
     Build()
@@ -154,8 +101,8 @@ annotation.GET("/profile",
 ### 4. Global Manager Registry Pattern
 
 ```go
-dtoken.SetManager(mgr)
-mgr, err := dtoken.GetManager()
+dtoken.SetManager(mgr.Manager())
+registered, err := dtoken.GetManager()
 ```
 
 **Advantages**:
@@ -244,7 +191,7 @@ The current version does not simply renew on every `IsLogin()` call. Instead it:
 - `RenewMaxRefresh` controls when renew should trigger
 - `RenewInterval` controls the minimum renew interval for the same token
 - `ActiveTimeout` controls the maximum inactive duration
-- `com/pool/ants` provides the default renew task pool
+- `pool/ants` provides the default renew task pool
 
 See: [Auto-Renew Design](auto-renew.md)
 

@@ -3,18 +3,19 @@ package echo
 import (
 	"context"
 	"errors"
+	dtglobal "github.com/Zany2/dtoken-go/global"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
 	echo4 "github.com/labstack/echo/v4"
 )
 
 // TestRegisterContextMiddlewareStopsAfterManagerFailure verifies manager resolution failures stop Echo chains. TestRegisterContextMiddlewareStopsAfterManagerFailure 验证 Manager 解析失败时 Echo 链路会停止。
 func TestRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	e := echo4.New()
 	downstreamCalled := false
@@ -36,11 +37,12 @@ func TestRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
 
 // TestAuthMiddlewareSuccessAndFailure verifies authenticated and rejected requests. TestAuthMiddlewareSuccessAndFailure 验证认证成功与失败请求。
 func TestAuthMiddlewareSuccessAndFailure(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -75,15 +77,16 @@ func TestAuthMiddlewareSuccessAndFailure(t *testing.T) {
 
 // TestAnnotationHandlerControlFlow verifies Echo annotation success and failure paths. TestAnnotationHandlerControlFlow 验证 Echo 注解处理器成功与失败路径。
 func TestAnnotationHandlerControlFlow(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).AuthType("echo-annotation").Build()
+	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).AuthType("echo-annotation").Build()
+	mgr := builtAuth2.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	dtglobal.SetManager(mgr)
 	token, err := mgr.Login(ctx, "echo-annotation-user")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
@@ -96,6 +99,7 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	successReq := httptest.NewRequest(http.MethodGet, "/reports", nil)
 	successReq.Header.Set(mgr.GetConfig().TokenName, token)
 	successCtx := engine.NewContext(successReq, httptest.NewRecorder())
+	getDTokenContext(successCtx, mgr)
 	handled := false
 	err = CheckPermissionMiddleware(ctx, []string{"report:read"}, func(c echo4.Context) error {
 		handled = true
@@ -109,6 +113,7 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	failureReq.Header.Set(mgr.GetConfig().TokenName, token)
 	failureRecorder := httptest.NewRecorder()
 	failureCtx := engine.NewContext(failureReq, failureRecorder)
+	getDTokenContext(failureCtx, mgr)
 	handled = false
 	err = CheckRoleMiddleware(ctx, []string{"admin"}, func(echo4.Context) error {
 		handled = true

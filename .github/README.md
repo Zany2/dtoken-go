@@ -10,6 +10,7 @@
 | `SECURITY.md` | Private vulnerability reporting guidance / 私密漏洞报告说明 |
 | `workflows/ci.yml` | Workspace vet/tests and Redis scenarios / 工作区检查、测试与 Redis 场景 |
 | `dependabot.yml` | Weekly Go dependency and GitHub Actions updates / 每周检查 Go 依赖与 GitHub Actions 更新 |
+| `scripts/check-consumer.sh` | Local-source or published-version facade and Gin consumer checks / 当前源码或发布版本的门面与 Gin 使用方检查 |
 
 ## Activation / 生效方式
 
@@ -21,9 +22,9 @@ Dependabot checks all module directory groups weekly, limits Go update PRs to fi
 
 Dependabot 每周检查各组模块目录，Go 依赖更新最多保留五个 PR，Actions 更新最多保留三个 PR，并合并 Go 次版本和补丁版本更新。仓库内部模块版本由发布流程统一维护。依赖更新 PR 按通常的兼容性要求审核。
 
-Repository administrators can enable private vulnerability reporting in the repository settings. Once CI has passed on GitHub, administrators can select `Workspace checks` as a required status check in a branch ruleset.
+Repository administrators can enable private vulnerability reporting in the repository settings. Once CI has passed on GitHub, administrators can select `Main module minimum Go`, `Workspace checks`, and `Module checks without workspace` as required status checks in a branch ruleset.
 
-仓库管理员可在设置中启用私密漏洞报告。CI 在 GitHub 成功运行后，可在分支规则中将 `Workspace checks` 设为合并前必须通过的检查。
+仓库管理员可在设置中启用私密漏洞报告。CI 在 GitHub 成功运行后，可在分支规则中将 `Main module minimum Go`、`Workspace checks` 和 `Module checks without workspace` 设为合并前必须通过的检查。
 
 ## Official references / 官方参考
 
@@ -36,3 +37,11 @@ Repository administrators can enable private vulnerability reporting in the repo
 CI also runs `.github/scripts/check-modules.sh` with workspace resolution disabled. Temporary module files map local dependencies to the current checkout. This checks the standalone package graph against local sources. Published-version resolution requires the release verification described in the [migration guide](../docs/design/module-migration.md).
 
 CI 还会通过 `.github/scripts/check-modules.sh` 关闭工作区解析，使用临时模块文件将依赖映射到当前源码，检查独立模块的包依赖关系。发布版本的解析需要按[迁移指南](../docs/design/module-migration_zh.md)完成发布验证。
+
+The minimum-Go job reads go.mod and checks the main module with GOWORK=off, including race detection. The external consumer checks root instance APIs, public extension types, explicit global registration, middleware capability bindings, and logout.
+
+最低 Go 版本任务从 go.mod 读取版本，在 GOWORK=off 下检查主模块并启用竞态检测。仓库外消费者检查覆盖根实例 API、公共扩展类型、显式全局注册、中间件能力绑定和退出。
+
+Manual CI accepts `root_version` and `gin_version` together to check published modules. These run the consumer script with explicit versions and remote dependency resolution. The regular consumer step uses the current checkout. See the migration guide for the command and release order.
+
+手动 CI 可同时填写 `root_version` 与 `gin_version` 检查发布模块，消费者脚本使用显式版本和远程依赖解析。常规消费者步骤使用当前源码。命令与发布顺序见迁移指南。

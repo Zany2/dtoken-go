@@ -12,7 +12,7 @@
   <a href="https://github.com/Zany2/dtoken-go"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat-square&logo=go" alt="Go"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue?style=flat-square" alt="License"></a>
   <a href="docs/README_zh.md"><img src="https://img.shields.io/badge/Docs-中文文档-brightgreen?style=flat-square" alt="Docs"></a>
-  <a href="https://pkg.go.dev/github.com/Zany2/dtoken-go/dtoken"><img src="https://img.shields.io/badge/pkg.go.dev-dtoken-007D9C?style=flat-square&logo=go" alt="pkg.go.dev"></a>
+  <a href="https://pkg.go.dev/github.com/Zany2/dtoken-go"><img src="https://img.shields.io/badge/pkg.go.dev-dtoken-007D9C?style=flat-square&logo=go" alt="pkg.go.dev"></a>
 </p>
 
 <p align="center">
@@ -57,270 +57,133 @@ DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，已提供登
 
 ## 安装
 
-根模块统一发布 `core`、`dtoken`、`defaults`、共享鉴权与内置基础组件。框架集成、SSO 和可选组件继续独立管理模块。现有包导入路径继续适用，依赖与发布调整见[模块迁移指南](docs/design/module-migration_zh.md)。
-
-主模块要求 Go 1.25 或更高版本。使用当前仓库的 `go.work` 本地开发时，需要 Go 1.27 或更高版本；可选的 `com/codec/jsonv2` 模块还需要启用 `GOEXPERIMENT=jsonv2`。
-
-### 使用默认核心能力
+根模块要求 Go 1.25+；仓库工作区要求 Go 1.27+。可选 `codec/jsonv2` 需要 `GOEXPERIMENT=jsonv2`。
 
 ```bash
-go get github.com/Zany2/dtoken-go/defaults
-go get github.com/Zany2/dtoken-go/dtoken
-```
-
-### 使用 Web 框架集成
-
-如果项目已经使用某个 Web 框架，可以直接使用对应的 DToken 集成包。集成包封装了 Builder、中间件、上下文适配和常用 DToken API，方便在具体框架中快速接入认证、鉴权和登录态管理。
-
-```bash
+go get github.com/Zany2/dtoken-go
 go get github.com/Zany2/dtoken-go/integrations/gin
 ```
 
-可选框架：
-
-```bash
-go get github.com/Zany2/dtoken-go/integrations/echo
-go get github.com/Zany2/dtoken-go/integrations/fiber
-go get github.com/Zany2/dtoken-go/integrations/chi
-go get github.com/Zany2/dtoken-go/integrations/gf
-go get github.com/Zany2/dtoken-go/integrations/hertz
-go get github.com/Zany2/dtoken-go/integrations/kratos
-go get github.com/Zany2/dtoken-go/integrations/beego
-```
-
-### 使用可插拔组件
-
-```bash
-go get github.com/Zany2/dtoken-go/com/storage/redis
-go get github.com/Zany2/dtoken-go/com/generator/dgenerator
-go get github.com/Zany2/dtoken-go/com/pool/ants
-```
+框架集成、SSO、Redis 存储、MsgPack、JSON v2 和 GoFrame 日志各自使用独立模块。路径与版本升级见[迁移指南](docs/design/module-migration_zh.md)。
 
 ## 5 分钟上手
 
-`dtoken.NewBuilder()` 已经装配默认内存存储、JSON 编解码、默认 Token 生成器和日志组件，适合快速体验。
-
+<!-- dtoken-compile: instance -->
 ```go
 package main
 
 import (
-	"context"
-	"fmt"
+    "context"
+    "fmt"
 
-	"github.com/Zany2/dtoken-go/dtoken"
+    "github.com/Zany2/dtoken-go"
 )
 
 func main() {
-	ctx := context.Background()
+    auth, err := dtoken.NewBuilder().
+        AuthType("user").
+        TokenName("Authorization").
+        Timeout(7200).
+        IsPrintBanner(false).
+        Build()
+    if err != nil {
+        panic(err)
+    }
+    defer auth.Close()
 
-	mgr, err := dtoken.NewBuilder().
-		TokenName("Authorization"). // 从 Authorization 中读取 Token
-		Timeout(7200).              // Token 有效期：7200 秒
-		AutoRenew(true).            // 登录态校验时自动续期
-		IsPrintBanner(false).       // 示例中关闭启动 Banner
-		Build()
-	if err != nil {
-		panic(err)
-	}
-
-	// 注册全局 Manager，之后即可使用 dtoken 全局 API。
-	dtoken.SetManager(mgr)
-
-	// 登录并签发 Token。
-	token, err := dtoken.Login(ctx, "user-1001")
-	if err != nil {
-		panic(err)
-	}
-
-	// 给用户绑定角色和权限。
-	_ = dtoken.AddRoles(ctx, "user-1001", []string{"admin"})
-	_ = dtoken.AddPermissions(ctx, "user-1001", []string{"article:read"})
-
-	// 使用 Token 获取登录账号，并进行权限判断。
-	loginID, _ := dtoken.GetLoginID(ctx, token)
-
-	fmt.Println("token:", token)
-	fmt.Println("loginID:", loginID)
-	fmt.Println("is login:", dtoken.IsLogin(ctx, token))
-	fmt.Println("is admin:", dtoken.HasRole(ctx, loginID, "admin"))
-	fmt.Println("can read article:", dtoken.HasPermission(ctx, loginID, "article:read"))
-
-	// 登出后 Token 失效。
-	_ = dtoken.Logout(ctx, token)
+    ctx := context.Background()
+    token, err := auth.LoginID(ctx, "user-1001")
+    if err != nil {
+        panic(err)
+    }
+    _ = auth.AddRoles(ctx, dtoken.RoleOptions{LoginID: "user-1001", Roles: []string{"admin"}})
+    fmt.Println(auth.IsLogin(ctx, token))
+    _ = auth.LogoutByToken(ctx, token)
 }
 ```
 
-完整示例见 [examples/quick_start](examples/quick_start/)。
+需要全局 API 时，显式导入 `github.com/Zany2/dtoken-go/global`，调用 `global.SetAuth(auth)`，并由 `global.DeleteManager` 或 `global.DeleteAllManager` 清理注册项。实例之间无需全局注册。
 
 ## Web 框架接入
 
-下面以 Gin 为例，业务代码只需要引入 `integrations/gin`。接入时通常分为三步：初始化 DToken、注册中间件、在业务路由中使用登录态和权限能力。
+根包构建实例，框架通过 `WithAuth` 或 `Context` 注入。
 
+<!-- dtoken-compile: gin -->
 ```go
 package main
 
 import (
-	"context"
-	"net/http"
+    "net/http"
 
-	gindt "github.com/Zany2/dtoken-go/integrations/gin"
-	"github.com/gin-gonic/gin"
+    "github.com/Zany2/dtoken-go"
+    gindt "github.com/Zany2/dtoken-go/integrations/gin"
+    "github.com/gin-gonic/gin"
 )
 
 func main() {
-	ctx := context.Background()
+    auth, err := dtoken.NewBuilder().TokenName("Authorization").Build()
+    if err != nil {
+        panic(err)
+    }
+    defer auth.Close()
 
-	mgr, err := gindt.NewBuilder().
-		TokenName("Authorization"). // 从 Authorization Header 中读取 Token
-		Timeout(7200).              // Token 有效期：7200 秒
-		AutoRenew(true).            // 登录态校验时自动续期
-		IsPrintBanner(false).       // 示例中关闭启动 Banner
-		Build()
-	if err != nil {
-		panic(err)
-	}
-
-	// 注册全局 Manager，之后即可使用 gindt 暴露的 DToken API。
-	gindt.SetManager(mgr)
-
-	r := gin.Default()
-
-	// 注册上下文中间件，后续可以通过 GetDTokenContext 读取当前请求的认证上下文。
-	r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
-
-	// 自定义认证或鉴权失败时的响应格式。
-	failFunc := gindt.WithFailFunc(func(c *gin.Context, err error) {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"code":    gindt.CodeNotLogin,
-			"message": err.Error(),
-		})
-	})
-
-	r.POST("/login", func(c *gin.Context) {
-		// 登录成功后签发 Token，客户端后续请求携带 Authorization: Bearer <token>。
-		token, err := gindt.Login(c.Request.Context(), "user-1001")
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-		// 示例：给当前用户绑定角色，实际项目中通常来自数据库或权限中心。
-		_ = gindt.AddRoles(c.Request.Context(), "user-1001", []string{"admin"})
-
-		c.JSON(http.StatusOK, gin.H{"token": token})
-	})
-
-	user := r.Group("/user")
-
-	// AuthMiddleware 会校验请求是否已登录，未登录会直接拦截。
-	user.Use(gindt.AuthMiddleware(ctx, failFunc))
-	user.GET("/me", func(c *gin.Context) {
-		// 从请求上下文中获取当前 Token 对应的登录账号。
-		dCtx, _ := gindt.GetDTokenContext(c)
-		loginID, _ := dCtx.Auth().GetLoginID(c.Request.Context())
-		c.JSON(http.StatusOK, gin.H{"loginId": loginID})
-	})
-
-	admin := r.Group("/admin")
-
-	// RoleMiddleware 会在登录校验之后继续校验角色。
-	admin.Use(gindt.AuthMiddleware(ctx, failFunc), gindt.RoleMiddleware(ctx, []string{"admin"}, failFunc))
-	admin.GET("/dashboard", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "ok"})
-	})
-
-	_ = r.Run(":8080")
+    router := gin.Default()
+    router.Use(gindt.Context(auth))
+    router.POST("/login", func(c *gin.Context) {
+        token, err := auth.LoginID(c.Request.Context(), "user-1001")
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+            return
+        }
+        c.JSON(http.StatusOK, gin.H{"token": token})
+    })
+    users := router.Group("/user")
+    users.Use(gindt.RequireLogin())
+    users.GET("/me", func(c *gin.Context) {
+        loginID, err := gindt.GetLoginIDByContext(c)
+        if err != nil {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+            return
+        }
+        c.JSON(http.StatusOK, gin.H{"loginId": loginID})
+    })
+    if err := router.Run(":8080"); err != nil {
+        panic(err)
+    }
 }
 ```
 
-| 框架 | 示例 | 集成包 |
-| --- | --- | --- |
-| Gin | [examples/gin](examples/gin/) | `github.com/Zany2/dtoken-go/integrations/gin` |
-| Echo | [examples/echo](examples/echo/) | `github.com/Zany2/dtoken-go/integrations/echo` |
-| Fiber | [examples/fiber](examples/fiber/) | `github.com/Zany2/dtoken-go/integrations/fiber` |
-| Chi | [examples/chi](examples/chi/) | `github.com/Zany2/dtoken-go/integrations/chi` |
-| GoFrame | [examples/gf](examples/gf/) | `github.com/Zany2/dtoken-go/integrations/gf` |
-| Hertz | [examples/hertz](examples/hertz/) | `github.com/Zany2/dtoken-go/integrations/hertz` |
-| Kratos | [examples/kratos](examples/kratos/) | `github.com/Zany2/dtoken-go/integrations/kratos` |
-| Beego | [examples/beego](examples/beego/) | `github.com/Zany2/dtoken-go/integrations/beego` |
+## 组合独立能力
 
-## 深入阅读
+Nonce、OAuth2、Ticket 和 ShortKey 通过各自包的构造器创建；`NewService` 可接收认证实例作为事件发布器。使用相同的配置命名空间和存储即可与认证实例组合，Builder 不再提供能力开关。请求上下文通过 `WithCapabilities` 显式接收服务；未注入的能力返回 `ErrModuleNotEnabled`。以下片段在注册路由前使用，需同时导入标准库 `context`。
 
-README 只保留最小上手路径，更多 API、配置和组件说明可以查看下面的专题文档：
-
-- [Core API 速查](docs/guide/reference/core-api-cheatsheet_zh.md)
-- [高级能力](docs/guide/security/advanced-features_zh.md)
-- [配置示例](docs/guide/reference/configuration_zh.md)
-- [组件生态](docs/guide/integration/component-ecosystem_zh.md)
-- [多认证体系](docs/guide/core/multi-auth_zh.md)
-- [封禁体系](docs/guide/core/disable_zh.md)
-- [Token 风格](docs/guide/core/token-style_zh.md)
-- [AccessProvider](docs/guide/core/access-provider_zh.md)
-
-## 项目结构
-
-```text
-dtoken-go/
-├── core/                         # 单个 Go module，内部按能力组织 package
-│   ├── adapter/                  # 存储、编解码、日志、Token 生成器、请求上下文等接口契约
-│   ├── builder/                  # Manager 构建器、组件装配和配置校验入口
-│   ├── config/                   # 核心配置项、默认值和配置校验
-│   ├── context/                  # 请求级 DTokenContext，承载当前请求的 Token 和 Manager
-│   ├── derror/                   # 统一错误、错误码和核心错误定义
-│   ├── listener/                 # 事件模型、事件管理器和监听回调
-│   ├── manager/                  # 登录、Session、终端、权限、角色、封禁等核心逻辑
-│   ├── nonce/                    # Nonce 防重放能力
-│   ├── oauth2/                   # OAuth2 服务端能力
-│   └── utils/                    # 内部通用工具
-├── dtoken/                       # 对外门面 API：全局模式、实例模式和能力分组封装
-├── sso/                          # 可选 SSO 模块：Ticket、共享 Token、远程会话和授权码模式
-├── defaults/                     # 默认 Builder，内置默认存储、编解码、日志和 Token 生成器装配
-├── com/                          # 可插拔组件实现
-│   ├── codec/                    # 编解码组件，如 JSON、MessagePack、Base64
-│   ├── generator/                # Token 生成器
-│   ├── log/                      # 日志组件
-│   ├── pool/                     # 协程池组件
-│   └── storage/                  # 存储组件，如 Memory、Redis
-├── integrations/                 # Web 框架集成包
-│   ├── gin/                      # Gin 中间件、上下文适配和 API 导出
-│   ├── echo/                     # Echo 中间件、上下文适配和 API 导出
-│   ├── fiber/                    # Fiber 中间件、上下文适配和 API 导出
-│   ├── chi/                      # Chi 中间件、上下文适配和 API 导出
-│   ├── gf/                       # GoFrame 中间件、上下文适配和 API 导出
-│   ├── hertz/                    # Hertz 中间件、上下文适配和 API 导出
-│   ├── kratos/                   # Kratos 中间件、上下文适配和 API 导出
-│   └── beego/                    # Beego 过滤器、上下文适配和 API 导出
-├── examples/                     # 快速开始与框架接入示例
-│   ├── quick_start/              # 默认 Builder + 全局 API 最小示例
-│   ├── gin/                      # Gin 示例
-│   ├── sso_gin_server/           # Gin SSO 统一登录中心示例
-│   ├── sso_gin_client/           # Gin SSO 子系统接入示例
-│   ├── sso_server/               # 标准库 SSO 统一登录中心示例
-│   ├── sso_client/               # 标准库 SSO 子系统接入示例
-│   ├── echo/                     # Echo 示例
-│   ├── fiber/                    # Fiber 示例
-│   ├── chi/                      # Chi 示例
-│   ├── gf/                       # GoFrame 示例
-│   ├── hertz/                    # Hertz 示例
-│   ├── kratos/                   # Kratos 示例
-│   └── beego/                    # Beego 示例
-├── tests/                        # 流程测试与测试应用
-│   ├── gin_core_app/             # Gin 核心流程测试应用
-│   └── gin_core_flow/            # 基于 HTTP 流程的核心功能测试
-├── docs/                         # 文档、指南、API 参考和设计说明
-│   ├── guide/core/               # 登录、权限、Session、终端、封禁等核心能力
-│   ├── guide/security/           # Nonce、OAuth2、SSO、JWT、Refresh Token 等安全与协议能力
-│   ├── guide/integration/        # Web 框架、注解、组件、Redis、流程测试
-│   ├── guide/reference/          # 配置示例和 Core API 速查
-│   ├── api/                      # API 参考
-│   ├── design/                   # 架构与设计文档
-│   └── tutorial/                 # 快速开始教程
-├── LICENSE                       # Apache-2.0 开源协议
-├── README_zh.md                  # 中文项目说明
-├── README.md                     # 英文项目说明
-├── go.work                       # Go workspace，统一管理多模块
-└── go.work.sum                   # Workspace 依赖校验文件
+```go
+// Imports: nonce "github.com/Zany2/dtoken-go/nonce",
+// requestcontext "github.com/Zany2/dtoken-go/httpauth/context".
+cfg := auth.Config()
+service := nonce.NewService(
+    nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage()),
+    auth,
+)
+options := []gindt.AuthOption{
+    gindt.WithAuth(auth),
+    gindt.WithCapabilities(requestcontext.Capabilities{Nonce: service}),
+}
+router.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), options...))
 ```
+
+## 包边界
+
+| 包 | 职责 |
+| --- | --- |
+| `dtoken` | 实例门面与默认 Builder |
+| `global` | 全局认证 API 与注册表 |
+| `contract`、`config`、`errors`、`event` | 公共契约、配置、错误、事件 |
+| `internal/engine` | 内部认证引擎，应用不直接导入 |
+| `nonce`、`oauth2`、`ticket`、`shortkey` | 独立组合的能力与服务 |
+| `httpauth`、`httpauth/context` | 共享 HTTP 鉴权与请求上下文 |
+| `codec`、`generator`、`logging`、`pool`、`storage` | 可插拔组件实现 |
+| `integrations/<framework>`、`sso` | 框架适配与独立 SSO 模块 |
 
 ## 文档与示例
 

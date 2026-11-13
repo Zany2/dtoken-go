@@ -2,111 +2,58 @@
 
 # 架构设计
 
-## 总体架构
-
 ```mermaid
 flowchart TD
-    App[Application] --> Facade[dtoken facade]
-    App --> Integrations[Framework integrations]
-    Integrations --> Facade
-    Integrations --> Core[Core auth]
-    Facade --> Core
-    Facade --> Defaults[Default wiring]
-    Defaults --> Core
-    Defaults --> Components[Component implementations]
-    Components --> Contracts[core/adapter contracts]
-    Core --> Contracts
-    SSO[SSO] --> Core
+    App[Application] --> Auth[Root instance facade]
+    App --> Global[Global registry]
+    Global --> Auth
+    Auth --> Engine[Internal auth engine]
+    App --> Services[Nonce OAuth2 Ticket ShortKey services]
+    Services --> Contracts[Public contracts]
+    Engine --> Contracts
+    HTTP[Framework integrations] --> Context[HTTP auth context]
+    Context --> Engine
+    Context --> Services
 ```
-箭头表示代码依赖。根模块统一发布核心、门面、默认装配、基础组件与共享鉴权包。框架集成、SSO 和可选组件采用独立模块。构建入口选择与版本迁移见[模块迁移指南](module-migration_zh.md)。
 
+根包只提供实例 API 与构建入口，`global` 管理注册表和全局便捷调用。认证实现位于 `internal/engine`；公共扩展类型从根包或 `contract` 导入。
+
+独立能力通过各自的 Manager 与 Service 构造器显式组合，通过 `WithCapabilities` 绑定请求上下文。核心引擎不依赖这些能力，框架只适配请求、响应和中间件。实例 API 无需全局注册。
+
+## Manager 实现边界
+
+`internal/engine` 将公开门面放在 `manager.go`，公开持久化模型放在 `model.go`。内部文件在同一个包中按状态所有权与共享操作组织。
+
+| 文件 | 职责 |
+| --- | --- |
+| `constructor.go` | 组件装配、选项与默认所有权 |
+| `internal_lifecycle.go` | 任务接收、实例自有后台任务、关闭与资源释放 |
+| `internal_account_lock.go` | 账号写锁注册表与锁生命周期 |
+| `internal_maintenance.go` | Token 维护代次与活跃时间合并 |
+| `internal_storage.go` | 持久化、过期时间转换与续期基础操作 |
+| `internal_access_mutation.go` | 权限与角色变更、锁内 Token 复核、持久化与事件顺序 |
+| `internal_access_values.go` | Session 权限与角色列表操作 |
+| `internal_terminal.go` | Session 终端筛选与修改 |
+
+Manager 内部按账号锁、Token 维护和运行时关闭划分三组私有状态，后台状态日志由各实例直接持有。关闭时依次拒绝新任务，等待后台任务、已接收任务和监听器完成，再按所有权释放协程池、存储和日志资源。
+
+权限与角色变更 API 共用按账号和按 Token 两条流程。Token 变更先捕获生命周期，再在账号锁内复核。流程仅保存实际变化，在监听器回调前释放锁，已准备的维护任务也在解锁后提交。登录、刷新和终端下线继续通过共享账号锁与 Token 生命周期基础操作协调。
 
 ## 模块划分
 
-### 1. 核心层 (core/)
+根包负责实例门面，global 负责全局注册表。认证实现位于 internal/engine，公共组件契约位于 contract。Nonce、OAuth2、Ticket、ShortKey 通过独立服务组合，HTTP 上下文显式绑定服务；框架只负责请求适配和中间件。
 
-**职责**：提供认证授权的核心能力。
+具体组件位于 codec、generator、logging、pool、storage。SSO 保持独立模块与生命周期。详见[模块化设计](modular_zh.md)和[迁移指南](module-migration_zh.md)。
 
-**主要组件**：
-- `manager` - 认证管理器核心实现
-- `context` - `DTokenContext` 上下文封装
-- `config` - 配置定义与默认值
-- `builder` - Builder 构建器
-- `listener` - 事件监听系统
-- `nonce` - Nonce 防重放能力
-- `oauth2` - OAuth2 能力实现
-- `derror` - 错误定义
-
-**依赖特点**：
-- 不依赖任何 Web 框架
-- 不依赖具体存储实现
-- 通过 `adapter` 接口抽象 Storage、Codec、Log、Pool、Generator
-
-### 2. 全局工具层 (dtoken/)
-
-**职责**：对外提供统一的全局调用入口。
-
-**主要能力**：
-- 登录、登出、踢人下线、顶号
-- 权限、角色、封禁、Session 操作
-- Nonce、OAuth2 等高级能力
-- 多认证体系 `authType` 管理
-
-**特点**：
-- 以 `context.Context` 为统一入口
-- 内部通过全局 `Manager` 映射管理不同认证体系
-
-### 3. SSO 层 (sso/)
-
-**职责**：提供跨服务单点登录流程，同时不让核心 Manager 依赖具体 Web 框架。
-
-**主要能力**：
-- 服务端签发登录 Ticket 和一次性 OAuth2 Code
-- 客户端注册与单点登出回调
-- 可插拔存储，多实例部署可使用 Redis
-
-**依赖特点**：
-- 依赖核心认证契约和 Storage 适配器
-- 由 `sso.Server` 管理 SSO 生命周期和存储所有权
-
-### 4. 组件实现层 (com/)
-
-**职责**：提供可替换组件实现。
-
-**当前模块**：
-- `com/storage/*` - 存储实现
-- `com/codec/*` - 编解码实现
-- `com/generator/dgenerator` - Token 生成器
-- `com/log/*` - 日志实现
-- `com/pool/ants` - 续期协程池实现
-
-### 5. 框架集成层 (integrations/)
-
-**职责**：提供 Web 框架适配。
-
-**当前集成**：
-- `gin`
-- `gf`
-- `echo`
-- `fiber`
-- `chi`
-- `hertz`
-- `kratos`
-- `beego`
-
-**主要功能**：
-- 请求上下文适配
-- `DTokenContext` 注入
-- 中间件封装
-- 注解式校验中间件封装
+代码片段中 dt 是根包的导入别名，dtoken 是 global 包的导入别名。
 
 ## 设计模式
 
 ### 1. Builder 模式
 
 ```go
-mgr, err := defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+mgr, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
     TokenName("Authorization").
     Timeout(86400).
     Build()
@@ -154,8 +101,8 @@ annotation.GET("/profile",
 ### 4. 全局 Manager 注册模式
 
 ```go
-dtoken.SetManager(mgr)
-mgr, err := dtoken.GetManager()
+dtoken.SetManager(mgr.Manager())
+registered, err := dtoken.GetManager()
 ```
 
 **优势**：
@@ -244,7 +191,7 @@ CheckPermissionMiddleware / HasPermission
 - `RenewMaxRefresh` 控制何时触发续期
 - `RenewInterval` 控制同一 Token 的最小续期间隔
 - `ActiveTimeout` 控制最大不活跃时长
-- `com/pool/ants` 提供默认续期任务协程池
+- `pool/ants` 提供默认续期任务协程池
 
 详见：[自动续签设计](auto-renew_zh.md)
 

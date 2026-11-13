@@ -5,6 +5,15 @@ on:
     branches: [main, develop, architecture-refactor]
   pull_request:
   workflow_dispatch:
+    inputs:
+      root_version:
+        description: 'Published root version / 根模块发布版本'
+        required: false
+        type: string
+      gin_version:
+        description: 'Published Gin integration version / Gin 集成发布版本'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -14,6 +23,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  minimum-go:
+    name: Main module minimum Go
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOWORK: 'off'
+      GOTOOLCHAIN: local
+    steps:
+      - name: Check out source / 检出源码
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up minimum Go / 配置最低 Go 版本
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Vet and test main module / 检查并测试主模块
+        run: |
+          go vet -mod=readonly ./...
+          go test -mod=readonly -race -count=1 -timeout=10m ./...
+
   workspace:
     name: Workspace checks
     runs-on: ubuntu-latest
@@ -54,7 +87,7 @@ jobs:
               cd "$module"
 
               # Enable the experiment only for its codec module. 仅为对应编解码模块启用实验特性。
-              if [[ "$module" == "$GITHUB_WORKSPACE/com/codec/jsonv2" ]]; then
+              if [[ "$module" == "$GITHUB_WORKSPACE/codec/jsonv2" ]]; then
                 export GOEXPERIMENT=jsonv2
               fi
 
@@ -69,7 +102,7 @@ jobs:
           DTOKEN_REDIS_URL: redis://127.0.0.1:6379/0
           DTOKEN_MANAGER_TEST_STORAGE: redis
         run: |
-          for module in core com/storage/redis sso/storage/redis tests/gin_core_flow; do
+          for module in . storage/redis sso/storage/redis tests/gin_core_flow; do
             echo "::group::Redis - $module"
             (
               cd "$module"
@@ -96,5 +129,26 @@ jobs:
           go-version-file: go.work
           cache-dependency-path: '**/go.sum'
 
+      - name: Check repository integration exports / 检查仓库框架导出一致性
+        working-directory: integrations/gin
+        run: go run ./internal/integrationexportgen -check
+
       - name: Check standalone modules / 检查独立模块
-        run: bash .github/scripts/check-modules.sh
+        run: |
+          go test ./.github/scripts/check-modules
+          bash .github/scripts/check-modules.sh
+
+      - name: Compile documentation examples / 编译文档示例
+        run: |
+          go test ./.github/scripts/check-docs
+          go run ./.github/scripts/check-docs
+
+      - name: Check external consumer / 检查仓库外使用方
+        run: bash .github/scripts/check-consumer.sh
+
+      - name: Check published consumer / 检查发布版本使用方
+        if: ${{ inputs.root_version != '' || inputs.gin_version != '' }}
+        env:
+          ROOT_VERSION: ${{ inputs.root_version }}
+          GIN_VERSION: ${{ inputs.gin_version }}
+        run: bash .github/scripts/check-consumer.sh "$ROOT_VERSION" "$GIN_VERSION"

@@ -2,9 +2,13 @@
 package main
 
 import (
+	dterror "github.com/Zany2/dtoken-go/errors"
+	dt1 "github.com/Zany2/dtoken-go/global"
+
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Zany2/dtoken-go"
 	"io"
 	"mime"
 	"net/http"
@@ -34,7 +38,7 @@ type LoginRequest struct {
 
 func main() {
 	initDToken()
-	defer echodt.DeleteAllManager()
+	defer dt1.DeleteAllManager()
 
 	e := echo4.New()
 	registerRoutes(e)
@@ -47,7 +51,7 @@ func main() {
 // registerRoutes shares production middleware and routes with regression tests. registerRoutes 与回归测试共用实际中间件和路由。
 func registerRoutes(e *echo4.Echo) {
 	ctx := context.Background()
-	e.Use(echodt.RegisterDTokenContextMiddleware(ctx, echodt.WithFailFunc(writeAuthError)))
+	e.Use(echodt.RegisterDTokenContextMiddleware(ctx, echodt.WithManagerResolver(dt1.GetManager), echodt.WithFailFunc(writeAuthError)))
 	e.POST("/login", handleLogin)
 
 	auth := e.Group("")
@@ -60,16 +64,18 @@ func registerRoutes(e *echo4.Echo) {
 
 // initDToken initializes integration manager initDToken 初始化集成管理器
 func initDToken() {
-	mgr, err := echodt.NewBuilder().
+	builtAuth1, err := dtoken.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
+	mgr := builtAuth1.Manager()
+
 	if err != nil {
 		panic(err)
 	}
 
-	echodt.SetManager(mgr)
+	dt1.SetManager(mgr)
 }
 
 // handleLogin logs in a demo user handleLogin 登录示例用户
@@ -83,7 +89,7 @@ func handleLogin(c echo4.Context) error {
 		if bindErr = decoder.Decode(&req); bindErr == nil {
 			var extra any
 			if err := decoder.Decode(&extra); err != io.EOF {
-				return writeJSON(c, http.StatusBadRequest, echodt.CodeBadRequest, "request body must contain a single JSON object", nil)
+				return writeJSON(c, http.StatusBadRequest, dterror.CodeBadRequest, "request body must contain a single JSON object", nil)
 			}
 		}
 	} else {
@@ -91,34 +97,34 @@ func handleLogin(c echo4.Context) error {
 		bindErr = c.Bind(&req)
 	}
 	if bindErr != nil || req.Username == "" || req.Password == "" {
-		return writeJSON(c, http.StatusBadRequest, echodt.CodeBadRequest, "username and password are required", nil)
+		return writeJSON(c, http.StatusBadRequest, dterror.CodeBadRequest, "username and password are required", nil)
 	}
 
 	if req.Password != "123456" {
-		return writeJSON(c, http.StatusUnauthorized, echodt.CodeNotLogin, "invalid username or password", nil)
+		return writeJSON(c, http.StatusUnauthorized, dterror.CodeNotLogin, "invalid username or password", nil)
 	}
 
-	token, err := echodt.Login(c.Request().Context(), req.Username)
+	token, err := dt1.Login(c.Request().Context(), req.Username)
 	if err != nil {
 		return writeAuthError(c, err)
 	}
 
 	// Grant every demo user the same role and permission; real apps must load their own access rules. 为每个演示用户授予相同角色和权限；实际应用应加载自身的授权规则。
-	if err = echodt.AddRoles(c.Request().Context(), req.Username, []string{"admin"}); err != nil {
+	if err = dt1.AddRoles(c.Request().Context(), req.Username, []string{"admin"}); err != nil {
 		return writeAuthError(c, err)
 	}
-	if err = echodt.AddPermissions(c.Request().Context(), req.Username, []string{"article:read"}); err != nil {
+	if err = dt1.AddPermissions(c.Request().Context(), req.Username, []string{"article:read"}); err != nil {
 		return writeAuthError(c, err)
 	}
 
-	return writeJSON(c, http.StatusOK, echodt.CodeSuccess, "ok", echo4.Map{"token": token})
+	return writeJSON(c, http.StatusOK, dterror.CodeSuccess, "ok", echo4.Map{"token": token})
 }
 
 // handleMe returns current login information handleMe 返回当前登录信息
 func handleMe(c echo4.Context) error {
 	dCtx, ok := echodt.GetDTokenContext(c)
 	if !ok {
-		return writeJSON(c, http.StatusUnauthorized, echodt.CodeNotLogin, "not logged in", nil)
+		return writeJSON(c, http.StatusUnauthorized, dterror.CodeNotLogin, "not logged in", nil)
 	}
 
 	loginID, err := dCtx.Auth().GetLoginID(c.Request().Context())
@@ -135,7 +141,7 @@ func handleMe(c echo4.Context) error {
 		return writeAuthError(c, err)
 	}
 
-	return writeJSON(c, http.StatusOK, echodt.CodeSuccess, "ok", echo4.Map{
+	return writeJSON(c, http.StatusOK, dterror.CodeSuccess, "ok", echo4.Map{
 		"loginId":     loginID,
 		"roles":       roles,
 		"permissions": permissions,
@@ -144,43 +150,43 @@ func handleMe(c echo4.Context) error {
 
 // handleAdmin returns admin data handleAdmin 返回管理员数据
 func handleAdmin(c echo4.Context) error {
-	return writeJSON(c, http.StatusOK, echodt.CodeSuccess, "ok", echo4.Map{"scope": "admin"})
+	return writeJSON(c, http.StatusOK, dterror.CodeSuccess, "ok", echo4.Map{"scope": "admin"})
 }
 
 // handleArticles returns protected article data handleArticles 返回受保护的文章数据
 func handleArticles(c echo4.Context) error {
-	return writeJSON(c, http.StatusOK, echodt.CodeSuccess, "ok", []string{"article-a", "article-b"})
+	return writeJSON(c, http.StatusOK, dterror.CodeSuccess, "ok", []string{"article-a", "article-b"})
 }
 
 // handleLogout logs out current token handleLogout 注销当前 Token
 func handleLogout(c echo4.Context) error {
 	dCtx, ok := echodt.GetDTokenContext(c)
 	if !ok {
-		return writeJSON(c, http.StatusUnauthorized, echodt.CodeNotLogin, "not logged in", nil)
+		return writeJSON(c, http.StatusUnauthorized, dterror.CodeNotLogin, "not logged in", nil)
 	}
 
 	if err := dCtx.Auth().Logout(c.Request().Context()); err != nil {
 		return writeAuthError(c, err)
 	}
 
-	return writeJSON(c, http.StatusOK, echodt.CodeSuccess, "ok", nil)
+	return writeJSON(c, http.StatusOK, dterror.CodeSuccess, "ok", nil)
 }
 
 // writeAuthError distinguishes credential failures from access restrictions and server failures. writeAuthError 区分凭证无效、访问限制及服务端故障。
 func writeAuthError(c echo4.Context, err error) error {
 	switch {
-	case errors.Is(err, echodt.ErrNotLogin), errors.Is(err, echodt.ErrInvalidToken),
-		errors.Is(err, echodt.ErrTokenExpired), errors.Is(err, echodt.ErrActiveTimeout),
-		errors.Is(err, echodt.ErrTokenKickout), errors.Is(err, echodt.ErrTokenReplaced):
-		return writeJSON(c, http.StatusUnauthorized, echodt.CodeNotLogin, err.Error(), nil)
-	case errors.Is(err, echodt.ErrAccountDisabled), errors.Is(err, echodt.ErrDeviceDisabled):
-		return writeJSON(c, http.StatusForbidden, echodt.CodeAccountDisabled, err.Error(), nil)
-	case errors.Is(err, echodt.ErrPermissionDenied), errors.Is(err, echodt.ErrRoleDenied):
-		return writeJSON(c, http.StatusForbidden, echodt.CodePermissionDenied, err.Error(), nil)
+	case errors.Is(err, dterror.ErrNotLogin), errors.Is(err, dterror.ErrInvalidToken),
+		errors.Is(err, dterror.ErrTokenExpired), errors.Is(err, dterror.ErrActiveTimeout),
+		errors.Is(err, dterror.ErrTokenKickout), errors.Is(err, dterror.ErrTokenReplaced):
+		return writeJSON(c, http.StatusUnauthorized, dterror.CodeNotLogin, err.Error(), nil)
+	case errors.Is(err, dterror.ErrAccountDisabled), errors.Is(err, dterror.ErrDeviceDisabled):
+		return writeJSON(c, http.StatusForbidden, dterror.CodeAccountDisabled, err.Error(), nil)
+	case errors.Is(err, dterror.ErrPermissionDenied), errors.Is(err, dterror.ErrRoleDenied):
+		return writeJSON(c, http.StatusForbidden, dterror.CodePermissionDenied, err.Error(), nil)
 	default:
 		// Keep server details in logs rather than HTTP responses. 将服务端详情保留在日志中，不在 HTTP 响应中暴露。
 		c.Logger().Errorf("dtoken request failed: %v", err)
-		return writeJSON(c, http.StatusInternalServerError, echodt.CodeServerError, "internal server error", nil)
+		return writeJSON(c, http.StatusInternalServerError, dterror.CodeServerError, "internal server error", nil)
 	}
 }
 

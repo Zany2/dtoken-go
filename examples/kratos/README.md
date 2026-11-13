@@ -19,7 +19,7 @@ The server listens on `http://localhost:8080`.
 - `GET /articles`: requires the `article:read` permission.
 - `POST /logout`: logs out the current token.
 
-The example uses bundled memory storage through `kratosdt.NewBuilder()`, so no Redis service is required. Login state and authorization data are lost on restart. Tokens expire after two hours; automatic renewal is enabled with a one-hour remaining-lifetime threshold. Managers are closed when the application exits.
+The example uses bundled memory storage through `dtoken.NewBuilder()`, so no Redis service is required. Login state and authorization data are lost on restart. Tokens expire after two hours; automatic renewal is enabled with a one-hour remaining-lifetime threshold. Managers are closed when the application exits.
 
 This is a demonstration credential check. Real applications must verify credentials against their own user data and load the user's actual roles and permissions. By default, repeated logins for the same user and device share a token; logging out that token also invalidates other clients using it.
 
@@ -62,10 +62,18 @@ curl -X POST http://localhost:8080/logout \
 
 ## Key APIs
 
+Build an instance first and keep it open while the server handles requests. These fragments use the handlers and error callbacks from `main.go`.
+
+```go
+authInstance, err := dtoken.NewBuilder().TokenName("Authorization").Build()
+if err != nil { panic(err) }
+defer authInstance.Close()
+```
+
 ```go
 srv := khttp.NewServer(
 	khttp.Address(":8080"),
-	khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware()),
+	khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware(kratosdt.WithAuth(authInstance))),
 )
 
 r.GET("/admin", wrapHandler(handleAdmin, kratosdt.AuthMiddleware(), kratosdt.RoleMiddleware([]string{"admin"})))

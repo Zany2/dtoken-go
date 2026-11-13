@@ -2,28 +2,27 @@ package fiber
 
 import (
 	"context"
+	dtglobal "github.com/Zany2/dtoken-go/global"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
+	gofiber "github.com/gofiber/fiber/v2"
 	"net/http"
 	"testing"
-
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
-	gofiber "github.com/gofiber/fiber/v2"
 )
 
 // TestFiberRepeatedRegistration preserves request ownership unless explicitly overridden. TestFiberRepeatedRegistration 验证重复注册保留请求归属，除非显式覆盖。
 func TestFiberRepeatedRegistration(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	global := newFiberReviewManager(t, "", nil)
 	local := newFiberReviewManager(t, "fiber-registration", nil)
-	dtoken.SetManager(global)
+	dtglobal.SetManager(global)
 	for _, tc := range []struct {
 		name string
 		opts []AuthOption
 		want *manager.Manager
 	}{
 		{"inherit", nil, local},
-		{"auth_type", []AuthOption{WithAuthType(global.GetConfig().AuthType)}, global},
+		{"auth_type", []AuthOption{WithManagerResolver(dtglobal.GetManager), WithAuthType(global.GetConfig().AuthType)}, global},
 		{"explicit", []AuthOption{WithManager(local), WithAuthType("missing")}, local},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

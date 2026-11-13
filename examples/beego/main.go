@@ -2,8 +2,12 @@
 package main
 
 import (
+	dterror "github.com/Zany2/dtoken-go/errors"
+	dt1 "github.com/Zany2/dtoken-go/global"
+
 	"context"
 	"errors"
+	"github.com/Zany2/dtoken-go"
 	"log"
 	"net/http"
 	"time"
@@ -25,7 +29,7 @@ type Response struct {
 
 func main() {
 	initDToken()
-	defer beegodt.DeleteAllManager()
+	defer dt1.DeleteAllManager()
 
 	registerRoutes(web.BeeApp.Handlers)
 
@@ -45,7 +49,7 @@ func registerRoutes(r *web.ControllerRegister) {
 
 	// Validate before Beego's automatic form parser turns malformed input into HTTP 500. 在 Beego 自动表单解析之前校验，避免非法输入被归为 HTTP 500。
 	insertFilter("/login", web.BeforeStatic, validateLoginInput)
-	insertFilter("/*", web.BeforeRouter, beegodt.RegisterDTokenContextMiddleware(ctx, beegodt.WithFailFunc(writeAuthError)))
+	insertFilter("/*", web.BeforeRouter, beegodt.RegisterDTokenContextMiddleware(ctx, beegodt.WithManagerResolver(dt1.GetManager), beegodt.WithFailFunc(writeAuthError)))
 	r.Post("/login", handleLogin)
 
 	insertFilter("/me", web.BeforeRouter, beegodt.AuthMiddleware(ctx, beegodt.WithFailFunc(writeAuthError)))
@@ -65,16 +69,18 @@ func registerRoutes(r *web.ControllerRegister) {
 
 // initDToken initializes integration manager initDToken 初始化集成管理器
 func initDToken() {
-	mgr, err := beegodt.NewBuilder().
+	builtAuth1, err := dtoken.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
+	mgr := builtAuth1.Manager()
+
 	if err != nil {
 		panic(err)
 	}
 
-	beegodt.SetManager(mgr)
+	dt1.SetManager(mgr)
 }
 
 // validateLoginInput retains Query/form support while rejecting partial parse results. validateLoginInput 保留 Query／表单支持，同时拒绝解析失败产生的部分结果。
@@ -92,7 +98,7 @@ func validateLoginInput(c *beegocontext.Context) {
 		c.Request.Body = http.MaxBytesReader(c.ResponseWriter, c.Request.Body, bodyLimit)
 	}
 	if err := c.Input.ParseFormOrMultiForm(web.BConfig.MaxMemory); err != nil {
-		writeJSON(c, http.StatusBadRequest, beegodt.CodeBadRequest, "invalid login input", nil)
+		writeJSON(c, http.StatusBadRequest, dterror.CodeBadRequest, "invalid login input", nil)
 	}
 }
 
@@ -101,39 +107,39 @@ func handleLogin(c *beegocontext.Context) {
 	username := c.Input.Query("username")
 	password := c.Input.Query("password")
 	if username == "" || password == "" {
-		writeJSON(c, http.StatusBadRequest, beegodt.CodeBadRequest, "username and password are required", nil)
+		writeJSON(c, http.StatusBadRequest, dterror.CodeBadRequest, "username and password are required", nil)
 		return
 	}
 
 	if password != "123456" {
-		writeJSON(c, http.StatusUnauthorized, beegodt.CodeNotLogin, "invalid username or password", nil)
+		writeJSON(c, http.StatusUnauthorized, dterror.CodeNotLogin, "invalid username or password", nil)
 		return
 	}
 
-	token, err := beegodt.Login(c.Request.Context(), username)
+	token, err := dt1.Login(c.Request.Context(), username)
 	if err != nil {
 		writeAuthError(c, err)
 		return
 	}
 
 	// Grant demo access to every user; real applications must load their own access rules. 为每个演示用户授予权限；实际应用应加载自身的授权规则。
-	if err = beegodt.AddRoles(c.Request.Context(), username, []string{"admin"}); err != nil {
+	if err = dt1.AddRoles(c.Request.Context(), username, []string{"admin"}); err != nil {
 		writeAuthError(c, err)
 		return
 	}
-	if err = beegodt.AddPermissions(c.Request.Context(), username, []string{"article:read"}); err != nil {
+	if err = dt1.AddPermissions(c.Request.Context(), username, []string{"article:read"}); err != nil {
 		writeAuthError(c, err)
 		return
 	}
 
-	writeJSON(c, http.StatusOK, beegodt.CodeSuccess, "ok", map[string]interface{}{"token": token})
+	writeJSON(c, http.StatusOK, dterror.CodeSuccess, "ok", map[string]interface{}{"token": token})
 }
 
 // handleMe returns current login information handleMe 返回当前登录信息
 func handleMe(c *beegocontext.Context) {
 	dCtx, ok := beegodt.GetDTokenContext(c)
 	if !ok {
-		writeJSON(c, http.StatusUnauthorized, beegodt.CodeNotLogin, "not logged in", nil)
+		writeJSON(c, http.StatusUnauthorized, dterror.CodeNotLogin, "not logged in", nil)
 		return
 	}
 
@@ -154,7 +160,7 @@ func handleMe(c *beegocontext.Context) {
 		return
 	}
 
-	writeJSON(c, http.StatusOK, beegodt.CodeSuccess, "ok", map[string]interface{}{
+	writeJSON(c, http.StatusOK, dterror.CodeSuccess, "ok", map[string]interface{}{
 		"loginId":     loginID,
 		"roles":       roles,
 		"permissions": permissions,
@@ -163,19 +169,19 @@ func handleMe(c *beegocontext.Context) {
 
 // handleAdmin returns admin data handleAdmin 返回管理员数据
 func handleAdmin(c *beegocontext.Context) {
-	writeJSON(c, http.StatusOK, beegodt.CodeSuccess, "ok", map[string]interface{}{"scope": "admin"})
+	writeJSON(c, http.StatusOK, dterror.CodeSuccess, "ok", map[string]interface{}{"scope": "admin"})
 }
 
 // handleArticles returns protected article data handleArticles 返回受保护的文章数据
 func handleArticles(c *beegocontext.Context) {
-	writeJSON(c, http.StatusOK, beegodt.CodeSuccess, "ok", []string{"article-a", "article-b"})
+	writeJSON(c, http.StatusOK, dterror.CodeSuccess, "ok", []string{"article-a", "article-b"})
 }
 
 // handleLogout logs out current token handleLogout 注销当前 Token
 func handleLogout(c *beegocontext.Context) {
 	dCtx, ok := beegodt.GetDTokenContext(c)
 	if !ok {
-		writeJSON(c, http.StatusUnauthorized, beegodt.CodeNotLogin, "not logged in", nil)
+		writeJSON(c, http.StatusUnauthorized, dterror.CodeNotLogin, "not logged in", nil)
 		return
 	}
 
@@ -184,24 +190,24 @@ func handleLogout(c *beegocontext.Context) {
 		return
 	}
 
-	writeJSON(c, http.StatusOK, beegodt.CodeSuccess, "ok", nil)
+	writeJSON(c, http.StatusOK, dterror.CodeSuccess, "ok", nil)
 }
 
 // writeAuthError uses one response policy for filters and handlers. writeAuthError 为过滤器与处理器使用统一的错误响应规则。
 func writeAuthError(c *beegocontext.Context, err error) {
 	switch {
-	case errors.Is(err, beegodt.ErrNotLogin), errors.Is(err, beegodt.ErrInvalidToken),
-		errors.Is(err, beegodt.ErrTokenExpired), errors.Is(err, beegodt.ErrActiveTimeout),
-		errors.Is(err, beegodt.ErrTokenKickout), errors.Is(err, beegodt.ErrTokenReplaced):
-		writeJSON(c, http.StatusUnauthorized, beegodt.CodeNotLogin, "not logged in or token invalid", nil)
-	case errors.Is(err, beegodt.ErrAccountDisabled), errors.Is(err, beegodt.ErrDeviceDisabled):
-		writeJSON(c, http.StatusForbidden, beegodt.CodeAccountDisabled, "account or device disabled", nil)
-	case errors.Is(err, beegodt.ErrPermissionDenied), errors.Is(err, beegodt.ErrRoleDenied):
-		writeJSON(c, http.StatusForbidden, beegodt.CodePermissionDenied, "permission denied", nil)
+	case errors.Is(err, dterror.ErrNotLogin), errors.Is(err, dterror.ErrInvalidToken),
+		errors.Is(err, dterror.ErrTokenExpired), errors.Is(err, dterror.ErrActiveTimeout),
+		errors.Is(err, dterror.ErrTokenKickout), errors.Is(err, dterror.ErrTokenReplaced):
+		writeJSON(c, http.StatusUnauthorized, dterror.CodeNotLogin, "not logged in or token invalid", nil)
+	case errors.Is(err, dterror.ErrAccountDisabled), errors.Is(err, dterror.ErrDeviceDisabled):
+		writeJSON(c, http.StatusForbidden, dterror.CodeAccountDisabled, "account or device disabled", nil)
+	case errors.Is(err, dterror.ErrPermissionDenied), errors.Is(err, dterror.ErrRoleDenied):
+		writeJSON(c, http.StatusForbidden, dterror.CodePermissionDenied, "permission denied", nil)
 	default:
 		// Keep internal details in server logs. 将内部详情保留在服务端日志中。
 		log.Printf("dtoken request failed: %v", err)
-		writeJSON(c, http.StatusInternalServerError, beegodt.CodeServerError, "internal server error", nil)
+		writeJSON(c, http.StatusInternalServerError, dterror.CodeServerError, "internal server error", nil)
 	}
 }
 

@@ -3,18 +3,19 @@ package fiber
 import (
 	"context"
 	"errors"
+	dtglobal "github.com/Zany2/dtoken-go/global"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
 	gofiber "github.com/gofiber/fiber/v2"
 )
 
 // TestRegisterContextMiddlewareStopsAfterManagerFailure verifies manager resolution failures stop Fiber chains. TestRegisterContextMiddlewareStopsAfterManagerFailure 验证 Manager 解析失败时 Fiber 链路会停止。
 func TestRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	app := gofiber.New()
 	downstreamCalled := false
@@ -39,11 +40,12 @@ func TestRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
 
 // TestAuthMiddlewareSuccessAndFailure verifies authenticated and rejected requests. TestAuthMiddlewareSuccessAndFailure 验证认证成功与失败请求。
 func TestAuthMiddlewareSuccessAndFailure(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -84,15 +86,16 @@ func TestAuthMiddlewareSuccessAndFailure(t *testing.T) {
 
 // TestAnnotationHandlerControlFlow verifies Fiber annotation success and failure paths. TestAnnotationHandlerControlFlow 验证 Fiber 注解处理器成功与失败路径。
 func TestAnnotationHandlerControlFlow(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).AuthType("fiber-annotation").Build()
+	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).AuthType("fiber-annotation").Build()
+	mgr := builtAuth2.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	dtglobal.SetManager(mgr)
 	token, err := mgr.Login(ctx, "fiber-annotation-user")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
@@ -102,6 +105,7 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	}
 
 	app := gofiber.New()
+	app.Use(RegisterDTokenContextMiddleware(ctx, WithManager(mgr)))
 	handled := false
 	app.Get("/reports", CheckPermissionMiddleware(ctx, []string{"report:read"}, func(c *gofiber.Ctx) error {
 		handled = true
@@ -119,6 +123,7 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	}
 
 	app = gofiber.New()
+	app.Use(RegisterDTokenContextMiddleware(ctx, WithManager(mgr)))
 	handled = false
 	app.Get("/reports", CheckRoleMiddleware(ctx, []string{"admin"}, func(c *gofiber.Ctx) error {
 		handled = true

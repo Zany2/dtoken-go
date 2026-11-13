@@ -19,7 +19,7 @@ The server listens on `http://localhost:8080`.
 - `GET /articles`: requires the `article:read` permission.
 - `POST /logout`: logs out the current token.
 
-The example uses bundled memory storage through `beegodt.NewBuilder()`, so no Redis service is required. Login state and authorization data are lost on restart. Tokens expire after two hours; automatic renewal is enabled with a one-hour remaining-lifetime threshold.
+The example uses bundled memory storage through `dtoken.NewBuilder()`, so no Redis service is required. Login state and authorization data are lost on restart. Tokens expire after two hours; automatic renewal is enabled with a one-hour remaining-lifetime threshold.
 
 This is a demonstration credential check. Real applications must verify credentials against their user data and load the user's actual roles and permissions. By default, repeated logins for the same user and device share a token; logging out that token invalidates all clients using it.
 

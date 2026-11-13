@@ -8,12 +8,10 @@
 
 ## 步骤1：安装
 
-### 方式一：核心模块 + 内存存储
+### 方式一：根模块与默认内存存储
 
 ```bash
-go get github.com/Zany2/dtoken-go/defaults
-go get github.com/Zany2/dtoken-go/dtoken
-go get github.com/Zany2/dtoken-go/com/storage/memory
+go get github.com/Zany2/dtoken-go
 ```
 
 ### 方式二：直接使用框架集成包
@@ -22,48 +20,51 @@ go get github.com/Zany2/dtoken-go/com/storage/memory
 
 ```bash
 go get github.com/Zany2/dtoken-go/integrations/gin
-go get github.com/Zany2/dtoken-go/com/storage/memory
 ```
 
 ## 步骤2：初始化
 
+<!-- dtoken-compile: quick-start -->
 ```go
 package main
 
 import (
+    dt "github.com/Zany2/dtoken-go"
+    dtoken "github.com/Zany2/dtoken-go/global"
     "context"
-
-    "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/defaults"
-    "github.com/Zany2/dtoken-go/dtoken"
 )
 
 var ctx = context.Background()
 
-func init() {
-    mgr, err := defaults.NewBuilder().
-        SetStorage(memory.NewStorage()).
+func initDToken() *dtoken.Auth {
+    auth, err := dt.NewBuilder().
         TokenName("Authorization").
         Timeout(86400).
         Build()
     if err != nil {
         panic(err)
     }
-    dtoken.SetManager(mgr)
+    dtoken.SetAuth(auth)
+    return auth
 }
 ```
 
 ### 初始化说明
 
-- `defaults.NewBuilder()` 用来构建 `Manager`
-- `SetStorage(...)` 用来指定存储实现
-- `dtoken.SetManager(...)` 用来注册全局 `Manager`
-- 后续业务中就可以直接通过 `dtoken` 调用能力
+- `dt.NewBuilder().Build()` 创建认证实例，默认使用内存存储。
+- `Storage(...)` 可以替换存储实现。
+- `dtoken.SetAuth(auth)` 为下文的全局 API 注册实例。
+- `auth.Close()` 释放实例资源；全局注册项通过 global.DeleteManager 或 global.DeleteAllManager 清理。
 
 ## 步骤3：使用
 
+<!-- dtoken-compile: quick-start -->
 ```go
 func main() {
+    auth := initDToken()
+    defer auth.Close()
+    defer dtoken.DeleteAllManager()
+
     // 登录
     token, _ := dtoken.Login(ctx, "1000")
 
@@ -88,8 +89,7 @@ func main() {
 你可以继续通过 Builder 调整常见配置：
 
 ```go
-mgr, err := defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+auth, err := dt.NewBuilder().
     TokenName("token").
     Timeout(7200).
     ActiveTimeout(1800).
@@ -101,7 +101,9 @@ if err != nil {
     panic(err)
 }
 
-dtoken.SetManager(mgr)
+defer auth.Close()
+    defer dtoken.DeleteAllManager()
+dtoken.SetAuth(auth)
 ```
 
 常见配置含义：

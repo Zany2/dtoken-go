@@ -17,10 +17,13 @@ The root module contains core, facade, default wiring, basic components, and sha
 
 | Directory / 目录 | Responsibility / 职责 |
 | --- | --- |
-| `core` | Authentication, configuration, managers, context, and protocols / 认证、配置、管理器、上下文与协议 |
-| `dtoken` | Public global and instance facade APIs / 公开的全局与实例门面 API |
-| `defaults` | Default builder and component wiring / 默认构建器与组件装配 |
-| `com` | Pluggable codecs, storage, logging, generators, and pools / 可插拔编解码、存储、日志、生成器和协程池 |
+| Root package / 根包 | Instance facade, builder, extension types / 实例门面、构建器和扩展类型 |
+| global | Global facade and registry / 全局门面与注册表 |
+| internal/engine, internal/builder, internal/defaults | Authentication and default wiring / 认证实现与默认装配 |
+| contract, config, errors, event | Public contracts, configuration, events / 公共契约、配置与事件 |
+| nonce, oauth2, ticket, shortkey | Explicit capability services / 显式组合的能力服务 |
+| httpauth, httpauth/context | Shared checks and service bindings / 共享鉴权与服务绑定 |
+| codec, generator, logging, pool, storage | Pluggable components / 可插拔组件 |
 | `integrations` | Framework-specific middleware and adapters / Web 框架中间件与适配器 |
 | `sso` | SSO server, client, protocols, and storage / 单点登录服务端、客户端、协议与存储 |
 | `examples` | Runnable integration examples / 可运行的集成示例 |
@@ -33,12 +36,15 @@ Use the Go version declared in `go.work` or a compatible newer version. The work
 
 使用 `go.work` 声明的 Go 版本或兼容的更高版本。当前工作区要求 Go 1.27.0，大多数独立模块声明 Go 1.25.0。在对应模块目录执行 Go 命令，工作区会将内部模块依赖解析到当前源码。
 
-The `com/codec/jsonv2` module requires `GOEXPERIMENT=jsonv2`. Enable it for that module's commands. 运行 `com/codec/jsonv2` 模块相关命令时，需要启用 `GOEXPERIMENT=jsonv2`。
+The `codec/jsonv2` module requires `GOEXPERIMENT=jsonv2`. Enable it for that module's commands. 运行 `codec/jsonv2` 模块相关命令时，需要启用 `GOEXPERIMENT=jsonv2`。
 
 ## Change guidelines / 变更规范
 
 - Keep changes focused and respect the module boundaries above. 保持改动聚焦，遵循模块职责边界。
 - Reuse existing helpers and preserve public API compatibility unless a change explicitly requires otherwise. 复用现有逻辑，按需求明确处理公开 API 兼容性。
+- Keep instance APIs in the root and registry APIs in global; compose capabilities outside the engine. 实例 API 放在根包，注册表 API 放在 global，能力在引擎之外组合。
+- Use root `dtoken.NewBuilder().Build()` and explicit `WithAuth` injection in new application examples. 新应用示例使用根包构建器和显式实例注入。
+- Add optional components in their own packages. Frameworks expose HTTP integration APIs; shared export updates use the generator in `integrations/gin`. 可选组件在各自包中扩展，框架只提供 HTTP 集成 API，共用导出更新通过 `integrations/gin` 中的生成器同步。
 - Add concise bilingual Go comments using `// English 中文` for exported APIs and non-obvious logic. 公开 API 和关键逻辑使用简洁的双语注释。
 - Run `gofmt` on changed Go files. 对修改的 Go 文件使用 `gofmt` 格式化。
 - Add focused regression coverage for bug fixes and update affected English and Chinese documentation. 缺陷修复补充针对性回归覆盖，同步受影响的中英文文档。
@@ -53,7 +59,7 @@ go vet ./...
 go test -count=1 -timeout=5m ./...
 ```
 
-For JSON v2, run from `com/codec/jsonv2`. JSON v2 模块使用以下命令。
+For JSON v2, run from `codec/jsonv2`. JSON v2 模块使用以下命令。
 
 ```bash
 GOEXPERIMENT=jsonv2 go vet ./...
@@ -75,4 +81,22 @@ CI enumerates workspace modules, runs vet and tests, then reruns Redis-backed sc
 
 CI 会遍历工作区模块执行检查和测试，再使用临时 Redis 服务运行相关场景。PR 请如实填写执行的命令、结果与跳过的检查。
 
+The regular pool suite checks a bounded scale-up and scale-down cycle. The 30-minute observation test uses the `stress` build tag. 常规协程池测试验证有界的扩容与缩容周期，30 分钟观察用例通过 `stress` 构建标签显式启用。
+
+```bash
+go test -tags=stress -run '^TestRenewPoolManagerAutoScale$' -count=1 -timeout=35m ./pool/ants
+```
+
 Module ownership, builder selection, and release migration are described in the [module migration guide](../docs/design/module-migration.md). 模块归属、构建入口与发布迁移见[模块迁移指南](../docs/design/module-migration_zh.md)。
+
+Independent module checks copy each module outside the checkout, exclude nested modules, and disable workspace resolution. Local replacements still select the checkout dependency versions. Cross-framework generated exports are checked separately at repository level. 独立模块检查会将各模块复制到仓库外，排除嵌套模块并关闭工作区解析；依赖版本仍通过本地替换指向当前源码。跨框架生成文件在仓库级单独检查。
+
+```bash
+go run ./.github/scripts/check-modules
+go run ./.github/scripts/check-modules ./integrations/gin
+go run ./.github/scripts/check-docs
+```
+
+The documentation check compiles marked Go blocks directly from both READMEs, quick-start, authentication, permission and integration guides; repeated markers in one document form one program. It does not execute the examples or start servers. 文档检查直接编译中英文 README、快速开始、认证、权限和集成指南中带标记的 Go 代码块；同一文档中的相同标记会合并为一个程序，不运行示例或启动服务器。
+
+From `integrations/gin`, run `go run ./internal/integrationexportgen -check` to check all framework exports without rewriting them. 在 `integrations/gin` 中运行该命令可只检查所有框架导出，不改写文件。

@@ -6,6 +6,14 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	dtglobal "github.com/Zany2/dtoken-go/global"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	"github.com/Zany2/dtoken-go/internal/defaults"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
+	"github.com/Zany2/dtoken-go/storage/memory"
+	web "github.com/beego/beego/v2/server/web"
+	beegocontext "github.com/beego/beego/v2/server/web/context"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -15,14 +23,6 @@ import (
 	"testing"
 	"testing/iotest"
 	"time"
-
-	"github.com/Zany2/dtoken-go/com/storage/memory"
-	"github.com/Zany2/dtoken-go/core/adapter"
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
-	web "github.com/beego/beego/v2/server/web"
-	beegocontext "github.com/beego/beego/v2/server/web/context"
 )
 
 // beegoReviewChecks covers authentication filters and annotation-based access. beegoReviewChecks 覆盖鉴权过滤器及基于注解的访问检查。
@@ -49,12 +49,12 @@ var beegoReviewChecks = []struct {
 // newBeegoReviewManager creates an isolated manager without asynchronous work. newBeegoReviewManager 创建无异步任务的独立 Manager。
 func newBeegoReviewManager(t *testing.T, authType string, storage adapter.Storage) *manager.Manager {
 	t.Helper()
-	b := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
+	b := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
 	if authType != "" {
 		b.AuthType(authType)
 	}
 	if storage != nil {
-		b.SetStorage(storage)
+		b.Storage(storage)
 	}
 	mgr, err := b.Build()
 	if err != nil {
@@ -111,8 +111,8 @@ func beegoReviewRouter(t *testing.T, handler web.FilterFunc, filters ...web.Filt
 
 // TestBeegoReviewRequestContext verifies request values, deadlines and cancellation reach checks and hooks. TestBeegoReviewRequestContext 验证请求值、截止时间及取消信号传入鉴权和钩子。
 func TestBeegoReviewRequestContext(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	for _, check := range beegoReviewChecks {
 		t.Run(check.name, func(t *testing.T) {
 			storage := &beegoReviewStorage{Storage: memory.NewStorage()}
@@ -170,8 +170,8 @@ func TestBeegoReviewRequestContext(t *testing.T) {
 
 // TestBeegoReviewFailureStopsNativeChain verifies even silent failure callbacks prevent controller execution. TestBeegoReviewFailureStopsNativeChain 验证失败回调即使不输出也会阻止控制器执行。
 func TestBeegoReviewFailureStopsNativeChain(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	mgr := newBeegoReviewManager(t, "beego-failure", nil)
 	for _, check := range beegoReviewChecks {
 		for _, missingManager := range []bool{false, true} {
@@ -306,13 +306,13 @@ func TestBeegoReviewHookControlFlow(t *testing.T) {
 
 // TestBeegoReviewManagerIsolation verifies priority, invalid managers and manager-local renewal. TestBeegoReviewManagerIsolation 验证选择优先级、无效 Manager 及实例内续期。
 func TestBeegoReviewManagerIsolation(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	global := newBeegoReviewManager(t, "", nil)
 	local := newBeegoReviewManager(t, "beego-local", nil)
 	selected := newBeegoReviewManager(t, "beego-selected", nil)
-	dtoken.SetManager(global)
-	dtoken.SetManager(selected)
+	dtglobal.SetManager(global)
+	dtglobal.SetManager(selected)
 	beegoReviewLogin(t, global, "same-token")
 	beegoReviewLogin(t, local, "same-token")
 	c, _ := newBeegoBehaviorContext(http.MethodGet, "/review", local.GetConfig().TokenName, "same-token")
@@ -324,7 +324,7 @@ func TestBeegoReviewManagerIsolation(t *testing.T) {
 	}{
 		{nil, "", local}, {nil, "beego-selected", selected}, {local, "missing", local},
 	} {
-		if got, err := resolveRequestManager(c, tc.explicit, tc.authType); err != nil || got != tc.want {
+		if got, err := resolveRequestManager(c, tc.explicit, tc.authType, dtglobal.GetManager); err != nil || got != tc.want {
 			t.Fatalf("manager=%p,%v want=%p", got, err, tc.want)
 		}
 	}
@@ -342,8 +342,8 @@ func TestBeegoReviewManagerIsolation(t *testing.T) {
 	}
 	var typedNil *DTokenContext
 	c.Input.SetData(DTokenCtxKey, typedNil)
-	if got, err := GetManagerByContext(c); err != nil || got != global {
-		t.Fatalf("typed nil fallback=%p,%v", got, err)
+	if got, err := GetManagerByContext(c); !errors.Is(err, ErrManagerNotFound) {
+		t.Fatalf("typed nil missing binding=%p,%v", got, err)
 	}
 	local.CloseManager()
 	for _, mgr := range []*manager.Manager{nil, local} {
@@ -362,7 +362,7 @@ func TestBeegoReviewManagerIsolation(t *testing.T) {
 // TestBeegoReviewTokenSources verifies Query, Body and route parameters remain separate. TestBeegoReviewTokenSources 验证 Query、Body 与路由参数保持独立。
 func TestBeegoReviewTokenSources(t *testing.T) {
 	for _, bodyOnly := range []bool{false, true} {
-		b := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+		b := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
 			IsReadHeader(false).IsReadCookie(false).IsReadQuery(!bodyOnly).IsReadBody(bodyOnly)
 		mgr, err := b.Build()
 		if err != nil {

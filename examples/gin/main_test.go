@@ -1,23 +1,28 @@
 package main
 
 import (
+	dtoken "github.com/Zany2/dtoken-go"
+	dt2 "github.com/Zany2/dtoken-go/contract"
+	dterror "github.com/Zany2/dtoken-go/errors"
+	dt1 "github.com/Zany2/dtoken-go/internal/engine"
+	dt3 "github.com/Zany2/dtoken-go/storage/memory"
+
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	dtglobal "github.com/Zany2/dtoken-go/global"
+	gindt "github.com/Zany2/dtoken-go/integrations/gin"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"github.com/Zany2/dtoken-go/dtoken"
-	gindt "github.com/Zany2/dtoken-go/integrations/gin"
-	"github.com/gin-gonic/gin"
 )
 
 func TestInitDTokenConfiguration(t *testing.T) {
 	setupGinManager(t)
-	mgr, err := gindt.GetManager()
+	mgr, err := dtglobal.GetManager()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +41,7 @@ func TestLoginAndRefreshValidation(t *testing.T) {
 	setupGinManager(t)
 
 	r := gin.New()
-	r.Use(gindt.RegisterDTokenContextMiddleware(context.Background()))
+	r.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), gindt.WithManagerResolver(dtglobal.GetManager)))
 	r.POST("/login", handleLogin)
 	r.POST("/refresh", handleRefresh)
 	auth := r.Group("/", gindt.AuthMiddleware(context.Background()))
@@ -57,19 +62,19 @@ func TestLoginAndRefreshValidation(t *testing.T) {
 		t.Fatalf("login status = %d, want %d", login.Code, http.StatusOK)
 	}
 	var envelope struct {
-		Code int                    `json:"code"`
-		Data gindt.RefreshTokenPair `json:"data"`
+		Code int                  `json:"code"`
+		Data dt1.RefreshTokenPair `json:"data"`
 	}
 	if err := json.Unmarshal(login.Body.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode login response: %v", err)
 	}
-	if envelope.Code != gindt.CodeSuccess || envelope.Data.AccessToken == "" || envelope.Data.RefreshToken == "" {
+	if envelope.Code != dterror.CodeSuccess || envelope.Data.AccessToken == "" || envelope.Data.RefreshToken == "" {
 		t.Fatalf("login envelope = %+v, want success and both tokens", envelope)
 	}
-	if !dtoken.HasRole(context.Background(), "alice", "admin") {
+	if !dtglobal.HasRole(context.Background(), "alice", "admin") {
 		t.Fatal("login did not seed admin role")
 	}
-	if !dtoken.HasPermission(context.Background(), "alice", "article:read") {
+	if !dtglobal.HasPermission(context.Background(), "alice", "article:read") {
 		t.Fatal("login did not seed article permission")
 	}
 
@@ -82,13 +87,13 @@ func TestLoginAndRefreshValidation(t *testing.T) {
 		t.Fatalf("refresh status = %d, want %d", refresh.Code, http.StatusOK)
 	}
 	var rotated struct {
-		Code int                    `json:"code"`
-		Data gindt.RefreshTokenPair `json:"data"`
+		Code int                  `json:"code"`
+		Data dt1.RefreshTokenPair `json:"data"`
 	}
 	if err := json.Unmarshal(refresh.Body.Bytes(), &rotated); err != nil {
 		t.Fatalf("decode refresh response: %v", err)
 	}
-	if rotated.Code != gindt.CodeSuccess || rotated.Data.AccessToken == "" || rotated.Data.RefreshToken == "" ||
+	if rotated.Code != dterror.CodeSuccess || rotated.Data.AccessToken == "" || rotated.Data.RefreshToken == "" ||
 		rotated.Data.AccessToken == envelope.Data.AccessToken || rotated.Data.RefreshToken == envelope.Data.RefreshToken {
 		t.Fatal("refresh must return a new access token and refresh token")
 	}
@@ -132,18 +137,18 @@ func TestProtectedRoutesIntrospectionAndLogout(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupGinManager(t)
 	ctx := context.Background()
-	mgr, err := dtoken.GetManager()
+	mgr, err := dtglobal.GetManager()
 	if err != nil {
 		t.Fatalf("GetManager() error = %v", err)
 	}
-	pair, err := dtoken.LoginWithRefreshToken(ctx, "alice", "web", "browser")
+	pair, err := dtglobal.LoginWithRefreshToken(ctx, "alice", "web", "browser")
 	if err != nil {
 		t.Fatalf("LoginWithRefreshToken() error = %v", err)
 	}
-	if err = dtoken.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
+	if err = dtglobal.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
 		t.Fatalf("AddRoles() error = %v", err)
 	}
-	if err = dtoken.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
+	if err = dtglobal.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
 		t.Fatalf("AddPermissions() error = %v", err)
 	}
 	if mgr.GetConfig().TokenName == "" {
@@ -164,7 +169,7 @@ func TestProtectedRoutesIntrospectionAndLogout(t *testing.T) {
 		t.Fatalf("unauthorized /me status = %d, want %d", unauthorized.Code, http.StatusUnauthorized)
 	}
 
-	bobToken, err := dtoken.Login(ctx, "bob")
+	bobToken, err := dtglobal.Login(ctx, "bob")
 	if err != nil {
 		t.Fatalf("Login(bob) error = %v", err)
 	}
@@ -196,21 +201,22 @@ func TestLoginRejectsDisabledAccountsAndDevices(t *testing.T) {
 			setupGinManager(t)
 			var err error
 			if device {
-				err = gindt.DisableDevice(context.Background(), "alice", "web", time.Hour)
+				err = dtglobal.DisableDevice(context.Background(), "alice", "web", time.Hour)
 			} else {
-				err = gindt.Disable(context.Background(), "alice", time.Hour, "")
+				err = dtglobal.Disable(context.Background(), "alice", time.Hour, "")
 			}
 			if err != nil {
 				t.Fatal(err)
 			}
 			r := gin.New()
+			r.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), gindt.WithManagerResolver(dtglobal.GetManager)))
 			r.POST("/login", handleLogin)
 			rec := requestGin(t, r, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
 			var response Response
 			if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 				t.Fatal(err)
 			}
-			if rec.Code != http.StatusForbidden || response.Code != gindt.CodeAccountDisabled || response.Data != nil {
+			if rec.Code != http.StatusForbidden || response.Code != dterror.CodeAccountDisabled || response.Data != nil {
 				t.Fatalf("disabled login status=%d response=%+v", rec.Code, response)
 			}
 		})
@@ -221,14 +227,15 @@ func TestRefreshRejectsDisabledDeviceWithoutConsumingToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupGinManager(t)
 	ctx := context.Background()
-	pair, err := gindt.LoginWithRefreshToken(ctx, "alice", "web", "gin-example")
+	pair, err := dtglobal.LoginWithRefreshToken(ctx, "alice", "web", "gin-example")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := gindt.DisableDevice(ctx, "alice", "web", time.Hour); err != nil {
+	if err := dtglobal.DisableDevice(ctx, "alice", "web", time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	r := gin.New()
+	r.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), gindt.WithManagerResolver(dtglobal.GetManager)))
 	r.POST("/refresh", handleRefresh)
 	body := `{"refreshToken":"` + pair.RefreshToken + `"}`
 	rec := requestGin(t, r, http.MethodPost, "/refresh", body, "")
@@ -236,10 +243,10 @@ func TestRefreshRejectsDisabledDeviceWithoutConsumingToken(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if rec.Code != http.StatusForbidden || response.Code != gindt.CodeAccountDisabled || response.Data != nil {
+	if rec.Code != http.StatusForbidden || response.Code != dterror.CodeAccountDisabled || response.Data != nil {
 		t.Fatalf("disabled refresh status=%d response=%+v", rec.Code, response)
 	}
-	if err := gindt.UntieDevice(ctx, "alice", "web"); err != nil {
+	if err := dtglobal.UntieDevice(ctx, "alice", "web"); err != nil {
 		t.Fatal(err)
 	}
 	retry := requestGin(t, r, http.MethodPost, "/refresh", body, "")
@@ -250,20 +257,22 @@ func TestRefreshRejectsDisabledDeviceWithoutConsumingToken(t *testing.T) {
 
 func TestHandlersReportStorageFailures(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	gindt.DeleteAllManager()
-	t.Cleanup(gindt.DeleteAllManager)
-	mgr, err := gindt.NewBuilder().
-		SetStorage(&ginFailingStorage{Storage: gindt.NewMemoryStorage()}).
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
+	builtAuth1, err := dtoken.NewBuilder().
+		Storage(&ginFailingStorage{Storage: dt3.NewStorage()}).
 		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).
 		Build()
+	mgr := builtAuth1.Manager()
+
 	if err != nil {
 		t.Fatal(err)
 	}
-	gindt.SetManager(mgr)
+	dtglobal.SetManager(mgr)
 
 	// Register only request context to exercise each handler's own failure path. 仅注册请求上下文，以覆盖各处理器自身的错误分支。
 	r := gin.New()
-	r.Use(gindt.RegisterDTokenContextMiddleware(context.Background()))
+	r.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), gindt.WithAuth(builtAuth1)))
 	r.POST("/login", handleLogin)
 	r.POST("/refresh", handleRefresh)
 	r.GET("/me", handleMe)
@@ -286,7 +295,7 @@ func TestHandlersReportStorageFailures(t *testing.T) {
 			if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 				t.Fatal(err)
 			}
-			if rec.Code != http.StatusInternalServerError || response.Code != gindt.CodeServerError ||
+			if rec.Code != http.StatusInternalServerError || response.Code != dterror.CodeServerError ||
 				response.Message != "internal server error" || response.Data != nil {
 				t.Fatalf("storage failure status=%d response=%+v", rec.Code, response)
 			}
@@ -296,7 +305,7 @@ func TestHandlersReportStorageFailures(t *testing.T) {
 
 // ginFailingStorage keeps initialization valid but fails every authentication read. ginFailingStorage 允许正常初始化，但使每次鉴权读取失败。
 type ginFailingStorage struct {
-	gindt.Storage
+	dt2.Storage
 }
 
 func (s *ginFailingStorage) Get(context.Context, string) (any, error) {
@@ -305,8 +314,8 @@ func (s *ginFailingStorage) Get(context.Context, string) (any, error) {
 
 func setupGinManager(t *testing.T) {
 	t.Helper()
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	initDToken()
 }
 
@@ -315,7 +324,7 @@ func requestGin(t *testing.T, router *gin.Engine, method, path, body, token stri
 	request := httptest.NewRequest(method, path, bytes.NewBufferString(body))
 	request.Header.Set("Content-Type", "application/json")
 	if token != "" {
-		mgr, err := dtoken.GetManager()
+		mgr, err := dtglobal.GetManager()
 		if err != nil {
 			t.Fatalf("GetManager() error = %v", err)
 		}

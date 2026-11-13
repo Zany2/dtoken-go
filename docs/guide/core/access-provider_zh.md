@@ -1,5 +1,7 @@
 # AccessProvider
 
+代码片段的导入别名：dt = github.com/Zany2/dtoken-go.
+
 [English](../core/access-provider.md) | 中文文档
 
 `AccessProvider` 用于从业务系统动态解析权限和角色。它适合权限数据保存在数据库、RBAC 服务、配置中心或第三方权限平台的场景。
@@ -47,8 +49,8 @@ provider := manager.AccessProviderFunc{
     },
 }
 
-mgr, err := defaults.NewBuilder().
-    SetStorage(storage).
+mgr, err := dt.NewBuilder().
+    Storage(storage).
     SetAccessProvider(provider).
     Build()
 ```
@@ -80,13 +82,15 @@ PermissionFunc: func(ctx context.Context, subject manager.AccessSubject) ([]stri
 }
 ```
 
+集成中间件使用基于 Token 的 `Check*` API，保留当前请求的设备与 Token 字段。提供器错误会传递给集成层失败处理器，供其区分服务故障与 `ErrPermissionDenied`、`ErrRoleDenied` 等正常拒绝。
+
 ## 兼容回调
 
 Builder 也保留了更简单的回调方式：
 
 ```go
-mgr, err := defaults.NewBuilder().
-    SetStorage(storage).
+mgr, err := dt.NewBuilder().
+    Storage(storage).
     SetCustomPermissionListFunc(func(loginID, authType string) ([]string, error) {
         return []string{"user:read"}, nil
     }).

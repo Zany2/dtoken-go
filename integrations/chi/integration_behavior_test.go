@@ -3,21 +3,22 @@ package chi
 import (
 	"context"
 	"errors"
+	dtglobal "github.com/Zany2/dtoken-go/global"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
+	derror "github.com/Zany2/dtoken-go/errors"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	chiRouter "github.com/go-chi/chi/v5"
 )
 
 // TestChiRegisterContextMiddlewareStopsAfterManagerFailure verifies manager resolution failures stop the HTTP chain. TestChiRegisterContextMiddlewareStopsAfterManagerFailure 验证 Manager 解析失败时 HTTP 链路会停止。
 func TestChiRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	router := chiRouter.NewRouter()
 	downstreamCalled := false
@@ -39,11 +40,12 @@ func TestChiRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
 
 // TestChiMiddlewareSuccessAndFailure verifies the authenticated HTTP chain. TestChiMiddlewareSuccessAndFailure 验证认证 HTTP 链路的成功与失败。
 func TestChiMiddlewareSuccessAndFailure(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -82,11 +84,12 @@ func TestChiMiddlewareSuccessAndFailure(t *testing.T) {
 
 // TestChiPermissionPathMiddleware verifies path permissions are appended and enforced. TestChiPermissionPathMiddleware 验证路径权限会被追加并执行校验。
 func TestChiPermissionPathMiddleware(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	mgr := builtAuth2.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -115,15 +118,16 @@ func TestChiPermissionPathMiddleware(t *testing.T) {
 
 // TestChiAnnotationHandlers verifies annotation helpers and missing context behavior. TestChiAnnotationHandlers 验证注解处理器与缺失上下文行为。
 func TestChiAnnotationHandlers(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth3, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	mgr := builtAuth3.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	dtglobal.SetManager(mgr)
 	token, err := mgr.Login(ctx, "chi-annotation-user")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
@@ -132,13 +136,13 @@ func TestChiAnnotationHandlers(t *testing.T) {
 	called := false
 	successReq := httptest.NewRequest(http.MethodGet, "/annotated", nil)
 	successReq.Header.Set(mgr.GetConfig().TokenName, token)
-	GetHandler(func(http.ResponseWriter, *http.Request) { called = true }, &Annotation{CheckLogin: true})(httptest.NewRecorder(), successReq)
+	GetHandler(func(http.ResponseWriter, *http.Request) { called = true }, &Annotation{CheckLogin: true, ManagerResolver: dtglobal.GetManager})(httptest.NewRecorder(), successReq)
 	if !called {
 		t.Fatal("GetHandler() did not run handler for valid token")
 	}
 
 	failureRecorder := httptest.NewRecorder()
-	CheckLoginHandler()(failureRecorder, httptest.NewRequest(http.MethodGet, "/annotated", nil))
+	RegisterDTokenContextMiddleware(WithManager(mgr))(CheckLoginHandler()).ServeHTTP(failureRecorder, httptest.NewRequest(http.MethodGet, "/annotated", nil))
 	if failureRecorder.Code != http.StatusUnauthorized {
 		t.Fatalf("annotation failure status = %d, want 401", failureRecorder.Code)
 	}
@@ -171,11 +175,12 @@ func TestChiTypedNilContextIsSafe(t *testing.T) {
 
 // TestChiContextFacadeUsesCachedManager verifies request-context facade operations use the cached manager. TestChiContextFacadeUsesCachedManager 验证请求上下文门面会复用缓存的 Manager。
 func TestChiContextFacadeUsesCachedManager(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth4, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	mgr := builtAuth4.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

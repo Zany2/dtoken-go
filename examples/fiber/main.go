@@ -2,8 +2,12 @@
 package main
 
 import (
+	dterror "github.com/Zany2/dtoken-go/errors"
+	dt1 "github.com/Zany2/dtoken-go/global"
+
 	"context"
 	"errors"
+	"github.com/Zany2/dtoken-go"
 	"log"
 	"net/http"
 	"strings"
@@ -33,7 +37,7 @@ type LoginRequest struct {
 
 func main() {
 	initDToken()
-	defer fiberdt.DeleteAllManager()
+	defer dt1.DeleteAllManager()
 
 	app := gofiber.New()
 	registerRoutes(app)
@@ -47,7 +51,7 @@ func main() {
 func registerRoutes(app *gofiber.App) {
 	ctx := context.Background()
 	fail := func(c *gofiber.Ctx, err error) { _ = writeAuthError(c, err) }
-	app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx, fiberdt.WithFailFunc(fail)))
+	app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx, fiberdt.WithManagerResolver(dt1.GetManager), fiberdt.WithFailFunc(fail)))
 	app.Post("/login", handleLogin)
 
 	auth := app.Group("")
@@ -60,53 +64,55 @@ func registerRoutes(app *gofiber.App) {
 
 // initDToken initializes integration manager initDToken 初始化集成管理器
 func initDToken() {
-	mgr, err := fiberdt.NewBuilder().
+	builtAuth1, err := dtoken.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
+	mgr := builtAuth1.Manager()
+
 	if err != nil {
 		panic(err)
 	}
 
-	fiberdt.SetManager(mgr)
+	dt1.SetManager(mgr)
 }
 
 // handleLogin logs in a demo user handleLogin 登录示例用户
 func handleLogin(c *gofiber.Ctx) error {
 	var req LoginRequest
 	if err := c.BodyParser(&req); err != nil || req.Username == "" || req.Password == "" {
-		return writeJSON(c, http.StatusBadRequest, fiberdt.CodeBadRequest, "username and password are required", nil)
+		return writeJSON(c, http.StatusBadRequest, dterror.CodeBadRequest, "username and password are required", nil)
 	}
 
 	if req.Password != "123456" {
-		return writeJSON(c, http.StatusUnauthorized, fiberdt.CodeNotLogin, "invalid username or password", nil)
+		return writeJSON(c, http.StatusUnauthorized, dterror.CodeNotLogin, "invalid username or password", nil)
 	}
 
 	// Form strings may share Fiber's request buffer; login events can outlive the request. 表单字符串可能引用 Fiber 请求缓冲区，而登录事件可能在请求结束后执行。
 	req.Username = strings.Clone(req.Username)
 
-	token, err := fiberdt.Login(c.UserContext(), req.Username)
+	token, err := dt1.Login(c.UserContext(), req.Username)
 	if err != nil {
 		return writeAuthError(c, err)
 	}
 
 	// Grant every demo user the same role and permission; real apps must load their own access rules. 为每个演示用户授予相同角色和权限；实际应用应加载自身的授权规则。
-	if err = fiberdt.AddRoles(c.UserContext(), req.Username, []string{"admin"}); err != nil {
+	if err = dt1.AddRoles(c.UserContext(), req.Username, []string{"admin"}); err != nil {
 		return writeAuthError(c, err)
 	}
-	if err = fiberdt.AddPermissions(c.UserContext(), req.Username, []string{"article:read"}); err != nil {
+	if err = dt1.AddPermissions(c.UserContext(), req.Username, []string{"article:read"}); err != nil {
 		return writeAuthError(c, err)
 	}
 
-	return writeJSON(c, http.StatusOK, fiberdt.CodeSuccess, "ok", gofiber.Map{"token": token})
+	return writeJSON(c, http.StatusOK, dterror.CodeSuccess, "ok", gofiber.Map{"token": token})
 }
 
 // handleMe returns current login information handleMe 返回当前登录信息
 func handleMe(c *gofiber.Ctx) error {
 	dCtx, ok := fiberdt.GetDTokenContext(c)
 	if !ok {
-		return writeJSON(c, http.StatusUnauthorized, fiberdt.CodeNotLogin, "not logged in", nil)
+		return writeJSON(c, http.StatusUnauthorized, dterror.CodeNotLogin, "not logged in", nil)
 	}
 
 	loginID, err := dCtx.Auth().GetLoginID(c.UserContext())
@@ -123,7 +129,7 @@ func handleMe(c *gofiber.Ctx) error {
 		return writeAuthError(c, err)
 	}
 
-	return writeJSON(c, http.StatusOK, fiberdt.CodeSuccess, "ok", gofiber.Map{
+	return writeJSON(c, http.StatusOK, dterror.CodeSuccess, "ok", gofiber.Map{
 		"loginId":     loginID,
 		"roles":       roles,
 		"permissions": permissions,
@@ -132,43 +138,43 @@ func handleMe(c *gofiber.Ctx) error {
 
 // handleAdmin returns admin data handleAdmin 返回管理员数据
 func handleAdmin(c *gofiber.Ctx) error {
-	return writeJSON(c, http.StatusOK, fiberdt.CodeSuccess, "ok", gofiber.Map{"scope": "admin"})
+	return writeJSON(c, http.StatusOK, dterror.CodeSuccess, "ok", gofiber.Map{"scope": "admin"})
 }
 
 // handleArticles returns protected article data handleArticles 返回受保护的文章数据
 func handleArticles(c *gofiber.Ctx) error {
-	return writeJSON(c, http.StatusOK, fiberdt.CodeSuccess, "ok", []string{"article-a", "article-b"})
+	return writeJSON(c, http.StatusOK, dterror.CodeSuccess, "ok", []string{"article-a", "article-b"})
 }
 
 // handleLogout logs out current token handleLogout 注销当前 Token
 func handleLogout(c *gofiber.Ctx) error {
 	dCtx, ok := fiberdt.GetDTokenContext(c)
 	if !ok {
-		return writeJSON(c, http.StatusUnauthorized, fiberdt.CodeNotLogin, "not logged in", nil)
+		return writeJSON(c, http.StatusUnauthorized, dterror.CodeNotLogin, "not logged in", nil)
 	}
 
 	if err := dCtx.Auth().Logout(c.UserContext()); err != nil {
 		return writeAuthError(c, err)
 	}
 
-	return writeJSON(c, http.StatusOK, fiberdt.CodeSuccess, "ok", nil)
+	return writeJSON(c, http.StatusOK, dterror.CodeSuccess, "ok", nil)
 }
 
 // writeAuthError distinguishes credential failures from access restrictions and server failures. writeAuthError 区分凭证无效、访问限制及服务端故障。
 func writeAuthError(c *gofiber.Ctx, err error) error {
 	switch {
-	case errors.Is(err, fiberdt.ErrNotLogin), errors.Is(err, fiberdt.ErrInvalidToken),
-		errors.Is(err, fiberdt.ErrTokenExpired), errors.Is(err, fiberdt.ErrActiveTimeout),
-		errors.Is(err, fiberdt.ErrTokenKickout), errors.Is(err, fiberdt.ErrTokenReplaced):
-		return writeJSON(c, http.StatusUnauthorized, fiberdt.CodeNotLogin, err.Error(), nil)
-	case errors.Is(err, fiberdt.ErrAccountDisabled), errors.Is(err, fiberdt.ErrDeviceDisabled):
-		return writeJSON(c, http.StatusForbidden, fiberdt.CodeAccountDisabled, err.Error(), nil)
-	case errors.Is(err, fiberdt.ErrPermissionDenied), errors.Is(err, fiberdt.ErrRoleDenied):
-		return writeJSON(c, http.StatusForbidden, fiberdt.CodePermissionDenied, err.Error(), nil)
+	case errors.Is(err, dterror.ErrNotLogin), errors.Is(err, dterror.ErrInvalidToken),
+		errors.Is(err, dterror.ErrTokenExpired), errors.Is(err, dterror.ErrActiveTimeout),
+		errors.Is(err, dterror.ErrTokenKickout), errors.Is(err, dterror.ErrTokenReplaced):
+		return writeJSON(c, http.StatusUnauthorized, dterror.CodeNotLogin, err.Error(), nil)
+	case errors.Is(err, dterror.ErrAccountDisabled), errors.Is(err, dterror.ErrDeviceDisabled):
+		return writeJSON(c, http.StatusForbidden, dterror.CodeAccountDisabled, err.Error(), nil)
+	case errors.Is(err, dterror.ErrPermissionDenied), errors.Is(err, dterror.ErrRoleDenied):
+		return writeJSON(c, http.StatusForbidden, dterror.CodePermissionDenied, err.Error(), nil)
 	default:
 		// Keep server details in logs rather than HTTP responses. 将服务端详情保留在日志中，不在 HTTP 响应中暴露。
 		log.Printf("dtoken request failed: %v", err)
-		return writeJSON(c, http.StatusInternalServerError, fiberdt.CodeServerError, "internal server error", nil)
+		return writeJSON(c, http.StatusInternalServerError, dterror.CodeServerError, "internal server error", nil)
 	}
 }
 

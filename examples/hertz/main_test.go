@@ -1,25 +1,29 @@
 package main
 
 import (
+	dtoken "github.com/Zany2/dtoken-go"
+	dt1 "github.com/Zany2/dtoken-go/contract"
+	dterror "github.com/Zany2/dtoken-go/errors"
+	dt2 "github.com/Zany2/dtoken-go/storage/memory"
+
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	dtglobal "github.com/Zany2/dtoken-go/global"
+	hertzdt "github.com/Zany2/dtoken-go/integrations/hertz"
+	hertzapp "github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/app/server"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/Zany2/dtoken-go/dtoken"
-	hertzdt "github.com/Zany2/dtoken-go/integrations/hertz"
-	hertzapp "github.com/cloudwego/hertz/pkg/app"
-	"github.com/cloudwego/hertz/pkg/app/server"
 )
 
 // TestInitDTokenConfiguration verifies that automatic renewal fits the token timeout. TestInitDTokenConfiguration 验证自动续期配置与 Token 有效期兼容。
 func TestInitDTokenConfiguration(t *testing.T) {
 	setupHertzManager(t)
-	mgr, err := dtoken.GetManager()
+	mgr, err := dtglobal.GetManager()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,11 +50,11 @@ func TestHandleLoginValidation(t *testing.T) {
 		`{"username":"alice","password":"123456"} trailing`,
 	} {
 		t.Run(body, func(t *testing.T) {
-			assertHertzResponse(t, requestHertz(h, http.MethodPost, "/login", body, ""), http.StatusBadRequest, hertzdt.CodeBadRequest)
+			assertHertzResponse(t, requestHertz(h, http.MethodPost, "/login", body, ""), http.StatusBadRequest, dterror.CodeBadRequest)
 		})
 	}
-	assertHertzResponse(t, requestHertz(h, http.MethodPost, "/login", `{"username":"alice","password":"bad"}`, ""), http.StatusUnauthorized, hertzdt.CodeNotLogin)
-	assertHertzResponse(t, requestHertz(h, http.MethodPost, "/login?username=alice&password=123456", `{}`, ""), http.StatusBadRequest, hertzdt.CodeBadRequest)
+	assertHertzResponse(t, requestHertz(h, http.MethodPost, "/login", `{"username":"alice","password":"bad"}`, ""), http.StatusUnauthorized, dterror.CodeNotLogin)
+	assertHertzResponse(t, requestHertz(h, http.MethodPost, "/login?username=alice&password=123456", `{}`, ""), http.StatusBadRequest, dterror.CodeBadRequest)
 }
 
 // TestProtectedRoutesAndLogout covers the actual login, authentication and authorization chain. TestProtectedRoutesAndLogout 覆盖真实登录、认证和权限校验链。
@@ -60,7 +64,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 	h := server.Default()
 	registerRoutes(h)
 	login := requestHertz(h, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`+"\n", "")
-	data := assertHertzResponse(t, login, http.StatusOK, hertzdt.CodeSuccess)
+	data := assertHertzResponse(t, login, http.StatusOK, dterror.CodeSuccess)
 	var result struct {
 		Token string `json:"token"`
 	}
@@ -68,10 +72,10 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 		t.Fatal(err)
 	}
 	token := result.Token
-	if id, err := dtoken.GetLoginID(ctx, token); err != nil || id != "alice" {
+	if id, err := dtglobal.GetLoginID(ctx, token); err != nil || id != "alice" {
 		t.Fatalf("returned token login ID=%q error=%v", id, err)
 	}
-	if !dtoken.HasRole(ctx, "alice", "admin") || !dtoken.HasPermission(ctx, "alice", "article:read") {
+	if !dtglobal.HasRole(ctx, "alice", "admin") || !dtglobal.HasPermission(ctx, "alice", "article:read") {
 		t.Fatal("login did not seed the demo authorization data")
 	}
 
@@ -83,7 +87,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 				request.Request.SetRequestURI("http://example.com" + path)
 				request.Request.Header.Set(header, value)
 				h.ServeHTTP(ctx, request)
-				data := assertHertzResponse(t, request, http.StatusOK, hertzdt.CodeSuccess)
+				data := assertHertzResponse(t, request, http.StatusOK, dterror.CodeSuccess)
 				if path == "/me" {
 					var info struct {
 						LoginID string `json:"loginId"`
@@ -101,19 +105,19 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 			method = http.MethodPost
 		}
 		for _, invalidToken := range []string{"", "invalid-token"} {
-			assertHertzResponse(t, requestHertz(h, method, path, "", invalidToken), http.StatusUnauthorized, hertzdt.CodeNotLogin)
+			assertHertzResponse(t, requestHertz(h, method, path, "", invalidToken), http.StatusUnauthorized, dterror.CodeNotLogin)
 		}
 	}
-	bobToken, err := dtoken.Login(ctx, "bob")
+	bobToken, err := dtglobal.Login(ctx, "bob")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/admin", "/articles"} {
-		assertHertzResponse(t, requestHertz(h, http.MethodGet, path, "", bobToken), http.StatusForbidden, hertzdt.CodePermissionDenied)
+		assertHertzResponse(t, requestHertz(h, http.MethodGet, path, "", bobToken), http.StatusForbidden, dterror.CodePermissionDenied)
 	}
-	assertHertzResponse(t, requestHertz(h, http.MethodPost, "/logout", "", token), http.StatusOK, hertzdt.CodeSuccess)
-	assertHertzResponse(t, requestHertz(h, http.MethodGet, "/me", "", token), http.StatusUnauthorized, hertzdt.CodeNotLogin)
-	if dtoken.IsLogin(ctx, token) {
+	assertHertzResponse(t, requestHertz(h, http.MethodPost, "/logout", "", token), http.StatusOK, dterror.CodeSuccess)
+	assertHertzResponse(t, requestHertz(h, http.MethodGet, "/me", "", token), http.StatusUnauthorized, dterror.CodeNotLogin)
+	if dtglobal.IsLogin(ctx, token) {
 		t.Fatal("token remains logged in after logout")
 	}
 }
@@ -121,24 +125,26 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 // TestDisabledAccountLogin verifies a blocked account receives an access restriction response. TestDisabledAccountLogin 验证封禁账号登录返回访问限制响应。
 func TestDisabledAccountLogin(t *testing.T) {
 	setupHertzManager(t)
-	if err := dtoken.Disable(context.Background(), "alice", time.Hour, ""); err != nil {
+	if err := dtglobal.Disable(context.Background(), "alice", time.Hour, ""); err != nil {
 		t.Fatal(err)
 	}
 	h := server.Default()
 	registerRoutes(h)
-	assertHertzResponse(t, requestHertz(h, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, ""), http.StatusForbidden, hertzdt.CodeAccountDisabled)
+	assertHertzResponse(t, requestHertz(h, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, ""), http.StatusForbidden, dterror.CodeAccountDisabled)
 }
 
 // TestStorageFailuresStayServerErrors verifies handlers and middleware preserve backend failures without leaking details. TestStorageFailuresStayServerErrors 验证处理器和中间件正确报告后端故障且不泄露详情。
 func TestStorageFailuresStayServerErrors(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
-	mgr, err := hertzdt.NewBuilder().SetStorage(&failingHertzStorage{Storage: hertzdt.NewMemoryStorage()}).
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
+	builtAuth1, err := dtoken.NewBuilder().Storage(&failingHertzStorage{Storage: dt2.NewStorage()}).
 		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).Build()
+	mgr := builtAuth1.Manager()
+
 	if err != nil {
 		t.Fatal(err)
 	}
-	hertzdt.SetManager(mgr)
+	dtglobal.SetManager(mgr)
 	for _, withAuth := range []bool{false, true} {
 		t.Run(fmt.Sprintf("withAuth=%t", withAuth), func(t *testing.T) {
 			h := server.Default()
@@ -146,7 +152,7 @@ func TestStorageFailuresStayServerErrors(t *testing.T) {
 				registerRoutes(h)
 			} else {
 				// Register only the context so handler failures reach the handler's own error branch. 仅注册上下文，使处理器自身的错误分支可被验证。
-				h.Use(hertzdt.RegisterDTokenContextMiddleware(context.Background()))
+				h.Use(hertzdt.RegisterDTokenContextMiddleware(context.Background(), hertzdt.WithAuth(builtAuth1)))
 				h.POST("/login", handleLogin)
 				h.GET("/me", handleMe)
 				h.POST("/logout", handleLogout)
@@ -157,7 +163,7 @@ func TestStorageFailuresStayServerErrors(t *testing.T) {
 				{http.MethodPost, "/logout", ""},
 			} {
 				response := requestHertz(h, tc.method, tc.path, tc.body, "some-token")
-				assertHertzResponse(t, response, http.StatusInternalServerError, hertzdt.CodeServerError)
+				assertHertzResponse(t, response, http.StatusInternalServerError, dterror.CodeServerError)
 				body := string(response.Response.BodyBytes())
 				if strings.Contains(body, "private storage") || !strings.Contains(body, "internal server error") {
 					t.Fatalf("unsafe server response: %s", body)
@@ -167,7 +173,7 @@ func TestStorageFailuresStayServerErrors(t *testing.T) {
 	}
 }
 
-type failingHertzStorage struct{ hertzdt.Storage }
+type failingHertzStorage struct{ dt1.Storage }
 
 // Get simulates a backend failure containing private details. Get 模拟包含私有详情的后端故障。
 func (*failingHertzStorage) Get(context.Context, string) (any, error) {
@@ -176,8 +182,8 @@ func (*failingHertzStorage) Get(context.Context, string) (any, error) {
 
 func setupHertzManager(t *testing.T) {
 	t.Helper()
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	initDToken()
 }
 

@@ -7,7 +7,7 @@
 In the current version, permissions and roles come from two places:
 
 1. `Session` fields: `Permissions` and `Roles`
-2. Custom callbacks configured through `defaults.NewBuilder()`
+2. Custom callbacks configured through `dt.NewBuilder()`
 
 Priority rules:
 
@@ -16,21 +16,21 @@ Priority rules:
 
 ## Initialization
 
+<!-- dtoken-compile: complete-example -->
 ```go
 package main
 
 import (
-    "context"
+    dt "github.com/Zany2/dtoken-go"
+    dtoken "github.com/Zany2/dtoken-go/global"
 
-    "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/defaults"
-    "github.com/Zany2/dtoken-go/dtoken"
+    "github.com/Zany2/dtoken-go/storage/memory"
 )
 
 func initDToken() {
     if _, err := dtoken.BuildAndSetManager(
-        defaults.NewBuilder().
-            SetStorage(memory.NewStorage()),
+        dt.NewBuilder().
+            Storage(memory.NewStorage()),
     ); err != nil {
         panic(err)
     }
@@ -225,8 +225,8 @@ _ = dtoken.UntieService(ctx, "10001", "comment")
 
 ```go
 if _, err := dtoken.BuildAndSetManager(
-    defaults.NewBuilder().
-        SetStorage(memory.NewStorage()).
+    dt.NewBuilder().
+        Storage(memory.NewStorage()).
         SetCustomPermissionListFunc(func(loginID, authType string) ([]string, error) {
             if loginID == "10001" {
                 return []string{"user:read", "user:write"}, nil
@@ -247,7 +247,7 @@ if _, err := dtoken.BuildAndSetManager(
 Extended callbacks can also use `device` and `deviceID`:
 
 ```go
-defaults.NewBuilder().
+dt.NewBuilder().
     SetCustomPermissionListExtFunc(func(loginID, device, deviceID, authType string) ([]string, error) {
         if device == "app" {
             return []string{"mobile:read", "mobile:write"}, nil
@@ -267,7 +267,11 @@ defaults.NewBuilder().
 ```go
 ctx := context.Background()
 
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
+auth, err := dt.NewBuilder().Build()
+if err != nil { panic(err) }
+defer auth.Close()
+
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(auth)))
 
 r.GET("/users",
     gindt.CheckPermissionMiddleware(ctx, []string{"user:read"}, nil, nil),

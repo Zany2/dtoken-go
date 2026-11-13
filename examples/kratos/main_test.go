@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	dterror "github.com/Zany2/dtoken-go/errors"
+	dtglobal "github.com/Zany2/dtoken-go/global"
+	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/Zany2/dtoken-go/dtoken"
-	kratosdt "github.com/Zany2/dtoken-go/integrations/kratos"
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
 )
 
 // TestLoginValidationAndAuthorizationSeed verifies login validation and demo authorization data. TestLoginValidationAndAuthorizationSeed 验证登录校验与示例授权数据初始化。
@@ -40,16 +39,16 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	if err := json.Unmarshal(login.Body.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode login response: %v", err)
 	}
-	if envelope.Code != kratosdt.CodeSuccess || envelope.Data.Token == "" {
+	if envelope.Code != dterror.CodeSuccess || envelope.Data.Token == "" {
 		t.Fatalf("login envelope = %+v, want success and token", envelope)
 	}
-	if id, err := dtoken.GetLoginID(context.Background(), envelope.Data.Token); err != nil || id != "alice" {
+	if id, err := dtglobal.GetLoginID(context.Background(), envelope.Data.Token); err != nil || id != "alice" {
 		t.Fatalf("returned token login ID=%q error=%v", id, err)
 	}
-	if !dtoken.HasRole(context.Background(), "alice", "admin") {
+	if !dtglobal.HasRole(context.Background(), "alice", "admin") {
 		t.Fatal("login did not seed admin role")
 	}
-	if !dtoken.HasPermission(context.Background(), "alice", "article:read") {
+	if !dtglobal.HasPermission(context.Background(), "alice", "article:read") {
 		t.Fatal("login did not seed article permission")
 	}
 }
@@ -58,14 +57,14 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 func TestProtectedRoutesAndLogout(t *testing.T) {
 	setupKratosManager(t)
 	ctx := context.Background()
-	token, err := dtoken.Login(ctx, "alice")
+	token, err := dtglobal.Login(ctx, "alice")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
-	if err = dtoken.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
+	if err = dtglobal.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
 		t.Fatalf("AddRoles() error = %v", err)
 	}
-	if err = dtoken.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
+	if err = dtglobal.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
 		t.Fatalf("AddPermissions() error = %v", err)
 	}
 
@@ -77,7 +76,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 				req.Header.Set(header, value)
 				response := httptest.NewRecorder()
 				server.ServeHTTP(response, req)
-				assertKratosResponse(t, response, http.StatusOK, kratosdt.CodeSuccess)
+				assertKratosResponse(t, response, http.StatusOK, dterror.CodeSuccess)
 			}
 		}
 	}
@@ -87,17 +86,17 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 			method = http.MethodPost
 		}
 		for _, invalidToken := range []string{"", "invalid-token"} {
-			assertKratosResponse(t, requestKratos(t, server, method, route, "", invalidToken), http.StatusUnauthorized, kratosdt.CodeNotLogin)
+			assertKratosResponse(t, requestKratos(t, server, method, route, "", invalidToken), http.StatusUnauthorized, dterror.CodeNotLogin)
 		}
 	}
 
-	bobToken, err := dtoken.Login(ctx, "bob")
+	bobToken, err := dtglobal.Login(ctx, "bob")
 	if err != nil {
 		t.Fatalf("Login(bob) error = %v", err)
 	}
 	for _, route := range []string{"/admin", "/articles"} {
 		response := requestKratos(t, server, http.MethodGet, route, "", bobToken)
-		assertKratosResponse(t, response, http.StatusForbidden, kratosdt.CodePermissionDenied)
+		assertKratosResponse(t, response, http.StatusForbidden, dterror.CodePermissionDenied)
 	}
 
 	logout := requestKratos(t, server, http.MethodPost, "/logout", "", token)
@@ -112,8 +111,8 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 
 func setupKratosManager(t *testing.T) {
 	t.Helper()
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	initDToken()
 }
 
@@ -122,7 +121,7 @@ func requestKratos(t *testing.T, server *khttp.Server, method, path, body, token
 	req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	if token != "" {
-		mgr, err := dtoken.GetManager()
+		mgr, err := dtglobal.GetManager()
 		if err != nil {
 			t.Fatalf("GetManager() error = %v", err)
 		}

@@ -4,7 +4,7 @@ English | [中文文档](dtoken_zh.md)
 
 ## Overview
 
-`dtoken` is the global utility entry of DToken-Go. It wraps common capabilities such as authentication, permission checks, roles, account disable, session access, nonce, OAuth2, Token Introspection, and Refresh Token.
+This reference uses dtoken as an import alias for github.com/Zany2/dtoken-go/global. The root exposes instance APIs; Nonce, OAuth2, Ticket, and ShortKey are called through independent services.
 
 In the current version, `dtoken` uses `context.Context` as the unified entry, and different auth systems can be selected through the optional `authType` parameter.
 
@@ -12,23 +12,23 @@ In the current version, `dtoken` uses `context.Context` as the unified entry, an
 
 ```go
 import (
+    dt "github.com/Zany2/dtoken-go"
+    dtoken "github.com/Zany2/dtoken-go/global"
     "context"
 
-    "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/defaults"
-    "github.com/Zany2/dtoken-go/dtoken"
+    "github.com/Zany2/dtoken-go/storage/memory"
 )
 
 var ctx = context.Background()
 
 func init() {
-    mgr, err := defaults.NewBuilder().
-        SetStorage(memory.NewStorage()).
+    mgr, err := dt.NewBuilder().
+        Storage(memory.NewStorage()).
         Build()
     if err != nil {
         panic(err)
     }
-    dtoken.SetManager(mgr)
+    dtoken.SetManager(mgr.Manager())
 }
 ```
 
@@ -490,39 +490,9 @@ type TokenInfo struct {
 }
 ```
 
-### Nonce API
+### Independent capabilities
 
-Enable this optional module with `EnableNonce()` before building the registered Manager.
-
-```go
-func GenerateNonce(ctx context.Context, authType ...string) (string, error)
-func GenerateNonceWithTimeout(ctx context.Context, timeout time.Duration, authType ...string) (string, error)
-func VerifyNonce(ctx context.Context, nonce string, authType ...string) bool
-func VerifyAndConsumeNonce(ctx context.Context, nonce string, authType ...string) error
-func IsNonceValid(ctx context.Context, nonce string, authType ...string) bool
-func GetNonceTTL(ctx context.Context, nonce string, authType ...string) (int64, error)
-```
-
-### OAuth2 API
-
-Enable this optional module with `EnableOAuth2()` before building the registered Manager.
-
-```go
-func RegisterOAuth2Client(client *oauth2.Client, authType ...string) error
-func UnregisterOAuth2Client(clientID string, authType ...string) error
-func GetOAuth2Client(clientID string, authType ...string) (*oauth2.Client, error)
-func OAuth2Token(ctx context.Context, req *oauth2.TokenRequest, validateUser oauth2.UserValidator, authType ...string) (*oauth2.AccessToken, error)
-func GenerateOAuth2AuthorizationCode(ctx context.Context, clientID, userID, redirectURI string, scopes []string, authType ...string) (*oauth2.AuthorizationCode, error)
-func GenerateOAuth2AuthorizationCodeWithPKCE(ctx context.Context, clientID, userID, redirectURI string, scopes []string, codeChallenge, codeChallengeMethod string, authType ...string) (*oauth2.AuthorizationCode, error)
-func ExchangeOAuth2CodeForToken(ctx context.Context, code, clientID, clientSecret, redirectURI string, authType ...string) (*oauth2.AccessToken, error)
-func ExchangeOAuth2CodeForTokenWithPKCE(ctx context.Context, code, clientID, clientSecret, redirectURI, codeVerifier string, authType ...string) (*oauth2.AccessToken, error)
-func OAuth2ClientCredentialsToken(ctx context.Context, clientID, clientSecret string, scopes []string, authType ...string) (*oauth2.AccessToken, error)
-func OAuth2PasswordGrantToken(ctx context.Context, clientID, clientSecret, username, password string, scopes []string, validateUser oauth2.UserValidator, authType ...string) (*oauth2.AccessToken, error)
-func RefreshOAuth2AccessToken(ctx context.Context, clientID, refreshToken, clientSecret string, authType ...string) (*oauth2.AccessToken, error)
-func ValidateOAuth2AccessToken(ctx context.Context, accessToken string, authType ...string) bool
-func ValidateOAuth2AccessTokenAndGetInfo(ctx context.Context, accessToken string, authType ...string) (*oauth2.AccessToken, error)
-func RevokeOAuth2Token(ctx context.Context, accessToken string, authType ...string) error
-```
+Nonce and OAuth2 are provided by their package Services, outside the global API. See [Nonce](../guide/security/nonce.md), [OAuth2](../guide/security/oauth2.md), and [Ticket and ShortKey](../guide/security/advanced-features.md).
 
 ### Manager Lifecycle API
 
@@ -647,29 +617,6 @@ func DeleteAllManager()
 - `CheckRoleAnd`
 - `CheckRoleOr`
 
-### Nonce
-- `GenerateNonce`
-- `GenerateNonceWithTimeout`
-- `VerifyNonce`
-- `VerifyAndConsumeNonce`
-- `IsNonceValid`
-- `GetNonceTTL`
-
-### OAuth2
-- `RegisterOAuth2Client`
-- `UnregisterOAuth2Client`
-- `GetOAuth2Client`
-- `OAuth2Token`
-- `GenerateOAuth2AuthorizationCode`
-- `GenerateOAuth2AuthorizationCodeWithPKCE`
-- `ExchangeOAuth2CodeForToken`
-- `ExchangeOAuth2CodeForTokenWithPKCE`
-- `OAuth2ClientCredentialsToken`
-- `OAuth2PasswordGrantToken`
-- `RefreshOAuth2AccessToken`
-- `ValidateOAuth2AccessToken`
-- `ValidateOAuth2AccessTokenAndGetInfo`
-- `RevokeOAuth2Token`
 
 ## Next Steps
 

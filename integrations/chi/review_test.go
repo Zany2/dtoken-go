@@ -4,18 +4,18 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	dtglobal "github.com/Zany2/dtoken-go/global"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	"github.com/Zany2/dtoken-go/internal/defaults"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
+	chiRouter "github.com/go-chi/chi/v5"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
-
-	"github.com/Zany2/dtoken-go/core/adapter"
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
-	chiRouter "github.com/go-chi/chi/v5"
 )
 
 // chiReviewMiddlewares covers all authentication middleware through HTTP chains. chiReviewMiddlewares 通过 HTTP 链路覆盖全部鉴权中间件。
@@ -39,7 +39,7 @@ var chiReviewMiddlewares = []struct {
 // newChiReviewManager creates an isolated manager without asynchronous work. newChiReviewManager 创建不执行异步任务的独立 Manager。
 func newChiReviewManager(t *testing.T, authType string) *manager.Manager {
 	t.Helper()
-	b := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false)
+	b := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false)
 	if authType != "" {
 		b.AuthType(authType)
 	}
@@ -70,13 +70,13 @@ func chiReviewLogin(t *testing.T, mgr *manager.Manager, id string) string {
 
 // TestChiReviewManagerSelection verifies inheritance, explicit overrides and registry fallback. TestChiReviewManagerSelection 验证请求 Manager 继承、显式覆盖与注册表回退。
 func TestChiReviewManagerSelection(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	cached := newChiReviewManager(t, "chi-cached")
 	global := newChiReviewManager(t, "")
 	selected := newChiReviewManager(t, "chi-selected")
-	dtoken.SetManager(global)
-	dtoken.SetManager(selected)
+	dtglobal.SetManager(global)
+	dtglobal.SetManager(selected)
 	cachedToken := chiReviewLogin(t, cached, "cached-user")
 	globalToken := chiReviewLogin(t, global, "global-user")
 	selectedToken := chiReviewLogin(t, selected, "selected-user")
@@ -90,10 +90,10 @@ func TestChiReviewManagerSelection(t *testing.T) {
 			want     *manager.Manager
 		}{
 			{"cached", true, nil, cachedToken, cached},
-			{"auth_type", true, []AuthOption{WithAuthType("chi-selected")}, selectedToken, selected},
+			{"auth_type", true, []AuthOption{WithManagerResolver(dtglobal.GetManager), WithAuthType("chi-selected")}, selectedToken, selected},
 			{"explicit", true, []AuthOption{WithManager(selected), WithAuthType("missing")}, selectedToken, selected},
 			{"missing_type", true, []AuthOption{WithAuthType("missing")}, cachedToken, nil},
-			{"global", false, nil, globalToken, global},
+			{"global", false, []AuthOption{WithManagerResolver(dtglobal.GetManager)}, globalToken, global},
 		} {
 			t.Run(check.name+"/"+tc.name, func(t *testing.T) {
 				router := chiRouter.NewRouter()
@@ -229,7 +229,7 @@ func (w *chiReviewWriter) WriteHeader(status int) {
 
 // TestChiReviewBodyTokenIsolation rejects query-only tokens even when body reading is enabled. TestChiReviewBodyTokenIsolation 验证启用请求体读取也不会接受仅在查询参数中的 Token。
 func TestChiReviewBodyTokenIsolation(t *testing.T) {
-	mgr, err := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+	mgr, err := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
 		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).Build()
 	if err != nil {
 		t.Fatal(err)
@@ -378,10 +378,10 @@ func TestChiReviewInvalidContextManager(t *testing.T) {
 
 // TestChiReviewClosedRequestManager prevents fallback to an unrelated global manager. TestChiReviewClosedRequestManager 验证请求 Manager 关闭后不会回退到无关的全局实例。
 func TestChiReviewClosedRequestManager(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	global := newChiReviewManager(t, "")
-	dtoken.SetManager(global)
+	dtglobal.SetManager(global)
 	token := chiReviewLogin(t, global, "global-user")
 	closed := newChiReviewManager(t, "chi-closed-request")
 	closed.CloseManager()

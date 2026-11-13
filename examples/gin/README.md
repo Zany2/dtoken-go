@@ -2,6 +2,8 @@
 
 This example shows how to use `github.com/Zany2/dtoken-go/integrations/gin` with Gin middleware.
 
+The root package creates an instance with `dtoken.NewBuilder().Build()`. Production route registration injects its Manager through `gindt.WithAuth(auth)`, and `auth.Close()` releases its lifecycle resources. Login, grants and refresh use the request's Manager. Explicit registration also supports existing global API callers. The instance flow tests cover a non-default instance with an empty registry and with a separate default instance.
+
 ## Run
 
 ```bash
@@ -21,7 +23,7 @@ The server listens on `http://localhost:8080`.
 - `GET /articles`: requires the `article:read` permission.
 - `POST /logout`: logs out the current access token and revokes its associated refresh token.
 
-The example uses bundled memory storage through `gindt.NewBuilder()`, so no Redis service is required. Login and authorization data are lost on restart. Demo credentials and permission grants are for illustrating the API; real applications must verify their own accounts and load their own authorization rules.
+The example uses bundled memory storage through `dtoken.NewBuilder()`, so no Redis service is required. Login and authorization data are lost on restart. Demo credentials and permission grants are for illustrating the API; real applications must verify their own accounts and load their own authorization rules.
 
 Access tokens have a two-hour timeout, with automatic renewal during authentication checks when one hour or less remains. Refresh tokens have a 30-day timeout. The example reads tokens from the `Authorization` header and accepts both `Bearer <access-token>` and the raw access token. Cookie, query, and body access-token extraction are disabled; `/refresh` separately reads `refreshToken` from its JSON payload.
 
@@ -61,15 +63,23 @@ Handlers and authentication middleware share the same error response callback. R
 
 ## Key APIs
 
+Build an instance first and keep it open while the server handles requests. These fragments use the handlers and error callbacks from `main.go`.
+
 ```go
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithFailFunc(writeAuthError)))
+authInstance, err := dtoken.NewBuilder().TokenName("Authorization").Build()
+if err != nil { panic(err) }
+defer authInstance.Close()
+```
+
+```go
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(authInstance), gindt.WithFailFunc(writeAuthError)))
 
 auth := r.Group("/")
 auth.Use(gindt.AuthMiddleware(ctx, gindt.WithFailFunc(writeAuthError)))
 auth.GET("/admin", gindt.RoleMiddleware(ctx, []string{"admin"}, gindt.WithFailFunc(writeAuthError)), handleAdmin)
 auth.GET("/articles", gindt.PermissionMiddleware(ctx, []string{"article:read"}, gindt.WithFailFunc(writeAuthError)), handleArticles)
 
-pair, err := gindt.LoginWithRefreshToken(ctx, loginID, "web", "gin-example")
-pair, err = gindt.RefreshToken(ctx, refreshToken)
+pair, err := authInstance.LoginWithRefreshToken(ctx, loginID, "web", "gin-example")
+pair, err = authInstance.RefreshToken(ctx, refreshToken)
 info, err := gindt.IntrospectTokenByContext(c)
 ```

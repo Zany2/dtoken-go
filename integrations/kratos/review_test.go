@@ -5,6 +5,20 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	dtglobal "github.com/Zany2/dtoken-go/global"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	"github.com/Zany2/dtoken-go/internal/defaults"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
+	"github.com/Zany2/dtoken-go/storage/memory"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"github.com/go-kratos/kratos/v2/middleware"
+	"github.com/go-kratos/kratos/v2/transport"
+	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 	"io"
 	"mime/multipart"
 	"net"
@@ -15,20 +29,6 @@ import (
 	"testing"
 	"testing/iotest"
 	"time"
-
-	"github.com/Zany2/dtoken-go/com/storage/memory"
-	"github.com/Zany2/dtoken-go/core/adapter"
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-	"github.com/go-kratos/kratos/v2/middleware"
-	"github.com/go-kratos/kratos/v2/transport"
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/peer"
-	"google.golang.org/grpc/status"
 )
 
 // kratosReviewHeader implements transport headers without a network server. kratosReviewHeader 在不启动网络服务的情况下实现传输头。
@@ -82,12 +82,12 @@ func newKratosReviewContext(kind transport.Kind, tokenName, token string) (conte
 // newKratosReviewManager creates an isolated manager without asynchronous work. newKratosReviewManager 创建无异步任务的独立 Manager。
 func newKratosReviewManager(t *testing.T, authType string, storage adapter.Storage) *manager.Manager {
 	t.Helper()
-	b := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
+	b := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
 	if authType != "" {
 		b.AuthType(authType)
 	}
 	if storage != nil {
-		b.SetStorage(storage)
+		b.Storage(storage)
 	}
 	mgr, err := b.Build()
 	if err != nil {
@@ -130,14 +130,14 @@ var kratosReviewChecks = []struct {
 		for _, opt := range opts {
 			opt(o)
 		}
-		return GetHandler(o.FailFunc, &Annotation{AuthType: o.AuthType, CheckPermission: []string{"read"}})
+		return GetHandler(o.FailFunc, &Annotation{ManagerResolver: o.ManagerResolver, AuthType: o.AuthType, CheckPermission: []string{"read"}})
 	}},
 }
 
 // TestKratosReviewRequestContext verifies both transports inherit the registered manager and preserve request context. TestKratosReviewRequestContext 验证两种传输继承请求 Manager 并保留请求上下文。
 func TestKratosReviewRequestContext(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	for _, kind := range []transport.Kind{transport.KindHTTP, transport.KindGRPC} {
 		for _, check := range kratosReviewChecks {
 			t.Run(string(kind)+"/"+check.name, func(t *testing.T) {
@@ -204,13 +204,13 @@ func TestKratosReviewRequestContext(t *testing.T) {
 
 // TestKratosReviewManagerSelection verifies selection priority, invalid caches and renewal isolation. TestKratosReviewManagerSelection 验证选择优先级、无效缓存及续期隔离。
 func TestKratosReviewManagerSelection(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	global := newKratosReviewManager(t, "", nil)
 	local := newKratosReviewManager(t, "kratos-local", nil)
 	selected := newKratosReviewManager(t, "kratos-selected", nil)
-	dtoken.SetManager(global)
-	dtoken.SetManager(selected)
+	dtglobal.SetManager(global)
+	dtglobal.SetManager(selected)
 	for _, mgr := range []*manager.Manager{global, local} {
 		if _, err := mgr.LoginWithOptions(context.Background(), manager.LoginOptions{LoginID: "reader", Token: "same-token"}); err != nil {
 			t.Fatal(err)
@@ -226,7 +226,7 @@ func TestKratosReviewManagerSelection(t *testing.T) {
 	}{
 		{nil, "", local}, {nil, "kratos-selected", selected}, {local, "missing", local},
 	} {
-		if got, err := resolveRequestManager(ctx, tc.explicit, tc.authType); err != nil || got != tc.want {
+		if got, err := resolveRequestManager(ctx, tc.explicit, tc.authType, dtglobal.GetManager); err != nil || got != tc.want {
 			t.Fatalf("manager=%p,%v want=%p", got, err, tc.want)
 		}
 	}
@@ -247,7 +247,7 @@ func TestKratosReviewManagerSelection(t *testing.T) {
 		}
 	}
 	var typedNil *DTokenContext
-	if got, err := resolveRequestManager(context.WithValue(base, DTokenCtxKey, typedNil), nil, ""); err != nil || got != global {
+	if got, err := resolveRequestManager(context.WithValue(base, DTokenCtxKey, typedNil), nil, ""); !errors.Is(err, ErrManagerNotFound) {
 		t.Fatalf("typed nil=%p,%v", got, err)
 	}
 	local.CloseManager()
@@ -336,8 +336,8 @@ func TestKratosReviewAbortedEntry(t *testing.T) {
 
 // TestKratosReviewFailureAndAnnotations verifies rejection, default AND logic and immutable annotation configuration. TestKratosReviewFailureAndAnnotations 验证失败拒绝、默认 AND 及不修改共享注解配置。
 func TestKratosReviewFailureAndAnnotations(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	mgr := newKratosReviewManager(t, "kratos-annotation", nil)
 	for _, check := range kratosReviewChecks {
 		for _, registered := range []bool{false, true} {
@@ -389,7 +389,7 @@ func TestKratosReviewFailureAndAnnotations(t *testing.T) {
 
 // TestKratosReviewMultipart verifies multipart and body-only token sources. TestKratosReviewMultipart 验证 multipart 与仅请求体 Token 来源。
 func TestKratosReviewMultipart(t *testing.T) {
-	mgr, err := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+	mgr, err := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
 		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).Build()
 	if err != nil {
 		t.Fatal(err)

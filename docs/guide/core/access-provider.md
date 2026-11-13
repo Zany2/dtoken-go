@@ -1,5 +1,7 @@
 # AccessProvider
 
+Import aliases for code fragments: dt = github.com/Zany2/dtoken-go.
+
 **[中文文档](../core/access-provider_zh.md)**
 
 `AccessProvider` resolves permissions and roles dynamically from business systems. It fits projects where access data lives in a database, RBAC service, configuration center, or third-party permission platform.
@@ -47,8 +49,8 @@ provider := manager.AccessProviderFunc{
     },
 }
 
-mgr, err := defaults.NewBuilder().
-    SetStorage(storage).
+mgr, err := dt.NewBuilder().
+    Storage(storage).
     SetAccessProvider(provider).
     Build()
 ```
@@ -74,6 +76,8 @@ Returning an empty slice `[]string{}` means the subject explicitly has no permis
 
 If the provider returns an error, permission or role resolution fails. Boolean `Has*` APIs fail closed so requests are not allowed when the permission service is unavailable.
 
+Integration middleware uses token-based `Check*` APIs to preserve the request's device and Token fields. Provider errors propagate to the integration failure handler, allowing it to distinguish service failures from `ErrPermissionDenied` or `ErrRoleDenied`.
+
 ```go
 PermissionFunc: func(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
     return nil, errors.New("permission service unavailable")
@@ -85,8 +89,8 @@ PermissionFunc: func(ctx context.Context, subject manager.AccessSubject) ([]stri
 Builder also keeps simpler callback APIs:
 
 ```go
-mgr, err := defaults.NewBuilder().
-    SetStorage(storage).
+mgr, err := dt.NewBuilder().
+    Storage(storage).
     SetCustomPermissionListFunc(func(loginID, authType string) ([]string, error) {
         return []string{"user:read"}, nil
     }).

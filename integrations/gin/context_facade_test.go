@@ -3,31 +3,34 @@ package gin
 import (
 	"context"
 	"errors"
+	dtglobal "github.com/Zany2/dtoken-go/global"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
+	derror "github.com/Zany2/dtoken-go/errors"
 	"github.com/gin-gonic/gin"
 )
 
 // TestContextFacadeUsesRegisteredManager verifies Gin context shortcut helpers. TestContextFacadeUsesRegisteredManager 验证 Gin 上下文快捷方法。
 func TestContextFacadeUsesRegisteredManager(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().
+	builtAuth1, err := dtoken.NewBuilder().
 		IsPrintBanner(false).
 		AutoRenew(false).
 		Build()
+	mgr := builtAuth1.Manager()
+
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	dtglobal.SetManager(mgr)
 
 	token, err := mgr.Login(ctx, "gin-user", "web", "browser")
 	if err != nil {
@@ -39,7 +42,7 @@ func TestContextFacadeUsesRegisteredManager(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = req
 
-	RegisterDTokenContextMiddleware(ctx)(c)
+	RegisterDTokenContextMiddleware(ctx, WithManagerResolver(dtglobal.GetManager))(c)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("RegisterDTokenContextMiddleware wrote status %d, want default OK", recorder.Code)
 	}
@@ -85,20 +88,21 @@ func TestContextFacadeUsesRegisteredManager(t *testing.T) {
 // TestContextFacadeMissingManagerAndToken verifies clear errors on missing request state. TestContextFacadeMissingManagerAndToken 验证缺失请求状态时错误清晰。
 func TestContextFacadeMissingManagerAndToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodGet, "/protected", nil)
 	if _, err := GetTokenValueByContext(c); !errors.Is(err, derror.ErrManagerNotFound) {
 		t.Fatalf("GetTokenValueByContext without manager error = %v, want ErrManagerNotFound", err)
 	}
-
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	mgr := builtAuth2.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	dtglobal.SetManager(mgr)
+	RegisterDTokenContextMiddleware(context.Background(), WithAuth(builtAuth2))(c)
 	if _, err = GetTokenValueByContext(c); !errors.Is(err, ErrNotLogin) {
 		t.Fatalf("GetTokenValueByContext without token error = %v, want ErrNotLogin", err)
 	}
@@ -107,19 +111,21 @@ func TestContextFacadeMissingManagerAndToken(t *testing.T) {
 // TestAnnotationHandlerControlFlow verifies annotation ignore, success, and failure paths. TestAnnotationHandlerControlFlow 验证注解式处理器的忽略、成功和失败路径。
 func TestAnnotationHandlerControlFlow(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().
+	builtAuth3, err := dtoken.NewBuilder().
 		IsPrintBanner(false).
 		AutoRenew(false).
 		AuthType("gin-annotation").
 		Build()
+	mgr := builtAuth3.Manager()
+
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	dtglobal.SetManager(mgr)
 
 	token, err := mgr.Login(ctx, "ann-user")
 	if err != nil {
@@ -132,6 +138,7 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	handled := false
 	failCalled := false
 	success := newGinTestContext(http.MethodGet, "/reports", mgr.GetConfig().TokenName, token)
+	RegisterDTokenContextMiddleware(ctx, WithManager(mgr))(success)
 	CheckPermissionMiddleware(ctx, []string{"report:read"}, func(c *gin.Context) {
 		handled = true
 	}, func(c *gin.Context, err error) {
@@ -152,6 +159,7 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 
 	var gotErr error
 	failCtx := newGinTestContext(http.MethodGet, "/reports", mgr.GetConfig().TokenName, token)
+	RegisterDTokenContextMiddleware(ctx, WithManager(mgr))(failCtx)
 	CheckRoleMiddleware(ctx, []string{"admin"}, nil, func(c *gin.Context, err error) {
 		gotErr = err
 	}, "gin-annotation")(failCtx)
@@ -166,15 +174,17 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 // TestAnnotationReusesExplicitManager verifies annotations reuse a manager injected into request context. TestAnnotationReusesExplicitManager 验证注解会复用请求上下文中注入的显式 Manager。
 func TestAnnotationReusesExplicitManager(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().
+	builtAuth4, err := dtoken.NewBuilder().
 		IsPrintBanner(false).
 		AutoRenew(false).
 		AuthType("gin-explicit").
 		Build()
+	mgr := builtAuth4.Manager()
+
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -188,6 +198,7 @@ func TestAnnotationReusesExplicitManager(t *testing.T) {
 	}
 
 	success := newGinTestContext(http.MethodGet, "/reports", mgr.GetConfig().TokenName, token)
+	RegisterDTokenContextMiddleware(ctx, WithManager(mgr))(success)
 	RegisterDTokenContextMiddleware(ctx, WithManager(mgr))(success)
 
 	handled := false

@@ -4,18 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	dtglobal "github.com/Zany2/dtoken-go/global"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	"github.com/Zany2/dtoken-go/internal/defaults"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
+	"github.com/Zany2/dtoken-go/storage/memory"
+	gingonic "github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/Zany2/dtoken-go/com/storage/memory"
-	"github.com/Zany2/dtoken-go/core/adapter"
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
-	gingonic "github.com/gin-gonic/gin"
 )
 
 // ginReviewChecks exercises every authentication entry point through real Gin handler chains. ginReviewChecks 使用真实 Gin 处理链覆盖各鉴权入口。
@@ -37,7 +37,8 @@ var ginReviewChecks = []struct {
 			opt(options)
 		}
 		return GetHandler(ctx, nil, options.FailFunc, &Annotation{
-			AuthType: options.AuthType, CheckLogin: true, CheckPermission: []string{"read"},
+			ManagerResolver: options.ManagerResolver,
+			AuthType:        options.AuthType, CheckLogin: true, CheckPermission: []string{"read"},
 		})
 	}},
 }
@@ -45,12 +46,12 @@ var ginReviewChecks = []struct {
 // newGinReviewManager creates a deterministic manager with synchronous events and no automatic renewal. newGinReviewManager 创建使用同步事件且不自动续期的测试 Manager。
 func newGinReviewManager(t *testing.T, authType string, storage adapter.Storage) *manager.Manager {
 	t.Helper()
-	b := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
+	b := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
 	if authType != "" {
 		b.AuthType(authType)
 	}
 	if storage != nil {
-		b.SetStorage(storage)
+		b.Storage(storage)
 	}
 	mgr, err := b.Build()
 	if err != nil {
@@ -63,8 +64,8 @@ func newGinReviewManager(t *testing.T, authType string, storage adapter.Storage)
 // TestGinReviewRequestContextAndManager verifies request values/cancellation and inherited explicit managers. TestGinReviewRequestContextAndManager 验证请求上下文值、取消信号及显式 Manager 的继承。
 func TestGinReviewRequestContextAndManager(t *testing.T) {
 	gingonic.SetMode(gingonic.TestMode)
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	for _, check := range ginReviewChecks {
 		t.Run(check.name, func(t *testing.T) {
 			storage := &ginReviewContextStorage{Storage: memory.NewStorage()}
@@ -148,8 +149,8 @@ func (s *ginReviewContextStorage) Get(ctx context.Context, key string) (any, err
 // TestGinReviewFailureCallbackCannotResume rejects requests before invoking custom failure handlers. TestGinReviewFailureCallbackCannotResume 验证失败回调不能恢复受保护处理链。
 func TestGinReviewFailureCallbackCannotResume(t *testing.T) {
 	gingonic.SetMode(gingonic.TestMode)
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	mgr := newGinReviewManager(t, "failure-callback", nil)
 	for _, check := range ginReviewChecks {
 		for _, missingManager := range []bool{false, true} {
@@ -180,8 +181,8 @@ func TestGinReviewFailureCallbackCannotResume(t *testing.T) {
 
 // TestGinReviewRegistrationFailureCannotResume covers the context-only middleware's error path. TestGinReviewRegistrationFailureCannotResume 覆盖仅注册上下文的中间件失败路径。
 func TestGinReviewRegistrationFailureCannotResume(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	handled, failures := 0, 0
 	router := gingonic.New()
 	router.Use(RegisterDTokenContextMiddleware(context.Background(), WithFailFunc(func(c *gingonic.Context, _ error) {
@@ -199,11 +200,11 @@ func TestGinReviewRegistrationFailureCannotResume(t *testing.T) {
 
 // TestGinReviewManagerSelection preserves explicit overrides and rejects a closed cached manager. TestGinReviewManagerSelection 保留显式覆盖优先级并拒绝已关闭的缓存 Manager。
 func TestGinReviewManagerSelection(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	global := newGinReviewManager(t, "", nil)
 	local := newGinReviewManager(t, "local-selection", nil)
-	dtoken.SetManager(global)
+	dtglobal.SetManager(global)
 	const token = "selection-token"
 	for _, mgr := range []*manager.Manager{global, local} {
 		if _, err := mgr.LoginWithOptions(context.Background(), manager.LoginOptions{LoginID: "reader", Token: token}); err != nil {
@@ -223,7 +224,7 @@ func TestGinReviewManagerSelection(t *testing.T) {
 			want *manager.Manager
 		}{
 			{"cached", nil, local},
-			{"auth type", []AuthOption{WithAuthType(global.GetConfig().AuthType)}, global},
+			{"auth type", []AuthOption{WithManagerResolver(dtglobal.GetManager), WithAuthType(global.GetConfig().AuthType)}, global},
 			{"explicit manager", []AuthOption{WithManager(global), WithAuthType("missing")}, global},
 		} {
 			if check.name == "annotation" && selection.name == "explicit manager" {
@@ -265,8 +266,8 @@ func TestGinReviewManagerSelection(t *testing.T) {
 // TestGinReviewHooksHonorNativeAbort avoids duplicate responses after hooks finish a request. TestGinReviewHooksHonorNativeAbort 避免钩子结束请求后鉴权继续追加响应。
 func TestGinReviewHooksHonorNativeAbort(t *testing.T) {
 	gingonic.SetMode(gingonic.TestMode)
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	for _, check := range ginReviewChecks {
 		if check.name == "annotation" {
 			continue
@@ -295,11 +296,11 @@ func TestGinReviewHooksHonorNativeAbort(t *testing.T) {
 
 // TestGinReviewRenewalUsesRequestManager protects identical token values in different auth namespaces. TestGinReviewRenewalUsesRequestManager 保护不同认证空间内同值 Token 的续期归属。
 func TestGinReviewRenewalUsesRequestManager(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	global := newGinReviewManager(t, "", nil)
 	local := newGinReviewManager(t, "local-renewal", nil)
-	dtoken.SetManager(global)
+	dtglobal.SetManager(global)
 	const token = "shared-token-value"
 	for _, mgr := range []*manager.Manager{global, local} {
 		if _, err := mgr.LoginWithOptions(context.Background(), manager.LoginOptions{LoginID: "renew", Token: token}); err != nil {
@@ -324,17 +325,17 @@ func TestGinReviewRenewalUsesRequestManager(t *testing.T) {
 
 // TestGinReviewCachedContextValidation rejects unusable cached managers without switching authentication domains. TestGinReviewCachedContextValidation 拒绝不可用缓存 Manager，避免切换认证空间。
 func TestGinReviewCachedContextValidation(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 	global := newGinReviewManager(t, "", nil)
-	dtoken.SetManager(global)
+	dtglobal.SetManager(global)
 	c := newGinTestContext(http.MethodGet, "/", "", "")
 	c.Set(DTokenCtxKey, (*DTokenContext)(nil))
 	if value, ok := GetDTokenContext(c); value != nil || ok {
 		t.Fatal("typed nil cache was reported as a usable context")
 	}
-	if mgr, err := GetManagerByContext(c); err != nil || mgr != global {
-		t.Fatalf("missing cache fallback = %v, %v", mgr, err)
+	if mgr, err := GetManagerByContext(c); !errors.Is(err, ErrManagerNotFound) {
+		t.Fatalf("missing cache binding = %v, %v", mgr, err)
 	}
 	for _, missing := range []bool{true, false} {
 		var mgr *manager.Manager

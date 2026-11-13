@@ -4,7 +4,7 @@
 
 ## 概述
 
-`dtoken` 是 DToken-Go 的全局工具入口，封装了登录认证、权限、角色、封禁、Session、Nonce、OAuth2、Token Introspection 和 Refresh Token 等常用能力。
+本页使用 dtoken 作为 github.com/Zany2/dtoken-go/global 的导入别名，记录全局认证 API。根包提供实例 API，Nonce、OAuth2、Ticket 和 ShortKey 通过独立服务调用。
 
 当前版本的 `dtoken` 以 `context.Context` 为统一入口，认证体系可通过可选 `authType` 参数区分。
 
@@ -12,23 +12,23 @@
 
 ```go
 import (
+    dt "github.com/Zany2/dtoken-go"
+    dtoken "github.com/Zany2/dtoken-go/global"
     "context"
 
-    "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/defaults"
-    "github.com/Zany2/dtoken-go/dtoken"
+    "github.com/Zany2/dtoken-go/storage/memory"
 )
 
 var ctx = context.Background()
 
 func init() {
-    mgr, err := defaults.NewBuilder().
-        SetStorage(memory.NewStorage()).
+    mgr, err := dt.NewBuilder().
+        Storage(memory.NewStorage()).
         Build()
     if err != nil {
         panic(err)
     }
-    dtoken.SetManager(mgr)
+    dtoken.SetManager(mgr.Manager())
 }
 ```
 
@@ -490,39 +490,9 @@ type TokenInfo struct {
 }
 ```
 
-### Nonce API
+### 独立能力
 
-构建并注册 Manager 前，先调用 `EnableNonce()` 启用该可选模块。
-
-```go
-func GenerateNonce(ctx context.Context, authType ...string) (string, error)
-func GenerateNonceWithTimeout(ctx context.Context, timeout time.Duration, authType ...string) (string, error)
-func VerifyNonce(ctx context.Context, nonce string, authType ...string) bool
-func VerifyAndConsumeNonce(ctx context.Context, nonce string, authType ...string) error
-func IsNonceValid(ctx context.Context, nonce string, authType ...string) bool
-func GetNonceTTL(ctx context.Context, nonce string, authType ...string) (int64, error)
-```
-
-### OAuth2 API
-
-构建并注册 Manager 前，先调用 `EnableOAuth2()` 启用该可选模块。
-
-```go
-func RegisterOAuth2Client(client *oauth2.Client, authType ...string) error
-func UnregisterOAuth2Client(clientID string, authType ...string) error
-func GetOAuth2Client(clientID string, authType ...string) (*oauth2.Client, error)
-func OAuth2Token(ctx context.Context, req *oauth2.TokenRequest, validateUser oauth2.UserValidator, authType ...string) (*oauth2.AccessToken, error)
-func GenerateOAuth2AuthorizationCode(ctx context.Context, clientID, userID, redirectURI string, scopes []string, authType ...string) (*oauth2.AuthorizationCode, error)
-func GenerateOAuth2AuthorizationCodeWithPKCE(ctx context.Context, clientID, userID, redirectURI string, scopes []string, codeChallenge, codeChallengeMethod string, authType ...string) (*oauth2.AuthorizationCode, error)
-func ExchangeOAuth2CodeForToken(ctx context.Context, code, clientID, clientSecret, redirectURI string, authType ...string) (*oauth2.AccessToken, error)
-func ExchangeOAuth2CodeForTokenWithPKCE(ctx context.Context, code, clientID, clientSecret, redirectURI, codeVerifier string, authType ...string) (*oauth2.AccessToken, error)
-func OAuth2ClientCredentialsToken(ctx context.Context, clientID, clientSecret string, scopes []string, authType ...string) (*oauth2.AccessToken, error)
-func OAuth2PasswordGrantToken(ctx context.Context, clientID, clientSecret, username, password string, scopes []string, validateUser oauth2.UserValidator, authType ...string) (*oauth2.AccessToken, error)
-func RefreshOAuth2AccessToken(ctx context.Context, clientID, refreshToken, clientSecret string, authType ...string) (*oauth2.AccessToken, error)
-func ValidateOAuth2AccessToken(ctx context.Context, accessToken string, authType ...string) bool
-func ValidateOAuth2AccessTokenAndGetInfo(ctx context.Context, accessToken string, authType ...string) (*oauth2.AccessToken, error)
-func RevokeOAuth2Token(ctx context.Context, accessToken string, authType ...string) error
-```
+Nonce 和 OAuth2 由各自包的 Service 提供，不属于 global API。参见 [Nonce](../guide/security/nonce_zh.md)、[OAuth2](../guide/security/oauth2_zh.md) 与 [Ticket、ShortKey](../guide/security/advanced-features_zh.md)。
 
 ### Manager 生命周期 API
 
@@ -647,29 +617,6 @@ func DeleteAllManager()
 - `CheckRoleAnd`
 - `CheckRoleOr`
 
-### Nonce
-- `GenerateNonce`
-- `GenerateNonceWithTimeout`
-- `VerifyNonce`
-- `VerifyAndConsumeNonce`
-- `IsNonceValid`
-- `GetNonceTTL`
-
-### OAuth2
-- `RegisterOAuth2Client`
-- `UnregisterOAuth2Client`
-- `GetOAuth2Client`
-- `OAuth2Token`
-- `GenerateOAuth2AuthorizationCode`
-- `GenerateOAuth2AuthorizationCodeWithPKCE`
-- `ExchangeOAuth2CodeForToken`
-- `ExchangeOAuth2CodeForTokenWithPKCE`
-- `OAuth2ClientCredentialsToken`
-- `OAuth2PasswordGrantToken`
-- `RefreshOAuth2AccessToken`
-- `ValidateOAuth2AccessToken`
-- `ValidateOAuth2AccessTokenAndGetInfo`
-- `RevokeOAuth2Token`
 
 ## 下一步
 

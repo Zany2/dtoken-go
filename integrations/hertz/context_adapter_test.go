@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 )
 
@@ -12,7 +12,7 @@ import (
 func TestHertzContextAdapterRequestAndResponse(t *testing.T) {
 	hertzCtx := hertzapp.NewContext(0)
 	hertzCtx.Request.SetMethod(http.MethodPost)
-	hertzCtx.Request.SetRequestURI("/demo?foo=bar")
+	hertzCtx.Request.SetRequestURI("http://example.com/demo?foo=bar")
 	hertzCtx.Request.Header.Set("X-Token", "token")
 	hertzCtx.Request.Header.Set("User-Agent", "hertz-test")
 	hertzCtx.Request.Header.SetCookie("sid", "cookie-token")
@@ -34,8 +34,8 @@ func TestHertzContextAdapterRequestAndResponse(t *testing.T) {
 	if got := ctx.GetPath(); got != "/demo" {
 		t.Fatalf("GetPath() = %q, want /demo", got)
 	}
-	if got := ctx.GetURL(); got != "/demo?foo=bar" {
-		t.Fatalf("GetURL() = %q, want /demo?foo=bar", got)
+	if got := ctx.GetURL(); got != "http://example.com/demo?foo=bar" {
+		t.Fatalf("GetURL() = %q, want http://example.com/demo?foo=bar", got)
 	}
 	if got := ctx.GetUserAgent(); got != "hertz-test" {
 		t.Fatalf("GetUserAgent() = %q, want hertz-test", got)

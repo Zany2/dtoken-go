@@ -8,12 +8,10 @@ This page is based on the current version of the codebase and walks through the 
 
 ## Step 1: Install
 
-### Option 1: Core Modules + Memory Storage
+### Option 1: Root Module with Default Memory Storage
 
 ```bash
-go get github.com/Zany2/dtoken-go/defaults
-go get github.com/Zany2/dtoken-go/dtoken
-go get github.com/Zany2/dtoken-go/com/storage/memory
+go get github.com/Zany2/dtoken-go
 ```
 
 ### Option 2: Use a Framework Integration Package Directly
@@ -22,48 +20,51 @@ If you are already using a web framework, you can also import an integration pac
 
 ```bash
 go get github.com/Zany2/dtoken-go/integrations/gin
-go get github.com/Zany2/dtoken-go/com/storage/memory
 ```
 
 ## Step 2: Initialize
 
+<!-- dtoken-compile: quick-start -->
 ```go
 package main
 
 import (
+    dt "github.com/Zany2/dtoken-go"
+    dtoken "github.com/Zany2/dtoken-go/global"
     "context"
-
-    "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/defaults"
-    "github.com/Zany2/dtoken-go/dtoken"
 )
 
 var ctx = context.Background()
 
-func init() {
-    mgr, err := defaults.NewBuilder().
-        SetStorage(memory.NewStorage()).
+func initDToken() *dtoken.Auth {
+    auth, err := dt.NewBuilder().
         TokenName("Authorization").
         Timeout(86400).
         Build()
     if err != nil {
         panic(err)
     }
-    dtoken.SetManager(mgr)
+    dtoken.SetAuth(auth)
+    return auth
 }
 ```
 
 ### Initialization Notes
 
-- `defaults.NewBuilder()` is used to build a `Manager`
-- `SetStorage(...)` specifies the storage implementation
-- `dtoken.SetManager(...)` registers the global `Manager`
-- after that, application code can call capability directly through `dtoken`
+- `dt.NewBuilder().Build()` creates an authentication instance using memory storage by default.
+- `Storage(...)` can replace the storage implementation.
+- `dtoken.SetAuth(auth)` registers the instance for the global APIs used below.
+- `auth.Close()` unregisters the instance and releases manager-owned resources.
 
 ## Step 3: Use It
 
+<!-- dtoken-compile: quick-start -->
 ```go
 func main() {
+    auth := initDToken()
+    defer auth.Close()
+    defer dtoken.DeleteAllManager()
+
     // Login
     token, _ := dtoken.Login(ctx, "1000")
 
@@ -88,8 +89,7 @@ func main() {
 You can continue adjusting common settings through the Builder:
 
 ```go
-mgr, err := defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+auth, err := dt.NewBuilder().
     TokenName("token").
     Timeout(7200).
     ActiveTimeout(1800).
@@ -101,7 +101,9 @@ if err != nil {
     panic(err)
 }
 
-dtoken.SetManager(mgr)
+defer auth.Close()
+    defer dtoken.DeleteAllManager()
+dtoken.SetAuth(auth)
 ```
 
 Common config meanings:

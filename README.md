@@ -12,7 +12,7 @@
   <a href="https://github.com/Zany2/dtoken-go"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat-square&logo=go" alt="Go"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue?style=flat-square" alt="License"></a>
   <a href="docs/README.md"><img src="https://img.shields.io/badge/Docs-English-brightgreen?style=flat-square" alt="Docs"></a>
-  <a href="https://pkg.go.dev/github.com/Zany2/dtoken-go/dtoken"><img src="https://img.shields.io/badge/pkg.go.dev-dtoken-007D9C?style=flat-square&logo=go" alt="pkg.go.dev"></a>
+  <a href="https://pkg.go.dev/github.com/Zany2/dtoken-go"><img src="https://img.shields.io/badge/pkg.go.dev-dtoken-007D9C?style=flat-square&logo=go" alt="pkg.go.dev"></a>
 </p>
 
 <p align="center">
@@ -57,270 +57,133 @@ You can use it for:
 
 ## Installation
 
-The root module publishes `core`, `dtoken`, `defaults`, shared auth checks, and bundled basic components together. Framework integrations, SSO, and optional components retain independent modules. Existing package import paths continue to apply. See the [module migration guide](docs/design/module-migration.md) for dependency and release changes.
-
-The main module targets Go 1.25 or later. Local development with this repository's `go.work` requires Go 1.27 or later; the optional `com/codec/jsonv2` module additionally requires `GOEXPERIMENT=jsonv2`.
-
-### Default Core Usage
+The root module requires Go 1.25+; repository workspace development requires Go 1.27+. The optional `codec/jsonv2` module requires `GOEXPERIMENT=jsonv2`.
 
 ```bash
-go get github.com/Zany2/dtoken-go/defaults
-go get github.com/Zany2/dtoken-go/dtoken
-```
-
-### Web Framework Integration
-
-If your project already uses a Web framework, you can use the corresponding DToken integration package directly. Integration packages wrap the Builder, middleware, context adapters, and common DToken APIs, making it easy to add authentication, authorization, and login-state management inside a specific framework.
-
-```bash
+go get github.com/Zany2/dtoken-go
 go get github.com/Zany2/dtoken-go/integrations/gin
 ```
 
-Available framework packages:
-
-```bash
-go get github.com/Zany2/dtoken-go/integrations/echo
-go get github.com/Zany2/dtoken-go/integrations/fiber
-go get github.com/Zany2/dtoken-go/integrations/chi
-go get github.com/Zany2/dtoken-go/integrations/gf
-go get github.com/Zany2/dtoken-go/integrations/hertz
-go get github.com/Zany2/dtoken-go/integrations/kratos
-go get github.com/Zany2/dtoken-go/integrations/beego
-```
-
-### Pluggable Components
-
-```bash
-go get github.com/Zany2/dtoken-go/com/storage/redis
-go get github.com/Zany2/dtoken-go/com/generator/dgenerator
-go get github.com/Zany2/dtoken-go/com/pool/ants
-```
+Framework integrations, SSO, Redis storage, MsgPack, JSON v2, and GoFrame logging use separate modules. See the [migration guide](docs/design/module-migration.md) for package paths and upgrades.
 
 ## 5-Minute Quick Start
 
-`dtoken.NewBuilder()` wires the default memory storage, JSON codec, Token generator, and logger, making it suitable for quick experiments.
-
+<!-- dtoken-compile: instance -->
 ```go
 package main
 
 import (
-	"context"
-	"fmt"
+    "context"
+    "fmt"
 
-	"github.com/Zany2/dtoken-go/dtoken"
+    "github.com/Zany2/dtoken-go"
 )
 
 func main() {
-	ctx := context.Background()
+    auth, err := dtoken.NewBuilder().
+        AuthType("user").
+        TokenName("Authorization").
+        Timeout(7200).
+        IsPrintBanner(false).
+        Build()
+    if err != nil {
+        panic(err)
+    }
+    defer auth.Close()
 
-	mgr, err := dtoken.NewBuilder().
-		TokenName("Authorization"). // Read Token from Authorization
-		Timeout(7200).              // Token lifetime: 7200 seconds
-		AutoRenew(true).            // Auto-renew during login-state checks
-		IsPrintBanner(false).       // Hide banner in this example
-		Build()
-	if err != nil {
-		panic(err)
-	}
-
-	// Register the global Manager, then use dtoken global APIs.
-	dtoken.SetManager(mgr)
-
-	// Login and issue a Token.
-	token, err := dtoken.Login(ctx, "user-1001")
-	if err != nil {
-		panic(err)
-	}
-
-	// Bind roles and permissions to the user.
-	_ = dtoken.AddRoles(ctx, "user-1001", []string{"admin"})
-	_ = dtoken.AddPermissions(ctx, "user-1001", []string{"article:read"})
-
-	// Resolve login ID from Token and check access.
-	loginID, _ := dtoken.GetLoginID(ctx, token)
-
-	fmt.Println("token:", token)
-	fmt.Println("loginID:", loginID)
-	fmt.Println("is login:", dtoken.IsLogin(ctx, token))
-	fmt.Println("is admin:", dtoken.HasRole(ctx, loginID, "admin"))
-	fmt.Println("can read article:", dtoken.HasPermission(ctx, loginID, "article:read"))
-
-	// Logout invalidates the Token.
-	_ = dtoken.Logout(ctx, token)
+    ctx := context.Background()
+    token, err := auth.LoginID(ctx, "user-1001")
+    if err != nil {
+        panic(err)
+    }
+    _ = auth.AddRoles(ctx, dtoken.RoleOptions{LoginID: "user-1001", Roles: []string{"admin"}})
+    fmt.Println(auth.IsLogin(ctx, token))
+    _ = auth.LogoutByToken(ctx, token)
 }
 ```
 
-See [examples/quick_start](examples/quick_start/) for a complete example.
+For global APIs, explicitly import `github.com/Zany2/dtoken-go/global`, call `global.SetAuth(auth)`, and clean up registrations with `global.DeleteManager` or `global.DeleteAllManager`. Instances can operate without global registration.
 
 ## Web Framework Integration
 
-The following Gin example only imports `integrations/gin`. Integration usually has three steps: initialize DToken, register middleware, and use login-state and permission capabilities in business routes.
+Build instances from the root package and inject them through framework `WithAuth` or `Context`.
 
+<!-- dtoken-compile: gin -->
 ```go
 package main
 
 import (
-	"context"
-	"net/http"
+    "net/http"
 
-	gindt "github.com/Zany2/dtoken-go/integrations/gin"
-	"github.com/gin-gonic/gin"
+    "github.com/Zany2/dtoken-go"
+    gindt "github.com/Zany2/dtoken-go/integrations/gin"
+    "github.com/gin-gonic/gin"
 )
 
 func main() {
-	ctx := context.Background()
+    auth, err := dtoken.NewBuilder().TokenName("Authorization").Build()
+    if err != nil {
+        panic(err)
+    }
+    defer auth.Close()
 
-	mgr, err := gindt.NewBuilder().
-		TokenName("Authorization"). // Read Token from Authorization Header
-		Timeout(7200).              // Token lifetime: 7200 seconds
-		AutoRenew(true).            // Auto-renew during login-state checks
-		IsPrintBanner(false).       // Hide banner in this example
-		Build()
-	if err != nil {
-		panic(err)
-	}
-
-	// Register the global Manager, then use APIs exported by gindt.
-	gindt.SetManager(mgr)
-
-	r := gin.Default()
-
-	// Register context middleware, then read request auth context with GetDTokenContext.
-	r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
-
-	// Customize response format for authentication or authorization failures.
-	failFunc := gindt.WithFailFunc(func(c *gin.Context, err error) {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"code":    gindt.CodeNotLogin,
-			"message": err.Error(),
-		})
-	})
-
-	r.POST("/login", func(c *gin.Context) {
-		// Issue a Token after login. Client should send Authorization: Bearer <token>.
-		token, err := gindt.Login(c.Request.Context(), "user-1001")
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-		// Example only: normally roles come from your database or permission center.
-		_ = gindt.AddRoles(c.Request.Context(), "user-1001", []string{"admin"})
-
-		c.JSON(http.StatusOK, gin.H{"token": token})
-	})
-
-	user := r.Group("/user")
-
-	// AuthMiddleware checks whether the request is logged in.
-	user.Use(gindt.AuthMiddleware(ctx, failFunc))
-	user.GET("/me", func(c *gin.Context) {
-		// Resolve the current login account from request context.
-		dCtx, _ := gindt.GetDTokenContext(c)
-		loginID, _ := dCtx.Auth().GetLoginID(c.Request.Context())
-		c.JSON(http.StatusOK, gin.H{"loginId": loginID})
-	})
-
-	admin := r.Group("/admin")
-
-	// RoleMiddleware checks roles after login validation.
-	admin.Use(gindt.AuthMiddleware(ctx, failFunc), gindt.RoleMiddleware(ctx, []string{"admin"}, failFunc))
-	admin.GET("/dashboard", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "ok"})
-	})
-
-	_ = r.Run(":8080")
+    router := gin.Default()
+    router.Use(gindt.Context(auth))
+    router.POST("/login", func(c *gin.Context) {
+        token, err := auth.LoginID(c.Request.Context(), "user-1001")
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+            return
+        }
+        c.JSON(http.StatusOK, gin.H{"token": token})
+    })
+    users := router.Group("/user")
+    users.Use(gindt.RequireLogin())
+    users.GET("/me", func(c *gin.Context) {
+        loginID, err := gindt.GetLoginIDByContext(c)
+        if err != nil {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+            return
+        }
+        c.JSON(http.StatusOK, gin.H{"loginId": loginID})
+    })
+    if err := router.Run(":8080"); err != nil {
+        panic(err)
+    }
 }
 ```
 
-| Framework | Example | Integration Package |
-| --- | --- | --- |
-| Gin | [examples/gin](examples/gin/) | `github.com/Zany2/dtoken-go/integrations/gin` |
-| Echo | [examples/echo](examples/echo/) | `github.com/Zany2/dtoken-go/integrations/echo` |
-| Fiber | [examples/fiber](examples/fiber/) | `github.com/Zany2/dtoken-go/integrations/fiber` |
-| Chi | [examples/chi](examples/chi/) | `github.com/Zany2/dtoken-go/integrations/chi` |
-| GoFrame | [examples/gf](examples/gf/) | `github.com/Zany2/dtoken-go/integrations/gf` |
-| Hertz | [examples/hertz](examples/hertz/) | `github.com/Zany2/dtoken-go/integrations/hertz` |
-| Kratos | [examples/kratos](examples/kratos/) | `github.com/Zany2/dtoken-go/integrations/kratos` |
-| Beego | [examples/beego](examples/beego/) | `github.com/Zany2/dtoken-go/integrations/beego` |
+## Compose Independent Capabilities
 
-## Deep Reading
+Create Nonce, OAuth2, Ticket, and ShortKey through their package constructors. `NewService` accepts an authentication instance as an optional event emitter. Compose services using the same namespace and storage as the instance; the builder has no capability switches. Inject request services with `WithCapabilities`; unbound capabilities return `ErrModuleNotEnabled`. Use this fragment before registering routes and also import the standard `context` package.
 
-README keeps only the minimal getting-started path. For more API, configuration, and component details, see:
-
-- [Core API Cheatsheet](docs/guide/reference/core-api-cheatsheet.md)
-- [Advanced Features](docs/guide/security/advanced-features.md)
-- [Configuration Example](docs/guide/reference/configuration.md)
-- [Component Ecosystem](docs/guide/integration/component-ecosystem.md)
-- [Multi-Auth Systems](docs/guide/core/multi-auth.md)
-- [Disable System](docs/guide/core/disable.md)
-- [Token Styles](docs/guide/core/token-style.md)
-- [AccessProvider](docs/guide/core/access-provider.md)
-
-## Project Structure
-
-```text
-dtoken-go/
-├── core/                         # One Go module with packages organized by capability
-│   ├── adapter/                  # Contracts for storage, codec, logger, Token generator, and request context
-│   ├── builder/                  # Manager builder, component wiring, and configuration validation
-│   ├── config/                   # Core configuration, defaults, and validation
-│   ├── context/                  # Request-scoped DTokenContext for Token and Manager access
-│   ├── derror/                   # Unified errors, error codes, and core error definitions
-│   ├── listener/                 # Event model, event manager, and listener callbacks
-│   ├── manager/                  # Login, Session, terminal, permission, role, and disable logic
-│   ├── nonce/                    # Nonce anti-replay capability
-│   ├── oauth2/                   # OAuth2 server capability
-│   └── utils/                    # Internal shared utilities
-├── dtoken/                       # Public facade APIs for global mode, instance mode, and feature groups
-├── sso/                          # Optional SSO module: Ticket, shared token, remote session, and authorization-code modes
-├── defaults/                     # Default Builder with bundled storage, codec, logger, and Token generator wiring
-├── com/                          # Pluggable component implementations
-│   ├── codec/                    # Codec components, such as JSON, MessagePack, Base64
-│   ├── generator/                # Token generators
-│   ├── log/                      # Logger components
-│   ├── pool/                     # Goroutine pool components
-│   └── storage/                  # Storage components, such as Memory and Redis
-├── integrations/                 # Web framework integration packages
-│   ├── gin/                      # Gin middleware, context adapter, and API exports
-│   ├── echo/                     # Echo middleware, context adapter, and API exports
-│   ├── fiber/                    # Fiber middleware, context adapter, and API exports
-│   ├── chi/                      # Chi middleware, context adapter, and API exports
-│   ├── gf/                       # GoFrame middleware, context adapter, and API exports
-│   ├── hertz/                    # Hertz middleware, context adapter, and API exports
-│   ├── kratos/                   # Kratos middleware, context adapter, and API exports
-│   └── beego/                    # Beego filters, context adapter, and API exports
-├── examples/                     # Quick-start and framework integration examples
-│   ├── quick_start/              # Minimal example with the default Builder and global API
-│   ├── gin/                      # Gin example
-│   ├── sso_gin_server/           # Gin SSO login-center example
-│   ├── sso_gin_client/           # Gin SSO client-app example
-│   ├── sso_server/               # net/http SSO login-center example
-│   ├── sso_client/               # net/http SSO client-app example
-│   ├── echo/                     # Echo example
-│   ├── fiber/                    # Fiber example
-│   ├── chi/                      # Chi example
-│   ├── gf/                       # GoFrame example
-│   ├── hertz/                    # Hertz example
-│   ├── kratos/                   # Kratos example
-│   └── beego/                    # Beego example
-├── tests/                        # Flow tests and test applications
-│   ├── gin_core_app/             # Gin core flow test application
-│   └── gin_core_flow/            # HTTP flow tests for core features
-├── docs/                         # Guides, API references, and design docs
-│   ├── guide/core/               # Core capabilities such as login, permissions, Session, terminals, and disable
-│   ├── guide/security/           # Security and protocol features such as Nonce, OAuth2, SSO, JWT, and Refresh Token
-│   ├── guide/integration/        # Web frameworks, annotations, components, Redis, and flow tests
-│   ├── guide/reference/          # Configuration examples and Core API cheatsheet
-│   ├── api/                      # API references
-│   ├── design/                   # Architecture and design docs
-│   └── tutorial/                 # Quick-start tutorials
-├── LICENSE                       # Apache-2.0 license
-├── README_zh.md                  # Chinese project README
-├── README.md                     # English project README
-├── go.work                       # Go workspace for all modules
-└── go.work.sum                   # Workspace dependency checksum file
+```go
+// Imports: nonce "github.com/Zany2/dtoken-go/nonce",
+// requestcontext "github.com/Zany2/dtoken-go/httpauth/context".
+cfg := auth.Config()
+service := nonce.NewService(
+    nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage()),
+    auth,
+)
+options := []gindt.AuthOption{
+    gindt.WithAuth(auth),
+    gindt.WithCapabilities(requestcontext.Capabilities{Nonce: service}),
+}
+router.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), options...))
 ```
+
+## Package Boundaries
+
+| Package | Responsibility |
+| --- | --- |
+| `dtoken` | Instance facade and default builder |
+| `global` | Global authentication API and registry |
+| `contract`、`config`、`errors`、`event` | Public contracts, configuration, errors, and events |
+| `internal/engine` | Internal authentication engine; applications do not import it |
+| `nonce`、`oauth2`、`ticket`、`shortkey` | Independently composed capabilities and services |
+| `httpauth`、`httpauth/context` | Shared HTTP authentication and request contexts |
+| `codec`、`generator`、`logging`、`pool`、`storage` | Pluggable component implementations |
+| `integrations/<framework>`、`sso` | Framework integrations and the independent SSO module |
 
 ## Documentation And Examples
 

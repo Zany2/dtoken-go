@@ -3,22 +3,23 @@ package kratos
 import (
 	"context"
 	"errors"
+	dtglobal "github.com/Zany2/dtoken-go/global"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 )
 
 // TestKratosContextMiddlewareManagerFailure verifies manager resolution failures return through FailFunc. TestKratosContextMiddlewareManagerFailure 验证 Manager 解析失败会通过 FailFunc 返回。
 func TestKratosContextMiddlewareManagerFailure(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	var gotErr error
 	handler := RegisterDTokenContextMiddleware(
@@ -248,8 +249,8 @@ func TestKratosContextLookupHandlesNilAndTypedNil(t *testing.T) {
 	}
 
 	mgr := newKratosBehaviorManager(t)
-	dtoken.SetManager(mgr)
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.SetManager(mgr)
+	t.Cleanup(dtglobal.DeleteAllManager)
 	if _, err := GetLoginIDByCtx(nil); !errors.Is(err, derror.ErrNotLogin) {
 		t.Fatalf("GetLoginIDByCtx(nil) error = %v, want ErrNotLogin", err)
 	}
@@ -266,7 +267,8 @@ func TestKratosContextLookupHandlesNilAndTypedNil(t *testing.T) {
 
 func newKratosBehaviorManager(t *testing.T) *manager.Manager {
 	t.Helper()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

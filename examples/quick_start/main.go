@@ -4,18 +4,18 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	dtglobal "github.com/Zany2/dtoken-go/global"
 	"io"
 	"net/http"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
+	derror "github.com/Zany2/dtoken-go/errors"
 	"github.com/gin-gonic/gin"
 )
 
 const (
-	// tokenHeader stores the header used by this example tokenHeader 保存本示例读取的 Token 请求头
-	tokenHeader = "Authorization"
+	tokenHeader = "Authorization" // tokenHeader stores the header used by this example tokenHeader 保存本示例读取的 Token 请求头
 )
 
 // Response defines the example response body Response 定义示例响应结构
@@ -38,7 +38,7 @@ type LoginRequest struct {
 
 func main() {
 	initDToken()
-	defer dtoken.DeleteAllManager()
+	defer dtglobal.DeleteAllManager()
 
 	r := gin.Default()
 	registerRoutes(r)
@@ -62,17 +62,19 @@ func registerRoutes(r *gin.Engine) {
 
 // initDToken initializes DToken with bundled memory storage initDToken 使用内置内存存储初始化 DToken
 func initDToken() {
-	mgr, err := dtoken.NewBuilder().
+	builtAuth1, err := dtoken.NewBuilder().
 		TokenName(tokenHeader).
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
+	mgr := builtAuth1.Manager()
+
 	if err != nil {
 		panic(err)
 	}
 
-	dtoken.SetManager(mgr)
+	dtglobal.SetManager(mgr)
 }
 
 // handleLogin logs in a demo user handleLogin 登录示例用户
@@ -96,18 +98,18 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	token, err := dtoken.Login(c.Request.Context(), req.Username)
+	token, err := dtglobal.Login(c.Request.Context(), req.Username)
 	if err != nil {
 		writeAuthError(c, err)
 		return
 	}
 
 	// Grant every demo user the same access rules. 为所有示例用户授予相同权限，仅用于演示鉴权流程。
-	if err = dtoken.AddRoles(c.Request.Context(), req.Username, []string{"admin"}); err != nil {
+	if err = dtglobal.AddRoles(c.Request.Context(), req.Username, []string{"admin"}); err != nil {
 		writeAuthError(c, err)
 		return
 	}
-	if err = dtoken.AddPermissions(c.Request.Context(), req.Username, []string{"article:read"}); err != nil {
+	if err = dtglobal.AddPermissions(c.Request.Context(), req.Username, []string{"article:read"}); err != nil {
 		writeAuthError(c, err)
 		return
 	}
@@ -121,18 +123,18 @@ func handleLogin(c *gin.Context) {
 // handleMe returns current login information handleMe 返回当前登录信息
 func handleMe(c *gin.Context) {
 	token := currentToken(c)
-	loginID, err := dtoken.GetLoginID(c.Request.Context(), token)
+	loginID, err := dtglobal.GetLoginID(c.Request.Context(), token)
 	if err != nil {
 		writeAuthError(c, err)
 		return
 	}
 
-	roles, err := dtoken.GetRoles(c.Request.Context(), loginID)
+	roles, err := dtglobal.GetRoles(c.Request.Context(), loginID)
 	if err != nil {
 		writeAuthError(c, err)
 		return
 	}
-	permissions, err := dtoken.GetPermissions(c.Request.Context(), loginID)
+	permissions, err := dtglobal.GetPermissions(c.Request.Context(), loginID)
 	if err != nil {
 		writeAuthError(c, err)
 		return
@@ -157,7 +159,7 @@ func handleArticles(c *gin.Context) {
 
 // handleLogout logs out current token handleLogout 注销当前 Token
 func handleLogout(c *gin.Context) {
-	if err := dtoken.Logout(c.Request.Context(), currentToken(c)); err != nil {
+	if err := dtglobal.Logout(c.Request.Context(), currentToken(c)); err != nil {
 		writeAuthError(c, err)
 		return
 	}
@@ -168,7 +170,7 @@ func handleLogout(c *gin.Context) {
 // authMiddleware checks login state authMiddleware 校验登录状态
 func authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := dtoken.CheckLogin(c.Request.Context(), currentToken(c)); err != nil {
+		if err := dtglobal.CheckLogin(c.Request.Context(), currentToken(c)); err != nil {
 			writeAuthError(c, err)
 			c.Abort()
 			return
@@ -182,14 +184,14 @@ func authMiddleware() gin.HandlerFunc {
 func roleMiddleware(role string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		loginID, err := dtoken.GetLoginID(ctx, currentToken(c))
+		loginID, err := dtglobal.GetLoginID(ctx, currentToken(c))
 		if err != nil {
 			writeAuthError(c, err)
 			c.Abort()
 			return
 		}
 
-		if !dtoken.HasRole(ctx, loginID, role) {
+		if !dtglobal.HasRole(ctx, loginID, role) {
 			writeJSON(c, http.StatusForbidden, 403, "role denied", nil)
 			c.Abort()
 			return
@@ -203,14 +205,14 @@ func roleMiddleware(role string) gin.HandlerFunc {
 func permissionMiddleware(permission string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		loginID, err := dtoken.GetLoginID(ctx, currentToken(c))
+		loginID, err := dtglobal.GetLoginID(ctx, currentToken(c))
 		if err != nil {
 			writeAuthError(c, err)
 			c.Abort()
 			return
 		}
 
-		if !dtoken.HasPermission(ctx, loginID, permission) {
+		if !dtglobal.HasPermission(ctx, loginID, permission) {
 			writeJSON(c, http.StatusForbidden, 403, "permission denied", nil)
 			c.Abort()
 			return

@@ -3,22 +3,23 @@ package gf
 import (
 	"context"
 	"errors"
+	dtglobal "github.com/Zany2/dtoken-go/global"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
+	derror "github.com/Zany2/dtoken-go/errors"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
 // TestGFRegisterContextMiddlewareUsesFailureCallback verifies manager resolution failures stop before request traversal. TestGFRegisterContextMiddlewareUsesFailureCallback 验证 Manager 解析失败时会触发失败回调并停止请求遍历。
 func TestGFRegisterContextMiddlewareUsesFailureCallback(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	var gotErr error
 	handler := RegisterDTokenContextMiddleware(
@@ -78,11 +79,12 @@ func TestGFContextAdapterRequestValues(t *testing.T) {
 
 // TestGFAnnotationHandlerControlFlow verifies annotation success and failure callbacks. TestGFAnnotationHandlerControlFlow 验证注解成功路径与失败回调。
 func TestGFAnnotationHandlerControlFlow(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -146,11 +148,12 @@ func TestGFTypedNilContextIsSafe(t *testing.T) {
 
 // TestGFContextFacadeUsesCachedManager verifies request-context facade operations use the cached manager. TestGFContextFacadeUsesCachedManager 验证请求上下文门面会复用缓存的 Manager。
 func TestGFContextFacadeUsesCachedManager(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	mgr := builtAuth2.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

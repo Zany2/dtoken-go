@@ -3,21 +3,22 @@ package beego
 import (
 	"context"
 	"errors"
+	dtglobal "github.com/Zany2/dtoken-go/global"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
+	derror "github.com/Zany2/dtoken-go/errors"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	beegocontext "github.com/beego/beego/v2/server/web/context"
 )
 
 // TestBeegoContextMiddlewareManagerFailure verifies manager resolution failures invoke the failure callback. TestBeegoContextMiddlewareManagerFailure 验证 Manager 解析失败会触发失败回调。
 func TestBeegoContextMiddlewareManagerFailure(t *testing.T) {
-	dtoken.DeleteAllManager()
-	t.Cleanup(dtoken.DeleteAllManager)
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
 
 	c, _ := newBeegoBehaviorContext(http.MethodGet, "/protected", "", "")
 	var gotErr error
@@ -191,7 +192,8 @@ func TestBeegoContextLookupHandlesNilAndTypedNil(t *testing.T) {
 
 func newBeegoBehaviorManager(t *testing.T) *manager.Manager {
 	t.Helper()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

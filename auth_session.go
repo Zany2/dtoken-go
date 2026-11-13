@@ -4,7 +4,7 @@ package dtoken
 import (
 	"context"
 
-	"github.com/Zany2/dtoken-go/core/manager"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 )
 
 // GetOnlineTerminalCount returns online terminal count. GetOnlineTerminalCount 获取在线终端数量。
