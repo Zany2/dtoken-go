@@ -28,7 +28,7 @@ import (
 // TestRouteAccessUsesMatchedRoute verifies normalization and route overrides retain the target's checks. TestRouteAccessUsesMatchedRoute 验证规范化和路由覆盖后仍执行目标路由的鉴权规则。
 func TestRouteAccessUsesMatchedRoute(t *testing.T) {
 	mgr := setupGFManager(t)
-	s := newGFServer(t, registerRoutes)
+	s := newGFServer(t, registerTestRoutes)
 	ctx := context.Background()
 	token, err := mgr.Login(ctx, "reader")
 	if err != nil {
@@ -75,7 +75,7 @@ func TestRouteAccessUsesMatchedRoute(t *testing.T) {
 // TestLoginRefreshLogout verifies the JSON envelope and the complete token-pair lifecycle. TestLoginRefreshLogout 验证 JSON 响应及令牌对的完整生命周期。
 func TestLoginRefreshLogout(t *testing.T) {
 	setupGFManager(t)
-	s := newGFServer(t, registerRoutes)
+	s := newGFServer(t, registerTestRoutes)
 	pair := decodeGFPair(t, requestGF(s, http.MethodPost, "/login", "username=alice&password=123456", ""))
 	if pair.LoginID != "alice" || pair.Device != "web" || pair.DeviceID != "gf-example" {
 		t.Fatalf("unexpected login identity: %+v", pair)
@@ -122,7 +122,7 @@ func TestLoginRefreshLogout(t *testing.T) {
 // TestCredentialBodyValidation covers malformed input and prevents query fallback. TestCredentialBodyValidation 覆盖损坏输入并防止回退到 Query 参数。
 func TestCredentialBodyValidation(t *testing.T) {
 	setupGFManager(t)
-	s := newGFServer(t, registerRoutes)
+	s := newGFServer(t, registerTestRoutes)
 	for _, tc := range []struct {
 		path, body, contentType string
 	}{
@@ -185,7 +185,7 @@ func TestCredentialBodyValidation(t *testing.T) {
 // TestAccountAndDeviceRestrictions verifies 403 responses and retry after device unblocking. TestAccountAndDeviceRestrictions 验证封禁返回 403，设备解封后可重试刷新。
 func TestAccountAndDeviceRestrictions(t *testing.T) {
 	mgr := setupGFManager(t)
-	s := newGFServer(t, registerRoutes)
+	s := newGFServer(t, registerTestRoutes)
 	ctx := context.Background()
 	if err := mgr.Disable(ctx, "blocked", time.Hour); err != nil {
 		t.Fatal(err)
@@ -217,7 +217,7 @@ func TestStorageFailuresStayServerErrors(t *testing.T) {
 	dt4.SetManager(mgr)
 	for _, withAuth := range []bool{false, true} {
 		t.Run(map[bool]string{false: "handlers", true: "middleware"}[withAuth], func(t *testing.T) {
-			register := registerRoutes
+			register := registerTestRoutes
 			if !withAuth {
 				// Reach each handler directly to verify its own error mapping. 直接到达各处理器，验证其自身的错误分类。
 				register = func(s *ghttp.Server) {
@@ -267,7 +267,7 @@ func setupGFManager(t *testing.T) *dt1.Manager {
 	t.Helper()
 	dt4.DeleteAllManager()
 	t.Cleanup(dt4.DeleteAllManager)
-	initDToken()
+	dt4.SetAuth(initDToken())
 	mgr, err := dt4.GetManager()
 	if err != nil {
 		t.Fatal(err)
@@ -334,4 +334,39 @@ func decodeGFPair(t *testing.T, rec *httptest.ResponseRecorder) dt1.RefreshToken
 		t.Fatalf("empty token pair: %+v", pair)
 	}
 	return pair
+}
+
+// registeredAuth returns the explicitly registered test fixture. registeredAuth 返回显式注册的测试夹具。
+func registeredAuth() *dtoken.Auth {
+	auth, err := dt4.Default()
+	if err != nil {
+		panic(err)
+	}
+	return auth
+}
+
+// registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
+func registerTestRoutes(s *ghttp.Server) { registerRoutes(s, registeredAuth()) }
+
+// TestInjectedLoginWithoutGlobal verifies login and access grants use the injected instance. TestInjectedLoginWithoutGlobal 验证登录与授权使用注入实例且无需全局注册。
+func TestInjectedLoginWithoutGlobal(t *testing.T) {
+	dt4.DeleteAllManager()
+	t.Cleanup(dt4.DeleteAllManager)
+	auth := initDToken()
+	t.Cleanup(auth.Close)
+	s := newGFServer(t, func(s *ghttp.Server) { registerRoutes(s, auth) })
+	response := requestGF(s, http.MethodPost, "/login", "username=alice&password=123456", "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("login status = %d", response.Code)
+	}
+	ctx := context.Background()
+	if _, err := auth.GetSession(ctx, "alice"); err != nil {
+		t.Fatalf("injected session: %v", err)
+	}
+	if !auth.HasRole(ctx, "alice", "admin") || !auth.HasPermission(ctx, "alice", "article:read") {
+		t.Fatal("access grants missing from injected instance")
+	}
+	if _, err := dt4.GetManager(); err == nil {
+		t.Fatal("example unexpectedly registered a global manager")
+	}
 }

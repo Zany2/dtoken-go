@@ -1,5 +1,7 @@
 # Event Listener Guide
 
+Fragment aliases: dt = github.com/Zany2/dtoken-go, dtoken = github.com/Zany2/dtoken-go/global, listener = github.com/Zany2/dtoken-go/event.
+
 [中文文档](../event_zh.md) | English
 
 ## Current Status
@@ -10,7 +12,7 @@ It is used for authentication and lifecycle events, access checks and changes, r
 
 ## Accessing the Event Manager
 
-The current version exposes the event manager through the global facade, the instance facade, and `manager.Manager`:
+The current version exposes the event manager through the global facade, the instance facade, and `dt.Manager`:
 
 ```go
 globalEventMgr, err := dtoken.GetEventManager("user")

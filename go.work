@@ -33,10 +33,20 @@ use (
 	./tests/gin_core_flow
 )
 
-replace github.com/Zany2/dtoken-go/codec/msgpack v0.0.3 => ./codec/msgpack
-
-replace github.com/Zany2/dtoken-go/codec/jsonv2 v0.0.3 => ./codec/jsonv2
-
-replace github.com/Zany2/dtoken-go/logging/gf v0.0.3 => ./logging/gf
-
-replace github.com/Zany2/dtoken-go/storage/redis v0.0.3 => ./storage/redis
+replace (
+	github.com/Zany2/dtoken-go v0.0.1 => .
+	github.com/Zany2/dtoken-go/codec/jsonv2 v0.0.1 => ./codec/jsonv2
+	github.com/Zany2/dtoken-go/codec/msgpack v0.0.1 => ./codec/msgpack
+	github.com/Zany2/dtoken-go/integrations/beego v0.0.1 => ./integrations/beego
+	github.com/Zany2/dtoken-go/integrations/chi v0.0.1 => ./integrations/chi
+	github.com/Zany2/dtoken-go/integrations/echo v0.0.1 => ./integrations/echo
+	github.com/Zany2/dtoken-go/integrations/fiber v0.0.1 => ./integrations/fiber
+	github.com/Zany2/dtoken-go/integrations/gf v0.0.1 => ./integrations/gf
+	github.com/Zany2/dtoken-go/integrations/gin v0.0.1 => ./integrations/gin
+	github.com/Zany2/dtoken-go/integrations/hertz v0.0.1 => ./integrations/hertz
+	github.com/Zany2/dtoken-go/integrations/kratos v0.0.1 => ./integrations/kratos
+	github.com/Zany2/dtoken-go/logging/gf v0.0.1 => ./logging/gf
+	github.com/Zany2/dtoken-go/sso v0.0.1 => ./sso
+	github.com/Zany2/dtoken-go/storage/redis v0.0.1 => ./storage/redis
+	github.com/Zany2/dtoken-go/tests/gin_core_app v0.0.1 => ./tests/gin_core_app
+)

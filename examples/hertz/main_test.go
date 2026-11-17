@@ -39,7 +39,7 @@ func TestInitDTokenConfiguration(t *testing.T) {
 func TestHandleLoginValidation(t *testing.T) {
 	setupHertzManager(t)
 	h := server.Default()
-	registerRoutes(h)
+	registerTestRoutes(h)
 
 	for _, body := range []string{
 		"", " \n\t ", "null", "[]", `{"username":"alice"}`,
@@ -62,7 +62,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 	setupHertzManager(t)
 	ctx := context.Background()
 	h := server.Default()
-	registerRoutes(h)
+	registerTestRoutes(h)
 	login := requestHertz(h, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`+"\n", "")
 	data := assertHertzResponse(t, login, http.StatusOK, dterror.CodeSuccess)
 	var result struct {
@@ -129,7 +129,7 @@ func TestDisabledAccountLogin(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := server.Default()
-	registerRoutes(h)
+	registerTestRoutes(h)
 	assertHertzResponse(t, requestHertz(h, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, ""), http.StatusForbidden, dterror.CodeAccountDisabled)
 }
 
@@ -149,7 +149,7 @@ func TestStorageFailuresStayServerErrors(t *testing.T) {
 		t.Run(fmt.Sprintf("withAuth=%t", withAuth), func(t *testing.T) {
 			h := server.Default()
 			if withAuth {
-				registerRoutes(h)
+				registerTestRoutes(h)
 			} else {
 				// Register only the context so handler failures reach the handler's own error branch. 仅注册上下文，使处理器自身的错误分支可被验证。
 				h.Use(hertzdt.RegisterDTokenContextMiddleware(context.Background(), hertzdt.WithAuth(builtAuth1)))
@@ -184,7 +184,7 @@ func setupHertzManager(t *testing.T) {
 	t.Helper()
 	dtglobal.DeleteAllManager()
 	t.Cleanup(dtglobal.DeleteAllManager)
-	initDToken()
+	dtglobal.SetAuth(initDToken())
 }
 
 func hertzRequestWithBody(body string) *hertzapp.RequestContext {
@@ -223,4 +223,40 @@ func assertHertzResponse(t *testing.T, ctx *hertzapp.RequestContext, status, cod
 		t.Fatalf("response=%d %s, want status=%d code=%d", ctx.Response.StatusCode(), ctx.Response.BodyBytes(), status, code)
 	}
 	return response.Data
+}
+
+// registeredAuth returns the explicitly registered test fixture. registeredAuth 返回显式注册的测试夹具。
+func registeredAuth() *dtoken.Auth {
+	auth, err := dtglobal.Default()
+	if err != nil {
+		panic(err)
+	}
+	return auth
+}
+
+// registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
+func registerTestRoutes(h *server.Hertz) { registerRoutes(h, registeredAuth()) }
+
+// TestInjectedLoginWithoutGlobal verifies login and access grants use the injected instance. TestInjectedLoginWithoutGlobal 验证登录与授权使用注入实例且无需全局注册。
+func TestInjectedLoginWithoutGlobal(t *testing.T) {
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
+	auth := initDToken()
+	t.Cleanup(auth.Close)
+	h := server.Default()
+	registerRoutes(h, auth)
+	response := requestHertz(h, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
+	if response.Response.StatusCode() != http.StatusOK {
+		t.Fatalf("login status = %d", response.Response.StatusCode())
+	}
+	ctx := context.Background()
+	if _, err := auth.GetSession(ctx, "alice"); err != nil {
+		t.Fatalf("injected session: %v", err)
+	}
+	if !auth.HasRole(ctx, "alice", "admin") || !auth.HasPermission(ctx, "alice", "article:read") {
+		t.Fatal("access grants missing from injected instance")
+	}
+	if _, err := dtglobal.GetManager(); err == nil {
+		t.Fatal("example unexpectedly registered a global manager")
+	}
 }

@@ -23,6 +23,20 @@ var documents = []string{
 	"docs/guide/core/permission_zh.md",
 	"docs/guide/integration/framework-integration.md",
 	"docs/guide/integration/framework-integration_zh.md",
+	"docs/guide/core/multi-auth.md",
+	"docs/guide/core/multi-auth_zh.md",
+	"docs/guide/security/nonce.md",
+	"docs/guide/security/nonce_zh.md",
+	"docs/guide/security/oauth2.md",
+	"docs/guide/security/oauth2_zh.md",
+	"docs/guide/integration/component-ecosystem.md",
+	"docs/guide/integration/component-ecosystem_zh.md",
+	"docs/design/api-lifecycle.md",
+	"docs/design/api-lifecycle_zh.md",
+	"docs/api/dtoken.md",
+	"docs/api/dtoken_zh.md",
+	"docs/guide/core/access-provider.md",
+	"docs/guide/core/access-provider_zh.md",
 }
 
 // Repeated names join initialization and usage fragments within one document. 同一文档中的重复名称连接初始化与使用片段。

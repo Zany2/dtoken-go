@@ -4,31 +4,36 @@ English | [中文文档](dtoken_zh.md)
 
 ## Overview
 
-This reference uses dtoken as an import alias for github.com/Zany2/dtoken-go/global. The root exposes instance APIs; Nonce, OAuth2, Ticket, and ShortKey are called through independent services.
+This reference uses dtoken as an import alias for github.com/Zany2/dtoken-go/global. The root exposes instance APIs; Nonce, OAuth2, Ticket, and ShortKey are called through independent services. `dt` refers to the root package `github.com/Zany2/dtoken-go` for public models and engine extension types.
 
 In the current version, `dtoken` uses `context.Context` as the unified entry, and different auth systems can be selected through the optional `authType` parameter.
 
 ## Initialization
 
+<!-- dtoken-compile: global-registration -->
 ```go
-import (
-    dt "github.com/Zany2/dtoken-go"
-    dtoken "github.com/Zany2/dtoken-go/global"
-    "context"
+package main
 
-    "github.com/Zany2/dtoken-go/storage/memory"
+import (
+	"context"
+	"fmt"
+
+	dt "github.com/Zany2/dtoken-go"
+	dtoken "github.com/Zany2/dtoken-go/global"
 )
 
-var ctx = context.Background()
-
-func init() {
-    mgr, err := dt.NewBuilder().
-        Storage(memory.NewStorage()).
-        Build()
-    if err != nil {
-        panic(err)
-    }
-    dtoken.SetManager(mgr.Manager())
+func main() {
+	auth, err := dt.NewBuilder().IsPrintBanner(false).Build()
+	if err != nil {
+		panic(err)
+	}
+	dtoken.SetAuth(auth)
+	defer dtoken.DeleteAllManager()
+	token, err := dtoken.Login(context.Background(), "alice")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(token)
 }
 ```
 
@@ -65,8 +70,8 @@ Login and return an access token plus a refresh token.
 
 **Signature**:
 ```go
-func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*manager.RefreshTokenPair, error)
-func LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions, authType ...string) (*manager.RefreshTokenPair, error)
+func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*dt.RefreshTokenPair, error)
+func LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions, authType ...string) (*dt.RefreshTokenPair, error)
 ```
 
 **Example**:
@@ -86,7 +91,7 @@ Rotate a refresh token and return a new token pair.
 
 **Signature**:
 ```go
-func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*manager.RefreshTokenPair, error)
+func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*dt.RefreshTokenPair, error)
 func RevokeRefreshToken(ctx context.Context, refreshToken string, authType ...string) error
 func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...string) (int64, error)
 ```
@@ -115,7 +120,7 @@ Inspect token validity and ownership information without renewal side effects.
 
 **Signature**:
 ```go
-func IntrospectToken(ctx context.Context, tokenValue string, authType ...string) (*manager.TokenIntrospection, error)
+func IntrospectToken(ctx context.Context, tokenValue string, authType ...string) (*dt.TokenIntrospection, error)
 ```
 
 **Example**:
@@ -191,12 +196,12 @@ _ = dtoken.Kickout(ctx, token)
 
 ```go
 func LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, params ...string) (string, error)
-func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*manager.RefreshTokenPair, error)
-func LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions, authType ...string) (*manager.RefreshTokenPair, error)
-func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*manager.RefreshTokenPair, error)
+func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*dt.RefreshTokenPair, error)
+func LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions, authType ...string) (*dt.RefreshTokenPair, error)
+func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*dt.RefreshTokenPair, error)
 func RevokeRefreshToken(ctx context.Context, refreshToken string, authType ...string) error
 func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...string) (int64, error)
-func IntrospectToken(ctx context.Context, tokenValue string, authType ...string) (*manager.TokenIntrospection, error)
+func IntrospectToken(ctx context.Context, tokenValue string, authType ...string) (*dt.TokenIntrospection, error)
 func LoginByToken(ctx context.Context, tokenValue string, authType ...string) error
 func CheckLogin(ctx context.Context, tokenValue string, authType ...string) error
 func LogoutByDevice(ctx context.Context, loginID string, device string, authType ...string) error
@@ -209,7 +214,7 @@ func Replace(ctx context.Context, tokenValue string, authType ...string) error
 func ReplaceByDevice(ctx context.Context, loginID string, device string, authType ...string) error
 func ReplaceByDeviceAndDeviceID(ctx context.Context, loginID string, params ...string) error
 func ReplaceByLoginID(ctx context.Context, loginID string, authType ...string) error
-func GetTokenInfo(ctx context.Context, tokenValue string, authType ...string) (*manager.TokenInfo, error)
+func GetTokenInfo(ctx context.Context, tokenValue string, authType ...string) (*dt.TokenInfo, error)
 func GetDevice(ctx context.Context, tokenValue string, authType ...string) (string, error)
 func GetDeviceID(ctx context.Context, tokenValue string, authType ...string) (string, error)
 func GetTokenCreateTime(ctx context.Context, tokenValue string, authType ...string) (int64, error)
@@ -396,7 +401,7 @@ func GetDisableTTL(ctx context.Context, loginID string, authType ...string) (int
 ### Common Extended Methods
 
 ```go
-func GetDisableInfo(ctx context.Context, loginID string, authType ...string) (*manager.DisableInfo, error)
+func GetDisableInfo(ctx context.Context, loginID string, authType ...string) (*dt.DisableInfo, error)
 func CheckDisable(ctx context.Context, loginID string, authType ...string) error
 func DisableService(ctx context.Context, loginID, service string, duration time.Duration, authType ...string) error
 func DisableServiceWithReason(ctx context.Context, loginID, service string, duration time.Duration, reason string, authType ...string) error
@@ -407,7 +412,7 @@ func IsDisableService(ctx context.Context, loginID, service string, authType ...
 func IsDisableServiceLevel(ctx context.Context, loginID, service string, level int, authType ...string) bool
 func CheckDisableService(ctx context.Context, loginID string, services []string, authType ...string) error
 func CheckDisableServiceLevel(ctx context.Context, loginID, service string, level int, authType ...string) error
-func GetDisableServiceInfo(ctx context.Context, loginID, service string, authType ...string) (*manager.ServiceDisableInfo, error)
+func GetDisableServiceInfo(ctx context.Context, loginID, service string, authType ...string) (*dt.ServiceDisableInfo, error)
 func GetDisableServiceTTL(ctx context.Context, loginID, service string, authType ...string) (int64, error)
 ```
 
@@ -419,7 +424,7 @@ Get session by login ID.
 
 **Signature**:
 ```go
-func GetSession(ctx context.Context, loginID string, authType ...string) (*manager.Session, error)
+func GetSession(ctx context.Context, loginID string, authType ...string) (*dt.Session, error)
 ```
 
 ### GetSessionByToken
@@ -428,7 +433,7 @@ Get session by token.
 
 **Signature**:
 ```go
-func GetSessionByToken(ctx context.Context, tokenValue string, authType ...string) (*manager.Session, error)
+func GetSessionByToken(ctx context.Context, tokenValue string, authType ...string) (*dt.Session, error)
 ```
 
 **Example**:
@@ -451,14 +456,14 @@ fmt.Println(nickname, found)
 func GetOnlineTerminalCount(ctx context.Context, loginID string, authType ...string) (int, error)
 func GetOnlineTerminalCountByDevice(ctx context.Context, loginID string, device string, authType ...string) (int, error)
 func GetOnlineTerminalCountByDeviceAndDeviceID(ctx context.Context, loginID string, device string, deviceID string, authType ...string) (int, error)
-func ForEachTerminal(ctx context.Context, loginID string, visitor manager.TerminalVisitor, authType ...string) error
-func ForEachTerminalByDevice(ctx context.Context, loginID, device string, visitor manager.TerminalVisitor, authType ...string) error
+func ForEachTerminal(ctx context.Context, loginID string, visitor dt.TerminalVisitor, authType ...string) error
+func ForEachTerminalByDevice(ctx context.Context, loginID, device string, visitor dt.TerminalVisitor, authType ...string) error
 func GetTokenValueListByLoginID(ctx context.Context, loginID string, checkAlive bool, authType ...string) ([]string, error)
 func GetTokenValueListByDeviceAndDeviceID(ctx context.Context, loginID string, device string, deviceID string, checkAlive bool, authType ...string) ([]string, error)
 func GetTokenValueListByDevice(ctx context.Context, loginID string, device string, checkAlive bool, authType ...string) ([]string, error)
-func GetTerminalListByLoginID(ctx context.Context, loginID string, authType ...string) ([]manager.TerminalInfo, error)
-func GetTerminalListByLoginIDAndDevice(ctx context.Context, loginID string, device string, authType ...string) ([]manager.TerminalInfo, error)
-func GetTerminalInfoByToken(ctx context.Context, tokenValue string, authType ...string) (*manager.TerminalInfo, error)
+func GetTerminalListByLoginID(ctx context.Context, loginID string, authType ...string) ([]dt.TerminalInfo, error)
+func GetTerminalListByLoginIDAndDevice(ctx context.Context, loginID string, device string, authType ...string) ([]dt.TerminalInfo, error)
+func GetTerminalInfoByToken(ctx context.Context, tokenValue string, authType ...string) (*dt.TerminalInfo, error)
 func GetTokenValueByLoginID(ctx context.Context, loginID string, authType ...string) (string, error)
 func GetTokenValueByLoginIDAndDevice(ctx context.Context, loginID string, device string, authType ...string) (string, error)
 func SearchTokenValue(ctx context.Context, keyword string, start, size int, authType ...string) ([]string, error)
@@ -473,7 +478,7 @@ Get detailed token information.
 
 **Signature**:
 ```go
-func GetTokenInfo(ctx context.Context, tokenValue string, authType ...string) (*manager.TokenInfo, error)
+func GetTokenInfo(ctx context.Context, tokenValue string, authType ...string) (*dt.TokenInfo, error)
 ```
 
 **Returns**:
@@ -497,17 +502,23 @@ Nonce and OAuth2 are provided by their package Services, outside the global API.
 ### Manager Lifecycle API
 
 ```go
-func SetManager(mgr *manager.Manager)
-func GetManager(authType ...string) (*manager.Manager, error)
+func SetAuth(auth *dt.Auth)
+func Default() (*dt.Auth, error)
+func SetManager(mgr *dt.Manager)
+func GetManager(authType ...string) (*dt.Manager, error)
 func DeleteManager(authType ...string) error
 func DeleteAllManager()
 ```
 
-`SetManager` replaces and immediately closes the previous manager for the same auth type. Runtime replacement should begin only after the old manager has no new or in-flight work; callers must not register a manager again after it has been replaced or closed. `DeleteManager` and `DeleteAllManager` remove managers from the registry before releasing their resources. When managers share Storage, Logger, or Pool components, use `manager.WithComponentOwnership` to mark those shared components as caller-owned.
+Applications should register instances with `SetAuth`; `Default` returns the default auth facade. `SetManager` supports advanced adapters and shares the same registry and ownership rules as `SetAuth`.
+
+`SetManager` replaces and immediately closes the previous manager for the same auth type. Runtime replacement should begin only after the old manager has no new or in-flight work; callers must not register a manager again after it has been replaced or closed. `DeleteManager` and `DeleteAllManager` remove managers from the registry before releasing their resources. When managers share Storage, Logger, or Pool components, use `dt.WithComponentOwnership` to mark those shared components as caller-owned.
 
 ## Complete Method List
 
 ### Manager Lifecycle
+- `SetAuth`
+- `Default`
 - `SetManager`
 - `GetManager`
 - `DeleteManager`

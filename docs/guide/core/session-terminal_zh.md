@@ -1,5 +1,7 @@
 # Session 与终端管理
 
+代码片段中，dt = github.com/Zany2/dtoken-go，dtoken = github.com/Zany2/dtoken-go/global。
+
 [English](../core/session-terminal.md) | 中文文档
 
 ## 概览
@@ -70,12 +72,12 @@ token, err = dtoken.GetTokenValueByLoginIDAndDevice(ctx, "10001", "web")
 ## 遍历终端
 
 ```go
-err := dtoken.ForEachTerminal(ctx, "10001", func(info manager.TerminalInfo) bool {
+err := dtoken.ForEachTerminal(ctx, "10001", func(info dt.TerminalInfo) bool {
     fmt.Println(info.Device, info.DeviceID, info.Token)
     return true
 })
 
-err = dtoken.ForEachTerminalByDevice(ctx, "10001", "web", func(info manager.TerminalInfo) bool {
+err = dtoken.ForEachTerminalByDevice(ctx, "10001", "web", func(info dt.TerminalInfo) bool {
     return true
 })
 ```

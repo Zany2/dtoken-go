@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Zany2/dtoken-go"
 	dterror "github.com/Zany2/dtoken-go/errors"
 	dt1 "github.com/Zany2/dtoken-go/global"
 
@@ -94,12 +95,12 @@ func setupBeegoManager(t *testing.T) {
 	t.Helper()
 	dt1.DeleteAllManager()
 	t.Cleanup(dt1.DeleteAllManager)
-	initDToken()
+	dt1.SetAuth(initDToken())
 }
 
 func newBeegoExampleRouter() *web.ControllerRegister {
 	router := web.NewControllerRegister()
-	registerRoutes(router)
+	registerTestRoutes(router)
 	return router
 }
 
@@ -122,5 +123,41 @@ func assertBeegoResponse(t *testing.T, rec *httptest.ResponseRecorder, status, c
 	}
 	if rec.Code != status || response.Code != code || !strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") {
 		t.Fatalf("response=%d %s, want status=%d code=%d", rec.Code, rec.Body.String(), status, code)
+	}
+}
+
+// registeredAuth returns the explicitly registered test fixture. registeredAuth 返回显式注册的测试夹具。
+func registeredAuth() *dtoken.Auth {
+	auth, err := dt1.Default()
+	if err != nil {
+		panic(err)
+	}
+	return auth
+}
+
+// registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
+func registerTestRoutes(r *web.ControllerRegister) { registerRoutes(r, registeredAuth()) }
+
+// TestInjectedLoginWithoutGlobal verifies login and access grants use the injected instance. TestInjectedLoginWithoutGlobal 验证登录与授权使用注入实例且无需全局注册。
+func TestInjectedLoginWithoutGlobal(t *testing.T) {
+	dt1.DeleteAllManager()
+	t.Cleanup(dt1.DeleteAllManager)
+	auth := initDToken()
+	t.Cleanup(auth.Close)
+	router := web.NewControllerRegister()
+	registerRoutes(router, auth)
+	response := requestBeego(router, http.MethodPost, "/login", "username=alice&password=123456", "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("login status = %d", response.Code)
+	}
+	ctx := context.Background()
+	if _, err := auth.GetSession(ctx, "alice"); err != nil {
+		t.Fatalf("injected session: %v", err)
+	}
+	if !auth.HasRole(ctx, "alice", "admin") || !auth.HasPermission(ctx, "alice", "article:read") {
+		t.Fatal("access grants missing from injected instance")
+	}
+	if _, err := dt1.GetManager(); err == nil {
+		t.Fatal("example unexpectedly registered a global manager")
 	}
 }

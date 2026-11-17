@@ -18,7 +18,7 @@ import (
 func TestProductionConfiguration(t *testing.T) {
 	dtglobal.DeleteAllManager()
 	t.Cleanup(dtglobal.DeleteAllManager)
-	initDToken()
+	dtglobal.SetAuth(initDToken())
 	mgr, err := dtglobal.GetManager()
 	if err != nil {
 		t.Fatal(err)
@@ -36,7 +36,7 @@ func TestProductionConfiguration(t *testing.T) {
 func TestProductionRouteFailures(t *testing.T) {
 	setupQuickStartManager(t)
 	router := gin.New()
-	registerRoutes(router)
+	registerTestRoutes(router)
 	check := func(method, path, body, token string, want int) {
 		t.Helper()
 		rec := requestQuickStart(t, router, method, path, body, token)
@@ -81,6 +81,8 @@ func TestProductionRouteFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	dtglobal.SetManager(mgr)
+	router = gin.New()
+	registerTestRoutes(router)
 	check(http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "", http.StatusInternalServerError)
 	for _, path := range []string{"/me", "/admin", "/articles", "/logout"} {
 		method := http.MethodGet
@@ -95,7 +97,7 @@ func TestProductionRouteFailures(t *testing.T) {
 func TestLoginRejectsTrailingJSON(t *testing.T) {
 	setupQuickStartManager(t)
 	router := gin.New()
-	registerRoutes(router)
+	registerTestRoutes(router)
 	valid := `{"username":"alice","password":"123456"}`
 	for _, suffix := range []string{" {}", " null", " trailing"} {
 		rec := requestQuickStart(t, router, http.MethodPost, "/login", valid+suffix, "")

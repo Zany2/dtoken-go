@@ -2,6 +2,8 @@
 
 This example shows how to use `github.com/Zany2/dtoken-go/integrations/chi` with Chi middleware.
 
+The application builds one Auth instance, binds it with `WithAuth`, and closes it during shutdown. Login and request checks share that instance without global registration.
+
 ## Run
 
 ```bash

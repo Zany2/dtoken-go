@@ -41,20 +41,47 @@ According to the current code:
 
 Compose an independent OAuth2 Manager and Service. auth supplies shared components and optional event publication.
 
+<!-- dtoken-compile: oauth2 -->
 ```go
+package main
+
 import (
-    "github.com/Zany2/dtoken-go"
-    "github.com/Zany2/dtoken-go/oauth2"
+	"context"
+	"fmt"
+
+	"github.com/Zany2/dtoken-go"
+	"github.com/Zany2/dtoken-go/oauth2"
 )
 
-auth, err := dtoken.NewBuilder().Build()
-if err != nil {
-    panic(err)
+func main() {
+	auth, err := dtoken.NewBuilder().IsPrintBanner(false).Build()
+	if err != nil {
+		panic(err)
+	}
+	defer auth.Close()
+	cfg := auth.Config()
+	server := oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+	service := oauth2.NewService(server, auth)
+	err = service.RegisterOAuth2Client(&oauth2.Client{
+		ClientID:     "server-app",
+		ClientSecret: "secret",
+		GrantTypes:   []oauth2.GrantType{oauth2.GrantTypeClientCredentials},
+		Scopes:       []string{"read"},
+	})
+	if err != nil {
+		panic(err)
+	}
+	token, err := service.OAuth2Token(context.Background(), &oauth2.TokenRequest{
+		GrantType:    oauth2.GrantTypeClientCredentials,
+		ClientID:     "server-app",
+		ClientSecret: "secret",
+		Scopes:       []string{"read"},
+	}, nil)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(token)
 }
-defer auth.Close()
-cfg := auth.Config()
-server := oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
-service := oauth2.NewService(server, auth)
 ```
 
 ## Client Model
@@ -89,7 +116,7 @@ err := service.RegisterOAuth2Client(&oauth2.Client{
 
 ## Unified Token Entry
 
-`dtoken` provides a unified token entry:
+`oauth2.Service` provides a unified token entry:
 
 ```go
 token, err := service.OAuth2Token(ctx, &oauth2.TokenRequest{

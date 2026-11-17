@@ -47,9 +47,68 @@ Build() 返回 *dtoken.Auth；auth.Manager() 提供底层管理器。框架优�
 
 Builder 不提供能力开关。通过各自的构造器创建能力 Manager，再通过 NewService(manager, auth) 接入实例事件。使用所属认证实例的 AuthType、KeyPrefix、Storage 和 Codec。httpauth/context.Capabilities 和框架 WithCapabilities 将服务绑定到请求。未绑定的能力返回 ErrModuleNotEnabled。同一 Manager 的后续中间件未指定覆盖配置时保留请求绑定；切换 Manager 时创建新作用域。
 
+## 门面方法迁移
+
+框架包保留 `NewBuilder` 及 `LoginByContext`、`LoginByCtx` 等请求快捷方法。`Auth` 和认证业务选项类型从根包导入。原框架包级的 `Default`、`NewByAuthType`、`SetManager`、`Login` 等全局调用迁移到 `global` 对应入口；认证操作也可直接使用构建完成的 `Auth` 实例。组件构造器从所属组件包导入。
+
+下表覆盖旧 `Auth` 门面移出的 40 个能力方法。原包级能力调用也迁移到相同服务入口；根据目标认证实例选择已组合的服务，不再通过末尾的 `authType` 参数选择实例。从当前根路径下的 `nonce`、`oauth2`、`ticket`、`shortkey` 包导入能力类型。构建 `auth` 后，表中的服务变量按以下方式组合：
+
+```go
+cfg := auth.Config()
+nonceService := nonce.NewService(nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage()), auth)
+oauth2Service := oauth2.NewService(oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
+ticketService := ticket.NewService(ticket.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
+shortKeyService := shortkey.NewService(shortkey.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
+```
+
+| 旧方法名 | 当前服务方法 |
+| --- | --- |
+| `GenerateNonce` | `nonceService.GenerateNonce` |
+| `GenerateNonceWithTimeout` | `nonceService.GenerateNonceWithTimeout` |
+| `VerifyNonce` | `nonceService.VerifyNonce` |
+| `VerifyAndConsumeNonce` | `nonceService.VerifyAndConsumeNonce` |
+| `IsNonceValid` | `nonceService.IsNonceValid` |
+| `GetNonceTTL` | `nonceService.GetNonceTTL` |
+| `RegisterOAuth2Client` | `oauth2Service.RegisterOAuth2Client` |
+| `UnregisterOAuth2Client` | `oauth2Service.UnregisterOAuth2Client` |
+| `GetOAuth2Client` | `oauth2Service.GetOAuth2Client` |
+| `OAuth2Token` | `oauth2Service.OAuth2Token` |
+| `GenerateOAuth2AuthorizationCode` | `oauth2Service.GenerateOAuth2AuthorizationCode` |
+| `GenerateOAuth2AuthorizationCodeWithPKCE` | `oauth2Service.GenerateOAuth2AuthorizationCodeWithPKCE` |
+| `ExchangeOAuth2CodeForToken` | `oauth2Service.ExchangeOAuth2CodeForToken` |
+| `ExchangeOAuth2CodeForTokenWithPKCE` | `oauth2Service.ExchangeOAuth2CodeForTokenWithPKCE` |
+| `OAuth2ClientCredentialsToken` | `oauth2Service.OAuth2ClientCredentialsToken` |
+| `OAuth2PasswordGrantToken` | `oauth2Service.OAuth2PasswordGrantToken` |
+| `RefreshOAuth2AccessToken` | `oauth2Service.RefreshOAuth2AccessToken` |
+| `ValidateOAuth2AccessToken` | `oauth2Service.ValidateOAuth2AccessToken` |
+| `ValidateOAuth2AccessTokenAndGetInfo` | `oauth2Service.ValidateOAuth2AccessTokenAndGetInfo` |
+| `RevokeOAuth2Token` | `oauth2Service.RevokeOAuth2Token` |
+| `CreateTicket`, `CreateTicketWithOptions` | `ticketService.CreateTicket` |
+| `ValidateTicket`, `ValidateTicketWithOptions` | `ticketService.ValidateTicket` |
+| `ConsumeTicket`, `ConsumeTicketWithOptions` | `ticketService.ConsumeTicket` |
+| `RevokeTicket` | `ticketService.RevokeTicket` |
+| `GetTicketStatus` | `ticketService.GetTicketStatus` |
+| `GetTicketTTL` | `ticketService.GetTicketTTL` |
+| `CreateShortKey`, `CreateShortKeyWithOptions` | `shortKeyService.CreateShortKey` |
+| `ConfirmShortKey`, `ConfirmShortKeyWithOptions` | `shortKeyService.ConfirmShortKey` |
+| `ValidateShortKey`, `ValidateShortKeyWithOptions` | `shortKeyService.ValidateShortKey` |
+| `ConsumeShortKey`, `ConsumeShortKeyWithOptions` | `shortKeyService.ConsumeShortKey` |
+| `RevokeShortKey` | `shortKeyService.RevokeShortKey` |
+| `GetShortKeyStatus` | `shortKeyService.GetShortKeyStatus` |
+| `GetShortKeyTTL` | `shortKeyService.GetShortKeyTTL` |
+
+未合并 `WithOptions` 的方法保留业务参数，仅将接收者改为对应服务。七个 `WithOptions` 名称合并后的参数变化如下：
+
+- `CreateTicket(ctx, loginID)` 改为 `ticketService.CreateTicket(ctx, ticket.CreateOptions{LoginID: loginID})`。
+- `CreateShortKey(ctx)` 改为 `shortKeyService.CreateShortKey(ctx, shortkey.CreateOptions{})`。
+- `ConfirmShortKey(ctx, key, loginID)` 改为 `shortKeyService.ConfirmShortKey(ctx, key, shortkey.ConfirmOptions{LoginID: loginID})`。
+- 原创建和确认选项直接传给上述方法；Ticket 和 ShortKey 的校验、消费方法接收可选的 `ValidateOptions`，原无约束调用省略该参数，原带约束调用继续传入选项。
+
+这些服务借用实例组件，并通过 `auth` 发布事件，使用期间须保证实例可用。HTTP 请求通过 `WithCapabilities` 绑定服务。已有请求快捷方法保留各框架命名；Nonce 有效性检查在请求层名为 `IsValidNonceByContext` 或 `IsValidNonceByCtx`，服务方法名则为 `IsNonceValid`。
+
 ## 依赖与发布
 
-清理旧子模块依赖和替换规则，再添加根模块及所需扩展的新版本。根模块使用 vX.Y.Z tag，扩展使用当前目录前缀，例如 integrations/gin/vX.Y.Z 和 storage/redis/vX.Y.Z。源码中的 v0.0.3 依赖基线不能证明新结构已远程发布。先发布被依赖模块，再更新并发布扩展。运行时版本位于 contract/version.go。
+清理旧子模块依赖和替换规则，再添加根模块及所需扩展的新版本。根模块使用 vX.Y.Z tag，扩展使用当前目录前缀，例如 integrations/gin/vX.Y.Z 和 storage/redis/vX.Y.Z。本次重构首版以 v0.0.1 为目标，运行时版本、内部模块依赖和工作区替换规则统一使用该版本基线。这些源码声明不能证明新结构已远程发布。先发布被依赖模块，再更新并发布扩展。运行时版本位于 contract/version.go。
 
 ## 验证
 

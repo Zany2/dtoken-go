@@ -20,14 +20,6 @@ type ComponentOwnership struct {
 	Pool bool
 }
 
-// WithNonceManager sets the optional nonce manager. WithNonceManager 设置可选 Nonce 管理器。
-
-// WithOAuth2Manager sets the optional OAuth2 server. WithOAuth2Manager 设置可选 OAuth2 服务端。
-
-// WithTicketManager sets the optional ticket manager. WithTicketManager 设置可选 Ticket 管理器。
-
-// WithShortKeyManager sets the optional short key manager. WithShortKeyManager 设置可选短 Key 管理器。
-
 // WithStrategy sets replaceable manager algorithms. WithStrategy 设置可替换的管理器算法。
 func WithStrategy(strategy *Strategy) Option {
 	return func(m *Manager) {

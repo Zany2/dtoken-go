@@ -156,7 +156,7 @@ func TestProtectedRoutesIntrospectionAndLogout(t *testing.T) {
 	}
 
 	r := gin.New()
-	registerRoutes(r)
+	registerTestRoutes(r)
 
 	for _, route := range []string{"/me", "/introspect", "/admin", "/articles"} {
 		response := requestGin(t, r, http.MethodGet, route, "", pair.AccessToken)
@@ -316,7 +316,7 @@ func setupGinManager(t *testing.T) {
 	t.Helper()
 	dtglobal.DeleteAllManager()
 	t.Cleanup(dtglobal.DeleteAllManager)
-	initDToken()
+	dtglobal.SetAuth(initDToken())
 }
 
 func requestGin(t *testing.T, router *gin.Engine, method, path, body, token string) *httptest.ResponseRecorder {
@@ -334,3 +334,15 @@ func requestGin(t *testing.T, router *gin.Engine, method, path, body, token stri
 	router.ServeHTTP(recorder, request)
 	return recorder
 }
+
+// registeredAuth returns the explicitly registered test fixture. registeredAuth 返回显式注册的测试夹具。
+func registeredAuth() *dtoken.Auth {
+	auth, err := dtglobal.Default()
+	if err != nil {
+		panic(err)
+	}
+	return auth
+}
+
+// registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
+func registerTestRoutes(r *gin.Engine) { registerRoutes(r, registeredAuth()) }

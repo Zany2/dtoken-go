@@ -3,7 +3,6 @@ package main
 
 import (
 	dterror "github.com/Zany2/dtoken-go/errors"
-	dt1 "github.com/Zany2/dtoken-go/global"
 
 	"context"
 	"errors"
@@ -28,10 +27,10 @@ type Response struct {
 }
 
 func main() {
-	initDToken()
-	defer dt1.DeleteAllManager()
+	auth := initDToken()
+	defer auth.Close()
 
-	registerRoutes(web.BeeApp.Handlers)
+	registerRoutes(web.BeeApp.Handlers, auth)
 
 	// Let Beego drain requests before Run returns and managers are closed. 让 Beego 在 Run 返回、关闭 Manager 之前等待请求结束。
 	web.BConfig.Listen.Graceful = true
@@ -39,7 +38,7 @@ func main() {
 }
 
 // registerRoutes shares the actual filters and routes with regression tests. registerRoutes 与回归测试共用实际过滤器和路由。
-func registerRoutes(r *web.ControllerRegister) {
+func registerRoutes(r *web.ControllerRegister, authInstance *dtoken.Auth) {
 	ctx := context.Background()
 	insertFilter := func(path string, position int, filter web.FilterFunc) {
 		if err := r.InsertFilter(path, position, filter, web.WithReturnOnOutput(true)); err != nil {
@@ -49,7 +48,7 @@ func registerRoutes(r *web.ControllerRegister) {
 
 	// Validate before Beego's automatic form parser turns malformed input into HTTP 500. 在 Beego 自动表单解析之前校验，避免非法输入被归为 HTTP 500。
 	insertFilter("/login", web.BeforeStatic, validateLoginInput)
-	insertFilter("/*", web.BeforeRouter, beegodt.RegisterDTokenContextMiddleware(ctx, beegodt.WithManagerResolver(dt1.GetManager), beegodt.WithFailFunc(writeAuthError)))
+	insertFilter("/*", web.BeforeRouter, beegodt.RegisterDTokenContextMiddleware(ctx, beegodt.WithAuth(authInstance), beegodt.WithFailFunc(writeAuthError)))
 	r.Post("/login", handleLogin)
 
 	insertFilter("/me", web.BeforeRouter, beegodt.AuthMiddleware(ctx, beegodt.WithFailFunc(writeAuthError)))
@@ -67,20 +66,19 @@ func registerRoutes(r *web.ControllerRegister) {
 	r.Post("/logout", handleLogout)
 }
 
-// initDToken initializes integration manager initDToken 初始化集成管理器
-func initDToken() {
-	builtAuth1, err := dtoken.NewBuilder().
+// initDToken builds the Auth instance owned by the application. initDToken 构建由应用管理生命周期的 Auth 实例。
+func initDToken() *dtoken.Auth {
+	auth, err := dtoken.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
-	mgr := builtAuth1.Manager()
 
 	if err != nil {
 		panic(err)
 	}
 
-	dt1.SetManager(mgr)
+	return auth
 }
 
 // validateLoginInput retains Query/form support while rejecting partial parse results. validateLoginInput 保留 Query／表单支持，同时拒绝解析失败产生的部分结果。
@@ -116,18 +114,24 @@ func handleLogin(c *beegocontext.Context) {
 		return
 	}
 
-	token, err := dt1.Login(c.Request.Context(), username)
+	mgr, err := beegodt.GetManagerByContext(c)
+	if err != nil {
+		writeAuthError(c, err)
+		return
+	}
+
+	token, err := mgr.Login(c.Request.Context(), username)
 	if err != nil {
 		writeAuthError(c, err)
 		return
 	}
 
 	// Grant demo access to every user; real applications must load their own access rules. 为每个演示用户授予权限；实际应用应加载自身的授权规则。
-	if err = dt1.AddRoles(c.Request.Context(), username, []string{"admin"}); err != nil {
+	if err = mgr.AddRoles(c.Request.Context(), username, []string{"admin"}); err != nil {
 		writeAuthError(c, err)
 		return
 	}
-	if err = dt1.AddPermissions(c.Request.Context(), username, []string{"article:read"}); err != nil {
+	if err = mgr.AddPermissions(c.Request.Context(), username, []string{"article:read"}); err != nil {
 		writeAuthError(c, err)
 		return
 	}

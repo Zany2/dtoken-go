@@ -47,9 +47,68 @@ Build() returns *dtoken.Auth; auth.Manager() exposes the underlying manager. Pre
 
 The builder has no capability switches. Construct capability Managers and use NewService(manager, auth) for instance events. Share the intended AuthType, KeyPrefix, Storage, and Codec. Bind request services with httpauth/context.Capabilities and framework WithCapabilities. Missing services return ErrModuleNotEnabled. Middleware without an override preserves bindings for the same Manager; changing Manager creates a new scope.
 
+## Facade method migration
+
+Framework packages retain `NewBuilder` and request helpers such as `LoginByContext` or `LoginByCtx`. Import `Auth` and authentication option types from the root package. Replace framework-level global calls such as `Default`, `NewByAuthType`, `SetManager`, and `Login` with the corresponding `global` entry, or use the built `Auth` instance directly for authentication operations. Component constructors come from their component packages.
+
+The following table covers the 40 capability methods removed from the old `Auth` facade. Former package-level facade calls use the same service destinations; select a service composed for the intended authentication instance instead of passing an `authType` argument. Import `nonce`, `oauth2`, `ticket`, and `shortkey` from their current root-level package paths. After building `auth`, compose the service variables used in the table:
+
+```go
+cfg := auth.Config()
+nonceService := nonce.NewService(nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage()), auth)
+oauth2Service := oauth2.NewService(oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
+ticketService := ticket.NewService(ticket.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
+shortKeyService := shortkey.NewService(shortkey.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
+```
+
+| Previous method name | Current service method |
+| --- | --- |
+| `GenerateNonce` | `nonceService.GenerateNonce` |
+| `GenerateNonceWithTimeout` | `nonceService.GenerateNonceWithTimeout` |
+| `VerifyNonce` | `nonceService.VerifyNonce` |
+| `VerifyAndConsumeNonce` | `nonceService.VerifyAndConsumeNonce` |
+| `IsNonceValid` | `nonceService.IsNonceValid` |
+| `GetNonceTTL` | `nonceService.GetNonceTTL` |
+| `RegisterOAuth2Client` | `oauth2Service.RegisterOAuth2Client` |
+| `UnregisterOAuth2Client` | `oauth2Service.UnregisterOAuth2Client` |
+| `GetOAuth2Client` | `oauth2Service.GetOAuth2Client` |
+| `OAuth2Token` | `oauth2Service.OAuth2Token` |
+| `GenerateOAuth2AuthorizationCode` | `oauth2Service.GenerateOAuth2AuthorizationCode` |
+| `GenerateOAuth2AuthorizationCodeWithPKCE` | `oauth2Service.GenerateOAuth2AuthorizationCodeWithPKCE` |
+| `ExchangeOAuth2CodeForToken` | `oauth2Service.ExchangeOAuth2CodeForToken` |
+| `ExchangeOAuth2CodeForTokenWithPKCE` | `oauth2Service.ExchangeOAuth2CodeForTokenWithPKCE` |
+| `OAuth2ClientCredentialsToken` | `oauth2Service.OAuth2ClientCredentialsToken` |
+| `OAuth2PasswordGrantToken` | `oauth2Service.OAuth2PasswordGrantToken` |
+| `RefreshOAuth2AccessToken` | `oauth2Service.RefreshOAuth2AccessToken` |
+| `ValidateOAuth2AccessToken` | `oauth2Service.ValidateOAuth2AccessToken` |
+| `ValidateOAuth2AccessTokenAndGetInfo` | `oauth2Service.ValidateOAuth2AccessTokenAndGetInfo` |
+| `RevokeOAuth2Token` | `oauth2Service.RevokeOAuth2Token` |
+| `CreateTicket`, `CreateTicketWithOptions` | `ticketService.CreateTicket` |
+| `ValidateTicket`, `ValidateTicketWithOptions` | `ticketService.ValidateTicket` |
+| `ConsumeTicket`, `ConsumeTicketWithOptions` | `ticketService.ConsumeTicket` |
+| `RevokeTicket` | `ticketService.RevokeTicket` |
+| `GetTicketStatus` | `ticketService.GetTicketStatus` |
+| `GetTicketTTL` | `ticketService.GetTicketTTL` |
+| `CreateShortKey`, `CreateShortKeyWithOptions` | `shortKeyService.CreateShortKey` |
+| `ConfirmShortKey`, `ConfirmShortKeyWithOptions` | `shortKeyService.ConfirmShortKey` |
+| `ValidateShortKey`, `ValidateShortKeyWithOptions` | `shortKeyService.ValidateShortKey` |
+| `ConsumeShortKey`, `ConsumeShortKeyWithOptions` | `shortKeyService.ConsumeShortKey` |
+| `RevokeShortKey` | `shortKeyService.RevokeShortKey` |
+| `GetShortKeyStatus` | `shortKeyService.GetShortKeyStatus` |
+| `GetShortKeyTTL` | `shortKeyService.GetShortKeyTTL` |
+
+Methods without a `WithOptions` merge retain their operation arguments; the receiver changes to the service. The seven `WithOptions` names are consolidated as follows:
+
+- `CreateTicket(ctx, loginID)` becomes `ticketService.CreateTicket(ctx, ticket.CreateOptions{LoginID: loginID})`.
+- `CreateShortKey(ctx)` becomes `shortKeyService.CreateShortKey(ctx, shortkey.CreateOptions{})`.
+- `ConfirmShortKey(ctx, key, loginID)` becomes `shortKeyService.ConfirmShortKey(ctx, key, shortkey.ConfirmOptions{LoginID: loginID})`.
+- Existing creation and confirmation options are passed directly to those methods. Ticket and ShortKey validation and consumption methods accept an optional `ValidateOptions` argument; omit it for the old unconstrained call or pass the original options to retain constraints.
+
+These services borrow the instance components and emit events through `auth`; keep the instance available for their lifetime. For HTTP requests, bind them through `WithCapabilities`. Existing request helpers keep their framework-specific names; Nonce validity is named `IsValidNonceByContext` or `IsValidNonceByCtx`, while the service method is `IsNonceValid`.
+
 ## Dependencies and releases
 
-Remove dependencies and replacements for old submodules, then select new root and extension versions. The root uses a vX.Y.Z tag; extensions use current directory prefixes such as integrations/gin/vX.Y.Z and storage/redis/vX.Y.Z. The source dependency baseline v0.0.3 does not establish remote availability of the new structure. Release dependencies before updating and releasing extensions. Runtime version information lives in contract/version.go.
+Remove dependencies and replacements for old submodules, then select new root and extension versions. The root uses a vX.Y.Z tag; extensions use current directory prefixes such as integrations/gin/vX.Y.Z and storage/redis/vX.Y.Z. The first release of the refactored architecture targets v0.0.1; the runtime version, internal module requirements, and workspace replacements use this baseline. These source declarations do not establish remote availability of the new structure. Release dependencies before updating and releasing extensions. Runtime version information lives in contract/version.go.
 
 ## Verification
 

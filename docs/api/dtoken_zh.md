@@ -4,31 +4,36 @@
 
 ## 概述
 
-本页使用 dtoken 作为 github.com/Zany2/dtoken-go/global 的导入别名，记录全局认证 API。根包提供实例 API，Nonce、OAuth2、Ticket 和 ShortKey 通过独立服务调用。
+本页使用 dtoken 作为 github.com/Zany2/dtoken-go/global 的导入别名，记录全局认证 API。根包提供实例 API，Nonce、OAuth2、Ticket 和 ShortKey 通过独立服务调用。 本页 `dt` 指向根包 `github.com/Zany2/dtoken-go`，用于公开模型与引擎扩展类型。
 
 当前版本的 `dtoken` 以 `context.Context` 为统一入口，认证体系可通过可选 `authType` 参数区分。
 
 ## 初始化
 
+<!-- dtoken-compile: global-registration -->
 ```go
-import (
-    dt "github.com/Zany2/dtoken-go"
-    dtoken "github.com/Zany2/dtoken-go/global"
-    "context"
+package main
 
-    "github.com/Zany2/dtoken-go/storage/memory"
+import (
+	"context"
+	"fmt"
+
+	dt "github.com/Zany2/dtoken-go"
+	dtoken "github.com/Zany2/dtoken-go/global"
 )
 
-var ctx = context.Background()
-
-func init() {
-    mgr, err := dt.NewBuilder().
-        Storage(memory.NewStorage()).
-        Build()
-    if err != nil {
-        panic(err)
-    }
-    dtoken.SetManager(mgr.Manager())
+func main() {
+	auth, err := dt.NewBuilder().IsPrintBanner(false).Build()
+	if err != nil {
+		panic(err)
+	}
+	dtoken.SetAuth(auth)
+	defer dtoken.DeleteAllManager()
+	token, err := dtoken.Login(context.Background(), "alice")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(token)
 }
 ```
 
@@ -65,8 +70,8 @@ token, _ := dtoken.Login(ctx, "1000", "mobile", "device-001", "user")
 
 **签名**：
 ```go
-func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*manager.RefreshTokenPair, error)
-func LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions, authType ...string) (*manager.RefreshTokenPair, error)
+func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*dt.RefreshTokenPair, error)
+func LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions, authType ...string) (*dt.RefreshTokenPair, error)
 ```
 
 **示例**：
@@ -86,7 +91,7 @@ fmt.Println(pair.RefreshToken)
 
 **签名**：
 ```go
-func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*manager.RefreshTokenPair, error)
+func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*dt.RefreshTokenPair, error)
 func RevokeRefreshToken(ctx context.Context, refreshToken string, authType ...string) error
 func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...string) (int64, error)
 ```
@@ -115,7 +120,7 @@ if err := dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken); err != nil {
 
 **签名**：
 ```go
-func IntrospectToken(ctx context.Context, tokenValue string, authType ...string) (*manager.TokenIntrospection, error)
+func IntrospectToken(ctx context.Context, tokenValue string, authType ...string) (*dt.TokenIntrospection, error)
 ```
 
 **示例**：
@@ -191,12 +196,12 @@ _ = dtoken.Kickout(ctx, token)
 
 ```go
 func LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, params ...string) (string, error)
-func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*manager.RefreshTokenPair, error)
-func LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions, authType ...string) (*manager.RefreshTokenPair, error)
-func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*manager.RefreshTokenPair, error)
+func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*dt.RefreshTokenPair, error)
+func LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions, authType ...string) (*dt.RefreshTokenPair, error)
+func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*dt.RefreshTokenPair, error)
 func RevokeRefreshToken(ctx context.Context, refreshToken string, authType ...string) error
 func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...string) (int64, error)
-func IntrospectToken(ctx context.Context, tokenValue string, authType ...string) (*manager.TokenIntrospection, error)
+func IntrospectToken(ctx context.Context, tokenValue string, authType ...string) (*dt.TokenIntrospection, error)
 func LoginByToken(ctx context.Context, tokenValue string, authType ...string) error
 func CheckLogin(ctx context.Context, tokenValue string, authType ...string) error
 func LogoutByDevice(ctx context.Context, loginID string, device string, authType ...string) error
@@ -209,7 +214,7 @@ func Replace(ctx context.Context, tokenValue string, authType ...string) error
 func ReplaceByDevice(ctx context.Context, loginID string, device string, authType ...string) error
 func ReplaceByDeviceAndDeviceID(ctx context.Context, loginID string, params ...string) error
 func ReplaceByLoginID(ctx context.Context, loginID string, authType ...string) error
-func GetTokenInfo(ctx context.Context, tokenValue string, authType ...string) (*manager.TokenInfo, error)
+func GetTokenInfo(ctx context.Context, tokenValue string, authType ...string) (*dt.TokenInfo, error)
 func GetDevice(ctx context.Context, tokenValue string, authType ...string) (string, error)
 func GetDeviceID(ctx context.Context, tokenValue string, authType ...string) (string, error)
 func GetTokenCreateTime(ctx context.Context, tokenValue string, authType ...string) (int64, error)
@@ -396,7 +401,7 @@ func GetDisableTTL(ctx context.Context, loginID string, authType ...string) (int
 ### 常用扩展方法
 
 ```go
-func GetDisableInfo(ctx context.Context, loginID string, authType ...string) (*manager.DisableInfo, error)
+func GetDisableInfo(ctx context.Context, loginID string, authType ...string) (*dt.DisableInfo, error)
 func CheckDisable(ctx context.Context, loginID string, authType ...string) error
 func DisableService(ctx context.Context, loginID, service string, duration time.Duration, authType ...string) error
 func DisableServiceWithReason(ctx context.Context, loginID, service string, duration time.Duration, reason string, authType ...string) error
@@ -407,7 +412,7 @@ func IsDisableService(ctx context.Context, loginID, service string, authType ...
 func IsDisableServiceLevel(ctx context.Context, loginID, service string, level int, authType ...string) bool
 func CheckDisableService(ctx context.Context, loginID string, services []string, authType ...string) error
 func CheckDisableServiceLevel(ctx context.Context, loginID, service string, level int, authType ...string) error
-func GetDisableServiceInfo(ctx context.Context, loginID, service string, authType ...string) (*manager.ServiceDisableInfo, error)
+func GetDisableServiceInfo(ctx context.Context, loginID, service string, authType ...string) (*dt.ServiceDisableInfo, error)
 func GetDisableServiceTTL(ctx context.Context, loginID, service string, authType ...string) (int64, error)
 ```
 
@@ -419,7 +424,7 @@ func GetDisableServiceTTL(ctx context.Context, loginID, service string, authType
 
 **签名**：
 ```go
-func GetSession(ctx context.Context, loginID string, authType ...string) (*manager.Session, error)
+func GetSession(ctx context.Context, loginID string, authType ...string) (*dt.Session, error)
 ```
 
 ### GetSessionByToken
@@ -428,7 +433,7 @@ func GetSession(ctx context.Context, loginID string, authType ...string) (*manag
 
 **签名**：
 ```go
-func GetSessionByToken(ctx context.Context, tokenValue string, authType ...string) (*manager.Session, error)
+func GetSessionByToken(ctx context.Context, tokenValue string, authType ...string) (*dt.Session, error)
 ```
 
 **示例**：
@@ -451,14 +456,14 @@ fmt.Println(nickname, found)
 func GetOnlineTerminalCount(ctx context.Context, loginID string, authType ...string) (int, error)
 func GetOnlineTerminalCountByDevice(ctx context.Context, loginID string, device string, authType ...string) (int, error)
 func GetOnlineTerminalCountByDeviceAndDeviceID(ctx context.Context, loginID string, device string, deviceID string, authType ...string) (int, error)
-func ForEachTerminal(ctx context.Context, loginID string, visitor manager.TerminalVisitor, authType ...string) error
-func ForEachTerminalByDevice(ctx context.Context, loginID, device string, visitor manager.TerminalVisitor, authType ...string) error
+func ForEachTerminal(ctx context.Context, loginID string, visitor dt.TerminalVisitor, authType ...string) error
+func ForEachTerminalByDevice(ctx context.Context, loginID, device string, visitor dt.TerminalVisitor, authType ...string) error
 func GetTokenValueListByLoginID(ctx context.Context, loginID string, checkAlive bool, authType ...string) ([]string, error)
 func GetTokenValueListByDeviceAndDeviceID(ctx context.Context, loginID string, device string, deviceID string, checkAlive bool, authType ...string) ([]string, error)
 func GetTokenValueListByDevice(ctx context.Context, loginID string, device string, checkAlive bool, authType ...string) ([]string, error)
-func GetTerminalListByLoginID(ctx context.Context, loginID string, authType ...string) ([]manager.TerminalInfo, error)
-func GetTerminalListByLoginIDAndDevice(ctx context.Context, loginID string, device string, authType ...string) ([]manager.TerminalInfo, error)
-func GetTerminalInfoByToken(ctx context.Context, tokenValue string, authType ...string) (*manager.TerminalInfo, error)
+func GetTerminalListByLoginID(ctx context.Context, loginID string, authType ...string) ([]dt.TerminalInfo, error)
+func GetTerminalListByLoginIDAndDevice(ctx context.Context, loginID string, device string, authType ...string) ([]dt.TerminalInfo, error)
+func GetTerminalInfoByToken(ctx context.Context, tokenValue string, authType ...string) (*dt.TerminalInfo, error)
 func GetTokenValueByLoginID(ctx context.Context, loginID string, authType ...string) (string, error)
 func GetTokenValueByLoginIDAndDevice(ctx context.Context, loginID string, device string, authType ...string) (string, error)
 func SearchTokenValue(ctx context.Context, keyword string, start, size int, authType ...string) ([]string, error)
@@ -473,7 +478,7 @@ func SearchSessionId(ctx context.Context, keyword string, start, size int, authT
 
 **签名**：
 ```go
-func GetTokenInfo(ctx context.Context, tokenValue string, authType ...string) (*manager.TokenInfo, error)
+func GetTokenInfo(ctx context.Context, tokenValue string, authType ...string) (*dt.TokenInfo, error)
 ```
 
 **返回**：
@@ -497,17 +502,23 @@ Nonce 和 OAuth2 由各自包的 Service 提供，不属于 global API。参见 
 ### Manager 生命周期 API
 
 ```go
-func SetManager(mgr *manager.Manager)
-func GetManager(authType ...string) (*manager.Manager, error)
+func SetAuth(auth *dt.Auth)
+func Default() (*dt.Auth, error)
+func SetManager(mgr *dt.Manager)
+func GetManager(authType ...string) (*dt.Manager, error)
 func DeleteManager(authType ...string) error
 func DeleteAllManager()
 ```
 
-`SetManager` 会替换并立即关闭相同认证类型的旧 Manager。运行期替换前应先确保旧 Manager 不再接收新请求且没有正在执行的请求；Manager 被替换或关闭后不得再次注册。`DeleteManager` 和 `DeleteAllManager` 会先从注册表移除 Manager，再释放其资源。多个 Manager 共享 Storage、Logger 或 Pool 时，应使用 `manager.WithComponentOwnership` 将共享组件标记为调用方持有。
+应用优先调用 `SetAuth` 注册实例；`Default` 获取默认认证体系的门面。`SetManager` 用于高级适配场景，与 `SetAuth` 共享注册表和资源所有权规则。
+
+`SetManager` 会替换并立即关闭相同认证类型的旧 Manager。运行期替换前应先确保旧 Manager 不再接收新请求且没有正在执行的请求；Manager 被替换或关闭后不得再次注册。`DeleteManager` 和 `DeleteAllManager` 会先从注册表移除 Manager，再释放其资源。多个 Manager 共享 Storage、Logger 或 Pool 时，应使用 `dt.WithComponentOwnership` 将共享组件标记为调用方持有。
 
 ## 完整方法列表
 
 ### Manager 生命周期
+- `SetAuth`
+- `Default`
 - `SetManager`
 - `GetManager`
 - `DeleteManager`

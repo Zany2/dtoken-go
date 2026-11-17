@@ -3,7 +3,6 @@ package main
 
 import (
 	dterror "github.com/Zany2/dtoken-go/errors"
-	dt1 "github.com/Zany2/dtoken-go/global"
 
 	"context"
 	"errors"
@@ -36,11 +35,11 @@ type LoginRequest struct {
 }
 
 func main() {
-	initDToken()
-	defer dt1.DeleteAllManager()
+	auth := initDToken()
+	defer auth.Close()
 
 	app := gofiber.New()
-	registerRoutes(app)
+	registerRoutes(app, auth)
 
 	if err := app.Listen(":8080"); err != nil {
 		panic(err)
@@ -48,10 +47,10 @@ func main() {
 }
 
 // registerRoutes shares production middleware and routes with regression tests. registerRoutes 与回归测试共用实际中间件和路由。
-func registerRoutes(app *gofiber.App) {
+func registerRoutes(app *gofiber.App, authInstance *dtoken.Auth) {
 	ctx := context.Background()
 	fail := func(c *gofiber.Ctx, err error) { _ = writeAuthError(c, err) }
-	app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx, fiberdt.WithManagerResolver(dt1.GetManager), fiberdt.WithFailFunc(fail)))
+	app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx, fiberdt.WithAuth(authInstance), fiberdt.WithFailFunc(fail)))
 	app.Post("/login", handleLogin)
 
 	auth := app.Group("")
@@ -62,20 +61,19 @@ func registerRoutes(app *gofiber.App) {
 	auth.Post("/logout", handleLogout)
 }
 
-// initDToken initializes integration manager initDToken 初始化集成管理器
-func initDToken() {
-	builtAuth1, err := dtoken.NewBuilder().
+// initDToken builds the Auth instance owned by the application. initDToken 构建由应用管理生命周期的 Auth 实例。
+func initDToken() *dtoken.Auth {
+	auth, err := dtoken.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
-	mgr := builtAuth1.Manager()
 
 	if err != nil {
 		panic(err)
 	}
 
-	dt1.SetManager(mgr)
+	return auth
 }
 
 // handleLogin logs in a demo user handleLogin 登录示例用户
@@ -92,16 +90,21 @@ func handleLogin(c *gofiber.Ctx) error {
 	// Form strings may share Fiber's request buffer; login events can outlive the request. 表单字符串可能引用 Fiber 请求缓冲区，而登录事件可能在请求结束后执行。
 	req.Username = strings.Clone(req.Username)
 
-	token, err := dt1.Login(c.UserContext(), req.Username)
+	mgr, err := fiberdt.GetManagerByContext(c)
+	if err != nil {
+		return writeAuthError(c, err)
+	}
+
+	token, err := mgr.Login(c.UserContext(), req.Username)
 	if err != nil {
 		return writeAuthError(c, err)
 	}
 
 	// Grant every demo user the same role and permission; real apps must load their own access rules. 为每个演示用户授予相同角色和权限；实际应用应加载自身的授权规则。
-	if err = dt1.AddRoles(c.UserContext(), req.Username, []string{"admin"}); err != nil {
+	if err = mgr.AddRoles(c.UserContext(), req.Username, []string{"admin"}); err != nil {
 		return writeAuthError(c, err)
 	}
-	if err = dt1.AddPermissions(c.UserContext(), req.Username, []string{"article:read"}); err != nil {
+	if err = mgr.AddPermissions(c.UserContext(), req.Username, []string{"article:read"}); err != nil {
 		return writeAuthError(c, err)
 	}
 

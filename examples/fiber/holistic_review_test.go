@@ -19,7 +19,7 @@ func TestProductionRouteFailures(t *testing.T) {
 	setupFiberManager(t)
 	ctx := context.Background()
 	router := gofiber.New()
-	registerRoutes(router)
+	registerTestRoutes(router)
 	check := func(method, path, body, token string, wantStatus, wantCode int) {
 		t.Helper()
 		rec := requestFiber(t, router, method, path, body, token)

@@ -1,10 +1,10 @@
 # 组件生态
 
-代码片段的导入别名：dt = github.com/Zany2/dtoken-go.
+代码片段的导入别名：dt = github.com/Zany2/dtoken-go, adapter = github.com/Zany2/dtoken-go/contract.
 
 [English](../integration/component-ecosystem.md) | 中文文档
 
-DToken-Go 将核心认证逻辑和组件实现解耦。核心只依赖接口，默认实现由 `defaults` 组装，也可以按业务需要替换存储、编解码、日志、Token 生成器和异步任务池。
+DToken-Go 将核心认证逻辑和组件实现解耦。核心只依赖接口，应用通过根包 Builder 调用私有 `internal/defaults` 完成默认装配，也可以按业务需要替换存储、编解码、日志、Token 生成器和异步任务池。
 
 ## 组件总览
 
@@ -23,10 +23,27 @@ DToken-Go 将核心认证逻辑和组件实现解耦。核心只依赖接口，�
 
 `dt.NewBuilder()` 会装配默认组件：
 
+<!-- dtoken-compile: default-components -->
 ```go
-mgr, err := dt.NewBuilder().
-    Storage(memory.NewStorage()).
-    Build()
+package main
+
+import (
+	dt "github.com/Zany2/dtoken-go"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	"github.com/Zany2/dtoken-go/storage/memory"
+)
+
+func main() {
+	storage := memory.NewStorage()
+	var _ adapter.Storage = storage
+	auth, err := dt.NewBuilder().
+		Storage(storage).
+		Build()
+	if err != nil {
+		panic(err)
+	}
+	defer auth.Close()
+}
 ```
 
 默认已经提供内存存储；使用 Redis 或其他后端时再显式设置存储。其他组件没有特殊诉求时，可以继续使用默认实现。
@@ -34,7 +51,7 @@ mgr, err := dt.NewBuilder().
 ## 替换具体组件
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(storage).
     SetCodec(codec).
     SetLog(logger).
@@ -46,7 +63,7 @@ mgr, err := dt.NewBuilder().
 也可以通过工厂延迟创建组件：
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     SetStorageFactory(func(cfg *config.Config) (adapter.Storage, error) {
         return redis.NewStorage("redis://localhost:6379/0")
     }).
@@ -71,7 +88,7 @@ Redis 接入方式见 [Redis 存储](../integration/redis-storage_zh.md)。
 默认生成器支持多种 Token 风格：
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     TokenStyle(adapter.TokenStyleRandom64).
     Storage(storage).
     Build()
@@ -102,16 +119,27 @@ func (MyGenerator) Generate(loginID, device, deviceID string) (string, error) {
 
 默认 `dlog` 基于 Zap 同步输出日志，由 Lumberjack 负责按文件大小轮转、备份保留和可选 gzip 压缩。核心继续通过 `contract.Log` / `contract.LogControl` 使用日志组件。
 
+<!-- dtoken-compile: logging -->
 ```go
-auth, err := dt.NewBuilder().
-    IsLog(true).
-    LoggerPath("logs").
-    LoggerFilename("dtoken.log").
-    LoggerMaxSize(10).
-    LoggerMaxBackups(10).
-    LoggerMaxAge(7).
-    LoggerCompress(true).
-    Build()
+package main
+
+import dt "github.com/Zany2/dtoken-go"
+
+func main() {
+	auth, err := dt.NewBuilder().
+		IsLog(true).
+		LoggerPath("logs").
+		LoggerFilename("dtoken.log").
+		LoggerMaxSize(10).
+		LoggerMaxBackups(10).
+		LoggerMaxAge(7).
+		LoggerCompress(true).
+		Build()
+	if err != nil {
+		panic(err)
+	}
+	defer auth.Close()
+}
 ```
 
 `MaxSize` 的单位是 MiB（1024 × 1024 字节），`MaxAge` 的单位是天；`MaxBackups` 或 `MaxAge` 为零时，不启用对应的保留限制。使用 `dlog.DefaultLoggerConfig()` 可获得 10 MiB、10 个备份、7 天的完整默认配置，部分配置结构体中的零值保留限制不会被默认值覆盖。活动文件默认为 `dtoken_logs/DTOKEN.log`，文件名固定，备份名称由 Lumberjack 生成。单条日志超过 `MaxSize` 时，Lumberjack 拒绝该次文件写入，Zap 将写入错误报告到标准错误输出。

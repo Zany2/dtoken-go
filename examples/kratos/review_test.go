@@ -42,7 +42,7 @@ func TestInitDTokenConfiguration(t *testing.T) {
 // TestLoginRejectsMalformedBodies covers decoder errors without creating a login. TestLoginRejectsMalformedBodies 覆盖解码错误，确保非法请求无法登录。
 func TestLoginRejectsMalformedBodies(t *testing.T) {
 	setupKratosManager(t)
-	srv := newKratosExampleServer()
+	srv := newKratosExampleServer(registeredAuth())
 	for _, body := range []string{
 		"", " \n\t ", "null", "[]", `{"username":"alice",`,
 		`{"username":123,"password":"123456"}`,
@@ -74,7 +74,7 @@ func TestAccountAndDeviceRestrictions(t *testing.T) {
 	if err := dt3.Disable(ctx, "blocked", time.Hour, ""); err != nil {
 		t.Fatal(err)
 	}
-	srv := newKratosExampleServer()
+	srv := newKratosExampleServer(registeredAuth())
 	assertKratosResponse(t, requestKratos(t, srv, http.MethodPost, "/login", `{"username":"blocked","password":"123456"}`, ""), http.StatusForbidden, dterror.CodeAccountDisabled)
 	token, err := dt3.Login(ctx, "alice", "web")
 	if err != nil {
@@ -108,7 +108,7 @@ func TestStorageErrorsUseUnifiedResponse(t *testing.T) {
 			handlerCalls := 0
 			var srv *khttp.Server
 			if withAuth {
-				srv = newKratosExampleServer()
+				srv = newKratosExampleServer(registeredAuth())
 			} else {
 				// Skip authentication middleware to reach each handler's own error branch. 跳过认证中间件以到达各处理器自身的错误分支。
 				srv = khttp.NewServer(khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware(kratosdt.WithAuth(builtAuth1))))
@@ -146,12 +146,16 @@ func TestStorageErrorsUseUnifiedResponse(t *testing.T) {
 	}
 }
 
-// TestMissingManagerStopsHandlers verifies registration failures use the same error envelope. TestMissingManagerStopsHandlers 验证注册失败使用相同的错误响应结构。
-func TestMissingManagerStopsHandlers(t *testing.T) {
-	dt3.DeleteAllManager()
-	t.Cleanup(dt3.DeleteAllManager)
-	srv := newKratosExampleServer()
-	assertKratosResponse(t, requestKratos(t, srv, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, ""), http.StatusInternalServerError, dterror.CodeServerError)
+// TestMissingAuthRejectedAtSetup verifies missing instances fail before accepting requests. TestMissingAuthRejectedAtSetup 验证缺失实例在接收请求前被拒绝。
+func TestMissingAuthRejectedAtSetup(t *testing.T) {
+	defer func() {
+		recovered := recover()
+		err, ok := recovered.(error)
+		if !ok || !errors.Is(err, dterror.ErrManagerNotFound) {
+			t.Fatalf("panic = %v, want ErrManagerNotFound", recovered)
+		}
+	}()
+	newKratosExampleServer(nil)
 }
 
 type failingKratosStorage struct {

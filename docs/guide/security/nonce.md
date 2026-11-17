@@ -6,6 +6,7 @@ Nonce is an independent capability composed through the nonce package Manager an
 
 ## Basic use
 
+<!-- dtoken-compile: nonce -->
 ```go
 package main
 

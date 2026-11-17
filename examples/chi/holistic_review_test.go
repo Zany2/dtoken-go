@@ -19,7 +19,7 @@ func TestProductionRouteFailures(t *testing.T) {
 	setupChiManager(t)
 	ctx := context.Background()
 	router := chi.NewRouter()
-	registerRoutes(router)
+	registerTestRoutes(router)
 	check := func(method, path, body, token string, wantStatus, wantCode int) {
 		t.Helper()
 		rec := requestChi(t, router, method, path, body, token)

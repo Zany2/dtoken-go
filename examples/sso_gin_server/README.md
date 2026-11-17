@@ -19,7 +19,7 @@ This Gin example sets `LogoutCallbackBestEffort: true`: it attempts the register
 go run ./examples/sso_gin_server
 ```
 
-Run from the repository root with Go 1.25 or later. Deployment also requires real authentication, managed secrets and request signing on both sides, and HTTPS with Secure Cookies.
+Run from the repository root with Go 1.27 or later, as required by `go.work`. The standalone example module declares a minimum of Go 1.25. Deployment also requires real authentication, managed secrets and request signing on both sides, and HTTPS with Secure Cookies.
 
 Default address:
 

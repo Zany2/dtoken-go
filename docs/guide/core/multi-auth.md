@@ -20,41 +20,59 @@ dtoken:app:session:client-001
 
 ## Register Multiple Managers
 
+<!-- dtoken-compile: multi-auth -->
 ```go
-ctx := context.Background()
-storage := memory.NewStorage()
-sharedOwnership := manager.WithComponentOwnership(manager.ComponentOwnership{
-    Storage: false,
-    Logger:  true,
-    Pool:    true,
-})
+package main
 
-userMgr, err := dt.NewBuilder().
-    AuthType("user").
-    KeyPrefix("dtoken").
-    TokenName("user-token").
-    Storage(storage).
-    UseManagerOption(sharedOwnership).
-    Build()
-if err != nil {
-    panic(err)
+import (
+	"context"
+
+	dt "github.com/Zany2/dtoken-go"
+	dtoken "github.com/Zany2/dtoken-go/global"
+	gindt "github.com/Zany2/dtoken-go/integrations/gin"
+	"github.com/Zany2/dtoken-go/storage/memory"
+	"github.com/gin-gonic/gin"
+)
+
+func main() {
+	defer dtoken.DeleteAllManager()
+	ctx := context.Background()
+	storage := memory.NewStorage()
+	sharedOwnership := dt.WithComponentOwnership(dt.ComponentOwnership{
+		Storage: false,
+		Logger:  true,
+		Pool:    true,
+	})
+
+	userAuth, err := dt.NewBuilder().
+		AuthType("user").
+		KeyPrefix("dtoken").
+		TokenName("user-token").
+		Storage(storage).
+		UseManagerOption(sharedOwnership).
+		Build()
+	if err != nil {
+		panic(err)
+	}
+	dtoken.SetAuth(userAuth)
+
+	adminAuth, err := dt.NewBuilder().
+		AuthType("admin").
+		KeyPrefix("dtoken").
+		TokenName("admin-token").
+		Storage(storage).
+		UseManagerOption(sharedOwnership).
+		Build()
+	if err != nil {
+		panic(err)
+	}
+	dtoken.SetAuth(adminAuth)
+
+	userToken, _ := dtoken.Login(ctx, "10001", "", "", "user")
+	adminToken, _ := dtoken.Login(ctx, "admin-1", "", "", "admin")
+	_, _ = userToken, adminToken
+	registerRoutes(ctx, gin.New(), userAuth, adminAuth)
 }
-dtoken.SetManager(userMgr)
-
-adminMgr, err := dt.NewBuilder().
-    AuthType("admin").
-    KeyPrefix("dtoken").
-    TokenName("admin-token").
-    Storage(storage).
-    UseManagerOption(sharedOwnership).
-    Build()
-if err != nil {
-    panic(err)
-}
-dtoken.SetManager(adminMgr)
-
-userToken, _ := dtoken.Login(ctx, "10001", "", "", "user")
-adminToken, _ := dtoken.Login(ctx, "admin-1", "", "", "admin")
 ```
 
 Managers own and close Storage, Logger, and Pool components configured through a Builder by default. `ComponentOwnership` is a complete policy: every field must be set explicitly because omitted boolean fields are `false`. For shared components, set the corresponding field to `false`; the caller then closes that shared component once during application shutdown. A caller-owned Pool must remain running until all managers that use it have closed, because each manager waits for its accepted asynchronous tasks during shutdown.
@@ -91,18 +109,21 @@ If `authType` is omitted, the default auth system `auth:` is used.
 
 Different route groups can bind different auth systems:
 
+<!-- dtoken-compile: multi-auth -->
 ```go
-userGroup := r.Group("/api")
-userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuthType("user")))
+func registerRoutes(ctx context.Context, r *gin.Engine, userAuth, adminAuth *dt.Auth) {
+	userGroup := r.Group("/api")
+	userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuth(userAuth)))
 
-adminGroup := r.Group("/admin")
-adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuthType("admin")))
-adminGroup.Use(gindt.RoleMiddleware(ctx, []string{"admin"}, gindt.WithAuthType("admin")))
+	adminGroup := r.Group("/admin")
+	adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuth(adminAuth)))
+	adminGroup.Use(gindt.RoleMiddleware(ctx, []string{"admin"}, gindt.WithAuth(adminAuth)))
+}
 ```
 
 With this setup, `/api` only recognizes Tokens from `user`, and `/admin` only recognizes Tokens from `admin`.
 
-Each group's authentication middleware creates the request context using its selected Manager. No global context-registration middleware is needed here: the setup registers `user` and `admin`, without a default `auth:` Manager.
+Each group binds its instance through `WithAuth`, independently of global registration. For dynamic registry lookup, explicitly configure `WithManagerResolver(dtoken.GetManager)` and select a namespace with `WithAuthType`.
 
 ## Redis Key Isolation
 

@@ -40,6 +40,7 @@ func TestInitDTokenConfiguration(t *testing.T) {
 func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	setupChiManager(t)
 	router := chi.NewRouter()
+	router.Use(chidt.RegisterDTokenContextMiddleware(chidt.WithAuth(registeredAuth())))
 	router.Post("/login", handleLogin)
 
 	missing := requestChi(t, router, http.MethodPost, "/login", `{"username":"alice"}`, "")
@@ -94,7 +95,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 	}
 
 	router := chi.NewRouter()
-	registerRoutes(router)
+	registerTestRoutes(router)
 
 	for _, route := range []string{"/me", "/admin", "/articles"} {
 		for _, header := range []string{token, "Bearer " + token} {
@@ -142,6 +143,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 func TestLoginRejectsInvalidJSON(t *testing.T) {
 	setupChiManager(t)
 	router := chi.NewRouter()
+	router.Use(chidt.RegisterDTokenContextMiddleware(chidt.WithAuth(registeredAuth())))
 	router.Post("/login", handleLogin)
 	valid := `{"username":"alice","password":"123456"}`
 	for _, tc := range []struct {
@@ -180,6 +182,7 @@ func TestLoginRejectsDisabledAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := chi.NewRouter()
+	router.Use(chidt.RegisterDTokenContextMiddleware(chidt.WithAuth(registeredAuth())))
 	router.Post("/login", handleLogin)
 	rec := requestChi(t, router, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
 	var response Response
@@ -248,7 +251,7 @@ func setupChiManager(t *testing.T) {
 	t.Helper()
 	dtglobal.DeleteAllManager()
 	t.Cleanup(dtglobal.DeleteAllManager)
-	initDToken()
+	dtglobal.SetAuth(initDToken())
 }
 
 func requestChi(t *testing.T, router http.Handler, method, path, body, token string) *httptest.ResponseRecorder {
@@ -261,4 +264,40 @@ func requestChi(t *testing.T, router http.Handler, method, path, body, token str
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, req)
 	return recorder
+}
+
+// registeredAuth returns the explicitly registered test fixture. registeredAuth 返回显式注册的测试夹具。
+func registeredAuth() *dtoken.Auth {
+	auth, err := dtglobal.Default()
+	if err != nil {
+		panic(err)
+	}
+	return auth
+}
+
+// registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
+func registerTestRoutes(r chi.Router) { registerRoutes(r, registeredAuth()) }
+
+// TestInjectedLoginWithoutGlobal verifies login and access grants use the injected instance. TestInjectedLoginWithoutGlobal 验证登录与授权使用注入实例且无需全局注册。
+func TestInjectedLoginWithoutGlobal(t *testing.T) {
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
+	auth := initDToken()
+	t.Cleanup(auth.Close)
+	router := chi.NewRouter()
+	registerRoutes(router, auth)
+	response := requestChi(t, router, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("login status = %d", response.Code)
+	}
+	ctx := context.Background()
+	if _, err := auth.GetSession(ctx, "alice"); err != nil {
+		t.Fatalf("injected session: %v", err)
+	}
+	if !auth.HasRole(ctx, "alice", "admin") || !auth.HasPermission(ctx, "alice", "article:read") {
+		t.Fatal("access grants missing from injected instance")
+	}
+	if _, err := dtglobal.GetManager(); err == nil {
+		t.Fatal("example unexpectedly registered a global manager")
+	}
 }

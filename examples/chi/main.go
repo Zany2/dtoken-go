@@ -3,7 +3,6 @@ package main
 
 import (
 	dterror "github.com/Zany2/dtoken-go/errors"
-	dt1 "github.com/Zany2/dtoken-go/global"
 
 	"encoding/json"
 	"errors"
@@ -37,11 +36,11 @@ type LoginRequest struct {
 }
 
 func main() {
-	initDToken()
-	defer dt1.DeleteAllManager()
+	auth := initDToken()
+	defer auth.Close()
 
 	r := chi.NewRouter()
-	registerRoutes(r)
+	registerRoutes(r, auth)
 
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		panic(err)
@@ -49,11 +48,11 @@ func main() {
 }
 
 // registerRoutes shares production middleware and routes with regression tests. registerRoutes 与回归测试共用实际中间件和路由。
-func registerRoutes(r chi.Router) {
+func registerRoutes(r chi.Router, authInstance *dtoken.Auth) {
 	fail := func(w http.ResponseWriter, _ *http.Request, err error) { writeAuthError(w, err) }
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(chidt.RegisterDTokenContextMiddleware(chidt.WithManagerResolver(dt1.GetManager), chidt.WithFailFunc(fail)))
+	r.Use(chidt.RegisterDTokenContextMiddleware(chidt.WithAuth(authInstance), chidt.WithFailFunc(fail)))
 	r.Post("/login", handleLogin)
 
 	r.Group(func(auth chi.Router) {
@@ -65,20 +64,19 @@ func registerRoutes(r chi.Router) {
 	})
 }
 
-// initDToken initializes integration manager initDToken 初始化集成管理器
-func initDToken() {
-	builtAuth1, err := dtoken.NewBuilder().
+// initDToken builds the Auth instance owned by the application. initDToken 构建由应用管理生命周期的 Auth 实例。
+func initDToken() *dtoken.Auth {
+	auth, err := dtoken.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
-	mgr := builtAuth1.Manager()
 
 	if err != nil {
 		panic(err)
 	}
 
-	dt1.SetManager(mgr)
+	return auth
 }
 
 // handleLogin logs in a demo user handleLogin 登录示例用户
@@ -102,18 +100,24 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := dt1.Login(r.Context(), req.Username)
+	mgr, err := chidt.GetManagerByCtx(r.Context())
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
+
+	token, err := mgr.Login(r.Context(), req.Username)
 	if err != nil {
 		writeAuthError(w, err)
 		return
 	}
 
 	// Grant every demo user the same role and permission; real apps must load their own access rules. 为每个演示用户授予相同角色和权限；实际应用应加载自身的授权规则。
-	if err = dt1.AddRoles(r.Context(), req.Username, []string{"admin"}); err != nil {
+	if err = mgr.AddRoles(r.Context(), req.Username, []string{"admin"}); err != nil {
 		writeAuthError(w, err)
 		return
 	}
-	if err = dt1.AddPermissions(r.Context(), req.Username, []string{"article:read"}); err != nil {
+	if err = mgr.AddPermissions(r.Context(), req.Username, []string{"article:read"}); err != nil {
 		writeAuthError(w, err)
 		return
 	}

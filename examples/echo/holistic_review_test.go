@@ -19,7 +19,7 @@ func TestProductionRouteFailures(t *testing.T) {
 	setupEchoManager(t)
 	ctx := context.Background()
 	router := echo4.New()
-	registerRoutes(router)
+	registerTestRoutes(router)
 	check := func(method, path, body, token string, wantStatus, wantCode int) {
 		t.Helper()
 		rec := requestEcho(t, router, method, path, body, token)

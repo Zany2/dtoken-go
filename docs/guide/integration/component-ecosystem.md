@@ -1,10 +1,10 @@
 # Component Ecosystem
 
-Import aliases for code fragments: dt = github.com/Zany2/dtoken-go.
+Import aliases for code fragments: dt = github.com/Zany2/dtoken-go, adapter = github.com/Zany2/dtoken-go/contract.
 
 **[中文文档](../integration/component-ecosystem_zh.md)**
 
-DToken-Go decouples core authentication logic from component implementations. The core depends on interfaces, `defaults` wires bundled implementations, and projects can replace storage, codec, logger, Token generator, and async task pool components as needed.
+DToken-Go decouples core authentication logic from component implementations. The core depends on interfaces, the root Builder delegates default wiring to private `internal/defaults`, and projects can replace storage, codec, logger, Token generator, and async task pool components as needed.
 
 ## Component Overview
 
@@ -23,10 +23,27 @@ DToken-Go decouples core authentication logic from component implementations. Th
 
 `dt.NewBuilder()` wires default components:
 
+<!-- dtoken-compile: default-components -->
 ```go
-mgr, err := dt.NewBuilder().
-    Storage(memory.NewStorage()).
-    Build()
+package main
+
+import (
+	dt "github.com/Zany2/dtoken-go"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	"github.com/Zany2/dtoken-go/storage/memory"
+)
+
+func main() {
+	storage := memory.NewStorage()
+	var _ adapter.Storage = storage
+	auth, err := dt.NewBuilder().
+		Storage(storage).
+		Build()
+	if err != nil {
+		panic(err)
+	}
+	defer auth.Close()
+}
 ```
 
 Memory storage is already provided by default. Set storage explicitly when using Redis or another backend; other default components can remain unchanged unless there is a specific requirement.
@@ -34,7 +51,7 @@ Memory storage is already provided by default. Set storage explicitly when using
 ## Replace Components
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(storage).
     SetCodec(codec).
     SetLog(logger).
@@ -46,7 +63,7 @@ mgr, err := dt.NewBuilder().
 Factories can also be used to create components lazily:
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     SetStorageFactory(func(cfg *config.Config) (adapter.Storage, error) {
         return redis.NewStorage("redis://localhost:6379/0")
     }).
@@ -71,7 +88,7 @@ For Redis integration, see [Redis Storage](../integration/redis-storage.md).
 The default generator supports multiple Token styles:
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     TokenStyle(adapter.TokenStyleRandom64).
     Storage(storage).
     Build()
@@ -102,16 +119,27 @@ For all built-in styles, see [Token Styles](../core/token-style.md).
 
 The default `dlog` writes synchronously through Zap. Lumberjack manages size-based rotation, retention, and optional gzip compression. The core continues to use `contract.Log` / `contract.LogControl`.
 
+<!-- dtoken-compile: logging -->
 ```go
-auth, err := dt.NewBuilder().
-    IsLog(true).
-    LoggerPath("logs").
-    LoggerFilename("dtoken.log").
-    LoggerMaxSize(10).
-    LoggerMaxBackups(10).
-    LoggerMaxAge(7).
-    LoggerCompress(true).
-    Build()
+package main
+
+import dt "github.com/Zany2/dtoken-go"
+
+func main() {
+	auth, err := dt.NewBuilder().
+		IsLog(true).
+		LoggerPath("logs").
+		LoggerFilename("dtoken.log").
+		LoggerMaxSize(10).
+		LoggerMaxBackups(10).
+		LoggerMaxAge(7).
+		LoggerCompress(true).
+		Build()
+	if err != nil {
+		panic(err)
+	}
+	defer auth.Close()
+}
 ```
 
 `MaxSize` is measured in MiB (1024 × 1024 bytes), and `MaxAge` in days. A zero `MaxBackups` or `MaxAge` disables that retention limit. `dlog.DefaultLoggerConfig()` supplies the complete defaults of 10 MiB, 10 backups, and 7 days; zero retention limits in a partial configuration remain zero. The default active file is `dtoken_logs/DTOKEN.log`, with a fixed basename and Lumberjack-generated backup names. Lumberjack rejects an individual entry larger than `MaxSize`; Zap reports write errors to stderr.

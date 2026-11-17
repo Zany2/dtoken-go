@@ -20,41 +20,59 @@ dtoken:app:session:client-001
 
 ## 注册多套 Manager
 
+<!-- dtoken-compile: multi-auth -->
 ```go
-ctx := context.Background()
-storage := memory.NewStorage()
-sharedOwnership := manager.WithComponentOwnership(manager.ComponentOwnership{
-    Storage: false,
-    Logger:  true,
-    Pool:    true,
-})
+package main
 
-userMgr, err := dt.NewBuilder().
-    AuthType("user").
-    KeyPrefix("dtoken").
-    TokenName("user-token").
-    Storage(storage).
-    UseManagerOption(sharedOwnership).
-    Build()
-if err != nil {
-    panic(err)
+import (
+	"context"
+
+	dt "github.com/Zany2/dtoken-go"
+	dtoken "github.com/Zany2/dtoken-go/global"
+	gindt "github.com/Zany2/dtoken-go/integrations/gin"
+	"github.com/Zany2/dtoken-go/storage/memory"
+	"github.com/gin-gonic/gin"
+)
+
+func main() {
+	defer dtoken.DeleteAllManager()
+	ctx := context.Background()
+	storage := memory.NewStorage()
+	sharedOwnership := dt.WithComponentOwnership(dt.ComponentOwnership{
+		Storage: false,
+		Logger:  true,
+		Pool:    true,
+	})
+
+	userAuth, err := dt.NewBuilder().
+		AuthType("user").
+		KeyPrefix("dtoken").
+		TokenName("user-token").
+		Storage(storage).
+		UseManagerOption(sharedOwnership).
+		Build()
+	if err != nil {
+		panic(err)
+	}
+	dtoken.SetAuth(userAuth)
+
+	adminAuth, err := dt.NewBuilder().
+		AuthType("admin").
+		KeyPrefix("dtoken").
+		TokenName("admin-token").
+		Storage(storage).
+		UseManagerOption(sharedOwnership).
+		Build()
+	if err != nil {
+		panic(err)
+	}
+	dtoken.SetAuth(adminAuth)
+
+	userToken, _ := dtoken.Login(ctx, "10001", "", "", "user")
+	adminToken, _ := dtoken.Login(ctx, "admin-1", "", "", "admin")
+	_, _ = userToken, adminToken
+	registerRoutes(ctx, gin.New(), userAuth, adminAuth)
 }
-dtoken.SetManager(userMgr)
-
-adminMgr, err := dt.NewBuilder().
-    AuthType("admin").
-    KeyPrefix("dtoken").
-    TokenName("admin-token").
-    Storage(storage).
-    UseManagerOption(sharedOwnership).
-    Build()
-if err != nil {
-    panic(err)
-}
-dtoken.SetManager(adminMgr)
-
-userToken, _ := dtoken.Login(ctx, "10001", "", "", "user")
-adminToken, _ := dtoken.Login(ctx, "admin-1", "", "", "admin")
 ```
 
 Manager 默认持有并关闭通过 Builder 配置的 Storage、Logger 和 Pool。`ComponentOwnership` 是完整的所有权策略，所有字段都应显式设置，因为未填写的布尔字段值为 `false`。共享组件时，将对应字段设为 `false`；共享组件随后由调用方在应用退出时统一关闭。由调用方持有的 Pool 必须保持运行，直到使用它的全部 Manager 都已关闭，因为每个 Manager 在关闭时都会等待自己已接收的异步任务。
@@ -91,18 +109,21 @@ roles, err := dtoken.GetRoles(ctx, "10001", "user")
 
 不同路由组可以绑定不同认证体系：
 
+<!-- dtoken-compile: multi-auth -->
 ```go
-userGroup := r.Group("/api")
-userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuthType("user")))
+func registerRoutes(ctx context.Context, r *gin.Engine, userAuth, adminAuth *dt.Auth) {
+	userGroup := r.Group("/api")
+	userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuth(userAuth)))
 
-adminGroup := r.Group("/admin")
-adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuthType("admin")))
-adminGroup.Use(gindt.RoleMiddleware(ctx, []string{"admin"}, gindt.WithAuthType("admin")))
+	adminGroup := r.Group("/admin")
+	adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuth(adminAuth)))
+	adminGroup.Use(gindt.RoleMiddleware(ctx, []string{"admin"}, gindt.WithAuth(adminAuth)))
+}
 ```
 
 这样 `/api` 只能识别 `user` 体系的 Token，`/admin` 只能识别 `admin` 体系的 Token。
 
-各路由组的认证中间件会使用选定的 Manager 创建请求上下文。本例仅注册 `user` 和 `admin`，没有默认 `auth:` Manager，因此无需在全局挂载查找默认 Manager 的上下文注册中间件。
+各路由组通过 `WithAuth` 显式绑定实例，与全局注册无关。若需要按认证类型动态查询注册表，应显式配置 `WithManagerResolver(dtoken.GetManager)`，再使用 `WithAuthType` 选择认证类型。
 
 ## Redis Key 隔离
 

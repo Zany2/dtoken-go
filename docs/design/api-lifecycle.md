@@ -46,3 +46,26 @@ Capabilities accepts custom implementations. Missing and typed-nil bindings reta
 Standalone Service lifetimes are caller-managed. Supplying an Auth as the event emitter establishes event delivery only; callers must keep borrowed storage and codecs available. HTTP middleware additionally validates the bound engine lifecycle.
 
 Contracts and bundled capabilities remain part of the root module release. This separates package dependencies and runtime composition without adding separate versions or a dynamic plugin mechanism.
+
+## Public lifecycle example
+
+<!-- dtoken-compile: lifecycle -->
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/Zany2/dtoken-go"
+)
+
+func main() {
+	auth, err := dtoken.NewBuilder().IsPrintBanner(false).Build()
+	if err != nil {
+		panic(err)
+	}
+	defer auth.Close()
+	shared := dtoken.New(auth.Manager())
+	shared.Close()
+	fmt.Println(auth.IsClosed()) // true
+}
+```

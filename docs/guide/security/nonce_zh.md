@@ -6,6 +6,7 @@ Nonce 是独立能力，使用 nonce 包的 Manager 和 Service 显式组合，�
 
 ## 基本使用
 
+<!-- dtoken-compile: nonce -->
 ```go
 package main
 

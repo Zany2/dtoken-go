@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/Zany2/dtoken-go"
 	dtglobal "github.com/Zany2/dtoken-go/global"
 	"github.com/Zany2/dtoken-go/internal/defaults"
 	"github.com/gin-gonic/gin"
@@ -18,7 +19,7 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	setupQuickStartManager(t)
 
 	r := gin.New()
-	r.POST("/login", handleLogin)
+	r.POST("/login", application{auth: registeredAuth()}.handleLogin)
 
 	missing := requestQuickStart(t, r, http.MethodPost, "/login", `{"username":"alice"}`, "")
 	if missing.Code != http.StatusBadRequest {
@@ -76,7 +77,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 	}
 
 	r := gin.New()
-	registerRoutes(r)
+	registerTestRoutes(r)
 
 	for _, route := range []string{"/me", "/admin", "/articles"} {
 		response := requestQuickStart(t, r, http.MethodGet, route, "", token)
@@ -118,9 +119,9 @@ func TestMiddlewareUsesRequestContext(t *testing.T) {
 		name    string
 		handler gin.HandlerFunc
 	}{
-		{"login", authMiddleware()},
-		{"role", roleMiddleware("admin")},
-		{"permission", permissionMiddleware("article:read")},
+		{"login", application{auth: registeredAuth()}.authMiddleware()},
+		{"role", application{auth: registeredAuth()}.roleMiddleware("admin")},
+		{"permission", application{auth: registeredAuth()}.permissionMiddleware("article:read")},
 	} {
 		for _, state := range []string{"active", "canceled", "deadline"} {
 			t.Run(check.name+"/"+state, func(t *testing.T) {
@@ -167,8 +168,8 @@ func TestAccessDenialStopsHandlers(t *testing.T) {
 		name    string
 		handler gin.HandlerFunc
 	}{
-		{"role", roleMiddleware("admin")},
-		{"permission", permissionMiddleware("article:read")},
+		{"role", application{auth: registeredAuth()}.roleMiddleware("admin")},
+		{"permission", application{auth: registeredAuth()}.permissionMiddleware("article:read")},
 	} {
 		for _, tc := range []struct {
 			name   string
@@ -224,4 +225,40 @@ func requestQuickStart(t *testing.T, router *gin.Engine, method, path, body, tok
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
 	return recorder
+}
+
+// registeredAuth returns the explicitly registered test fixture. registeredAuth 返回显式注册的测试夹具。
+func registeredAuth() *dtoken.Auth {
+	auth, err := dtglobal.Default()
+	if err != nil {
+		panic(err)
+	}
+	return auth
+}
+
+// registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
+func registerTestRoutes(r *gin.Engine) { registerRoutes(r, registeredAuth()) }
+
+// TestInjectedLoginWithoutGlobal verifies login and access grants use the injected instance. TestInjectedLoginWithoutGlobal 验证登录与授权使用注入实例且无需全局注册。
+func TestInjectedLoginWithoutGlobal(t *testing.T) {
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
+	auth := initDToken()
+	t.Cleanup(auth.Close)
+	router := gin.New()
+	registerRoutes(router, auth)
+	response := requestQuickStart(t, router, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("login status = %d", response.Code)
+	}
+	ctx := context.Background()
+	if _, err := auth.GetSession(ctx, "alice"); err != nil {
+		t.Fatalf("injected session: %v", err)
+	}
+	if !auth.HasRole(ctx, "alice", "admin") || !auth.HasPermission(ctx, "alice", "article:read") {
+		t.Fatal("access grants missing from injected instance")
+	}
+	if _, err := dtglobal.GetManager(); err == nil {
+		t.Fatal("example unexpectedly registered a global manager")
+	}
 }

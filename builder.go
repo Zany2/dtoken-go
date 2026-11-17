@@ -573,7 +573,7 @@ func (b *Builder) Clone() *Builder {
 	return &clone
 }
 
-// Build validates module configs and builds manager Build 校验模块配置并构建 Manager
+// buildManager validates component configs and assembles the engine. buildManager 校验组件配置并装配引擎。
 func (b *Builder) buildManager() (*manager.Manager, error) {
 	b.ensureBuilder()
 
@@ -611,7 +611,7 @@ func (b *Builder) Build() (*Auth, error) {
 	return New(mgr), nil
 }
 
-// MustBuild builds manager and panics on error MustBuild 构建 Manager，失败时 panic
+// MustBuild creates an Auth instance and panics on error. MustBuild 创建 Auth 实例，失败时 panic。
 func (b *Builder) MustBuild() *Auth {
 	mgr, err := b.Build()
 	if err != nil {

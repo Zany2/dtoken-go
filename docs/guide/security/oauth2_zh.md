@@ -41,20 +41,47 @@ oauth2.GrantTypePassword
 
 使用独立 OAuth2 Manager 与 Service；auth 仅提供共享组件和可选事件发布。
 
+<!-- dtoken-compile: oauth2 -->
 ```go
+package main
+
 import (
-    "github.com/Zany2/dtoken-go"
-    "github.com/Zany2/dtoken-go/oauth2"
+	"context"
+	"fmt"
+
+	"github.com/Zany2/dtoken-go"
+	"github.com/Zany2/dtoken-go/oauth2"
 )
 
-auth, err := dtoken.NewBuilder().Build()
-if err != nil {
-    panic(err)
+func main() {
+	auth, err := dtoken.NewBuilder().IsPrintBanner(false).Build()
+	if err != nil {
+		panic(err)
+	}
+	defer auth.Close()
+	cfg := auth.Config()
+	server := oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+	service := oauth2.NewService(server, auth)
+	err = service.RegisterOAuth2Client(&oauth2.Client{
+		ClientID:     "server-app",
+		ClientSecret: "secret",
+		GrantTypes:   []oauth2.GrantType{oauth2.GrantTypeClientCredentials},
+		Scopes:       []string{"read"},
+	})
+	if err != nil {
+		panic(err)
+	}
+	token, err := service.OAuth2Token(context.Background(), &oauth2.TokenRequest{
+		GrantType:    oauth2.GrantTypeClientCredentials,
+		ClientID:     "server-app",
+		ClientSecret: "secret",
+		Scopes:       []string{"read"},
+	}, nil)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(token)
 }
-defer auth.Close()
-cfg := auth.Config()
-server := oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
-service := oauth2.NewService(server, auth)
 ```
 
 ## 客户端模型

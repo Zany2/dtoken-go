@@ -20,7 +20,7 @@ func TestProductionRouteFailures(t *testing.T) {
 	setupGinManager(t)
 	ctx := context.Background()
 	router := gin.New()
-	registerRoutes(router)
+	registerTestRoutes(router)
 	check := func(method, path, body, token string, wantStatus, wantCode int) {
 		t.Helper()
 		rec := requestGin(t, router, method, path, body, token)
@@ -80,7 +80,7 @@ func TestProductionRouteFailures(t *testing.T) {
 func TestJSONValidationPrecedesTokenMutation(t *testing.T) {
 	setupGinManager(t)
 	router := gin.New()
-	registerRoutes(router)
+	registerTestRoutes(router)
 	valid := `{"username":"alice","password":"123456"}`
 	for _, suffix := range []string{" {}", " null", " trailing"} {
 		rec := requestGin(t, router, http.MethodPost, "/login", valid+suffix, "")

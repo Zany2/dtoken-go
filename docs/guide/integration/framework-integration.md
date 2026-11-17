@@ -393,7 +393,7 @@ Recommended aliases:
 
 ## When To Import Core Directly
 
-Use `defaults`, `internal/builder`, `internal/engine`, or `dtoken` for framework-agnostic infrastructure, tests, shared libraries, and business handlers. Use `internal/builder` directly only when you want to inject every adapter yourself. Use the integration package only where the code needs framework-specific request handling.
+Use the root `dtoken` package for framework-agnostic applications and libraries. Extend it through public `Manager`, `ManagerOption`, and `Strategy` types, implement interfaces from `contract`, and import components from their own packages. `internal/builder`, `internal/defaults`, and `internal/engine` are private implementation packages. Import integrations where framework-specific request handling is needed.
 
 ## Related Documents
 

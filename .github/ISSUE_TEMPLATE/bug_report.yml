@@ -19,7 +19,7 @@ body:
     attributes:
       label: Module and version / 模块与版本
       description: Include each affected module version, or the commit SHA for a source checkout. 填写受影响模块的版本，源码开发请填写提交 SHA。
-      placeholder: github.com/Zany2/dtoken-go/core v0.0.3
+      placeholder: github.com/Zany2/dtoken-go v0.0.1
     validations:
       required: true
   - type: textarea

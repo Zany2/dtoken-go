@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-func TestInitDTokenRegistersManager(t *testing.T) {
+func TestInitDTokenConfiguration(t *testing.T) {
 	dtglobal.DeleteAllManager()
 	t.Cleanup(dtglobal.DeleteAllManager)
-	initDToken()
+	dtglobal.SetAuth(initDToken())
 
 	mgr, err := dtglobal.GetManager()
 	if err != nil {

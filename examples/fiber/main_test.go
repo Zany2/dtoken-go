@@ -40,6 +40,7 @@ func TestInitDTokenConfiguration(t *testing.T) {
 func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	setupFiberManager(t)
 	app := gofiber.New()
+	app.Use(fiberdt.RegisterDTokenContextMiddleware(context.Background(), fiberdt.WithAuth(registeredAuth())))
 	app.Post("/login", handleLogin)
 
 	missing := requestFiber(t, app, http.MethodPost, "/login", `{"username":"alice"}`, "")
@@ -93,7 +94,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 	}
 
 	app := gofiber.New()
-	registerRoutes(app)
+	registerTestRoutes(app)
 
 	for _, route := range []string{"/me", "/admin", "/articles"} {
 		for _, header := range []string{token, "Bearer " + token} {
@@ -158,6 +159,7 @@ func TestLoginPayloads(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			setupFiberManager(t)
 			app := gofiber.New()
+			app.Use(fiberdt.RegisterDTokenContextMiddleware(context.Background(), fiberdt.WithAuth(registeredAuth())))
 			app.Post("/login", handleLogin)
 			req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBufferString(tc.body))
 			req.Header.Set("Content-Type", tc.contentType)
@@ -206,6 +208,7 @@ func TestFormLoginOwnsUsername(t *testing.T) {
 	}, dt2.ListenerConfig{Async: false})
 
 	app := gofiber.New()
+	app.Use(fiberdt.RegisterDTokenContextMiddleware(context.Background(), fiberdt.WithAuth(registeredAuth())))
 	mutated := 0
 	app.Post("/login", func(c *gofiber.Ctx) error {
 		err := handleLogin(c)
@@ -233,6 +236,7 @@ func TestLoginRejectsDisabledAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := gofiber.New()
+	app.Use(fiberdt.RegisterDTokenContextMiddleware(context.Background(), fiberdt.WithAuth(registeredAuth())))
 	app.Post("/login", handleLogin)
 	response := requestFiber(t, app, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
 	var envelope Response
@@ -301,7 +305,7 @@ func setupFiberManager(t *testing.T) {
 	t.Helper()
 	dtglobal.DeleteAllManager()
 	t.Cleanup(dtglobal.DeleteAllManager)
-	initDToken()
+	dtglobal.SetAuth(initDToken())
 }
 
 func requestFiber(t *testing.T, app *gofiber.App, method, path, body, token string) *http.Response {
@@ -317,4 +321,41 @@ func requestFiber(t *testing.T, app *gofiber.App, method, path, body, token stri
 	}
 	t.Cleanup(func() { _ = response.Body.Close() })
 	return response
+}
+
+// registeredAuth returns the explicitly registered test fixture. registeredAuth 返回显式注册的测试夹具。
+func registeredAuth() *dtoken.Auth {
+	auth, err := dtglobal.Default()
+	if err != nil {
+		panic(err)
+	}
+	return auth
+}
+
+// registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
+func registerTestRoutes(app *gofiber.App) { registerRoutes(app, registeredAuth()) }
+
+// TestInjectedLoginWithoutGlobal verifies login and access grants use the injected instance. TestInjectedLoginWithoutGlobal 验证登录与授权使用注入实例且无需全局注册。
+func TestInjectedLoginWithoutGlobal(t *testing.T) {
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
+	auth := initDToken()
+	t.Cleanup(auth.Close)
+	app := gofiber.New()
+	registerRoutes(app, auth)
+	response := requestFiber(t, app, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("login status = %d", response.StatusCode)
+	}
+	ctx := context.Background()
+	if _, err := auth.GetSession(ctx, "alice"); err != nil {
+		t.Fatalf("injected session: %v", err)
+	}
+	if !auth.HasRole(ctx, "alice", "admin") || !auth.HasPermission(ctx, "alice", "article:read") {
+		t.Fatal("access grants missing from injected instance")
+	}
+	if _, err := dtglobal.GetManager(); err == nil {
+		t.Fatal("example unexpectedly registered a global manager")
+	}
 }

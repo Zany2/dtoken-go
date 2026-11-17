@@ -1,5 +1,7 @@
 # Session And Terminal Management
 
+Fragment aliases: dt = github.com/Zany2/dtoken-go, dtoken = github.com/Zany2/dtoken-go/global.
+
 [中文文档](../core/session-terminal_zh.md) | English
 
 ## Overview
@@ -72,12 +74,12 @@ token, err = dtoken.GetTokenValueByLoginIDAndDevice(ctx, "10001", "web")
 ## Iterate Terminals
 
 ```go
-err := dtoken.ForEachTerminal(ctx, "10001", func(info manager.TerminalInfo) bool {
+err := dtoken.ForEachTerminal(ctx, "10001", func(info dt.TerminalInfo) bool {
     fmt.Println(info.Device, info.DeviceID, info.Token)
     return true
 })
 
-err = dtoken.ForEachTerminalByDevice(ctx, "10001", "web", func(info manager.TerminalInfo) bool {
+err = dtoken.ForEachTerminalByDevice(ctx, "10001", "web", func(info dt.TerminalInfo) bool {
     return true
 })
 ```

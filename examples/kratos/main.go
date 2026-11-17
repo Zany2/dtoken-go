@@ -3,7 +3,6 @@ package main
 
 import (
 	dterror "github.com/Zany2/dtoken-go/errors"
-	dt1 "github.com/Zany2/dtoken-go/global"
 
 	"context"
 	"errors"
@@ -37,10 +36,10 @@ type LoginRequest struct {
 }
 
 func main() {
-	initDToken()
-	defer dt1.DeleteAllManager()
+	auth := initDToken()
+	defer auth.Close()
 
-	srv := newKratosExampleServer()
+	srv := newKratosExampleServer(auth)
 	app := kratos.New(
 		kratos.Name("dtoken-kratos-example"),
 		kratos.Server(srv),
@@ -52,10 +51,10 @@ func main() {
 }
 
 // newKratosExampleServer shares server configuration and routes with regression tests. newKratosExampleServer 与回归测试共用服务器配置及路由。
-func newKratosExampleServer() *khttp.Server {
+func newKratosExampleServer(auth *dtoken.Auth) *khttp.Server {
 	srv := khttp.NewServer(
 		khttp.Address(":8080"),
-		khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware(kratosdt.WithManagerResolver(dt1.GetManager))),
+		khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware(kratosdt.WithAuth(auth))),
 	)
 
 	r := srv.Route("/")
@@ -68,20 +67,19 @@ func newKratosExampleServer() *khttp.Server {
 	return srv
 }
 
-// initDToken initializes integration manager initDToken 初始化集成管理器
-func initDToken() {
-	builtAuth1, err := dtoken.NewBuilder().
+// initDToken builds the Auth instance owned by the application. initDToken 构建由应用管理生命周期的 Auth 实例。
+func initDToken() *dtoken.Auth {
+	auth, err := dtoken.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
-	mgr := builtAuth1.Manager()
 
 	if err != nil {
 		panic(err)
 	}
 
-	dt1.SetManager(mgr)
+	return auth
 }
 
 // wrapHandler applies Kratos middleware to a plain handler wrapHandler 为普通处理函数应用 Kratos 中间件
@@ -110,16 +108,21 @@ func handleLogin(ctx context.Context, httpCtx khttp.Context) error {
 		return writeJSON(httpCtx, http.StatusUnauthorized, dterror.CodeNotLogin, "invalid username or password", nil)
 	}
 
-	token, err := dt1.Login(ctx, req.Username)
+	mgr, err := kratosdt.GetManagerByCtx(ctx)
+	if err != nil {
+		return err
+	}
+
+	token, err := mgr.Login(ctx, req.Username)
 	if err != nil {
 		return err
 	}
 
 	// Grant every demo user the same role and permission; real apps must load their own access rules. 为每个演示用户授予相同角色和权限；实际应用应加载自身的授权规则。
-	if err = dt1.AddRoles(ctx, req.Username, []string{"admin"}); err != nil {
+	if err = mgr.AddRoles(ctx, req.Username, []string{"admin"}); err != nil {
 		return err
 	}
-	if err = dt1.AddPermissions(ctx, req.Username, []string{"article:read"}); err != nil {
+	if err = mgr.AddPermissions(ctx, req.Username, []string{"article:read"}); err != nil {
 		return err
 	}
 

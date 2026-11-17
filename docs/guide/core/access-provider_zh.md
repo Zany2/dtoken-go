@@ -33,26 +33,39 @@ type AccessSubject struct {
 
 ## 基本用法
 
+<!-- dtoken-compile: access-provider -->
 ```go
-provider := manager.AccessProviderFunc{
-    PermissionFunc: func(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
-        if subject.AuthType == "admin:" {
-            return []string{"admin:*"}, nil
-        }
-        return []string{"user:read"}, nil
-    },
-    RoleFunc: func(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
-        if subject.LoginID == "10001" {
-            return []string{"admin"}, nil
-        }
-        return []string{"user"}, nil
-    },
-}
+package main
 
-mgr, err := dt.NewBuilder().
-    Storage(storage).
-    SetAccessProvider(provider).
-    Build()
+import (
+	"context"
+	dt "github.com/Zany2/dtoken-go"
+)
+
+func main() {
+	provider := dt.AccessProviderFunc{
+		PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
+			if subject.AuthType == "admin:" {
+				return []string{"admin:*"}, nil
+			}
+			return []string{"user:read"}, nil
+		},
+		RoleFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
+			if subject.LoginID == "10001" {
+				return []string{"admin"}, nil
+			}
+			return []string{"user"}, nil
+		},
+	}
+
+	auth, err := dt.NewBuilder().
+		SetAccessProvider(provider).
+		Build()
+	if err != nil {
+		panic(err)
+	}
+	defer auth.Close()
+}
 ```
 
 ## 回退到 Session
@@ -60,8 +73,8 @@ mgr, err := dt.NewBuilder().
 Provider 返回 `nil` 表示不接管本次查询，让框架继续使用 Session 中的数据：
 
 ```go
-provider := manager.AccessProviderFunc{
-    PermissionFunc: func(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
+provider := dt.AccessProviderFunc{
+    PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
         if subject.LoginID == "" {
             return nil, nil
         }
@@ -77,7 +90,7 @@ provider := manager.AccessProviderFunc{
 Provider 返回错误时，权限或角色解析会失败。用于布尔判断的 `Has*` 方法会按安全拒绝处理，避免权限服务异常时放行请求。
 
 ```go
-PermissionFunc: func(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
+PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
     return nil, errors.New("permission service unavailable")
 }
 ```
@@ -89,7 +102,7 @@ PermissionFunc: func(ctx context.Context, subject manager.AccessSubject) ([]stri
 Builder 也保留了更简单的回调方式：
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(storage).
     SetCustomPermissionListFunc(func(loginID, authType string) ([]string, error) {
         return []string{"user:read"}, nil
@@ -113,7 +126,7 @@ mgr, err := dt.NewBuilder().
 `AccessSubject.AuthType` 会携带当前认证体系：
 
 ```go
-PermissionFunc: func(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
+PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
     switch subject.AuthType {
     case "admin:":
         return loadAdminPermissions(subject.LoginID)

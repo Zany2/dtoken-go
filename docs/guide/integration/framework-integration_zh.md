@@ -32,7 +32,7 @@ go get github.com/Zany2/dtoken-go/integrations/beego
 
 ## 最小框架接入示例
 
-所有框架包都会转发常用 `dtoken` 门面 API，并提供对应框架的中间件。下面是登录接口加受保护接口的最小接入方式，完整可运行示例位于 `examples/gf`、`examples/gin`、`examples/echo` 和 `examples/fiber`。
+框架包提供中间件、请求上下文助手及共享 HTTP 类型，`NewBuilder` 转发根包构建器。实例 API 从根包导入，全局 API 从 `global` 导入。下面的示例显式绑定实例，完整可运行示例位于 `examples/`。
 
 ### GoFrame
 
@@ -391,7 +391,7 @@ Query Token 仅读取 URL 查询参数，Body Token 仅读取 URL 编码或 mult
 
 ## 什么时候直接导入 core
 
-如果你在编写与框架无关的基础设施、测试、共享库或业务 Handler，可以导入 `defaults`、`internal/builder`、`internal/engine` 或 `dtoken`。只有想自己注入全部适配器时才直接使用 `internal/builder`。只有需要框架请求处理时，才导入对应的集成包。
+与框架无关的应用和共享库使用根包 `dtoken`，通过公开的 `Manager`、`ManagerOption`、`Strategy` 扩展，实现 `contract` 中的接口，并从各自组件包导入实现。`internal/builder`、`internal/defaults`、`internal/engine` 属于私有实现，不作为外部导入入口。需要框架请求处理时再导入对应集成包。
 
 ## 相关文档
 

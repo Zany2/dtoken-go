@@ -33,26 +33,39 @@ These fields allow access resolution by auth system, account, device type, concr
 
 ## Basic Usage
 
+<!-- dtoken-compile: access-provider -->
 ```go
-provider := manager.AccessProviderFunc{
-    PermissionFunc: func(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
-        if subject.AuthType == "admin:" {
-            return []string{"admin:*"}, nil
-        }
-        return []string{"user:read"}, nil
-    },
-    RoleFunc: func(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
-        if subject.LoginID == "10001" {
-            return []string{"admin"}, nil
-        }
-        return []string{"user"}, nil
-    },
-}
+package main
 
-mgr, err := dt.NewBuilder().
-    Storage(storage).
-    SetAccessProvider(provider).
-    Build()
+import (
+	"context"
+	dt "github.com/Zany2/dtoken-go"
+)
+
+func main() {
+	provider := dt.AccessProviderFunc{
+		PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
+			if subject.AuthType == "admin:" {
+				return []string{"admin:*"}, nil
+			}
+			return []string{"user:read"}, nil
+		},
+		RoleFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
+			if subject.LoginID == "10001" {
+				return []string{"admin"}, nil
+			}
+			return []string{"user"}, nil
+		},
+	}
+
+	auth, err := dt.NewBuilder().
+		SetAccessProvider(provider).
+		Build()
+	if err != nil {
+		panic(err)
+	}
+	defer auth.Close()
+}
 ```
 
 ## Fallback To Session
@@ -60,8 +73,8 @@ mgr, err := dt.NewBuilder().
 Returning `nil` means the provider does not handle this query, so DToken-Go should use Session data:
 
 ```go
-provider := manager.AccessProviderFunc{
-    PermissionFunc: func(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
+provider := dt.AccessProviderFunc{
+    PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
         if subject.LoginID == "" {
             return nil, nil
         }
@@ -79,7 +92,7 @@ If the provider returns an error, permission or role resolution fails. Boolean `
 Integration middleware uses token-based `Check*` APIs to preserve the request's device and Token fields. Provider errors propagate to the integration failure handler, allowing it to distinguish service failures from `ErrPermissionDenied` or `ErrRoleDenied`.
 
 ```go
-PermissionFunc: func(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
+PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
     return nil, errors.New("permission service unavailable")
 }
 ```
@@ -89,7 +102,7 @@ PermissionFunc: func(ctx context.Context, subject manager.AccessSubject) ([]stri
 Builder also keeps simpler callback APIs:
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(storage).
     SetCustomPermissionListFunc(func(loginID, authType string) ([]string, error) {
         return []string{"user:read"}, nil
@@ -113,7 +126,7 @@ New projects should prefer `SetAccessProvider` because it is more expressive.
 `AccessSubject.AuthType` carries the current auth system:
 
 ```go
-PermissionFunc: func(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
+PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
     switch subject.AuthType {
     case "admin:":
         return loadAdminPermissions(subject.LoginID)

@@ -21,7 +21,7 @@ Logout uses strict callback handling: if a registered client is offline or rejec
 go run ./examples/sso_server
 ```
 
-Run this command from the repository root with Go 1.25 or later. For deployment, replace the mock login with actual authentication, configure shared storage and managed secrets, and use HTTPS with Secure Cookies.
+Run this command from the repository root with Go 1.27 or later, as required by `go.work`. The standalone example module declares a minimum of Go 1.25. For deployment, replace the mock login with actual authentication, configure shared storage and managed secrets, and use HTTPS with Secure Cookies.
 
 Default address:
 

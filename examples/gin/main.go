@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	dterror "github.com/Zany2/dtoken-go/errors"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	"io"
 	"net/http"
 	"time"
@@ -53,12 +52,9 @@ func main() {
 }
 
 // registerRoutes shares production middleware and routes with regression tests. registerRoutes 与回归测试共用实际中间件和路由。
-func registerRoutes(r *gin.Engine, instances ...*dtoken.Auth) {
+func registerRoutes(r *gin.Engine, authInstance *dtoken.Auth) {
 	ctx := context.Background()
-	options := []gindt.AuthOption{gindt.WithFailFunc(writeAuthError), gindt.WithManagerResolver(dtglobal.GetManager)}
-	if len(instances) > 0 && instances[0] != nil {
-		options = append(options, gindt.WithAuth(instances[0]))
-	}
+	options := []gindt.AuthOption{gindt.WithFailFunc(writeAuthError), gindt.WithAuth(authInstance)}
 	r.Use(gindt.RegisterDTokenContextMiddleware(ctx, options...))
 	r.POST("/login", handleLogin)
 	r.POST("/refresh", handleRefresh)
@@ -72,7 +68,7 @@ func registerRoutes(r *gin.Engine, instances ...*dtoken.Auth) {
 	auth.POST("/logout", handleLogout)
 }
 
-// initDToken initializes integration manager initDToken 初始化集成管理器
+// initDToken builds the Auth instance owned by the application. initDToken 构建由应用管理生命周期的 Auth 实例。
 func initDToken() *dtoken.Auth {
 	auth, err := dtoken.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
@@ -84,7 +80,6 @@ func initDToken() *dtoken.Auth {
 		panic(err)
 	}
 
-	dtglobal.SetAuth(auth)
 	return auth
 }
 

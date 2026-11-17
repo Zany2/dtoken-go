@@ -65,3 +65,26 @@ Capabilities 的字段接受服务接口，自定义服务可直接注入。未�
 独立 Service 的生命周期由调用方管理。向 NewService 传入 Auth 作为事件发布器，只建立事件联系；直接调用 Service 时仍须保证其借用的存储和编解码器可用。HTTP 请求则由绑定引擎的可用性检查控制。
 
 契约包和能力实现仍随根模块一起发布；拆分的是包依赖与运行时装配，没有增加独立版本或动态插件机制。
+
+## 公开生命周期示例
+
+<!-- dtoken-compile: lifecycle -->
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/Zany2/dtoken-go"
+)
+
+func main() {
+	auth, err := dtoken.NewBuilder().IsPrintBanner(false).Build()
+	if err != nil {
+		panic(err)
+	}
+	defer auth.Close()
+	shared := dtoken.New(auth.Manager())
+	shared.Close()
+	fmt.Println(auth.IsClosed()) // true
+}
+```

@@ -40,6 +40,7 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	setupEchoManager(t)
 
 	e := echo4.New()
+	e.Use(echodt.RegisterDTokenContextMiddleware(context.Background(), echodt.WithAuth(registeredAuth())))
 	e.POST("/login", handleLogin)
 
 	missing := requestEcho(t, e, http.MethodPost, "/login", `{"username":"alice"}`, "")
@@ -97,7 +98,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 	}
 
 	e := echo4.New()
-	registerRoutes(e)
+	registerTestRoutes(e)
 
 	for _, route := range []string{"/me", "/admin", "/articles"} {
 		for _, header := range []string{token, "Bearer " + token} {
@@ -145,6 +146,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 func TestLoginRejectsInvalidJSON(t *testing.T) {
 	setupEchoManager(t)
 	e := echo4.New()
+	e.Use(echodt.RegisterDTokenContextMiddleware(context.Background(), echodt.WithAuth(registeredAuth())))
 	e.POST("/login", handleLogin)
 	valid := `{"username":"alice","password":"123456"}`
 	for _, tc := range []struct {
@@ -180,6 +182,7 @@ func TestLoginRejectsInvalidJSON(t *testing.T) {
 func TestLoginBindingCompatibility(t *testing.T) {
 	setupEchoManager(t)
 	e := echo4.New()
+	e.Use(echodt.RegisterDTokenContextMiddleware(context.Background(), echodt.WithAuth(registeredAuth())))
 	e.POST("/login", handleLogin)
 	for _, tc := range []struct {
 		contentType string
@@ -216,6 +219,7 @@ func TestLoginRejectsDisabledAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := echo4.New()
+	e.Use(echodt.RegisterDTokenContextMiddleware(context.Background(), echodt.WithAuth(registeredAuth())))
 	e.POST("/login", handleLogin)
 	rec := requestEcho(t, e, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
 	var response Response
@@ -284,7 +288,7 @@ func setupEchoManager(t *testing.T) {
 	t.Helper()
 	dtglobal.DeleteAllManager()
 	t.Cleanup(dtglobal.DeleteAllManager)
-	initDToken()
+	dtglobal.SetAuth(initDToken())
 }
 
 func requestEcho(t *testing.T, e *echo4.Echo, method, path, body, token string) *httptest.ResponseRecorder {
@@ -297,4 +301,40 @@ func requestEcho(t *testing.T, e *echo4.Echo, method, path, body, token string) 
 	recorder := httptest.NewRecorder()
 	e.ServeHTTP(recorder, request)
 	return recorder
+}
+
+// registeredAuth returns the explicitly registered test fixture. registeredAuth 返回显式注册的测试夹具。
+func registeredAuth() *dtoken.Auth {
+	auth, err := dtglobal.Default()
+	if err != nil {
+		panic(err)
+	}
+	return auth
+}
+
+// registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
+func registerTestRoutes(e *echo4.Echo) { registerRoutes(e, registeredAuth()) }
+
+// TestInjectedLoginWithoutGlobal verifies login and access grants use the injected instance. TestInjectedLoginWithoutGlobal 验证登录与授权使用注入实例且无需全局注册。
+func TestInjectedLoginWithoutGlobal(t *testing.T) {
+	dtglobal.DeleteAllManager()
+	t.Cleanup(dtglobal.DeleteAllManager)
+	auth := initDToken()
+	t.Cleanup(auth.Close)
+	e := echo4.New()
+	registerRoutes(e, auth)
+	response := requestEcho(t, e, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("login status = %d", response.Code)
+	}
+	ctx := context.Background()
+	if _, err := auth.GetSession(ctx, "alice"); err != nil {
+		t.Fatalf("injected session: %v", err)
+	}
+	if !auth.HasRole(ctx, "alice", "admin") || !auth.HasPermission(ctx, "alice", "article:read") {
+		t.Fatal("access grants missing from injected instance")
+	}
+	if _, err := dtglobal.GetManager(); err == nil {
+		t.Fatal("example unexpectedly registered a global manager")
+	}
 }

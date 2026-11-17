@@ -170,6 +170,24 @@ func RenewTimeoutByContext(c *beegocontext.Context, timeout time.Duration) error
 	return dCtx.Auth().RenewTimeout(requestContext(c), timeout)
 }
 
+// GetSessionByContext gets the current account session. GetSessionByContext 获取当前账号会话。
+func GetSessionByContext(c *beegocontext.Context) (*manager.Session, error) {
+	dCtx, err := requireDTokenContextByContext(c)
+	if err != nil {
+		return nil, err
+	}
+	return dCtx.Session().Get(requestContext(c))
+}
+
+// GetSessionByTokenByContext gets the current token session. GetSessionByTokenByContext 获取当前 Token 对应的会话。
+func GetSessionByTokenByContext(c *beegocontext.Context) (*manager.Session, error) {
+	dCtx, err := requireDTokenContextByContext(c)
+	if err != nil {
+		return nil, err
+	}
+	return dCtx.Session().GetByToken(requestContext(c))
+}
+
 // requestContext gets standard context from Beego request requestContext 从 Beego 请求获取标准上下文。
 func requestContext(c *beegocontext.Context) context.Context {
 	if c != nil && c.Request != nil {

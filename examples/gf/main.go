@@ -3,7 +3,6 @@ package main
 
 import (
 	dterror "github.com/Zany2/dtoken-go/errors"
-	dt1 "github.com/Zany2/dtoken-go/global"
 
 	"context"
 	"encoding/json"
@@ -20,11 +19,11 @@ import (
 )
 
 func main() {
-	initDToken()
-	defer dt1.DeleteAllManager()
+	auth := initDToken()
+	defer auth.Close()
 
 	s := g.Server()
-	registerRoutes(s)
+	registerRoutes(s, auth)
 	s.SetPort(8080)
 	if err := s.Start(); err != nil {
 		panic(err)
@@ -33,9 +32,9 @@ func main() {
 }
 
 // registerRoutes shares the example's middleware and routes with regression tests. registerRoutes 与回归测试共用示例中间件和路由。
-func registerRoutes(s *ghttp.Server) {
+func registerRoutes(s *ghttp.Server, authInstance *dtoken.Auth) {
 	ctx := context.Background()
-	s.Use(gfdt.RegisterDTokenContextMiddleware(ctx, gfdt.WithManagerResolver(dt1.GetManager), gfdt.WithFailFunc(handleAuthFail)))
+	s.Use(gfdt.RegisterDTokenContextMiddleware(ctx, gfdt.WithAuth(authInstance), gfdt.WithFailFunc(handleAuthFail)))
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.POST("/login", handleLogin)
 		group.POST("/refresh", handleRefresh)
@@ -62,21 +61,20 @@ func registerRoutes(s *ghttp.Server) {
 	})
 }
 
-// initDToken initializes integration manager initDToken 初始化集成管理器
-func initDToken() {
-	builtAuth1, err := dtoken.NewBuilder().
+// initDToken builds the Auth instance owned by the application. initDToken 构建由应用管理生命周期的 Auth 实例。
+func initDToken() *dtoken.Auth {
+	auth, err := dtoken.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		RefreshTokenTimeout(int64((30 * 24 * time.Hour).Seconds())).
 		IsPrintBanner(false).
 		Build()
-	mgr := builtAuth1.Manager()
 
 	if err != nil {
 		panic(err)
 	}
 
-	dt1.SetManager(mgr)
+	return auth
 }
 
 // handleLogin logs in a demo user handleLogin 登录示例用户
@@ -93,18 +91,24 @@ func handleLogin(r *ghttp.Request) {
 		return
 	}
 
-	pair, err := dt1.LoginWithRefreshToken(r.Context(), username, "web", "gf-example")
+	mgr, err := gfdt.GetManagerByCtx(r.Context())
+	if err != nil {
+		handleAuthFail(r, err)
+		return
+	}
+
+	pair, err := mgr.LoginWithRefreshToken(r.Context(), username, "web", "gf-example")
 	if err != nil {
 		handleAuthFail(r, err)
 		return
 	}
 
 	// Grant every demo user the same role and permission; real apps must load their own access rules. 为每个演示用户授予相同角色和权限；实际应用应加载自身的授权规则。
-	if err = dt1.AddRoles(r.Context(), username, []string{"admin"}); err != nil {
+	if err = mgr.AddRoles(r.Context(), username, []string{"admin"}); err != nil {
 		handleAuthFail(r, err)
 		return
 	}
-	if err = dt1.AddPermissions(r.Context(), username, []string{"article:read"}); err != nil {
+	if err = mgr.AddPermissions(r.Context(), username, []string{"article:read"}); err != nil {
 		handleAuthFail(r, err)
 		return
 	}
@@ -121,7 +125,13 @@ func handleRefresh(r *ghttp.Request) {
 		return
 	}
 
-	pair, err := dt1.RefreshToken(r.Context(), refreshToken)
+	mgr, err := gfdt.GetManagerByCtx(r.Context())
+	if err != nil {
+		handleAuthFail(r, err)
+		return
+	}
+
+	pair, err := mgr.RefreshToken(r.Context(), refreshToken)
 	if err != nil {
 		handleAuthFail(r, err)
 		return

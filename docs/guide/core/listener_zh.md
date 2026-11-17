@@ -1,5 +1,7 @@
 # 事件监听指南
 
+代码片段中，dt = github.com/Zany2/dtoken-go，dtoken = github.com/Zany2/dtoken-go/global，listener = github.com/Zany2/dtoken-go/event。
+
 [English](../event.md) | 中文文档
 
 ## 当前状态
@@ -10,7 +12,7 @@
 
 ## 获取事件管理器
 
-当前版本可通过全局门面、实例门面和 `manager.Manager` 获取事件管理器：
+当前版本可通过全局门面、实例门面和 `dt.Manager` 获取事件管理器：
 
 ```go
 globalEventMgr, err := dtoken.GetEventManager("user")

@@ -179,7 +179,7 @@ func TestStorageErrorsUseUnifiedResponse(t *testing.T) {
 			handlerCalls := 0
 			router := web.NewControllerRegister()
 			if withAuth {
-				registerRoutes(router)
+				registerTestRoutes(router)
 			} else {
 				// Reach handler errors independently of the authentication filter. 独立覆盖处理器中的错误分支，避免被认证过滤器提前拦截。
 				if err := router.InsertFilter("/*", web.BeforeRouter, beegodt.RegisterDTokenContextMiddleware(context.Background(), beegodt.WithAuth(builtAuth1), beegodt.WithFailFunc(writeAuthError))); err != nil {
@@ -218,14 +218,16 @@ func TestStorageErrorsUseUnifiedResponse(t *testing.T) {
 	}
 }
 
-// TestMissingManagerStopsHandlers verifies context-registration failure stops native routing. TestMissingManagerStopsHandlers 验证上下文注册失败后原生路由不会继续处理请求。
-func TestMissingManagerStopsHandlers(t *testing.T) {
-	dt3.DeleteAllManager()
-	t.Cleanup(dt3.DeleteAllManager)
-	router := newBeegoExampleRouter()
-	for _, path := range []string{"/login?username=alice&password=123456", "/logout"} {
-		assertBeegoResponse(t, requestBeego(router, http.MethodPost, path, "", ""), http.StatusInternalServerError, dterror.CodeServerError)
-	}
+// TestMissingAuthRejectedAtSetup verifies missing instances fail before accepting requests. TestMissingAuthRejectedAtSetup 验证缺失实例在接收请求前被拒绝。
+func TestMissingAuthRejectedAtSetup(t *testing.T) {
+	defer func() {
+		recovered := recover()
+		err, ok := recovered.(error)
+		if !ok || !errors.Is(err, dterror.ErrManagerNotFound) {
+			t.Fatalf("panic = %v, want ErrManagerNotFound", recovered)
+		}
+	}()
+	registerRoutes(web.NewControllerRegister(), nil)
 }
 
 type failingBeegoStorage struct {
