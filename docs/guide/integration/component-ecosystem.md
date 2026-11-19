@@ -166,4 +166,4 @@ Logging and runtime-control methods remain compatible. `Print` / `Printf` bypass
 - [Configuration Guide](../reference/configuration.md)
 - [Redis Storage](../integration/redis-storage.md)
 - [Token Styles](../core/token-style.md)
-- [Event Listener](../event.md)
+- [Event Listener](../core/listener.md)

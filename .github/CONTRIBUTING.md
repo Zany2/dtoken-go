@@ -30,6 +30,10 @@ The root module contains core, facade, default wiring, basic components, and sha
 | `tests` | Application fixtures and HTTP flow tests / 测试应用与 HTTP 流程测试 |
 | `docs` | English and Chinese documentation / 中英文文档 |
 
+Start with the [architecture](../docs/design/architecture.md) and [source layout](../docs/design/source-layout.md) before placing new code. Dependency rules and existing checks are maintained in [modular design](../docs/design/modular.md); public type ownership and resource sharing are maintained in [API and lifecycle](../docs/design/api-lifecycle.md).
+
+新增代码前先阅读[架构设计](../docs/design/architecture_zh.md)与[源码目录](../docs/design/source-layout_zh.md)。依赖约束和现有检查统一维护在[模块化设计](../docs/design/modular_zh.md)，公开类型来源及资源共享约定维护在 [API 与生命周期](../docs/design/api-lifecycle_zh.md)。
+
 ## Development environment / 开发环境
 
 Use the Go version declared in `go.work` or a compatible newer version. The workspace currently requires Go 1.27.0, while most individual modules declare Go 1.25.0. Run module commands from the corresponding module directory so workspace dependencies resolve to this checkout.

@@ -18,7 +18,7 @@ English | [中文文档](README_zh.md)
 - [Disable System](guide/core/disable.md) - Account, service, level, and device disable
 - [Multi-Auth Systems](guide/core/multi-auth.md) - Isolate multiple auth systems with AuthType
 - [Token Styles](guide/core/token-style.md) - UUID, random string, JWT, and other Token generation styles
-- [Event Listener](guide/event.md) - Event system usage guide
+- [Event Listener](guide/core/listener.md) - Event system usage guide
 
 ### Security And Protocols
 
@@ -46,9 +46,12 @@ English | [中文文档](README_zh.md)
 
 ### Design Documentation
 
-- [Architecture Design](design/architecture.md) - System architecture and data flow
+- [Architecture Design](design/architecture.md) - Responsibilities, dependencies, and assembly paths
+- [Source Layout](design/source-layout.md) - Directory responsibilities, engine file index, and code placement
+- [Modular Design](design/modular.md) - Package dependencies, Go module boundaries, and structural checks
+- [API And Lifecycle](design/api-lifecycle.md) - Public APIs, component ownership, and instance sharing
+- [Migration Guide](design/module-migration.md) - Package upgrades, release ordering, and consumer verification
 - [Auto-Renewal Design](design/auto-renew.md) - Asynchronous renewal mechanism
-- [Modular Design](design/modular.md) - Module organization strategy
 
 ## Example Projects
 

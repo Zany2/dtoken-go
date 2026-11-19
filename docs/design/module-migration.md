@@ -2,6 +2,8 @@
 
 English | [中文文档](module-migration_zh.md)
 
+This guide owns old-path and API migration, release ordering, and consumer verification. See [architecture](architecture.md) for system layers, [modular design](modular.md) for package and module boundaries, and [source layout](source-layout.md) for code locations.
+
 ## Current boundaries
 
 The root module publishes the instance facade, public contracts, authentication implementation, basic components, shared HTTP authentication, and independent capability packages. Capabilities are composed explicitly; they are not separate Go modules. The workspace contains 30 modules.

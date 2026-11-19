@@ -166,4 +166,4 @@ func main() {
 - [配置指南](../reference/configuration_zh.md)
 - [Redis 存储](../integration/redis-storage_zh.md)
 - [Token 风格](../core/token-style_zh.md)
-- [事件监听](../event_zh.md)
+- [事件监听](../core/listener_zh.md)

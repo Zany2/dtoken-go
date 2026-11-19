@@ -2,6 +2,8 @@
 
 [English](module-migration.md) | 中文文档
 
+本文维护旧路径与 API 的升级步骤、发布顺序和消费者验证方式。当前系统分层见[架构设计](architecture_zh.md)，包与模块边界见[模块化设计](modular_zh.md)，代码位置见[源码目录](source-layout_zh.md)。
+
 ## 当前边界
 
 根模块发布实例门面、公共契约、内部认证实现、基础组件、共享 HTTP 鉴权，以及 Nonce、OAuth2、Ticket、ShortKey 独立能力包。能力包显式组合，不是单独的 Go 模块。工作区共 30 个模块。

@@ -2,7 +2,7 @@
 
 Fragment aliases: dt = github.com/Zany2/dtoken-go, dtoken = github.com/Zany2/dtoken-go/global, listener = github.com/Zany2/dtoken-go/event.
 
-[中文文档](../event_zh.md) | English
+[中文文档](listener_zh.md) | English
 
 ## Current Status
 

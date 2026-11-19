@@ -2,7 +2,7 @@
 
 代码片段中，dt = github.com/Zany2/dtoken-go，dtoken = github.com/Zany2/dtoken-go/global，listener = github.com/Zany2/dtoken-go/event。
 
-[English](../event.md) | 中文文档
+[English](listener.md) | 中文文档
 
 ## 当前状态
 

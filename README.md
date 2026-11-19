@@ -185,6 +185,8 @@ router.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), options..
 | `codec`、`generator`、`logging`、`pool`、`storage` | Pluggable component implementations |
 | `integrations/<framework>`、`sso` | Framework integrations and the independent SSO module |
 
+Maintainers can start with [architecture](docs/design/architecture.md), then use [source layout](docs/design/source-layout.md) to locate files and place changes. [Modular design](docs/design/modular.md) defines dependency and release boundaries; [API and lifecycle](docs/design/api-lifecycle.md) defines public contracts and resource ownership.
+
 ## Documentation And Examples
 
 ### Documentation

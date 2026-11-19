@@ -1,6 +1,27 @@
 # Public API, capability contracts, and lifecycle
 
+English | [中文文档](api-lifecycle_zh.md)
+
+This document owns public API, resource sharing, and shutdown contracts. See [architecture](architecture.md) for dependencies, [source layout](source-layout.md) for code locations, and [modular design](modular.md) for release boundaries.
+
 The public API has two supported levels: applications use the root Auth facade; custom adapters may use root Manager, ManagerOption, and Strategy. Manager is a supported advanced API, not a transitional compatibility alias. Package paths under internal are not public API.
+
+Type aliases exposed through root engine_api.go and their exported methods remain compatibility commitments. Shared models such as TokenInfo, Session, and TerminalInfo are declared in contract and aliased by the facade and engine. Review public additions and signature changes across the instance facade, advanced APIs, capability contracts, and framework exports.
+
+## Entry points and declaration ownership
+
+| Public entry or type | Declaration source | Usage contract |
+| --- | --- | --- |
+| Auth, Builder, instance operation options | Root auth.go, builder.go, options.go | Preferred application entry points |
+| Config | config.Config, aliased by the root | Core configuration is maintained in config |
+| TokenInfo, Session, TerminalInfo, disable models, AccessProvider | contract, aliased by root types.go and the engine | Review consumers and serialization compatibility when changing shared models |
+| Manager, Strategy, ManagerLoginOptions, RefreshTokenPair, and other advanced types | internal/engine, aliased by root engine_api.go | Applications name these types through the root, not the implementation path |
+| Component factories, Components, ComponentFactories | internal/builder, aliased by root engine_api.go | Support custom component assembly |
+| Capability service interfaces and data types | contract/nonce, contract/oauth2, contract/ticket, contract/shortkey | HTTP depends on contracts; implementations reuse their data types |
+| global.Auth, global.Builder, and operation options | Root package, aliased by global/types.go | Global entry points reuse instance types rather than defining another model |
+| Framework DTokenContext and Capabilities | httpauth/context, aliased by framework export.go | Frameworks retain native request entry points while sharing request types |
+
+Root LoginOptions and ManagerLoginOptions serve different API levels and are not aliases of one type. Advanced results such as RefreshTokenPair are not basic models declared in contract/model.go either. Follow actual aliases when organizing types; similar names alone do not justify copying, merging, or moving declarations.
 
 ## Instances and engines
 

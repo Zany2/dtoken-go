@@ -185,6 +185,8 @@ router.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), options..
 | `codec`、`generator`、`logging`、`pool`、`storage` | 可插拔组件实现 |
 | `integrations/<framework>`、`sso` | 框架适配与独立 SSO 模块 |
 
+维护者可先阅读[架构设计](docs/design/architecture_zh.md)，再通过[源码目录](docs/design/source-layout_zh.md)定位文件和放置改动。[模块化设计](docs/design/modular_zh.md)定义依赖与发布边界，[API 与生命周期](docs/design/api-lifecycle_zh.md)定义公开契约和资源所有权。
+
 ## 文档与示例
 
 ### 文档

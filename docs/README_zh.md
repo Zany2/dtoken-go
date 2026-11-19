@@ -18,7 +18,7 @@
 - [封禁体系](guide/core/disable_zh.md) - 账号、服务、等级、设备封禁
 - [多认证体系](guide/core/multi-auth_zh.md) - AuthType 隔离多套认证系统
 - [Token 风格](guide/core/token-style_zh.md) - UUID、随机串、JWT 等 Token 生成方式
-- [事件监听](guide/event_zh.md) - 事件系统使用指南
+- [事件监听](guide/core/listener_zh.md) - 事件系统使用指南
 
 ### 安全与协议
 
@@ -46,9 +46,12 @@
 
 ### 设计文档
 
-- [架构设计](design/architecture_zh.md) - 系统架构、数据流转
+- [架构设计](design/architecture_zh.md) - 职责分层、依赖方向与装配路径
+- [源码目录](design/source-layout_zh.md) - 目录职责、引擎文件索引与代码放置规则
+- [模块化设计](design/modular_zh.md) - 包依赖、Go 模块边界与结构检查
+- [API 与生命周期](design/api-lifecycle_zh.md) - 公开 API、组件所有权与实例共享
+- [迁移指南](design/module-migration_zh.md) - 包路径升级、发布顺序与消费者验证
 - [自动续签设计](design/auto-renew_zh.md) - 异步续签原理
-- [模块化设计](design/modular_zh.md) - 模块划分策略
 
 ## 示例项目
 

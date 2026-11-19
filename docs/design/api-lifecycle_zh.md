@@ -1,6 +1,27 @@
 # 公开 API、能力契约与生命周期
 
+[English](api-lifecycle.md) | 中文文档
+
+本文维护公开 API、资源共享和关闭约定。整体依赖见[架构设计](architecture_zh.md)，源码位置见[目录指南](source-layout_zh.md)，模块发布边界见[模块化设计](modular_zh.md)。
+
 当前版本明确支持两层 API：应用优先使用根包 Auth；自定义适配器可以使用根包 Manager、ManagerOption 和 Strategy。Manager 是受支持的高级 API，并非待删除的兼容入口。internal 下的包路径不属于公开 API。
+
+根包通过 engine_api.go 暴露的类型别名及其公开方法仍属于兼容性范围；TokenInfo、Session、TerminalInfo 等共享模型在 contract 中声明，根门面和引擎使用别名引用。新增公开方法、字段或修改签名时，应同时检查实例门面、高级 API、能力契约及框架导出的影响。
+
+## 入口与类型声明来源
+
+| 对外入口或类型 | 声明来源 | 使用约定 |
+| --- | --- | --- |
+| Auth、Builder、实例操作选项 | 根包 auth.go、builder.go、options.go | 应用优先使用的入口 |
+| Config | config.Config，根包提供别名 | 核心配置在 config 包维护 |
+| TokenInfo、Session、TerminalInfo、封禁模型、AccessProvider | contract，根 types.go 和引擎提供别名 | 修改共享模型时检查所有使用方和序列化兼容性 |
+| Manager、Strategy、ManagerLoginOptions、RefreshTokenPair 等高级类型 | internal/engine，根 engine_api.go 提供别名 | 应用从根包命名这些类型，不导入实现路径 |
+| 组件工厂类型、Components、ComponentFactories | internal/builder，根 engine_api.go 提供别名 | 供自定义组件装配使用 |
+| 能力服务接口和数据类型 | contract/nonce、contract/oauth2、contract/ticket、contract/shortkey | HTTP 依赖契约；能力实现包复用对应数据类型 |
+| global.Auth、global.Builder 及操作选项 | 根包，global/types.go 提供别名 | 全局入口复用实例类型，不建立第二套模型 |
+| 框架 DTokenContext、Capabilities | httpauth/context，框架 export.go 提供别名 | 框架保留原生请求入口，公共请求类型保持同源 |
+
+根 LoginOptions 与 ManagerLoginOptions 服务于不同调用层次，不是同一个类型的两种名称；RefreshTokenPair 等高级结果也不是 contract/model.go 中的基础模型。类型整理应以实际别名关系为准，不因名称相近而复制、合并或迁移声明。
 
 ## 实例与引擎
 
