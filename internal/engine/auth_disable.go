@@ -420,7 +420,7 @@ type serviceDisableRecord struct {
 }
 
 // loadDisableMarker decodes one marker and reports whether it exists. loadDisableMarker 解码单个封禁标记并报告其是否存在。
-func (m *Manager) loadDisableMarker(ctx context.Context, key string, info any) (bool, error) {
+func (m *Manager) loadDisableMarker(ctx context.Context, key string, info *disableMarker) (bool, error) {
 	data, err := m.storage.Get(ctx, key)
 	if err != nil {
 		return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
@@ -433,9 +433,16 @@ func (m *Manager) loadDisableMarker(ctx context.Context, key string, info any) (
 	if err != nil {
 		return false, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
 	}
-	if err = m.serializer.Decode(bytesData, info); err != nil {
+
+	// Decode through a pointer to distinguish encoded null from legacy objects. 通过指针解码，以区分编码空值与旧格式对象。
+	var marker *disableMarker
+	if err = m.serializer.Decode(bytesData, &marker); err != nil {
 		return false, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
+	if marker == nil {
+		return false, fmt.Errorf("%w: null disable marker", derror.ErrSerializeFailed)
+	}
+	*info = *marker
 	return true, nil
 }
 

@@ -39,7 +39,7 @@ type Config struct {
 	// RenewMaxRefresh stores renew trigger threshold RenewMaxRefresh 存储自动续期触发阈值
 	RenewMaxRefresh int64
 
-	// RenewInterval stores minimum renew interval RenewInterval 存储同一 Token 的最小续期间隔
+	// RenewInterval stores the renew interval; token lifetimes no longer than it use half their duration. RenewInterval 存储续期间隔；Token 有效期不大于该间隔时使用其有效期的一半。
 	RenewInterval int64
 
 	// ActiveTimeout stores max inactive duration ActiveTimeout 存储最大不活跃时长

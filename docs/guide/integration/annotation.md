@@ -23,6 +23,7 @@ Using `integrations/gin` as the example, the current `Annotation` struct support
 | Field | Description |
 |------|------|
 | `AuthType` | target auth system |
+| `ManagerResolver` | Explicit instance resolver; may reuse the request-bound resolver |
 | `CheckLogin` | whether login is required |
 | `CheckRole` | required roles |
 | `CheckPermission` | required permissions |
@@ -68,7 +69,7 @@ r.GET("/user/info",
     gindt.CheckLoginMiddleware(ctx, nil, nil),
     func(c *gin.Context) {
         dCtx, _ := gindt.GetDTokenContext(c)
-        loginID, _ := dCtx.Auth().GetLoginID(ctx)
+        loginID, _ := dCtx.Auth().GetLoginID(c.Request.Context())
         c.JSON(200, gin.H{"loginId": loginID})
     },
 )
@@ -105,7 +106,7 @@ r.GET("/comment/send",
 
 ### OR Logic
 
-`OR` is the default behavior.
+An empty LogicType in a Gin annotation uses OR; ordinary AuthOptions default to AND. LogicType applies separately to the role and permission lists. When both are configured, both checks must pass. Set LogicOr or LogicAnd explicitly.
 
 ```go
 r.GET("/reports",

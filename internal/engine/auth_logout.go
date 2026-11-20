@@ -30,8 +30,8 @@ func (m *Manager) Logout(ctx context.Context, tokenValue string) error {
 	checkBinding := tokenRecordBindingCheck(m, ctx, tokenValue, expected)
 	removeToken := terminalRemovalForTokenRecord(tokenValue, expected)
 
-	// Keep the regular validation path so inactive token states retain their existing semantics. 保留常规校验路径，确保非活跃 Token 状态维持既有语义。
-	_, _, err = m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
+	// Bind validation to the captured lifecycle before any timeout or activity-marker cleanup. 在超时或活跃标记清理前，将校验绑定到已捕获的生命周期。
+	_, _, err = m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{expectedRecord: expected})
 	if err == nil {
 		return m.logoutTerminalsIf(ctx, expected.LoginID, checkBinding, removeToken, terminalInfoFromTokenRecord(tokenValue, expected))
 	}
@@ -126,8 +126,8 @@ func (m *Manager) Kickout(ctx context.Context, tokenValue string) error {
 		return err
 	}
 
-	// Validate token and retain metadata for detached-terminal fallback. 校验 Token，并保留元数据用于终端记录缺失时回退。
-	_, _, err = m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
+	// Bind validation to the captured lifecycle before any timeout or activity-marker cleanup. 在超时或活跃标记清理前，将校验绑定到已捕获的生命周期。
+	_, _, err = m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{expectedRecord: expected})
 	if err != nil {
 		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
 		if isTokenInactiveError(err) && !errors.Is(err, derror.ErrInvalidToken) {
@@ -222,8 +222,8 @@ func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
 		return err
 	}
 
-	// Validate token and retain metadata for detached-terminal fallback. 校验 Token，并保留元数据用于终端记录缺失时回退。
-	_, _, err = m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
+	// Bind validation to the captured lifecycle before any timeout or activity-marker cleanup. 在超时或活跃标记清理前，将校验绑定到已捕获的生命周期。
+	_, _, err = m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{expectedRecord: expected})
 	if err != nil {
 		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
 		if isTokenInactiveError(err) && !errors.Is(err, derror.ErrInvalidToken) {
@@ -307,33 +307,38 @@ func (m *Manager) removeOldestTerminalInfoAndToken(ctx context.Context, sess *Se
 	// Remove oldest terminal 移除最旧终端。
 	terminalInfo, ok := sessionRemoveOldestTerminal(sess, device...)
 	if ok {
-		// Skip a token value that now belongs to another lifecycle while still retiring the stale terminal. Token 值已属于其他生命周期时仅移除陈旧终端。
-		cleanupAllowed, err := m.terminalTokenCleanupAllowed(ctx, sess.LoginID, terminalInfo)
-		if err != nil {
-			return TerminalInfo{}, false, err
-		}
-		if cleanupAllowed {
-			// Apply overflow mode 应用超限处理模式
-			if err = m.applyLogoutModeToToken(ctx, terminalInfo.Token, mode); err != nil {
-				return TerminalInfo{}, false, err
-			}
-
-			// Clean metadata 清理 metadata
-			if err = m.cleanTokenMetadata(ctx, []string{terminalInfo.Token}); err != nil {
-				return TerminalInfo{}, false, err
-			}
-		}
-
-		// Save session data 保存会话数据
-		if err := m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
-			return TerminalInfo{}, false, err
-		}
-		if !cleanupAllowed {
-			return TerminalInfo{}, true, nil
-		}
-		return terminalInfo, true, nil
+		return m.retireRemovedTerminal(ctx, sess, terminalInfo, mode)
 	}
 	return TerminalInfo{}, false, nil
+}
+
+// retireRemovedTerminal retires a detached terminal and saves the remaining session. retireRemovedTerminal 处理已移除终端的下线并保存剩余会话。
+func (m *Manager) retireRemovedTerminal(ctx context.Context, sess *Session, terminalInfo TerminalInfo, mode config.LogoutMode) (TerminalInfo, bool, error) {
+	// Skip a token value that now belongs to another lifecycle while still retiring the stale terminal. Token 值已属于其他生命周期时仅移除陈旧终端。
+	cleanupAllowed, err := m.terminalTokenCleanupAllowed(ctx, sess.LoginID, terminalInfo)
+	if err != nil {
+		return TerminalInfo{}, false, err
+	}
+	if cleanupAllowed {
+		// Apply overflow mode 应用超限处理模式
+		if err = m.applyLogoutModeToToken(ctx, terminalInfo.Token, mode); err != nil {
+			return TerminalInfo{}, false, err
+		}
+
+		// Clean metadata 清理 metadata
+		if err = m.cleanTokenMetadata(ctx, []string{terminalInfo.Token}); err != nil {
+			return TerminalInfo{}, false, err
+		}
+	}
+
+	// Save session data 保存会话数据
+	if err := m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
+		return TerminalInfo{}, false, err
+	}
+	if !cleanupAllowed {
+		return TerminalInfo{}, true, nil
+	}
+	return terminalInfo, true, nil
 }
 
 // removeTerminalInfosAndTokens removes terminal information and tokens. removeTerminalInfosAndTokens 移除终端信息和 Token。
@@ -721,9 +726,6 @@ func (m *Manager) processTerminalsIf(
 		// Read removed token 读取被移除 Token。
 		token := info.Token
 
-		// Invalidate queued maintenance before changing the token lifecycle. 修改 Token 生命周期前使排队维护任务失效。
-		m.cancelLoginMaintenance(token)
-
 		// Active-timeout processing must persist its exact cause; other states apply to structurally alive tokens even while temporarily disabled. 不活跃超时必须保留精确原因；其他状态作用于结构性有效的 Token，即使其正处于临时封禁状态。
 		shouldSetState := state == TokenStateActiveTimeout || usedDetachedFallback
 		if !shouldSetState {
@@ -733,6 +735,9 @@ func (m *Manager) processTerminalsIf(
 			}
 			shouldSetState = alive
 		}
+
+		// Include accepted activity in the state check, then invalidate maintenance before mutation. 状态检查纳入已接受的活跃时间，再在变更前使维护任务失效。
+		m.cancelLoginMaintenance(token)
 		if shouldSetState {
 			// Set token state 设置 token 状。
 			if err = m.setTokenState(ctx, token, state, m.tokenStateExpiration(ctx, token)); err != nil {

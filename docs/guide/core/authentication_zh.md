@@ -2,6 +2,8 @@
 
 [English](../core/authentication.md) | 中文文档
 
+本文使用 `global` 包演示已注册实例的全局调用，`dt` 表示根包。先构建 Auth 并调用 `global.SetAuth(auth)`；未指定认证类型时使用默认 `auth:`。实例调用及参数差异见 [Auth API](../../api/auth_zh.md)。
+
 ## 基本登录
 
 ### 初始化
@@ -12,27 +14,28 @@ package main
 
 import (
     dt "github.com/Zany2/dtoken-go"
-    dtoken "github.com/Zany2/dtoken-go/global"
+    global "github.com/Zany2/dtoken-go/global"
     "context"
 
     "github.com/Zany2/dtoken-go/storage/memory"
 )
 
 func initDToken() {
-    if _, err := dtoken.BuildAndSetManager(
-        dt.NewBuilder().
-            Storage(memory.NewStorage()),
-    ); err != nil {
+    auth, err := dt.NewBuilder().
+        Storage(memory.NewStorage()).
+        Build()
+    if err != nil {
         panic(err)
     }
+    global.SetAuth(auth)
 }
 
 func main() {
     initDToken()
-    defer dtoken.DeleteAllManager()
+    defer global.DeleteAllManager()
 
     ctx := context.Background()
-    token, _ := dtoken.Login(ctx, "10001")
+    token, _ := global.Login(ctx, "10001")
     _ = token
 }
 ```
@@ -43,13 +46,13 @@ func main() {
 ctx := context.Background()
 
 // 默认登录
-token, err := dtoken.Login(ctx, "10001")
+token, err := global.Login(ctx, "10001")
 
 // 指定设备类型
-token, err = dtoken.Login(ctx, "10001", "web")
+token, err = global.Login(ctx, "10001", "web")
 
 // 指定设备类型和设备 ID
-token, err = dtoken.Login(ctx, "10001", "app", "ios-iphone-15")
+token, err = global.Login(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ### 指定过期时间登录
@@ -58,10 +61,10 @@ token, err = dtoken.Login(ctx, "10001", "app", "ios-iphone-15")
 ctx := context.Background()
 
 // 当前 token 单独设置 2 小时过期
-token, err := dtoken.LoginWithTimeout(ctx, "10001", 2*time.Hour)
+token, err := global.LoginWithTimeout(ctx, "10001", 2*time.Hour)
 
 // 同时指定设备类型和设备 ID
-token, err = dtoken.LoginWithTimeout(ctx, "10001", 2*time.Hour, "web", "chrome-mac")
+token, err = global.LoginWithTimeout(ctx, "10001", 2*time.Hour, "web", "chrome-mac")
 ```
 
 ### 基于旧 Token 续期登录
@@ -69,7 +72,7 @@ token, err = dtoken.LoginWithTimeout(ctx, "10001", 2*time.Hour, "web", "chrome-m
 ```go
 ctx := context.Background()
 
-err := dtoken.LoginByToken(ctx, token)
+err := global.LoginByToken(ctx, token)
 ```
 
 `LoginByToken()` 会在当前 token 仍然有效时，异步续期 token、session、活跃时间等相关信息。
@@ -82,10 +85,10 @@ err := dtoken.LoginByToken(ctx, token)
 ctx := context.Background()
 
 // 返回布尔值
-isLogin := dtoken.IsLogin(ctx, token)
+isLogin := global.IsLogin(ctx, token)
 
 // 未登录时返回错误
-err := dtoken.CheckLogin(ctx, token)
+err := global.CheckLogin(ctx, token)
 ```
 
 ## 获取登录信息
@@ -95,7 +98,7 @@ err := dtoken.CheckLogin(ctx, token)
 ```go
 ctx := context.Background()
 
-loginID, err := dtoken.GetLoginID(ctx, token)
+loginID, err := global.GetLoginID(ctx, token)
 ```
 
 ### 获取 Token 信息
@@ -105,7 +108,7 @@ loginID, err := dtoken.GetLoginID(ctx, token)
 ```go
 ctx := context.Background()
 
-info, err := dtoken.GetTokenInfo(ctx, token)
+info, err := global.GetTokenInfo(ctx, token)
 if err == nil {
     fmt.Println("认证体系:", info.AuthType)
     fmt.Println("登录 ID:", info.LoginID)
@@ -134,10 +137,10 @@ if err == nil {
 ```go
 ctx := context.Background()
 
-device, err := dtoken.GetDevice(ctx, token)
-deviceID, err := dtoken.GetDeviceID(ctx, token)
-createTime, err := dtoken.GetTokenCreateTime(ctx, token)
-ttl, err := dtoken.GetTokenTTL(ctx, token)
+device, err := global.GetDevice(ctx, token)
+deviceID, err := global.GetDeviceID(ctx, token)
+createTime, err := global.GetTokenCreateTime(ctx, token)
+ttl, err := global.GetTokenTTL(ctx, token)
 ```
 
 ## 登出
@@ -147,7 +150,7 @@ ttl, err := dtoken.GetTokenTTL(ctx, token)
 ```go
 ctx := context.Background()
 
-err := dtoken.Logout(ctx, token)
+err := global.Logout(ctx, token)
 ```
 
 ### 根据账号维度登出
@@ -156,13 +159,13 @@ err := dtoken.Logout(ctx, token)
 ctx := context.Background()
 
 // 登出指定账号的所有终端
-err := dtoken.LogoutByLoginID(ctx, "10001")
+err := global.LogoutByLoginID(ctx, "10001")
 
 // 登出指定账号下某个设备类型的所有终端
-err = dtoken.LogoutByDevice(ctx, "10001", "web")
+err = global.LogoutByDevice(ctx, "10001", "web")
 
 // 登出指定账号下某个设备类型 + 设备 ID 的终端
-err = dtoken.LogoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
+err = global.LogoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ## 踢人下线
@@ -172,7 +175,7 @@ err = dtoken.LogoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```go
 ctx := context.Background()
 
-err := dtoken.Kickout(ctx, token)
+err := global.Kickout(ctx, token)
 ```
 
 ### 根据账号维度踢人
@@ -180,9 +183,9 @@ err := dtoken.Kickout(ctx, token)
 ```go
 ctx := context.Background()
 
-err := dtoken.KickoutByLoginID(ctx, "10001")
-err = dtoken.KickoutByDevice(ctx, "10001", "web")
-err = dtoken.KickoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
+err := global.KickoutByLoginID(ctx, "10001")
+err = global.KickoutByDevice(ctx, "10001", "web")
+err = global.KickoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 被踢下线的 token 不会立即从存储中删除，而是会被标记为 `kickout` 状态，后续校验时会返回对应错误。
@@ -194,7 +197,7 @@ err = dtoken.KickoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```go
 ctx := context.Background()
 
-err := dtoken.Replace(ctx, token)
+err := global.Replace(ctx, token)
 ```
 
 ### 根据账号维度顶人
@@ -202,9 +205,9 @@ err := dtoken.Replace(ctx, token)
 ```go
 ctx := context.Background()
 
-err := dtoken.ReplaceByLoginID(ctx, "10001")
-err = dtoken.ReplaceByDevice(ctx, "10001", "web")
-err = dtoken.ReplaceByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
+err := global.ReplaceByLoginID(ctx, "10001")
+err = global.ReplaceByDevice(ctx, "10001", "web")
+err = global.ReplaceByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 被顶下线的 token 会被标记为 `replaced` 状态，适合用在“新登录挤掉旧登录”的场景中。
@@ -214,9 +217,9 @@ err = dtoken.ReplaceByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```go
 ctx := context.Background()
 
-count, err := dtoken.GetOnlineTerminalCount(ctx, "10001")
-webCount, err := dtoken.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
-singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
+count, err := global.GetOnlineTerminalCount(ctx, "10001")
+webCount, err := global.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
+singleCount, err := global.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ## 登录配置
@@ -224,13 +227,14 @@ singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001
 ### 并发登录
 
 ```go
-if _, err := dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(memory.NewStorage()).
-        IsConcurrent(true),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
+    IsConcurrent(true).
+    Build()
+if err != nil {
     panic(err)
 }
+global.SetAuth(auth)
 ```
 
 `IsConcurrent(true)` 表示允许同账号多端并发登录。  
@@ -239,14 +243,15 @@ if _, err := dtoken.BuildAndSetManager(
 ### 共享 Token
 
 ```go
-if _, err := dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(memory.NewStorage()).
-        IsConcurrent(true).
-        IsShare(true),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
+    IsConcurrent(true).
+    IsShare(true).
+    Build()
+if err != nil {
     panic(err)
 }
+global.SetAuth(auth)
 ```
 
 `IsShare(true)` 表示并发登录时可复用已有 token，但只会在相同设备维度内复用。  
@@ -255,15 +260,16 @@ if _, err := dtoken.BuildAndSetManager(
 ### 最大登录数
 
 ```go
-if _, err := dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(memory.NewStorage()).
-        IsConcurrent(true).
-        IsShare(false).
-        MaxLoginCount(3),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
+    IsConcurrent(true).
+    IsShare(false).
+    MaxLoginCount(3).
+    Build()
+if err != nil {
     panic(err)
 }
+global.SetAuth(auth)
 ```
 
 当 `MaxLoginCount > 0` 时，超过上限的旧终端会被自动清理。
@@ -273,16 +279,17 @@ if _, err := dtoken.BuildAndSetManager(
 ### 配置方式
 
 ```go
-if _, err := dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(memory.NewStorage()).
-        Timeout(24 * 60 * 60).
-        AutoRenew(true).
-        RenewMaxRefresh(30 * 60).
-        RenewInterval(60),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
+    Timeout(24 * 60 * 60).
+    AutoRenew(true).
+    RenewMaxRefresh(30 * 60).
+    RenewInterval(60).
+    Build()
+if err != nil {
     panic(err)
 }
+global.SetAuth(auth)
 ```
 
 ### 工作机制
@@ -301,14 +308,15 @@ if _, err := dtoken.BuildAndSetManager(
 ### 配置方式
 
 ```go
-if _, err := dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(memory.NewStorage()).
-        Timeout(24 * 60 * 60).
-        ActiveTimeout(30 * 60),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
+    Timeout(24 * 60 * 60).
+    ActiveTimeout(30 * 60).
+    Build()
+if err != nil {
     panic(err)
 }
+global.SetAuth(auth)
 ```
 
 ### 工作机制
@@ -325,22 +333,23 @@ if _, err := dtoken.BuildAndSetManager(
 ## 完整配置示例
 
 ```go
-if _, err := dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(memory.NewStorage()).
-        TokenName("dtoken").
-        Timeout(24 * 60 * 60).
-        ActiveTimeout(30 * 60).
-        AutoRenew(true).
-        RenewMaxRefresh(30 * 60).
-        RenewInterval(60).
-        IsConcurrent(true).
-        IsShare(false).
-        MaxLoginCount(3).
-        IsReadHeader(true),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
+    TokenName("dtoken").
+    Timeout(24 * 60 * 60).
+    ActiveTimeout(30 * 60).
+    AutoRenew(true).
+    RenewMaxRefresh(30 * 60).
+    RenewInterval(60).
+    IsConcurrent(true).
+    IsShare(false).
+    MaxLoginCount(3).
+    IsReadHeader(true).
+    Build()
+if err != nil {
     panic(err)
 }
+global.SetAuth(auth)
 ```
 
 ## 相关文档

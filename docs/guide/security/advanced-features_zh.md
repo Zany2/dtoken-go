@@ -1,8 +1,10 @@
 # 高级能力
 
+[English](advanced-features.md) | 中文文档
+
 本页整理 DToken-Go 在普通登录、登出、权限和角色 API 之外可以直接使用的高级能力。
 
-
+以下为按主题拆分的调用片段，ctx 是当前 context.Context，错误处理片段放在返回 error 的函数内。dt 为根包，listener 为 event；SSO 片段需另行导入独立 sso 模块。Auth 的 Introspection、Refresh Token 与独立能力服务属于不同入口。
 
 ## 显式组合
 
@@ -26,6 +28,8 @@ nonceService := nonce.NewService(nonce.NewDefaultNonceManager(cfg.AuthType, cfg.
 ticketService := ticket.NewService(ticket.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
 shortKeyService := shortkey.NewService(shortkey.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
 ```
+
+服务接口分别位于 contract/nonce、contract/ticket、contract/shortkey；HTTP 通过 WithCapabilities 绑定接口，可接入自定义实现。服务借用 Auth 组件，不负责关闭；同一个 Auth 关闭后不得继续使用这些组件。
 
 ## Token Introspection
 
@@ -83,7 +87,7 @@ _ = auth.RevokeRefreshToken(ctx, nextPair.RefreshToken)
 
 Ticket 校验和状态回写使用精确截止时间 `ExpiresAt`。`CreateTime` 仍为 Unix 秒时间戳，`ExpiresIn` 仍为向上取整后的有效秒数。存储中不含 `ExpiresAt` 的旧票据继续使用原有整秒到期规则。
 
-消费时优先使用 `adapter.AtomicStorage`。仅提供基础 `Storage` 时，消费和撤销在同一个 Ticket 管理器实例内串行执行；该回退不保证不同管理器实例或进程之间的原子消费。多个实例共享票据时应使用原子存储。
+消费时优先使用 `contract.AtomicStorage`。仅提供基础 `Storage` 时，消费和撤销在同一个 Ticket 管理器实例内串行执行；该回退不保证不同管理器实例或进程之间的原子消费。多个实例共享票据时应使用原子存储。
 
 ```go
 createdTicket, err := ticketService.CreateTicket(ctx, ticket.CreateOptions{LoginID: "user-1001"})
@@ -104,7 +108,7 @@ fmt.Println(result.Ticket.LoginID)
 
 短 Key 的校验和状态回写使用精确截止时间 `ExpiresAt`。`CreateTime`、`UpdateTime` 和 `ExpiresIn` 保留原有秒单位；存储中不含 `ExpiresAt` 的旧短 Key 继续使用原有到期规则。
 
-创建写入、确认、消费和撤销在同一个 ShortKey 管理器实例内串行执行。创建和消费优先使用 `adapter.AtomicStorage`，基础 `Storage` 提供本地回退。实例锁不协调其他管理器实例或进程；原子创建和消费也不使跨实例的确认、撤销成为事务操作。
+创建写入、确认、消费和撤销在同一个 ShortKey 管理器实例内串行执行。创建和消费优先使用 `contract.AtomicStorage`，基础 `Storage` 提供本地回退。实例锁不协调其他管理器实例或进程；原子创建和消费也不使跨实例的确认、撤销成为事务操作。
 
 ```go
 createdKey, err := shortKeyService.CreateShortKey(ctx, shortkey.CreateOptions{})
@@ -130,6 +134,7 @@ fmt.Println(result.ShortKey.LoginID)
 
 ```go
 server := sso.NewServer()
+defer server.Close()
 err := server.RegisterClient(&sso.Client{
 	ClientID:     "app-a",
 	ClientSecret: "secret-a",
@@ -190,3 +195,9 @@ eventMgr.RegisterFunc(listener.EventAll, func(data *listener.EventData) {
 	fmt.Println(data.Event, data.LoginID, data.Token)
 })
 ```
+
+## 相关文档
+
+- [Auth 实例 API](../../api/auth_zh.md)
+- [生命周期](../../design/api-lifecycle_zh.md)
+- [SSO Redis 存储](../../../sso/storage/redis/README_zh.md)

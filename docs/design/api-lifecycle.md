@@ -42,6 +42,25 @@ Obtain Manager from a built Auth. Its zero value is unsupported. Do not mutate r
 
 Closing an engine is idempotent. There is no cross-engine reference counting for shared components. When several Auth instances share storage, a logger, or a pool, set its ownership flag to false and close it from the application after all users finish. Use factories returning fresh components for independent ownership.
 
+This fragment uses `dtoken` for the root package and `memory` for `storage/memory`:
+
+```go
+shared := memory.NewStorage()
+builder := dtoken.NewBuilder().
+    Storage(shared).
+    UseManagerOption(dtoken.WithComponentOwnership(dtoken.ComponentOwnership{
+        Storage: false,
+        Logger: true,
+        Pool: true,
+    }))
+first, err := builder.AuthType("user").Build()
+if err != nil { panic(err) }
+defer first.Close()
+second, err := builder.Clone().AuthType("admin").Build()
+if err != nil { panic(err) }
+defer second.Close()
+```
+
 Auth.Close stops maintenance, waits for accepted asynchronous work, and releases owned resources. It does not drain HTTP handlers. Stop accepting requests, wait for handlers, close Auth instances, and finally close caller-owned resources.
 
 ## Global registration
@@ -62,7 +81,7 @@ contract/nonce, contract/oauth2, contract/ticket, and contract/shortkey define s
 
 The bundled capability packages implement these interfaces with compile-time assertions. Their existing public data names alias the contract types, preserving source compatibility and serialized fields.
 
-Capabilities accepts custom implementations. Missing and typed-nil bindings retain disabled-module errors or false for boolean checks. WithCapabilities(nil) preserves bindings; an empty Capabilities clears them. Rebinding a request adapter preserves services, while switching authentication instances clears capability bindings.
+Capabilities accepts custom implementations. Missing and typed-nil bindings retain disabled-module errors or false for boolean checks. The request-context method `dCtx.WithCapabilities(nil)` preserves bindings; `dCtx.WithCapabilities(&requestcontext.Capabilities{})` clears them. Framework options instead take a value, for example `gindt.WithCapabilities(requestcontext.Capabilities{Nonce: service})`. Rebinding a request adapter preserves services, while switching authentication instances clears capability bindings.
 
 Standalone Service lifetimes are caller-managed. Supplying an Auth as the event emitter establishes event delivery only; callers must keep borrowed storage and codecs available. HTTP middleware additionally validates the bound engine lifecycle.
 

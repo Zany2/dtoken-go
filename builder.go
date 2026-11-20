@@ -339,7 +339,7 @@ func (b *Builder) RenewPoolExpiry(expiry time.Duration) *Builder {
 	return b
 }
 
-// RenewPoolPrintStatusInterval sets renew pool status interval RenewPoolPrintStatusInterval 设置续期池状态打印间隔
+// RenewPoolPrintStatusInterval enables periodic pool status logging when positive and logging is enabled; zero disables it. RenewPoolPrintStatusInterval 为正且启用日志时开启池状态定时打印，零值禁用。
 func (b *Builder) RenewPoolPrintStatusInterval(interval time.Duration) *Builder {
 	b.ensureBuilder()
 	b.renewPoolConfig.PrintStatusInterval = interval
@@ -599,7 +599,17 @@ func (b *Builder) buildManager() (*manager.Manager, error) {
 
 	b.applyUserManagerOptions(coreBuilder)
 
-	return coreBuilder.Build()
+	mgr, err := coreBuilder.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	// Start status reporting only after successful assembly; Manager owns its shutdown. 仅在装配成功后启动状态报告，由 Manager 管理其关闭。
+	if coreConfig.IsLog && renewPoolConfig.PrintStatusInterval > 0 {
+		mgr.StartRenewPoolStatusLogger(renewPoolConfig.PrintStatusInterval)
+	}
+
+	return mgr, nil
 }
 
 // Build creates an authentication instance. Build 创建认证实例。

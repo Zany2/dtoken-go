@@ -12,7 +12,7 @@ There are only 3 public constructors:
 
 1. `redis.NewStorage(url string)`
 2. `redis.NewStorageFromConfig(cfg *redis.Config)`
-3. `redis.NewStorageFromClient(client *redis.Client)`
+3. `redis.NewStorageFromClient(client *goredis.Client)`
 
 ## Installation
 
@@ -23,6 +23,8 @@ go get github.com/redis/go-redis/v9
 
 ## Usage
 
+Examples use dt for the root package, redis for storage/redis, goredis for github.com/redis/go-redis/v9, and time from the standard library. URL and config constructors issue PING; existing-client injection does not. Atomic read/delete uses GETDEL and requires Redis 6.2+. Caller-supplied storage remains caller-owned if Build fails; after success, Auth owns it by default.
+
 ### Option 1: Redis URL
 
 ```go
@@ -30,22 +32,23 @@ package main
 
 import (
     dt "github.com/Zany2/dtoken-go"
-    dtoken "github.com/Zany2/dtoken-go/global"
     "github.com/Zany2/dtoken-go/storage/redis"
 )
 
-func initDToken() {
+func main() {
     storage, err := redis.NewStorage("redis://localhost:6379/0")
     if err != nil {
         panic(err)
     }
 
-    if _, err = dtoken.BuildAndSetManager(
-        dt.NewBuilder().
-            Storage(storage),
-    ); err != nil {
+    auth, err := dt.NewBuilder().
+        Storage(storage).
+        Build()
+    if err != nil {
+        _ = storage.Close()
         panic(err)
     }
+    defer auth.Close()
 }
 ```
 
@@ -67,12 +70,14 @@ if err != nil {
     panic(err)
 }
 
-if _, err = dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(storage),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(storage).
+    Build()
+if err != nil {
+    _ = storage.Close()
     panic(err)
 }
+defer auth.Close()
 ```
 
 ### Option 3: Reuse an Existing go-redis Client
@@ -86,12 +91,14 @@ rdb := goredis.NewClient(&goredis.Options{
 
 storage := redis.NewStorageFromClient(rdb)
 
-if _, err := dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(storage),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(storage).
+    Build()
+if err != nil {
+    _ = storage.Close()
     panic(err)
 }
+defer auth.Close()
 ```
 
 `NewStorageFromClient` wraps the supplied client without changing its connection settings. `Storage.Close()` closes that client, and a Manager owns injected storage by default. For a client shared elsewhere, use caller-owned storage through `ComponentOwnership{Storage: false, Logger: true, Pool: true}` and close it once after all users stop; see [Multi-Auth Systems](../core/multi-auth.md).
@@ -123,19 +130,21 @@ if err != nil {
     panic(err)
 }
 
-if _, err = dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(storage).
-        TokenName("dtoken").
-        Timeout(2 * 60 * 60).
-        ActiveTimeout(30 * 60).
-        AutoRenew(true),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(storage).
+    TokenName("dtoken").
+    Timeout(2 * 60 * 60).
+    ActiveTimeout(30 * 60).
+    AutoRenew(true).
+    Build()
+if err != nil {
+    _ = storage.Close()
     panic(err)
 }
+defer auth.Close()
 ```
 
-Login state, session data, permissions, and roles use Redis. Nonce and OAuth2 use the same backend after their optional modules are enabled.
+Login state, session data, permissions, and roles use Redis. Nonce, OAuth2, Ticket, and ShortKey reuse this backend only when explicitly composed with auth.Storage(), auth.Codec(), and the same namespace.
 
 ## Redis Key Structure
 
@@ -224,7 +233,7 @@ There is **no** `redis.NewBuilder()` API in the current package. Older documenta
 The current signature is:
 
 ```go
-func NewStorageFromClient(client *redis.Client) *Storage
+func NewStorageFromClient(client *goredis.Client) *Storage
 ```
 
 That means:

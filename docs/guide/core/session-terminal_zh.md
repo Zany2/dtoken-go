@@ -1,6 +1,6 @@
 # Session 与终端管理
 
-代码片段中，dt = github.com/Zany2/dtoken-go，dtoken = github.com/Zany2/dtoken-go/global。
+代码片段中，dt = github.com/Zany2/dtoken-go，global = github.com/Zany2/dtoken-go/global。
 
 [English](../core/session-terminal.md) | 中文文档
 
@@ -21,43 +21,47 @@ Token 元信息由 `TokenInfo` 保存，包含认证体系、登录 ID、设备�
 ```go
 ctx := context.Background()
 
-sess, err := dtoken.GetSession(ctx, "10001")
-sess, err = dtoken.GetSessionByToken(ctx, token)
+sess, err := global.GetSession(ctx, "10001")
+sess, err = global.GetSessionByToken(ctx, token)
 ```
 
 Session 可用于查看当前账号下有哪些终端在线。
 
+编码空值 Session 无效，返回 `ErrInvalidToken`，不会被转换成空会话。合法旧版 Session 对象可以缺少认证体系和账号字段，读取时会按当前命名空间及请求的存储键补齐；仅终端列表为空不会使 Session 无效。
+
+登录和续期会保留 Session 已有的更长 TTL，包括无限期。需要读取原 TTL 时，如果查询失败，不会按本次请求的有效期覆盖 Session。同步操作返回 `ErrStorageUnavailable`；异步续期不发布成功事件。此检查不会回滚多步骤操作中已经完成的其他写入。
+
 ## 查询终端
 
 ```go
-terminal, err := dtoken.GetTerminalInfoByToken(ctx, token)
+terminal, err := global.GetTerminalInfoByToken(ctx, token)
 ```
 
 按账号、设备类型、具体设备统计在线数量：
 
 ```go
-count, err := dtoken.GetOnlineTerminalCount(ctx, "10001")
-webCount, err := dtoken.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
-deviceCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "web", "browser-1")
+count, err := global.GetOnlineTerminalCount(ctx, "10001")
+webCount, err := global.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
+deviceCount, err := global.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "web", "browser-1")
 ```
 
 ## 查询 Token 列表
 
 ```go
-tokens, err := dtoken.GetTokenValueListByLoginID(ctx, "10001", true)
-tokens, err = dtoken.GetTokenValueListByDevice(ctx, "10001", "web", true)
-tokens, err = dtoken.GetTokenValueListByDeviceAndDeviceID(ctx, "10001", "web", "browser-1", true)
+tokens, err := global.GetTokenValueListByLoginID(ctx, "10001", true)
+tokens, err = global.GetTokenValueListByDevice(ctx, "10001", "web", true)
+tokens, err = global.GetTokenValueListByDeviceAndDeviceID(ctx, "10001", "web", "browser-1", true)
 ```
 
 最后一个布尔参数表示是否只返回仍然有效的 Token。
 
-`checkAlive` 最多提供一个值。开启时，列表、在线计数和最新 Token 查询都会核对终端与 Token 的账号、设备、创建时间及生命周期序号，忽略不匹配的陈旧条目。按 Token 查询终端详情同样执行匹配，不返回旧登录的设备或扩展数据。
+Manager 的 Token 列表方法最多接收一个可选 `checkAlive` 值；本文展示的 global 函数必须显式传入布尔值，其后才是可选的 authType。开启时，列表、在线计数和最新 Token 查询都会核对终端与 Token 的账号、设备、创建时间及生命周期序号，忽略不匹配的陈旧条目。按 Token 查询终端详情同样执行匹配，不返回旧登录的设备或扩展数据。
 
 ## 查询终端列表
 
 ```go
-terminals, err := dtoken.GetTerminalListByLoginID(ctx, "10001")
-terminals, err = dtoken.GetTerminalListByLoginIDAndDevice(ctx, "10001", "web")
+terminals, err := global.GetTerminalListByLoginID(ctx, "10001")
+terminals, err = global.GetTerminalListByLoginIDAndDevice(ctx, "10001", "web")
 ```
 
 ## 获取最新 Token
@@ -65,19 +69,19 @@ terminals, err = dtoken.GetTerminalListByLoginIDAndDevice(ctx, "10001", "web")
 Manager 的 `GetTerminalListByLoginID` 和 `GetTokenValueByLoginID` 最多接受一个可选设备类型，多余参数返回错误。
 
 ```go
-token, err := dtoken.GetTokenValueByLoginID(ctx, "10001")
-token, err = dtoken.GetTokenValueByLoginIDAndDevice(ctx, "10001", "web")
+token, err := global.GetTokenValueByLoginID(ctx, "10001")
+token, err = global.GetTokenValueByLoginIDAndDevice(ctx, "10001", "web")
 ```
 
 ## 遍历终端
 
 ```go
-err := dtoken.ForEachTerminal(ctx, "10001", func(info dt.TerminalInfo) bool {
+err := global.ForEachTerminal(ctx, "10001", func(info dt.TerminalInfo) bool {
     fmt.Println(info.Device, info.DeviceID, info.Token)
     return true
 })
 
-err = dtoken.ForEachTerminalByDevice(ctx, "10001", "web", func(info dt.TerminalInfo) bool {
+err = global.ForEachTerminalByDevice(ctx, "10001", "web", func(info dt.TerminalInfo) bool {
     return true
 })
 ```
@@ -89,8 +93,8 @@ err = dtoken.ForEachTerminalByDevice(ctx, "10001", "web", func(info dt.TerminalI
 ## 搜索
 
 ```go
-tokens, err := dtoken.SearchTokenValue(ctx, "keyword", 0, 20)
-sessions, err := dtoken.SearchSessionId(ctx, "keyword", 0, 20)
+tokens, err := global.SearchTokenValue(ctx, "keyword", 0, 20)
+sessions, err := global.SearchSessionId(ctx, "keyword", 0, 20)
 ```
 
 这些能力依赖存储实现支持 key 扫描。内置内存存储和 Redis 存储均支持。
@@ -105,7 +109,9 @@ sessions, err := dtoken.SearchSessionId(ctx, "keyword", 0, 20)
 
 按 Token 下线在账号或设备封禁期间仍可执行；已确认归属的残留 Token 即使 Session 缺失也会被清理，并撤销关联刷新令牌。已有 kickout、replace 或活跃超时标记保持幂等，不改写下线原因。
 
-`Terminate` 中有效 Token 优先于账号、设备筛选；显式传入纯空白 Token 或设备筛选字段会返回参数错误，不会回退到更大的操作范围。
+高级 `Manager.Terminate` 中有效 Token 优先于账号、设备筛选；显式传入纯空白 Token 或设备筛选字段会返回参数错误，不会回退到更大的操作范围。
+
+实例门面通过 `auth.Logout`、`auth.Kickout` 或 `auth.Replace` 接收根包 `LogoutOptions`；高级 Manager 的 `Terminate` 使用 `TerminateOptions`，两者不能直接互换。
 
 三类操作都支持：
 

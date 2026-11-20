@@ -5,3 +5,5 @@
 公开区域包括根实例门面、global、contract、config、errors、event、独立能力包、组件包、框架集成与 SSO。internal 中的实现不供应用导入；需要命名的引擎扩展类型从根包导入。
 
 已发布版本的使用方应核对目标根模块与扩展模块版本。框架便捷导出以 Gin 为标准源统一维护，应用首选根 Builder 和显式实例注入。发布前执行独立模块与仓库外消费者检查。
+
+根包通过别名暴露的 Manager、Strategy 和装配类型仍属于公开兼容性范围；实现位于 internal 不取消其兼容性要求。实例方法与全局函数的名称、选项和参数可能不同，参见 [Auth API](../../api/auth_zh.md)与[全局 API](../../api/dtoken_zh.md)。

@@ -2,17 +2,13 @@
 
 [English](../core/permission.md) | 中文文档
 
+本文使用 `global` 包演示已注册实例的全局调用，`dt` 表示根包。先构建 Auth 并调用 `global.SetAuth(auth)`；未指定认证类型时使用默认 `auth:`。实例调用及参数差异见 [Auth API](../../api/auth_zh.md)。
+
 ## 概览
 
-当前版本的权限与角色数据主要有两种来源：
+权限和角色来自 Session 或 `SetAccessProvider` 注入的业务提供器。配置 Provider 时，其非 nil 结果优先；nil 回退到 Session，空切片表示没有权限或角色。Provider 错误由 Check/Get 方法返回，Has 方法返回 false。
 
-1. `Session` 中维护的 `Permissions`、`Roles`
-2. 通过 `dt.NewBuilder()` 注入的自定义回调
-
-优先级方面：
-
-- 按 `loginID` 查询时：`CustomPermissionListFunc` / `CustomRoleListFunc` 优先于 Session
-- 按 `token` 查询时：`CustomPermissionListExtFunc` / `CustomRoleListExtFunc` 优先，其次普通回调，最后才是 Session
+按账号查询提供认证体系和 loginID；按 Token 查询还包含设备与 Token 信息。旧 CustomPermissionList/CustomRoleList 回调入口已移除，使用 AccessProviderFunc 迁移。
 
 ## 初始化
 
@@ -22,18 +18,19 @@ package main
 
 import (
     dt "github.com/Zany2/dtoken-go"
-    dtoken "github.com/Zany2/dtoken-go/global"
+    global "github.com/Zany2/dtoken-go/global"
 
     "github.com/Zany2/dtoken-go/storage/memory"
 )
 
 func initDToken() {
-    if _, err := dtoken.BuildAndSetManager(
-        dt.NewBuilder().
-            Storage(memory.NewStorage()),
-    ); err != nil {
+    auth, err := dt.NewBuilder().
+        Storage(memory.NewStorage()).
+        Build()
+    if err != nil {
         panic(err)
     }
+    global.SetAuth(auth)
 }
 ```
 
@@ -46,15 +43,15 @@ func initDToken() {
 ```go
 ctx := context.Background()
 
-token, _ := dtoken.Login(ctx, "10001")
+token, _ := global.Login(ctx, "10001")
 
-_ = dtoken.AddPermissions(ctx, "10001", []string{
+_ = global.AddPermissions(ctx, "10001", []string{
     "user:read",
     "user:write",
     "admin:*",
 })
 
-_ = dtoken.AddPermissionsByToken(ctx, token, []string{
+_ = global.AddPermissionsByToken(ctx, token, []string{
     "article:publish",
 })
 ```
@@ -64,8 +61,8 @@ _ = dtoken.AddPermissionsByToken(ctx, token, []string{
 ```go
 ctx := context.Background()
 
-_ = dtoken.RemovePermissions(ctx, "10001", []string{"user:write"})
-_ = dtoken.RemovePermissionsByToken(ctx, token, []string{"article:publish"})
+_ = global.RemovePermissions(ctx, "10001", []string{"user:write"})
+_ = global.RemovePermissionsByToken(ctx, token, []string{"article:publish"})
 ```
 
 ### 查询权限
@@ -73,8 +70,8 @@ _ = dtoken.RemovePermissionsByToken(ctx, token, []string{"article:publish"})
 ```go
 ctx := context.Background()
 
-permissions, err := dtoken.GetPermissions(ctx, "10001")
-permissionsByToken, err := dtoken.GetPermissionsByToken(ctx, token)
+permissions, err := global.GetPermissions(ctx, "10001")
+permissionsByToken, err := global.GetPermissionsByToken(ctx, token)
 ```
 
 ## 权限校验
@@ -84,10 +81,10 @@ permissionsByToken, err := dtoken.GetPermissionsByToken(ctx, token)
 ```go
 ctx := context.Background()
 
-hasPermission := dtoken.HasPermission(ctx, "10001", "user:read")
-hasPermissionByToken := dtoken.HasPermissionByToken(ctx, token, "user:read")
+hasPermission := global.HasPermission(ctx, "10001", "user:read")
+hasPermissionByToken := global.HasPermissionByToken(ctx, token, "user:read")
 
-err := dtoken.CheckPermission(ctx, "10001", "user:read")
+err := global.CheckPermission(ctx, "10001", "user:read")
 ```
 
 ### 多权限 AND
@@ -95,12 +92,12 @@ err := dtoken.CheckPermission(ctx, "10001", "user:read")
 ```go
 ctx := context.Background()
 
-hasAll := dtoken.HasPermissionsAnd(ctx, "10001", []string{
+hasAll := global.HasPermissionsAnd(ctx, "10001", []string{
     "user:read",
     "user:write",
 })
 
-err := dtoken.CheckPermissionAnd(ctx, "10001", []string{
+err := global.CheckPermissionAnd(ctx, "10001", []string{
     "user:read",
     "user:write",
 })
@@ -111,12 +108,12 @@ err := dtoken.CheckPermissionAnd(ctx, "10001", []string{
 ```go
 ctx := context.Background()
 
-hasAny := dtoken.HasPermissionsOr(ctx, "10001", []string{
+hasAny := global.HasPermissionsOr(ctx, "10001", []string{
     "admin:read",
     "report:read",
 })
 
-err := dtoken.CheckPermissionOr(ctx, "10001", []string{
+err := global.CheckPermissionOr(ctx, "10001", []string{
     "admin:read",
     "report:read",
 })
@@ -141,15 +138,15 @@ err := dtoken.CheckPermissionOr(ctx, "10001", []string{
 ```go
 ctx := context.Background()
 
-_ = dtoken.AddPermissions(ctx, "10001", []string{
+_ = global.AddPermissions(ctx, "10001", []string{
     "admin:*",
     "user:*:view",
 })
 
-dtoken.HasPermission(ctx, "10001", "admin:read")        // true
-dtoken.HasPermission(ctx, "10001", "admin:delete")      // true
-dtoken.HasPermission(ctx, "10001", "user:profile:view") // true
-dtoken.HasPermission(ctx, "10001", "user:view")         // false
+global.HasPermission(ctx, "10001", "admin:read")        // true
+global.HasPermission(ctx, "10001", "admin:delete")      // true
+global.HasPermission(ctx, "10001", "user:profile:view") // true
+global.HasPermission(ctx, "10001", "user:view")         // false
 ```
 
 ## 角色管理
@@ -157,22 +154,22 @@ dtoken.HasPermission(ctx, "10001", "user:view")         // false
 ```go
 ctx := context.Background()
 
-_ = dtoken.AddRoles(ctx, "10001", []string{"admin", "editor"})
-_ = dtoken.AddRolesByToken(ctx, token, []string{"reviewer"})
+_ = global.AddRoles(ctx, "10001", []string{"admin", "editor"})
+_ = global.AddRolesByToken(ctx, token, []string{"reviewer"})
 
-_ = dtoken.RemoveRoles(ctx, "10001", []string{"editor"})
-_ = dtoken.RemoveRolesByToken(ctx, token, []string{"reviewer"})
+_ = global.RemoveRoles(ctx, "10001", []string{"editor"})
+_ = global.RemoveRolesByToken(ctx, token, []string{"reviewer"})
 
-roles, err := dtoken.GetRoles(ctx, "10001")
-rolesByToken, err := dtoken.GetRolesByToken(ctx, token)
+roles, err := global.GetRoles(ctx, "10001")
+rolesByToken, err := global.GetRolesByToken(ctx, token)
 
-hasRole := dtoken.HasRole(ctx, "10001", "admin")
-hasAnyRole := dtoken.HasRolesOr(ctx, "10001", []string{"admin", "manager"})
-hasAllRoles := dtoken.HasRolesAnd(ctx, "10001", []string{"admin", "editor"})
+hasRole := global.HasRole(ctx, "10001", "admin")
+hasAnyRole := global.HasRolesOr(ctx, "10001", []string{"admin", "manager"})
+hasAllRoles := global.HasRolesAnd(ctx, "10001", []string{"admin", "editor"})
 
-err = dtoken.CheckRole(ctx, "10001", "admin")
-err = dtoken.CheckRoleOr(ctx, "10001", []string{"admin", "manager"})
-err = dtoken.CheckRoleAnd(ctx, "10001", []string{"admin", "editor"})
+err = global.CheckRole(ctx, "10001", "admin")
+err = global.CheckRoleOr(ctx, "10001", []string{"admin", "manager"})
+err = global.CheckRoleAnd(ctx, "10001", []string{"admin", "editor"})
 ```
 
 ## 封禁管理
@@ -182,15 +179,15 @@ err = dtoken.CheckRoleAnd(ctx, "10001", []string{"admin", "editor"})
 ```go
 ctx := context.Background()
 
-_ = dtoken.Disable(ctx, "10001", 2*time.Hour, "abuse")
+_ = global.Disable(ctx, "10001", 2*time.Hour, "abuse")
 
-disabled := dtoken.IsDisable(ctx, "10001")
-err := dtoken.CheckDisable(ctx, "10001")
+disabled := global.IsDisable(ctx, "10001")
+err := global.CheckDisable(ctx, "10001")
 
-info, err := dtoken.GetDisableInfo(ctx, "10001")
-ttl, err := dtoken.GetDisableTTL(ctx, "10001")
+info, err := global.GetDisableInfo(ctx, "10001")
+ttl, err := global.GetDisableTTL(ctx, "10001")
 
-_ = dtoken.Untie(ctx, "10001")
+_ = global.Untie(ctx, "10001")
 ```
 
 `GetDisableTTL()` 返回值约定：
@@ -204,63 +201,50 @@ _ = dtoken.Untie(ctx, "10001")
 ```go
 ctx := context.Background()
 
-_ = dtoken.DisableService(ctx, "10001", "comment", 30*time.Minute)
-_ = dtoken.DisableServiceWithReason(ctx, "10001", "comment", 30*time.Minute, "spam")
-_ = dtoken.DisableServiceLevel(ctx, "10001", "comment", 2, 30*time.Minute)
-_ = dtoken.DisableServiceLevelWithReason(ctx, "10001", "comment", 3, 30*time.Minute, "risk")
+_ = global.DisableService(ctx, "10001", "comment", 30*time.Minute)
+_ = global.DisableServiceWithReason(ctx, "10001", "comment", 30*time.Minute, "spam")
+_ = global.DisableServiceLevel(ctx, "10001", "comment", 2, 30*time.Minute)
+_ = global.DisableServiceLevelWithReason(ctx, "10001", "comment", 3, 30*time.Minute, "risk")
 
-serviceDisabled := dtoken.IsDisableService(ctx, "10001", "comment")
-levelDisabled := dtoken.IsDisableServiceLevel(ctx, "10001", "comment", 2)
+serviceDisabled := global.IsDisableService(ctx, "10001", "comment")
+levelDisabled := global.IsDisableServiceLevel(ctx, "10001", "comment", 2)
 
-err := dtoken.CheckDisableService(ctx, "10001", []string{"comment", "post"})
-err = dtoken.CheckDisableServiceLevel(ctx, "10001", "comment", 2)
+err := global.CheckDisableService(ctx, "10001", []string{"comment", "post"})
+err = global.CheckDisableServiceLevel(ctx, "10001", "comment", 2)
 
-serviceInfo, err := dtoken.GetDisableServiceInfo(ctx, "10001", "comment")
-serviceTTL, err := dtoken.GetDisableServiceTTL(ctx, "10001", "comment")
+serviceInfo, err := global.GetDisableServiceInfo(ctx, "10001", "comment")
+serviceTTL, err := global.GetDisableServiceTTL(ctx, "10001", "comment")
 
-_ = dtoken.UntieService(ctx, "10001", "comment")
+_ = global.UntieService(ctx, "10001", "comment")
 ```
 
-## 自定义权限与角色回调
+## 自定义权限与角色提供器
+
+下面创建独立实例。PermissionFunc 与 RoleFunc 使用同一个 AccessSubject，不再区分普通和 Ext 回调。
 
 ```go
-if _, err := dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(memory.NewStorage()).
-        SetCustomPermissionListFunc(func(loginID, authType string) ([]string, error) {
-            if loginID == "10001" {
-                return []string{"user:read", "user:write"}, nil
-            }
-            return []string{"user:read"}, nil
-        }).
-        SetCustomRoleListFunc(func(loginID, authType string) ([]string, error) {
-            if loginID == "10001" {
-                return []string{"admin"}, nil
-            }
-            return []string{"user"}, nil
-        }),
-); err != nil {
-    panic(err)
-}
-```
-
-扩展回调还支持拿到 `device`、`deviceID`：
-
-```go
-dt.NewBuilder().
-    SetCustomPermissionListExtFunc(func(loginID, device, deviceID, authType string) ([]string, error) {
-        if device == "app" {
+provider := dt.AccessProviderFunc{
+    PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
+        if subject.Device == "app" {
             return []string{"mobile:read", "mobile:write"}, nil
         }
-        return []string{"web:read"}, nil
-    }).
-    SetCustomRoleListExtFunc(func(loginID, device, deviceID, authType string) ([]string, error) {
-        if device == "app" {
-            return []string{"mobile-user"}, nil
+        return nil, nil
+    },
+    RoleFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
+        if subject.LoginID == "10001" {
+            return []string{"admin"}, nil
         }
-        return []string{"web-user"}, nil
-    })
+        return []string{}, nil
+    },
+}
+auth, err := dt.NewBuilder().SetAccessProvider(provider).Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
+
+需要用于前文全局调用时，显式 global.SetAuth(auth)；用于 HTTP 时通过 WithAuth(auth) 注入同一个实例。详见 [AccessProvider](access-provider_zh.md)。
 
 ## Gin 路由中使用
 

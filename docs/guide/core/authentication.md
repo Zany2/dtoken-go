@@ -2,6 +2,8 @@
 
 [中文文档](../core/authentication_zh.md) | English
 
+This page uses `global` for registered-instance calls and `dt` for the root package. Build Auth and call `global.SetAuth(auth)` first; omitted auth types select the default `auth:` namespace. See [Auth API](../../api/auth.md) for instance calls and parameter differences.
+
 ## Basic Login
 
 ### Initialization
@@ -12,27 +14,28 @@ package main
 
 import (
     dt "github.com/Zany2/dtoken-go"
-    dtoken "github.com/Zany2/dtoken-go/global"
+    global "github.com/Zany2/dtoken-go/global"
     "context"
 
     "github.com/Zany2/dtoken-go/storage/memory"
 )
 
 func initDToken() {
-    if _, err := dtoken.BuildAndSetManager(
-        dt.NewBuilder().
-            Storage(memory.NewStorage()),
-    ); err != nil {
+    auth, err := dt.NewBuilder().
+        Storage(memory.NewStorage()).
+        Build()
+    if err != nil {
         panic(err)
     }
+    global.SetAuth(auth)
 }
 
 func main() {
     initDToken()
-    defer dtoken.DeleteAllManager()
+    defer global.DeleteAllManager()
 
     ctx := context.Background()
-    token, _ := dtoken.Login(ctx, "10001")
+    token, _ := global.Login(ctx, "10001")
     _ = token
 }
 ```
@@ -43,13 +46,13 @@ func main() {
 ctx := context.Background()
 
 // Default login
-token, err := dtoken.Login(ctx, "10001")
+token, err := global.Login(ctx, "10001")
 
 // Login with device type
-token, err = dtoken.Login(ctx, "10001", "web")
+token, err = global.Login(ctx, "10001", "web")
 
 // Login with device type and device ID
-token, err = dtoken.Login(ctx, "10001", "app", "ios-iphone-15")
+token, err = global.Login(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ### Login With Custom Timeout
@@ -58,10 +61,10 @@ token, err = dtoken.Login(ctx, "10001", "app", "ios-iphone-15")
 ctx := context.Background()
 
 // Set a dedicated 2-hour TTL for the current token
-token, err := dtoken.LoginWithTimeout(ctx, "10001", 2*time.Hour)
+token, err := global.LoginWithTimeout(ctx, "10001", 2*time.Hour)
 
 // Combine timeout with device type and device ID
-token, err = dtoken.LoginWithTimeout(ctx, "10001", 2*time.Hour, "web", "chrome-mac")
+token, err = global.LoginWithTimeout(ctx, "10001", 2*time.Hour, "web", "chrome-mac")
 ```
 
 ### Renew Login By Existing Token
@@ -69,7 +72,7 @@ token, err = dtoken.LoginWithTimeout(ctx, "10001", 2*time.Hour, "web", "chrome-m
 ```go
 ctx := context.Background()
 
-err := dtoken.LoginByToken(ctx, token)
+err := global.LoginByToken(ctx, token)
 ```
 
 `LoginByToken()` renews token, session, and activity metadata asynchronously when the token is still valid.
@@ -82,10 +85,10 @@ Automatic renewal compares the storage TTL against its threshold without roundin
 ctx := context.Background()
 
 // Boolean check
-isLogin := dtoken.IsLogin(ctx, token)
+isLogin := global.IsLogin(ctx, token)
 
 // Returns an error if the token is invalid
-err := dtoken.CheckLogin(ctx, token)
+err := global.CheckLogin(ctx, token)
 ```
 
 ## Get Login Information
@@ -95,7 +98,7 @@ err := dtoken.CheckLogin(ctx, token)
 ```go
 ctx := context.Background()
 
-loginID, err := dtoken.GetLoginID(ctx, token)
+loginID, err := global.GetLoginID(ctx, token)
 ```
 
 ### Get Token Info
@@ -105,7 +108,7 @@ loginID, err := dtoken.GetLoginID(ctx, token)
 ```go
 ctx := context.Background()
 
-info, err := dtoken.GetTokenInfo(ctx, token)
+info, err := global.GetTokenInfo(ctx, token)
 if err == nil {
     fmt.Println("Auth Type:", info.AuthType)
     fmt.Println("Login ID:", info.LoginID)
@@ -134,10 +137,10 @@ Current `TokenInfo` includes:
 ```go
 ctx := context.Background()
 
-device, err := dtoken.GetDevice(ctx, token)
-deviceID, err := dtoken.GetDeviceID(ctx, token)
-createTime, err := dtoken.GetTokenCreateTime(ctx, token)
-ttl, err := dtoken.GetTokenTTL(ctx, token)
+device, err := global.GetDevice(ctx, token)
+deviceID, err := global.GetDeviceID(ctx, token)
+createTime, err := global.GetTokenCreateTime(ctx, token)
+ttl, err := global.GetTokenTTL(ctx, token)
 ```
 
 ## Logout
@@ -147,7 +150,7 @@ ttl, err := dtoken.GetTokenTTL(ctx, token)
 ```go
 ctx := context.Background()
 
-err := dtoken.Logout(ctx, token)
+err := global.Logout(ctx, token)
 ```
 
 ### Logout By Account Dimension
@@ -156,13 +159,13 @@ err := dtoken.Logout(ctx, token)
 ctx := context.Background()
 
 // Logout all terminals of one account
-err := dtoken.LogoutByLoginID(ctx, "10001")
+err := global.LogoutByLoginID(ctx, "10001")
 
 // Logout all terminals of one device type
-err = dtoken.LogoutByDevice(ctx, "10001", "web")
+err = global.LogoutByDevice(ctx, "10001", "web")
 
 // Logout a single terminal by device type + device ID
-err = dtoken.LogoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
+err = global.LogoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ## Kickout
@@ -172,7 +175,7 @@ err = dtoken.LogoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```go
 ctx := context.Background()
 
-err := dtoken.Kickout(ctx, token)
+err := global.Kickout(ctx, token)
 ```
 
 ### Kickout By Account Dimension
@@ -180,9 +183,9 @@ err := dtoken.Kickout(ctx, token)
 ```go
 ctx := context.Background()
 
-err := dtoken.KickoutByLoginID(ctx, "10001")
-err = dtoken.KickoutByDevice(ctx, "10001", "web")
-err = dtoken.KickoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
+err := global.KickoutByLoginID(ctx, "10001")
+err = global.KickoutByDevice(ctx, "10001", "web")
+err = global.KickoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 Kicked tokens are not deleted immediately. They are marked with the `kickout` state and will fail later checks with the corresponding error.
@@ -194,7 +197,7 @@ Kicked tokens are not deleted immediately. They are marked with the `kickout` st
 ```go
 ctx := context.Background()
 
-err := dtoken.Replace(ctx, token)
+err := global.Replace(ctx, token)
 ```
 
 ### Replace By Account Dimension
@@ -202,9 +205,9 @@ err := dtoken.Replace(ctx, token)
 ```go
 ctx := context.Background()
 
-err := dtoken.ReplaceByLoginID(ctx, "10001")
-err = dtoken.ReplaceByDevice(ctx, "10001", "web")
-err = dtoken.ReplaceByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
+err := global.ReplaceByLoginID(ctx, "10001")
+err = global.ReplaceByDevice(ctx, "10001", "web")
+err = global.ReplaceByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 Replaced tokens are marked with the `replaced` state, which is useful for "new login overrides old login" scenarios.
@@ -214,9 +217,9 @@ Replaced tokens are marked with the `replaced` state, which is useful for "new l
 ```go
 ctx := context.Background()
 
-count, err := dtoken.GetOnlineTerminalCount(ctx, "10001")
-webCount, err := dtoken.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
-singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
+count, err := global.GetOnlineTerminalCount(ctx, "10001")
+webCount, err := global.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
+singleCount, err := global.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ## Login Configuration
@@ -224,13 +227,14 @@ singleCount, err := dtoken.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001
 ### Concurrent Login
 
 ```go
-if _, err := dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(memory.NewStorage()).
-        IsConcurrent(true),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
+    IsConcurrent(true).
+    Build()
+if err != nil {
     panic(err)
 }
+global.SetAuth(auth)
 ```
 
 `IsConcurrent(true)` allows multiple active terminals for the same account.  
@@ -239,14 +243,15 @@ if _, err := dtoken.BuildAndSetManager(
 ### Shared Token
 
 ```go
-if _, err := dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(memory.NewStorage()).
-        IsConcurrent(true).
-        IsShare(true),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
+    IsConcurrent(true).
+    IsShare(true).
+    Build()
+if err != nil {
     panic(err)
 }
+global.SetAuth(auth)
 ```
 
 `IsShare(true)` reuses an existing token during concurrent login, but only within the same device dimension.  
@@ -255,15 +260,16 @@ When `IsConcurrent(true)` and `IsShare(false)` are both set, each login creates 
 ### Max Login Count
 
 ```go
-if _, err := dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(memory.NewStorage()).
-        IsConcurrent(true).
-        IsShare(false).
-        MaxLoginCount(3),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
+    IsConcurrent(true).
+    IsShare(false).
+    MaxLoginCount(3).
+    Build()
+if err != nil {
     panic(err)
 }
+global.SetAuth(auth)
 ```
 
 When `MaxLoginCount > 0`, older terminals beyond the limit are removed automatically.
@@ -273,16 +279,17 @@ When `MaxLoginCount > 0`, older terminals beyond the limit are removed automatic
 ### Configuration
 
 ```go
-if _, err := dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(memory.NewStorage()).
-        Timeout(24 * 60 * 60).
-        AutoRenew(true).
-        RenewMaxRefresh(30 * 60).
-        RenewInterval(60),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
+    Timeout(24 * 60 * 60).
+    AutoRenew(true).
+    RenewMaxRefresh(30 * 60).
+    RenewInterval(60).
+    Build()
+if err != nil {
     panic(err)
 }
+global.SetAuth(auth)
 ```
 
 ### How It Works
@@ -301,14 +308,15 @@ This avoids unnecessary renewals on high-frequency traffic.
 ### Configuration
 
 ```go
-if _, err := dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(memory.NewStorage()).
-        Timeout(24 * 60 * 60).
-        ActiveTimeout(30 * 60),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
+    Timeout(24 * 60 * 60).
+    ActiveTimeout(30 * 60).
+    Build()
+if err != nil {
     panic(err)
 }
+global.SetAuth(auth)
 ```
 
 ### How It Works
@@ -325,22 +333,23 @@ When `ActiveTimeout` is enabled:
 ## Complete Configuration Example
 
 ```go
-if _, err := dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(memory.NewStorage()).
-        TokenName("dtoken").
-        Timeout(24 * 60 * 60).
-        ActiveTimeout(30 * 60).
-        AutoRenew(true).
-        RenewMaxRefresh(30 * 60).
-        RenewInterval(60).
-        IsConcurrent(true).
-        IsShare(false).
-        MaxLoginCount(3).
-        IsReadHeader(true),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
+    TokenName("dtoken").
+    Timeout(24 * 60 * 60).
+    ActiveTimeout(30 * 60).
+    AutoRenew(true).
+    RenewMaxRefresh(30 * 60).
+    RenewInterval(60).
+    IsConcurrent(true).
+    IsShare(false).
+    MaxLoginCount(3).
+    IsReadHeader(true).
+    Build()
+if err != nil {
     panic(err)
 }
+global.SetAuth(auth)
 ```
 
 ## Related Documentation

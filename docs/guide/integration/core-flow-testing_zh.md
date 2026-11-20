@@ -19,6 +19,17 @@ gincoreapp.NewApp(cfg)
 httptest.NewServer(app.Router())
 ```
 
+## 与当前架构的关系
+
+| 位置 | 验证职责 |
+| --- | --- |
+| `tests/gin_core_app` | 独立应用模块：通过根 Builder 创建 Auth，显式组合 Nonce 与 OAuth2 Service，并提供 HTTP 路由 |
+| `tests/gin_core_flow` | 独立流程测试模块：调用测试应用，检查 HTTP 响应及存储中的生命周期结果 |
+| 各包的 `*_test.go` | 组件、引擎和框架适配器自身的行为检查 |
+| 根目录 `architecture*_test.go` | 包依赖与框架门面覆盖的结构检查 |
+
+下面的命令在仓库根目录、启用 `go.work` 时执行，工作区要求 Go 1.27+。根模块中的 `go test ./...` 不会自动递归执行独立子模块的全部测试。该流程套件主要验证组合应用；八个框架的中间件和请求适配行为应结合各集成模块的测试检查。覆盖列表表示已有测试场景，不代表本次文档修订已执行测试。
+
 ## 运行方式
 
 在项目根目录执行：

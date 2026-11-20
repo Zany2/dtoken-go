@@ -4,6 +4,8 @@ English | [中文文档](nonce_zh.md)
 
 Nonce is an independent capability composed through the nonce package Manager and Service. It requires no global registration or builder switches. The Manager handles credentials; the Service publishes events through an optional emitter.
 
+The interface lives in contract/nonce and the implementation in nonce; both ship with the root module. Service borrows storage and does not close it. Close Auth after all capability calls finish.
+
 ## Basic use
 
 <!-- dtoken-compile: nonce -->
@@ -56,4 +58,4 @@ Consumption explicitly requires contract.AtomicStorage. Built-in memory and Redi
 
 ## HTTP injection
 
-Use framework WithCapabilities(requestcontext.Capabilities{Nonce: service}), with requestcontext importing httpauth/context. Request facades expose dCtx.Nonce().Generate, Verify, and VerifyAndConsume. Missing bindings return ErrModuleNotEnabled. See the [root README](../../../README.md) and [migration guide](../../design/module-migration.md).
+Use framework WithCapabilities(requestcontext.Capabilities{Nonce: service}), with requestcontext importing httpauth/context. Request facades expose dCtx.Nonce().Generate, Verify, and VerifyAndConsume. Missing bindings return ErrModuleNotEnabled for error-returning methods; boolean checks return false. See the [root README](../../../README.md) and [migration guide](../../design/module-migration.md).

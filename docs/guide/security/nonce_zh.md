@@ -4,6 +4,8 @@
 
 Nonce 是独立能力，使用 nonce 包的 Manager 和 Service 显式组合，无需全局注册或 Builder 开关。Manager 管理凭证，Service 在操作后通过可选发布器发送事件。
 
+接口定义在 contract/nonce，内置实现位于 nonce，均随根模块发布。Service 借用存储，不负责关闭；示例中应在所有能力调用结束后再关闭 Auth。
+
 ## 基本使用
 
 <!-- dtoken-compile: nonce -->
@@ -56,4 +58,4 @@ func main() {
 
 ## HTTP 注入
 
-通过框架 WithCapabilities(requestcontext.Capabilities{Nonce: service}) 注入请求上下文，requestcontext 是 httpauth/context 的别名。请求可调用 dCtx.Nonce().Generate、Verify 和 VerifyAndConsume。未绑定的能力返回 ErrModuleNotEnabled。完整接入见[根 README](../../../README_zh.md)和[迁移指南](../../design/module-migration_zh.md)。
+通过框架 WithCapabilities(requestcontext.Capabilities{Nonce: service}) 注入请求上下文，requestcontext 是 httpauth/context 的别名。请求可调用 dCtx.Nonce().Generate、Verify 和 VerifyAndConsume。未绑定时，返回错误的操作报告 ErrModuleNotEnabled，Verify 等布尔检查返回 false。完整接入见[根 README](../../../README_zh.md)和[迁移指南](../../design/module-migration_zh.md)。

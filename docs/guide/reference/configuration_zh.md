@@ -6,10 +6,12 @@
 
 本页整理 DToken-Go 常用配置项、默认行为和配置约束。大多数业务只需要使用 `dt.NewBuilder()`，按需覆盖少量配置即可。
 
+`Build()` 返回 Auth，配置片段中的 auth 不是底层 Manager。config 表示公开 config 包，contract 表示组件契约包。auth.Config() 返回独立快照；运行时配置变更应构建新实例，再协调替换与关闭，不能通过修改快照更新运行中的引擎。
+
 ## 基本示例
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     // AuthType 用于区分多套认证体系，如 user、admin、app。
     AuthType("user").
     // KeyPrefix 是存储层 key 的公共前缀，用于区分项目或环境。
@@ -40,8 +42,11 @@ mgr, err := dt.NewBuilder().
     // 生产环境一般建议关闭 Banner，日志按业务需要开启。
     IsLog(false).
     IsPrintBanner(false).
-    Storage(storage).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ## 常用配置
@@ -63,7 +68,7 @@ mgr, err := dt.NewBuilder().
 | `MaxLoginCount` | `int64`（数量） | `12` | 最大在线终端数量 |
 | `ReplacedLoginExitMode` | `config.ReplacedLoginExitMode` | `old_device` | 非并发登录时保留新登录还是拒绝新登录 |
 | `OverflowLogoutMode` | `config.LogoutMode` | `kickout` | 超过最大登录数时旧 Token 的处理方式 |
-| `TokenStyle` | `adapter.TokenStyle` | `uuid` | Token 生成风格 |
+| `TokenStyle` | `contract.TokenStyle` | `uuid` | Token 生成风格 |
 | `JwtSecretKey` | `string` | `dtoken-go`（占位值） | JWT 模式必须显式配置密钥；默认值、空字符串及纯空白密钥均会被拒绝 |
 | `IsReadHeader` | `bool` | `true` | 是否从 Header 读取 Token |
 | `IsReadCookie` | `bool` | `false` | 是否从 Cookie 读取 Token |
@@ -176,7 +181,7 @@ Nonce、OAuth2、Ticket 和 ShortKey 在各自包中配置，通过 Manager 构�
 开启 Cookie 读取时，可以配置 Cookie 属性：
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     IsReadHeader(false).
     IsReadCookie(true).
     CookieDomain("example.com").
@@ -185,8 +190,11 @@ mgr, err := dt.NewBuilder().
     CookieHttpOnly(true).
     CookieSameSite(config.SameSiteNone).
     CookieMaxAge(7200).
-    Storage(storage).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 Cookie 配置约束：

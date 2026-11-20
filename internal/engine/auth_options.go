@@ -95,7 +95,8 @@ type loginPolicy struct {
 
 // loginInternalOptions carries manager-only login controls. loginInternalOptions 承载 manager 内部登录控制参数。
 type loginInternalOptions struct {
-	skipConcurrencyControl bool // skipConcurrencyControl skips login concurrency handling. skipConcurrencyControl 跳过登录并发策略处理。
+	// rotation identifies the original lifecycle whose terminal may be replaced without taking another login slot. rotation 标识原生命周期，仅替换其现有终端时不额外占用登录名额。
+	rotation *refreshTokenRecord
 	// accessID binds follow-up work to this fresh login before callbacks run. accessID 在回调执行前将后续操作绑定到本次新登录。
 	accessID string
 }

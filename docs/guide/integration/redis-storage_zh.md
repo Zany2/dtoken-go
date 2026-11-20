@@ -12,7 +12,7 @@
 
 1. `redis.NewStorage(url string)`
 2. `redis.NewStorageFromConfig(cfg *redis.Config)`
-3. `redis.NewStorageFromClient(client *redis.Client)`
+3. `redis.NewStorageFromClient(client *goredis.Client)`
 
 ## 安装
 
@@ -23,6 +23,8 @@ go get github.com/redis/go-redis/v9
 
 ## 使用方式
 
+示例中 dt 为根包、redis 为 storage/redis、goredis 为 github.com/redis/go-redis/v9；配置片段中的 time 来自标准库。URL 和配置构造器会执行 PING；注入已有客户端不会自动探测连接。原子读删使用 GETDEL，需要 Redis 6.2+。显式传入的存储在 Build 失败时仍由调用方关闭；成功后默认由 Auth 关闭。
+
 ### 方式一：Redis URL
 
 ```go
@@ -30,22 +32,23 @@ package main
 
 import (
     dt "github.com/Zany2/dtoken-go"
-    dtoken "github.com/Zany2/dtoken-go/global"
     "github.com/Zany2/dtoken-go/storage/redis"
 )
 
-func initDToken() {
+func main() {
     storage, err := redis.NewStorage("redis://localhost:6379/0")
     if err != nil {
         panic(err)
     }
 
-    if _, err = dtoken.BuildAndSetManager(
-        dt.NewBuilder().
-            Storage(storage),
-    ); err != nil {
+    auth, err := dt.NewBuilder().
+        Storage(storage).
+        Build()
+    if err != nil {
+        _ = storage.Close()
         panic(err)
     }
+    defer auth.Close()
 }
 ```
 
@@ -67,12 +70,14 @@ if err != nil {
     panic(err)
 }
 
-if _, err = dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(storage),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(storage).
+    Build()
+if err != nil {
+    _ = storage.Close()
     panic(err)
 }
+defer auth.Close()
 ```
 
 ### 方式三：复用现有 go-redis Client
@@ -86,12 +91,14 @@ rdb := goredis.NewClient(&goredis.Options{
 
 storage := redis.NewStorageFromClient(rdb)
 
-if _, err := dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(storage),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(storage).
+    Build()
+if err != nil {
+    _ = storage.Close()
     panic(err)
 }
+defer auth.Close()
 ```
 
 `NewStorageFromClient` 包装传入的客户端，不改变其连接配置。`Storage.Close()` 会关闭该客户端，Manager 默认也会接管注入的存储。若客户端还被其他业务共享，应通过 `ComponentOwnership{Storage: false, Logger: true, Pool: true}` 将存储设为调用方持有，待所有使用者停止后统一关闭，详见[多认证体系](../core/multi-auth_zh.md)。
@@ -123,19 +130,21 @@ if err != nil {
     panic(err)
 }
 
-if _, err = dtoken.BuildAndSetManager(
-    dt.NewBuilder().
-        Storage(storage).
-        TokenName("dtoken").
-        Timeout(2 * 60 * 60).
-        ActiveTimeout(30 * 60).
-        AutoRenew(true),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(storage).
+    TokenName("dtoken").
+    Timeout(2 * 60 * 60).
+    ActiveTimeout(30 * 60).
+    AutoRenew(true).
+    Build()
+if err != nil {
+    _ = storage.Close()
     panic(err)
 }
+defer auth.Close()
 ```
 
-这时登录态、Session、权限和角色数据使用 Redis。Nonce、OAuth2 在启用相应可选模块后也会使用该后端。
+这时登录态、Session、权限和角色数据使用 Redis。Nonce、OAuth2、Ticket 和 ShortKey 需要显式使用 auth.Storage()、auth.Codec() 及相同命名空间构建服务，才会复用该后端。
 
 ## Redis Key 结构
 
@@ -224,7 +233,7 @@ dt-gcf-<当前实例的 32 位十六进制字符串>:*
 当前 `NewStorageFromClient` 的签名是：
 
 ```go
-func NewStorageFromClient(client *redis.Client) *Storage
+func NewStorageFromClient(client *goredis.Client) *Storage
 ```
 
 这意味着：

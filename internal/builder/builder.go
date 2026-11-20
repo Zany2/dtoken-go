@@ -370,14 +370,6 @@ func (b *Builder) SetPool(pool adapter.Pool) *Builder {
 	return b
 }
 
-// SetNonceManager sets optional nonce manager SetNonceManager 设置可选 Nonce 管理器
-
-// SetOAuth2Manager sets optional OAuth2 manager SetOAuth2Manager 设置可选 OAuth2 管理器
-
-// SetTicketManager sets optional ticket manager. SetTicketManager 设置可选 Ticket 管理器。
-
-// SetShortKeyManager sets optional short key manager. SetShortKeyManager 设置可选短 Key 管理器。
-
 // UseManagerOption appends optional manager assembly option UseManagerOption 添加 Manager 可选模块装配项
 func (b *Builder) UseManagerOption(option manager.Option) *Builder {
 	// Skip nil options 跳过 nil 装配项

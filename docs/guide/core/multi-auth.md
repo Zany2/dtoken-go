@@ -1,10 +1,12 @@
 # Multi-Auth Systems
 
-Import aliases for code fragments: dt = github.com/Zany2/dtoken-go, dtoken = github.com/Zany2/dtoken-go/global.
+Import aliases for code fragments: dt = github.com/Zany2/dtoken-go, global = github.com/Zany2/dtoken-go/global.
 
 **[中文文档](../core/multi-auth_zh.md)**
 
 Multi-auth systems let one project maintain multiple isolated authentication systems, such as end users, administrators, and open-platform clients. DToken-Go separates them with `AuthType`.
+
+Multiple instances do not require global registration: build userAuth and adminAuth and inject each through WithAuth. The following examples additionally enable the optional registry.
 
 ## Core Concept
 
@@ -28,14 +30,14 @@ import (
 	"context"
 
 	dt "github.com/Zany2/dtoken-go"
-	dtoken "github.com/Zany2/dtoken-go/global"
+	global "github.com/Zany2/dtoken-go/global"
 	gindt "github.com/Zany2/dtoken-go/integrations/gin"
 	"github.com/Zany2/dtoken-go/storage/memory"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
-	defer dtoken.DeleteAllManager()
+	defer global.DeleteAllManager()
 	ctx := context.Background()
 	storage := memory.NewStorage()
 	sharedOwnership := dt.WithComponentOwnership(dt.ComponentOwnership{
@@ -54,7 +56,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	dtoken.SetAuth(userAuth)
+	global.SetAuth(userAuth)
 
 	adminAuth, err := dt.NewBuilder().
 		AuthType("admin").
@@ -66,10 +68,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	dtoken.SetAuth(adminAuth)
+	global.SetAuth(adminAuth)
 
-	userToken, _ := dtoken.Login(ctx, "10001", "", "", "user")
-	adminToken, _ := dtoken.Login(ctx, "admin-1", "", "", "admin")
+	userToken, _ := global.Login(ctx, "10001", "", "", "user")
+	adminToken, _ := global.Login(ctx, "admin-1", "", "", "admin")
 	_, _ = userToken, adminToken
 	registerRoutes(ctx, gin.New(), userAuth, adminAuth)
 }
@@ -77,12 +79,12 @@ func main() {
 
 Managers own and close Storage, Logger, and Pool components configured through a Builder by default. `ComponentOwnership` is a complete policy: every field must be set explicitly because omitted boolean fields are `false`. For shared components, set the corresponding field to `false`; the caller then closes that shared component once during application shutdown. A caller-owned Pool must remain running until all managers that use it have closed, because each manager waits for its accepted asynchronous tasks during shutdown.
 
-Call `CloseManager()` from the application's external shutdown flow after stopping new business requests and waiting for in-flight synchronous calls. Do not call it synchronously inside a manager task or event listener: shutdown waits for accepted tasks and listeners, which can include the caller itself. A callback that needs shutdown should signal the application lifecycle controller and return. Business calls after shutdown are not supported; `CloseManager` is not a request-draining barrier.
+Call `Auth.Close()` (or advanced `Manager.CloseManager()`) from the application's external shutdown flow after stopping new business requests and waiting for in-flight synchronous calls. Do not call it synchronously inside a manager task or event listener: shutdown waits for accepted tasks and listeners, which can include the caller itself. A callback that needs shutdown should signal the application lifecycle controller and return. Business calls after shutdown are not supported; `CloseManager` is not a request-draining barrier.
 
 `BuildAndSetManager` can also override and register `AuthType` during construction:
 
 ```go
-_, err := dtoken.BuildAndSetManager(
+_, err := global.BuildAndSetManager(
     dt.NewBuilder().
         KeyPrefix("dtoken").
         Storage(storage).
@@ -96,11 +98,11 @@ _, err := dtoken.BuildAndSetManager(
 Most global APIs accept an optional final `authType` argument:
 
 ```go
-token, err := dtoken.Login(ctx, "10001", "web", "chrome", "user")
+token, err := global.Login(ctx, "10001", "web", "chrome", "user")
 
-loginID, err := dtoken.GetLoginID(ctx, token, "user")
-err = dtoken.CheckPermission(ctx, "10001", "user:read", "user")
-roles, err := dtoken.GetRoles(ctx, "10001", "user")
+loginID, err := global.GetLoginID(ctx, token, "user")
+err = global.CheckPermission(ctx, "10001", "user:read", "user")
+roles, err := global.GetRoles(ctx, "10001", "user")
 ```
 
 If `authType` is omitted, the default auth system `auth:` is used.
@@ -123,7 +125,7 @@ func registerRoutes(ctx context.Context, r *gin.Engine, userAuth, adminAuth *dt.
 
 With this setup, `/api` only recognizes Tokens from `user`, and `/admin` only recognizes Tokens from `admin`.
 
-Each group binds its instance through `WithAuth`, independently of global registration. For dynamic registry lookup, explicitly configure `WithManagerResolver(dtoken.GetManager)` and select a namespace with `WithAuthType`.
+Each group binds its instance through `WithAuth`, independently of global registration. For dynamic registry lookup, explicitly configure `WithManagerResolver(global.GetManager)` and select a namespace with `WithAuthType`.
 
 ## Redis Key Isolation
 
@@ -149,7 +151,7 @@ dt.NewBuilder().
 Event data carries `AuthType`, which is useful for audit logs:
 
 ```go
-eventManager, _ := dtoken.GetEventManager("admin")
+eventManager, _ := global.GetEventManager("admin")
 ```
 
 `AccessProvider` receives `AuthType` through `AccessSubject`, so one permission service can return different permissions per auth system.

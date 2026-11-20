@@ -337,7 +337,7 @@ func TestManagerLoginWithOptionsDoesNotShareForeignSessionToken(t *testing.T) {
 		CreateTime: time.Now().Unix(),
 		Index:      1,
 	})
-	if err = mgr.saveToStorage(ctx, mgr.getSessionKey("stale-session-owner"), *staleSession); err != nil {
+	if err = mgr.saveToStorage(ctx, mgr.getSessionKey("stale-session-owner"), *staleSession, mgr.getExpiration()); err != nil {
 		t.Fatalf("save stale session error = %v", err)
 	}
 

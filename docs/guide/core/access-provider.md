@@ -11,7 +11,7 @@ Import aliases for code fragments: dt = github.com/Zany2/dtoken-go.
 DToken-Go supports two access sources:
 
 1. Permissions and roles stored in Session through APIs such as `AddPermissions` and `AddRoles`.
-2. Permissions and roles returned dynamically by `AccessProvider` or compatible callbacks.
+2. Permissions and roles returned dynamically by `AccessProvider` (including `AccessProviderFunc`).
 
 When `AccessProvider` is configured, non-`nil` data returned by the provider takes priority over Session data. If the provider returns `nil`, DToken-Go falls back to Session data.
 
@@ -97,29 +97,33 @@ PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, e
 }
 ```
 
-## Compatible Callbacks
+## Function Providers And Legacy Callback Migration
 
-Builder also keeps simpler callback APIs:
+The current builder uses `SetAccessProvider`. The old `SetCustomPermissionListFunc`, `SetCustomRoleListFunc`, and Ext variants are no longer provided. Move callbacks to `AccessProviderFunc.PermissionFunc` / `RoleFunc` and read namespace, account, device, and token from subject.
 
 ```go
-auth, err := dt.NewBuilder().
-    Storage(storage).
-    SetCustomPermissionListFunc(func(loginID, authType string) ([]string, error) {
-        return []string{"user:read"}, nil
-    }).
-    SetCustomRoleListFunc(func(loginID, authType string) ([]string, error) {
-        return []string{"user"}, nil
-    }).
-    SetCustomPermissionListExtFunc(func(loginID, device, deviceID, authType string) ([]string, error) {
-        if device == "app" {
-            return []string{"mobile:read"}, nil
+provider := dt.AccessProviderFunc{
+    PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
+        if subject.Device == "app" {
+            return []string{"mobile:read", "mobile:write"}, nil
         }
         return nil, nil
-    }).
-    Build()
+    },
+    RoleFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
+        if subject.LoginID == "10001" {
+            return []string{"admin"}, nil
+        }
+        return []string{}, nil
+    },
+}
+auth, err := dt.NewBuilder().SetAccessProvider(provider).Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
-New projects should prefer `SetAccessProvider` because it is more expressive.
+Account queries do not populate token or device fields. Use token queries or framework authentication when those fields are needed. Only nil results fall back to the session; a non-nil empty slice explicitly denies permissions or roles.
 
 ## Use With Multi-Auth Systems
 

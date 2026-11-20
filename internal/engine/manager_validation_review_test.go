@@ -15,7 +15,7 @@ import (
 // TestManagerValidationRejectsInvalidAccountSession checks identity APIs against the same session failures. TestManagerValidationRejectsInvalidAccountSession 验证各身份接口一致拒绝无效账号 Session。
 func TestManagerValidationRejectsInvalidAccountSession(t *testing.T) {
 	ctx := context.Background()
-	for _, state := range []string{"missing", "foreign namespace", "malformed", "read failure"} {
+	for _, state := range []string{"missing", "null", "foreign namespace", "malformed", "read failure"} {
 		t.Run(state, func(t *testing.T) {
 			mgr := newTestManager(t, func(cfg *config.Config) { cfg.ActiveTimeout = 30 })
 			token, err := mgr.Login(ctx, "session-validation", "web", "browser")
@@ -30,6 +30,8 @@ func TestManagerValidationRejectsInvalidAccountSession(t *testing.T) {
 			switch state {
 			case "missing":
 				err = mgr.storage.Delete(ctx, key)
+			case "null":
+				err = mgr.saveToStorage(ctx, key, nil)
 			case "foreign namespace":
 				err = mgr.saveToStorage(ctx, key, Session{AuthType: "foreign:", LoginID: "session-validation"})
 			case "malformed":

@@ -80,6 +80,11 @@ func (m *Manager) handleConcurrency(
 			return result, shareErr
 		}
 		if token != "" {
+			limitResult, limitErr := m.enforceSharedLoginLimit(ctx, sess, token, policy)
+			result.terminalEvents = append(result.terminalEvents, limitResult.terminalEvents...)
+			if limitErr != nil {
+				return result, limitErr
+			}
 			result.reuseToken = token
 			result.handled = true
 			return result, nil
@@ -125,6 +130,50 @@ func (m *Manager) handleConcurrency(
 	}
 
 	// No concurrency action needed 无需并发处理。
+	return result, nil
+}
+
+// enforceSharedLoginLimit retains the shared terminal and retires the oldest other terminals above the limit. enforceSharedLoginLimit 保留共享终端并按旧到新淘汰超额的其他终端。
+func (m *Manager) enforceSharedLoginLimit(ctx context.Context, sess *Session, token string, policy loginPolicy) (concurrencyResult, error) {
+	var result concurrencyResult
+	var shared *TerminalInfo
+	for i := range sess.TerminalInfos {
+		if sess.TerminalInfos[i].Token == token {
+			shared = &sess.TerminalInfos[i]
+			break
+		}
+	}
+	if shared == nil {
+		return result, derror.ErrInvalidToken
+	}
+	if policy.maxLoginCount <= 0 {
+		return result, nil
+	}
+
+	// Snapshot the actual shared device scope before removals mutate the session slice. 移除操作修改会话切片前，按共享终端的实际设备类型保存作用域快照。
+	terminals := sessionFilterTerminals(sess, func(terminal TerminalInfo) bool {
+		return m.config.ConcurrencyScope == config.ConcurrencyScopeAccount || terminal.Device == shared.Device
+	})
+	count := int64(len(terminals))
+	for _, terminal := range terminals {
+		// Sharing adds no terminal and must keep the token returned by this login alive. 共享不新增终端，且必须保留本次登录返回的 Token。
+		if count <= policy.maxLoginCount {
+			break
+		}
+		if terminal.Token == token {
+			continue
+		}
+		removed, ok := sessionRemoveTerminalByToken(sess, terminal.Token)
+		if !ok {
+			return result, derror.ErrLoginLimitExceeded
+		}
+		retired, _, err := m.retireRemovedTerminal(ctx, sess, removed, policy.overflowLogoutMode)
+		if err != nil {
+			return result, err
+		}
+		addTerminalLifecycleEvents(&result, []TerminalInfo{retired}, tokenStateFromLogoutMode(policy.overflowLogoutMode))
+		count--
+	}
 	return result, nil
 }
 
@@ -205,7 +254,7 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 			continue
 		}
 
-		alive, err := m.checkTerminalTokenAliveWithContext(ctx, candidate.Token, candidateInfo, sess)
+		alive, err := m.checkTerminalTokenAliveWithContext(ctx, candidate.Token, candidateRecord, sess)
 		if err != nil {
 			return "", err
 		}
@@ -239,7 +288,7 @@ func (m *Manager) getTokenAndShare(ctx context.Context, sess *Session, device, d
 	// Renew or reset metadata 续期或重置元数据
 	if m.config.RenewInterval > 0 {
 		// Refresh renew marker 刷新续期标记。
-		if err := m.storage.Set(ctx, m.getRenewKey(terminalInfo.Token), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {
+		if err := m.setRenewMarker(ctx, terminalInfo.Token, expiration); err != nil {
 			return "", fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
 	}

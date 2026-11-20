@@ -2,6 +2,8 @@
 
 [English](../core/disable.md) | 中文文档
 
+本文使用 `global` 包演示已注册实例的全局调用，`dt` 表示根包。先构建 Auth 并调用 `global.SetAuth(auth)`；未指定认证类型时使用默认 `auth:`。实例调用及参数差异见 [Auth API](../../api/auth_zh.md)。
+
 DToken-Go 的封禁体系不只支持账号封禁，还支持服务封禁、服务等级封禁、设备类型封禁和具体设备封禁。封禁状态会参与登录态校验，被封禁对象会在访问时得到对应错误。
 
 ## 封禁类型
@@ -24,16 +26,16 @@ DToken-Go 的封禁体系不只支持账号封禁，还支持服务封禁、服�
 ctx := context.Background()
 
 // 封禁账号 2 小时，并记录原因。
-err := dtoken.Disable(ctx, "10001", 2*time.Hour, "risk")
+err := global.Disable(ctx, "10001", 2*time.Hour, "risk")
 
-disabled := dtoken.IsDisable(ctx, "10001")
-err = dtoken.CheckDisable(ctx, "10001")
+disabled := global.IsDisable(ctx, "10001")
+err = global.CheckDisable(ctx, "10001")
 
-info, err := dtoken.GetDisableInfo(ctx, "10001")
-ttl, err := dtoken.GetDisableTTL(ctx, "10001")
+info, err := global.GetDisableInfo(ctx, "10001")
+ttl, err := global.GetDisableTTL(ctx, "10001")
 
 // 解除账号封禁。
-err = dtoken.Untie(ctx, "10001")
+err = global.Untie(ctx, "10001")
 ```
 
 `GetDisableTTL` 返回值：
@@ -49,16 +51,16 @@ err = dtoken.Untie(ctx, "10001")
 服务封禁适合只限制某个业务能力，而不是踢掉整个账号。
 
 ```go
-err := dtoken.DisableService(ctx, "10001", "comment", 30*time.Minute)
-err = dtoken.DisableServiceWithReason(ctx, "10001", "comment", 30*time.Minute, "spam")
+err := global.DisableService(ctx, "10001", "comment", 30*time.Minute)
+err = global.DisableServiceWithReason(ctx, "10001", "comment", 30*time.Minute, "spam")
 
-disabled := dtoken.IsDisableService(ctx, "10001", "comment")
-err = dtoken.CheckDisableService(ctx, "10001", []string{"comment", "post"})
+disabled := global.IsDisableService(ctx, "10001", "comment")
+err = global.CheckDisableService(ctx, "10001", []string{"comment", "post"})
 
-info, err := dtoken.GetDisableServiceInfo(ctx, "10001", "comment")
-ttl, err := dtoken.GetDisableServiceTTL(ctx, "10001", "comment")
+info, err := global.GetDisableServiceInfo(ctx, "10001", "comment")
+ttl, err := global.GetDisableServiceTTL(ctx, "10001", "comment")
 
-err = dtoken.UntieService(ctx, "10001", "comment")
+err = global.UntieService(ctx, "10001", "comment")
 ```
 
 ## 服务等级封禁
@@ -66,13 +68,13 @@ err = dtoken.UntieService(ctx, "10001", "comment")
 服务等级封禁会记录一个整数等级。校验时，如果实际封禁等级大于等于目标等级，则认为命中封禁。
 
 ```go
-err := dtoken.DisableServiceLevel(ctx, "10001", "pay", 3, time.Hour)
+err := global.DisableServiceLevel(ctx, "10001", "pay", 3, time.Hour)
 
-dtoken.IsDisableServiceLevel(ctx, "10001", "pay", 2) // true
-dtoken.IsDisableServiceLevel(ctx, "10001", "pay", 3) // true
-dtoken.IsDisableServiceLevel(ctx, "10001", "pay", 4) // false
+global.IsDisableServiceLevel(ctx, "10001", "pay", 2) // true
+global.IsDisableServiceLevel(ctx, "10001", "pay", 3) // true
+global.IsDisableServiceLevel(ctx, "10001", "pay", 4) // false
 
-err = dtoken.CheckDisableServiceLevel(ctx, "10001", "pay", 3)
+err = global.CheckDisableServiceLevel(ctx, "10001", "pay", 3)
 ```
 
 这个能力适合把同一个服务拆成多个限制层级，例如：
@@ -91,26 +93,26 @@ err = dtoken.CheckDisableServiceLevel(ctx, "10001", "pay", 3)
 
 ```go
 // 禁止账号在 app 设备类型访问。
-err := dtoken.DisableDevice(ctx, "10001", "app", time.Hour)
-disabled := dtoken.IsDisableDevice(ctx, "10001", "app")
-err = dtoken.CheckDisableDevice(ctx, "10001", "app")
-err = dtoken.UntieDevice(ctx, "10001", "app")
+err := global.DisableDevice(ctx, "10001", "app", time.Hour)
+disabled := global.IsDisableDevice(ctx, "10001", "app")
+err = global.CheckDisableDevice(ctx, "10001", "app")
+err = global.UntieDevice(ctx, "10001", "app")
 
 // 禁止账号在某个具体设备访问。
-err = dtoken.DisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001", time.Hour)
-disabled = dtoken.IsDisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
-err = dtoken.CheckDisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
-err = dtoken.UntieDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
+err = global.DisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001", time.Hour)
+disabled = global.IsDisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
+err = global.CheckDisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
+err = global.UntieDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
 ```
 
 查询封禁详情：
 
 ```go
-deviceInfo, err := dtoken.GetDisableDeviceInfo(ctx, "10001", "app")
-deviceTTL, err := dtoken.GetDisableDeviceTTL(ctx, "10001", "app")
+deviceInfo, err := global.GetDisableDeviceInfo(ctx, "10001", "app")
+deviceTTL, err := global.GetDisableDeviceTTL(ctx, "10001", "app")
 
-concreteInfo, err := dtoken.GetDisableDeviceAndDeviceIDInfo(ctx, "10001", "app", "iphone-001")
-concreteTTL, err := dtoken.GetDisableDeviceAndDeviceIDTTL(ctx, "10001", "app", "iphone-001")
+concreteInfo, err := global.GetDisableDeviceAndDeviceIDInfo(ctx, "10001", "app", "iphone-001")
+concreteTTL, err := global.GetDisableDeviceAndDeviceIDTTL(ctx, "10001", "app", "iphone-001")
 ```
 
 ## 和登录态校验的关系
@@ -127,8 +129,8 @@ concreteTTL, err := dtoken.GetDisableDeviceAndDeviceIDTTL(ctx, "10001", "app", "
 封禁 API 支持可选 `authType`：
 
 ```go
-err := dtoken.Disable(ctx, "admin-1", time.Hour, "risk", "admin")
-disabled := dtoken.IsDisable(ctx, "admin-1", "admin")
+err := global.Disable(ctx, "admin-1", time.Hour, "risk", "admin")
+disabled := global.IsDisable(ctx, "admin-1", "admin")
 ```
 
 不同 `AuthType` 的封禁数据互相隔离。

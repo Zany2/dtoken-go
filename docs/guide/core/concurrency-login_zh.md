@@ -4,6 +4,8 @@
 
 [English](../core/concurrency-login.md) | 中文文档
 
+config 表示 github.com/Zany2/dtoken-go/config。以下配置在构建 Auth 时生效；账号写锁属于单个引擎，不等同于跨进程的分布式并发控制。
+
 ## 概览
 
 DToken-Go 的并发登录由几个配置共同决定：
@@ -22,9 +24,13 @@ DToken-Go 的并发登录由几个配置共同决定：
 `IsConcurrent(true)` 允许同一账号同时存在多个在线终端。
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     IsConcurrent(true).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 `IsConcurrent(false)` 表示同一作用域下不允许并发登录，新登录会按 `ReplacedLoginExitMode` 处理。
@@ -47,11 +53,15 @@ mgr, err := dt.NewBuilder().
 `MaxLoginCount` 控制同一作用域下允许保留的最大登录数量。
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     IsConcurrent(true).
     IsShare(false).
     MaxLoginCount(2).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 超过数量后，会按 `OverflowLogoutMode` 处理最旧的终端。

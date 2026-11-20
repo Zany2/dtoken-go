@@ -1,12 +1,14 @@
 [English](dtoken.md) | 中文文档
 
-# DToken API 文档
+# 全局 API 参考
 
 ## 概述
 
-本页使用 dtoken 作为 github.com/Zany2/dtoken-go/global 的导入别名，记录全局认证 API。根包提供实例 API，Nonce、OAuth2、Ticket 和 ShortKey 通过独立服务调用。 本页 `dt` 指向根包 `github.com/Zany2/dtoken-go`，用于公开模型与引擎扩展类型。
+本页使用 global 作为 github.com/Zany2/dtoken-go/global 的导入别名，记录全局认证 API。根包提供实例 API，Nonce、OAuth2、Ticket 和 ShortKey 通过独立服务调用。 本页 `dt` 指向根包 `github.com/Zany2/dtoken-go`，用于公开模型与引擎扩展类型。
 
-当前版本的 `dtoken` 以 `context.Context` 为统一入口，认证体系可通过可选 `authType` 参数区分。
+当前版本的 `global` 以 `context.Context` 为统一入口，认证体系可通过可选 `authType` 参数区分。
+
+新应用优先使用 [Auth 实例 API](auth_zh.md)。本页函数签名属于 global 包；类型化选项以根包声明为准，示例中的 dt 为根包别名。
 
 ## 初始化
 
@@ -19,7 +21,7 @@ import (
 	"fmt"
 
 	dt "github.com/Zany2/dtoken-go"
-	dtoken "github.com/Zany2/dtoken-go/global"
+	global "github.com/Zany2/dtoken-go/global"
 )
 
 func main() {
@@ -27,9 +29,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	dtoken.SetAuth(auth)
-	defer dtoken.DeleteAllManager()
-	token, err := dtoken.Login(context.Background(), "alice")
+	global.SetAuth(auth)
+	defer global.DeleteAllManager()
+	token, err := global.Login(context.Background(), "alice")
 	if err != nil {
 		panic(err)
 	}
@@ -59,9 +61,9 @@ func Login(ctx context.Context, loginID string, params ...string) (string, error
 
 **示例**：
 ```go
-token, _ := dtoken.Login(ctx, "1000")
-token, _ := dtoken.Login(ctx, "1000", "mobile")
-token, _ := dtoken.Login(ctx, "1000", "mobile", "device-001", "user")
+token, _ := global.Login(ctx, "1000")
+token, _ := global.Login(ctx, "1000", "mobile")
+token, _ := global.Login(ctx, "1000", "mobile", "device-001", "user")
 ```
 
 ### LoginWithRefreshToken
@@ -71,12 +73,12 @@ token, _ := dtoken.Login(ctx, "1000", "mobile", "device-001", "user")
 **签名**：
 ```go
 func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*dt.RefreshTokenPair, error)
-func LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions, authType ...string) (*dt.RefreshTokenPair, error)
+func LoginWithRefreshTokenOptions(ctx context.Context, opts dt.RefreshTokenOptions, authType ...string) (*dt.RefreshTokenPair, error)
 ```
 
 **示例**：
 ```go
-pair, err := dtoken.LoginWithRefreshToken(ctx, "1000", "web", "browser-001")
+pair, err := global.LoginWithRefreshToken(ctx, "1000", "web", "browser-001")
 if err != nil {
     return err
 }
@@ -98,18 +100,18 @@ func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...st
 
 **示例**：
 ```go
-nextPair, err := dtoken.RefreshToken(ctx, pair.RefreshToken)
+nextPair, err := global.RefreshToken(ctx, pair.RefreshToken)
 if err != nil {
     return err
 }
 
-ttl, err := dtoken.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
+ttl, err := global.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
 if err != nil {
     return err
 }
 fmt.Println(ttl)
 
-if err := dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken); err != nil {
+if err := global.RevokeRefreshToken(ctx, nextPair.RefreshToken); err != nil {
     return err
 }
 ```
@@ -125,7 +127,7 @@ func IntrospectToken(ctx context.Context, tokenValue string, authType ...string)
 
 **示例**：
 ```go
-info, err := dtoken.IntrospectToken(ctx, token)
+info, err := global.IntrospectToken(ctx, token)
 if err != nil {
     return err
 }
@@ -145,7 +147,7 @@ func IsLogin(ctx context.Context, tokenValue string, authType ...string) bool
 
 **示例**：
 ```go
-if dtoken.IsLogin(ctx, token) {
+if global.IsLogin(ctx, token) {
     // 已登录
 }
 ```
@@ -161,7 +163,7 @@ func GetLoginID(ctx context.Context, tokenValue string, authType ...string) (str
 
 **示例**：
 ```go
-loginID, err := dtoken.GetLoginID(ctx, token)
+loginID, err := global.GetLoginID(ctx, token)
 ```
 
 ### Logout
@@ -175,7 +177,7 @@ func Logout(ctx context.Context, tokenValue string, authType ...string) error
 
 **示例**：
 ```go
-_ = dtoken.Logout(ctx, token)
+_ = global.Logout(ctx, token)
 ```
 
 ### Kickout
@@ -189,7 +191,7 @@ func Kickout(ctx context.Context, tokenValue string, authType ...string) error
 
 **示例**：
 ```go
-_ = dtoken.Kickout(ctx, token)
+_ = global.Kickout(ctx, token)
 ```
 
 ### 常用扩展方法
@@ -197,7 +199,7 @@ _ = dtoken.Kickout(ctx, token)
 ```go
 func LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, params ...string) (string, error)
 func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*dt.RefreshTokenPair, error)
-func LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions, authType ...string) (*dt.RefreshTokenPair, error)
+func LoginWithRefreshTokenOptions(ctx context.Context, opts dt.RefreshTokenOptions, authType ...string) (*dt.RefreshTokenPair, error)
 func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*dt.RefreshTokenPair, error)
 func RevokeRefreshToken(ctx context.Context, refreshToken string, authType ...string) error
 func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...string) (int64, error)
@@ -235,7 +237,7 @@ func AddPermissions(ctx context.Context, loginID string, permissions []string, a
 
 **示例**：
 ```go
-_ = dtoken.AddPermissions(ctx, "1000", []string{
+_ = global.AddPermissions(ctx, "1000", []string{
     "user:read",
     "user:write",
     "admin:*",
@@ -253,7 +255,7 @@ func HasPermission(ctx context.Context, loginID string, permission string, authT
 
 **示例**：
 ```go
-if dtoken.HasPermission(ctx, "1000", "user:read") {
+if global.HasPermission(ctx, "1000", "user:read") {
     // 有权限
 }
 ```
@@ -305,7 +307,7 @@ func AddRoles(ctx context.Context, loginID string, roles []string, authType ...s
 
 **示例**：
 ```go
-_ = dtoken.AddRoles(ctx, "1000", []string{"admin", "manager"})
+_ = global.AddRoles(ctx, "1000", []string{"admin", "manager"})
 ```
 
 ### HasRole
@@ -319,7 +321,7 @@ func HasRole(ctx context.Context, loginID string, role string, authType ...strin
 
 **示例**：
 ```go
-if dtoken.HasRole(ctx, "1000", "admin") {
+if global.HasRole(ctx, "1000", "admin") {
     // 有 admin 角色
 }
 ```
@@ -330,8 +332,8 @@ if dtoken.HasRole(ctx, "1000", "admin") {
 
 **示例**：
 ```go
-dtoken.HasRolesAnd(ctx, "1000", []string{"admin", "manager"})
-dtoken.HasRolesOr(ctx, "1000", []string{"admin", "super-admin"})
+global.HasRolesAnd(ctx, "1000", []string{"admin", "manager"})
+global.HasRolesOr(ctx, "1000", []string{"admin", "super-admin"})
 ```
 
 ### 常用扩展方法
@@ -368,7 +370,7 @@ func Disable(ctx context.Context, loginID string, duration time.Duration, reason
 
 **示例**：
 ```go
-_ = dtoken.Disable(ctx, "1000", 1*time.Hour, "manual disable")
+_ = global.Disable(ctx, "1000", 1*time.Hour, "manual disable")
 ```
 
 ### IsDisable
@@ -438,17 +440,17 @@ func GetSessionByToken(ctx context.Context, tokenValue string, authType ...strin
 
 **示例**：
 ```go
-if err := dtoken.SetSessionValue(ctx, "1000", "nickname", "张三"); err != nil {
+if err := global.SetSessionValue(ctx, "1000", "nickname", "张三"); err != nil {
     return err
 }
-nickname, found, err := dtoken.GetSessionValue(ctx, "1000", "nickname")
+nickname, found, err := global.GetSessionValue(ctx, "1000", "nickname")
 if err != nil {
     return err
 }
 fmt.Println(nickname, found)
 ```
 
-`GetSession` 和 `GetSessionByToken` 返回解码后的快照，调用 `sess.Set(...)` 只修改本地值。应使用 `SetSessionValue` 或 `SetSessionValueByToken` 持久化账号数据，同时保留 Session 的有效期。
+`GetSession` 和 `GetSessionByToken` 返回解码后的快照，直接修改返回结构的 `Data` map 只修改本地值。应使用 `SetSessionValue` 或 `SetSessionValueByToken` 持久化账号数据，同时保留 Session 的有效期。
 
 ### 常用扩展方法
 
@@ -514,7 +516,7 @@ func DeleteAllManager()
 
 `SetManager` 会替换并立即关闭相同认证类型的旧 Manager。运行期替换前应先确保旧 Manager 不再接收新请求且没有正在执行的请求；Manager 被替换或关闭后不得再次注册。`DeleteManager` 和 `DeleteAllManager` 会先从注册表移除 Manager，再释放其资源。多个 Manager 共享 Storage、Logger 或 Pool 时，应使用 `dt.WithComponentOwnership` 将共享组件标记为调用方持有。
 
-## 完整方法列表
+## 常用方法索引
 
 ### Manager 生命周期
 - `SetAuth`
@@ -564,6 +566,12 @@ func DeleteAllManager()
 - `ForEachTerminalByDevice`
 - `GetSession`
 - `GetSessionByToken`
+- `SetSessionValue`
+- `GetSessionValue`
+- `DeleteSessionValue`
+- `SetSessionValueByToken`
+- `GetSessionValueByToken`
+- `DeleteSessionValueByToken`
 - `GetTokenValueListByLoginID`
 - `GetTokenValueListByDeviceAndDeviceID`
 - `GetTokenValueListByDevice`
@@ -627,7 +635,6 @@ func DeleteAllManager()
 - `CheckRole`
 - `CheckRoleAnd`
 - `CheckRoleOr`
-
 
 ## 下一步
 

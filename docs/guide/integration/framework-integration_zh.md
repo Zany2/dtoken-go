@@ -15,7 +15,6 @@
 ```bash
 go get github.com/Zany2/dtoken-go
 go get github.com/Zany2/dtoken-go/integrations/gin
-go get github.com/Zany2/dtoken-go/storage/memory
 ```
 
 其他集成包同理：
@@ -31,6 +30,8 @@ go get github.com/Zany2/dtoken-go/integrations/beego
 ```
 
 ## 最小框架接入示例
+
+以下片段使用已构建的实例，省略服务启动与业务凭据验证。完整示例中的演示账号应在真实应用中替换为经过验证的身份。
 
 框架包提供中间件、请求上下文助手及共享 HTTP 类型，`NewBuilder` 转发根包构建器。实例 API 从根包导入，全局 API 从 `global` 导入。下面的示例显式绑定实例，完整可运行示例位于 `examples/`。
 
@@ -156,73 +157,63 @@ auth.Get("/me", func(c *gofiber.Ctx) error {
 package main
 
 import (
-    dt "github.com/Zany2/dtoken-go"
-    dtoken "github.com/Zany2/dtoken-go/global"
-    "context"
     "net/http"
 
-    "github.com/Zany2/dtoken-go/storage/memory"
+    dt "github.com/Zany2/dtoken-go"
     gindt "github.com/Zany2/dtoken-go/integrations/gin"
     "github.com/gin-gonic/gin"
 )
 
 func main() {
-    ctx := context.Background()
-    storage := memory.NewStorage()
-
-    mgr, err := dt.NewBuilder().
-        Storage(storage).
-        TokenName("token").
-        Timeout(2 * 60 * 60).
-        Build()
+    auth, err := dt.NewBuilder().TokenName("Authorization").Build()
     if err != nil {
         panic(err)
     }
-    dtoken.SetManager(mgr.Manager())
+    defer auth.Close()
 
-    r := gin.Default()
-    r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(mgr)))
-
-    r.POST("/login", func(c *gin.Context) {
-        token, err := dtoken.Login(ctx, "1000")
+    router := gin.Default()
+    router.Use(gindt.Context(auth))
+    router.POST("/login", func(c *gin.Context) {
+        token, err := auth.LoginID(c.Request.Context(), "user-1001")
         if err != nil {
-            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
             return
         }
         c.JSON(http.StatusOK, gin.H{"token": token})
     })
-
-    user := r.Group("/user")
-    user.Use(gindt.AuthMiddleware(ctx))
-    user.GET("/info", func(c *gin.Context) {
-        dCtx, _ := gindt.GetDTokenContext(c)
-        token := dCtx.GetTokenValue()
-        loginID, _ := dtoken.GetLoginID(ctx, token)
+    users := router.Group("/user")
+    users.Use(gindt.RequireLogin())
+    users.GET("/me", func(c *gin.Context) {
+        loginID, err := gindt.GetLoginIDByContext(c)
+        if err != nil {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+            return
+        }
         c.JSON(http.StatusOK, gin.H{"loginId": loginID})
     })
-
-    _ = r.Run(":8080")
+    if err := router.Run(":8080"); err != nil {
+        panic(err)
+    }
 }
 ```
 
 ## 常用 API
 
-核心认证 API 来自 `dtoken`：
+核心认证通过已构建的 Auth 调用。下例 authInstance 为实例，dt 为根包别名：
 
 ```go
-dtoken.SetManager(mgr.Manager())
-mgr, err := dtoken.GetManager()
-
-token, err := dtoken.Login(ctx, "1000")
-ok := dtoken.IsLogin(ctx, token)
-loginID, err := dtoken.GetLoginID(ctx, token)
-err = dtoken.Logout(ctx, token)
-
-err = dtoken.AddPermissions(ctx, "1000", []string{"user:read"})
-hasPermission := dtoken.HasPermission(ctx, "1000", "user:read")
-
-err = dtoken.AddRoles(ctx, "1000", []string{"admin"})
-hasRole := dtoken.HasRole(ctx, "1000", "admin")
+token, err := authInstance.LoginID(ctx, "1000")
+ok := authInstance.IsLogin(ctx, token)
+loginID, err := authInstance.GetLoginID(ctx, token)
+err = authInstance.AddPermissions(ctx, dt.PermissionOptions{
+    LoginID: "1000", Permissions: []string{"user:read"},
+})
+hasPermission := authInstance.HasPermission(ctx, "1000", "user:read")
+err = authInstance.AddRoles(ctx, dt.RoleOptions{
+    LoginID: "1000", Roles: []string{"admin"},
+})
+hasRole := authInstance.HasRole(ctx, "1000", "admin")
+err = authInstance.LogoutByToken(ctx, token)
 ```
 
 框架集成包提供中间件：
@@ -264,22 +255,22 @@ r.GET("/admin",
 
 ### 指定认证体系
 
-多认证体系场景下，可以通过 `WithAuthType` 让不同路由组使用不同 Manager：
+已通过 global.SetAuth 注册 user/admin 实例时，可以显式注入解析器。下例 global 是 github.com/Zany2/dtoken-go/global 的导入名；只指定 WithAuthType 不会自动访问注册表：
 
 ```go
 userGroup := r.Group("/api")
-userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("user")))
+userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(global.GetManager), gindt.WithAuthType("user")))
 
 adminGroup := r.Group("/admin")
-adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("admin")))
-adminGroup.Use(gindt.PermissionMiddleware(ctx, []string{"admin:read"}, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("admin")))
+adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(global.GetManager), gindt.WithAuthType("admin")))
+adminGroup.Use(gindt.PermissionMiddleware(ctx, []string{"admin:read"}, gindt.WithManagerResolver(global.GetManager), gindt.WithAuthType("admin")))
 ```
 
 如果应用不使用全局 Manager 注册表，可以通过 `WithManager` 直接注入 Manager。显式注入的 Manager 优先于 `WithAuthType`，并适用于上下文、认证、访问、权限和角色中间件：
 
 ```go
-auth.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(mgr)))
-auth.Use(gindt.AuthMiddleware(ctx, gindt.WithAuth(mgr)))
+userGroup.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithManager(authInstance.Manager())))
+userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManager(authInstance.Manager())))
 ```
 
 注解沿用请求实例；指定其他 AuthType 时，须在注册中间件或注解上配置 ManagerResolver。
@@ -312,7 +303,7 @@ r.GET("/console",
 
 ## Chi 请求处理
 
-通过 `RegisterDTokenContextMiddleware(WithManager(mgr))` 注册后，Chi 鉴权中间件未显式指定 Manager 或认证类型时，会继承请求中的 Manager。`WithManager` 优先级最高；显式 `WithAuthType` 则从注册表选择 Manager。鉴权中间件和注解处理器会将上下文绑定到当前请求和响应写入器，包括上游中间件做出的修改。替换请求或包装响应写入器的中间件应放在业务处理器使用的 DToken 中间件之前。
+通过 `RegisterDTokenContextMiddleware(WithManager(mgr))` 注册后，Chi 鉴权中间件未显式指定 Manager 或认证类型时，会继承请求中的 Manager。`WithManager` 优先级最高；显式 `WithAuthType` 通过已配置的 ManagerResolver 选择实例，未配置解析器时只能匹配当前请求实例。鉴权中间件和注解处理器会将上下文绑定到当前请求和响应写入器，包括上游中间件做出的修改。替换请求或包装响应写入器的中间件应放在业务处理器使用的 DToken 中间件之前。
 
 `GetPostForm` 只读取请求体字段，因此关闭 `IsReadQuery` 后，即使启用了 `IsReadBody`，也不会接受仅在查询参数中的 Token。`GetClientIP` 读取 `RemoteAddr`，不会直接信任 `X-Real-IP` 或 `X-Forwarded-For`。代理部署应在 DToken 之前使用中间件验证可信代理地址，并规范化 `RemoteAddr`。
 
@@ -320,7 +311,7 @@ r.GET("/console",
 
 ## Echo 请求处理
 
-Echo 鉴权中间件、注解处理器和钩子使用 `c.Request().Context()` 获取请求值、截止时间与取消信号。注册处理器时的 `ctx` 参数保留以兼容现有 API。通过 `WithManager(mgr)` 注册后，未显式指定 Manager 或认证类型的鉴权会继承请求 Manager。`WithManager` 优先于 `WithAuthType`，显式认证类型则从注册表选择 Manager。上下文门面操作（包括续期）使用请求中的 Manager。
+Echo 鉴权中间件、注解处理器和钩子使用 `c.Request().Context()` 获取请求值、截止时间与取消信号。注册处理器时的 `ctx` 参数保留以兼容现有 API。通过 `WithManager(mgr)` 注册后，未显式指定 Manager 或认证类型的鉴权会继承请求 Manager。`WithManager` 优先于 `WithAuthType`，显式认证类型通过已配置的 ManagerResolver 选择实例，未配置解析器时只能匹配当前请求实例。上下文门面操作（包括续期）使用请求中的 Manager。
 
 Token 提取在 `SetRequest` 后读取当前请求 URL，表单字段只从请求体读取。关闭 `IsReadQuery` 后，即使启用了请求体读取，也不会接受仅来自查询参数的 Token。钩子中的 `req.Next()` 最多调用一次后续处理并保留其返回错误；`req.Exit()` 或对已注册请求适配器调用 `Abort()` 会停止 DToken 处理。显式空注解会触发参数错误处理。
 
@@ -389,7 +380,7 @@ Query Token 仅读取 URL 查询参数，Body Token 仅读取 URL 编码或 mult
 | Kratos | `github.com/Zany2/dtoken-go/integrations/kratos` | `kratosdt` |
 | Beego | `github.com/Zany2/dtoken-go/integrations/beego` | `beegodt` |
 
-## 什么时候直接导入 core
+## 框架无关的应用与扩展
 
 与框架无关的应用和共享库使用根包 `dtoken`，通过公开的 `Manager`、`ManagerOption`、`Strategy` 扩展，实现 `contract` 中的接口，并从各自组件包导入实现。`internal/builder`、`internal/defaults`、`internal/engine` 属于私有实现，不作为外部导入入口。需要框架请求处理时再导入对应集成包。
 

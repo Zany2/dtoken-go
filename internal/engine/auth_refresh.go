@@ -183,6 +183,42 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 		return nil, err
 	}
 
+	// Natural access expiry permits refresh, but inactivity of the original lifecycle must use the same retirement path as authentication. 访问令牌自然到期允许刷新，但原生命周期不活跃超时须沿用鉴权的下线流程。
+	access, accessErr := m.getTokenRecord(ctx, info.AccessToken)
+	if accessErr != nil && !isTokenInactiveError(accessErr) {
+		return nil, accessErr
+	}
+	if accessErr == nil && refreshMatchesAccessRecord(info, access) {
+		_, _, expired, inspectErr := m.inspectLoginToken(ctx, info.AccessToken, access)
+		if inspectErr != nil {
+			return nil, inspectErr
+		}
+		if expired {
+			sess, sessionErr := m.getSession(ctx, info.LoginID)
+			if sessionErr != nil && !errors.Is(sessionErr, derror.ErrSessionNotFound) {
+				return nil, sessionErr
+			}
+			attached, transitioned, timeoutErr := m.markActiveTimeoutLocked(ctx, info.LoginID, info.AccessToken, sess, access)
+			if timeoutErr != nil {
+				return nil, timeoutErr
+			}
+
+			// Revoke the supplied credential even if its reverse lookup has already disappeared. 即使反向索引已消失，也撤销本次提供的刷新凭据。
+			if err = m.storage.Delete(ctx, m.getRefreshTokenKey(refreshToken)); err != nil {
+				return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+			}
+			unlock()
+			unlock = func() {}
+			if transitioned {
+				if attached && len(sess.TerminalInfos) == 0 {
+					m.triggerEvent(listener.EventDestroySession, info.LoginID, "", "", "", nil)
+				}
+				m.triggerEvent(listener.EventActiveTimeout, info.LoginID, info.Device, info.DeviceID, info.AccessToken, nil)
+			}
+			return nil, derror.ErrActiveTimeout
+		}
+	}
+
 	// Prefer atomic consumption and fall back to the account lock for basic storage implementations. 优先原子消费；基础存储实现回退为账号锁保护的读取删除。
 	consumedInfo, err := m.consumeRefreshToken(ctx, refreshToken)
 	if err != nil {
@@ -203,7 +239,7 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 	unlock()
 	unlock = func() {}
 
-	// Create the replacement pair without applying normal concurrency eviction again. 创建替换令牌对时跳过常规并发顶替处理。
+	// Let replacement login recheck whether the original lifecycle still owns a terminal slot. 由替换登录重新检查原生命周期是否仍占有终端名额。
 	replacementAccessID := rand.Text()
 	pair, err := m.loginWithRefreshTokenOptionsInternal(ctx, RefreshTokenOptions{
 		LoginOptions: LoginOptions{
@@ -216,7 +252,7 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 			TerminalExtra: info.TerminalExtra,
 		},
 		RefreshTimeout: secondsToDuration(info.ExpiresIn),
-	}, loginInternalOptions{skipConcurrencyControl: true, accessID: replacementAccessID})
+	}, loginInternalOptions{rotation: info, accessID: replacementAccessID})
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +362,7 @@ func (m *Manager) issueRefreshToken(ctx context.Context, expected *refreshTokenR
 	if tokenInfo.Revoked {
 		return nil, derror.ErrInvalidToken
 	}
-	alive, err := m.checkTerminalTokenStructurallyAliveWithContext(ctx, accessToken, &tokenInfo.TokenInfo, nil)
+	alive, err := m.checkTerminalTokenStructurallyAliveWithContext(ctx, accessToken, tokenInfo, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -539,6 +575,15 @@ func (m *Manager) removeRefreshTokenReverseLookup(ctx context.Context, accessTok
 	return nil
 }
 
+// refreshMatchesAccessRecord matches refresh metadata to its original access lifecycle, including legacy records. refreshMatchesAccessRecord 将刷新元数据与原访问生命周期匹配，并兼容旧记录。
+func refreshMatchesAccessRecord(info *refreshTokenRecord, current *tokenRecord) bool {
+	if info == nil || current == nil || info.LoginID == "" || current.LoginID != info.LoginID || current.AccessID != info.AccessID {
+		return false
+	}
+	// Legacy-to-legacy matching is best effort; new-format logins never match missing identities. 旧记录之间尽力匹配；缺失标识时绝不匹配新格式登录。
+	return info.AccessID != "" || (current.Device == info.Device && current.DeviceID == info.DeviceID && current.CreateTime <= info.CreateTime)
+}
+
 // removeRefreshAccessToken removes the access terminal bound to refresh metadata. removeRefreshAccessToken 移除刷新元数据绑定的访问终端。
 func (m *Manager) removeRefreshAccessToken(ctx context.Context, info *refreshTokenRecord) error {
 	if info == nil || info.LoginID == "" || info.AccessToken == "" {
@@ -555,15 +600,8 @@ func (m *Manager) removeRefreshAccessToken(ctx context.Context, info *refreshTok
 			}
 			return false, err
 		}
-		if current.LoginID != info.LoginID || current.AccessID != info.AccessID {
+		if !refreshMatchesAccessRecord(info, current) {
 			return false, nil
-		}
-
-		// Legacy-to-legacy matching is best effort; new-format logins never match missing identities. 旧记录之间尽力匹配；缺失标识时绝不匹配新格式登录。
-		if info.AccessID == "" {
-			if current.Device != info.Device || current.DeviceID != info.DeviceID || current.CreateTime > info.CreateTime {
-				return false, nil
-			}
 		}
 		expected = current
 		return true, nil

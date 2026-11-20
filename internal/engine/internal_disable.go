@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -25,15 +24,13 @@ func (m *Manager) retireDisabledTerminals(ctx context.Context, sess *Session) er
 				return err
 			}
 
-			// A missing access token can still own a live refresh token; foreign records must be preserved. 已消失的访问令牌仍可能关联有效刷新令牌，但须保留其他认证体系记录。
-			if errors.Is(err, derror.ErrInvalidToken) {
-				data, readErr := m.storage.Get(ctx, m.getTokenKey(terminal.Token))
-				if readErr != nil {
-					return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, readErr)
-				}
-				if data != nil {
-					continue
-				}
+			// Share inactive-credential ownership checks with logout, kickout, and replacement. 与退出、踢人和顶替共用失效凭据归属校验。
+			allowed, checkErr := m.terminalTokenCleanupAllowed(ctx, sess.LoginID, terminal)
+			if checkErr != nil {
+				return checkErr
+			}
+			if !allowed {
+				continue
 			}
 		} else {
 			// Stale session entries must not retire a replacement lifecycle. 陈旧 Session 条目不能废弃替换后的生命周期。

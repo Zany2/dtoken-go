@@ -265,6 +265,79 @@ func TestManagerDirectRetirementRejectsLifecycleSwap(t *testing.T) {
 	}
 }
 
+// TestManagerDirectRetirementRejectsSwapBeforeValidation verifies validation cannot clean up a replacement lifecycle. TestManagerDirectRetirementRejectsSwapBeforeValidation 验证前置校验不能清理替代生命周期。
+func TestManagerDirectRetirementRejectsSwapBeforeValidation(t *testing.T) {
+	ctx := context.Background()
+	const originalLoginID, token = "direct-original", "direct-reused-token"
+	for _, operation := range []struct {
+		name string
+		run  func(*Manager, context.Context, string) error
+	}{
+		{"logout", (*Manager).Logout},
+		{"kickout", (*Manager).Kickout},
+		{"replace", (*Manager).Replace},
+	} {
+		for _, replacementLoginID := range []string{originalLoginID, "direct-replacement"} {
+			for _, state := range []string{"active", "active timeout", "corrupt active marker"} {
+				t.Run(operation.name+"/"+replacementLoginID+"/"+state, func(t *testing.T) {
+					mgr := newTerminalLifecycleTestManager(t, nil)
+					if _, err := mgr.LoginWithOptions(ctx, LoginOptions{
+						LoginID: originalLoginID, Token: token, Device: "web", DeviceID: "browser",
+					}); err != nil {
+						t.Fatalf("original login error = %v", err)
+					}
+
+					// Return the original mapping snapshot after installing a new lifecycle, before validation begins. 在开始校验前安装新生命周期，再返回原映射快照。
+					var before terminalLifecycleSnapshot
+					var events func() []*listener.EventData
+					swapped := false
+					storage := &managerTerminalLifecycleSwapStorage{Storage: mgr.storage, key: mgr.getTokenKey(token)}
+					storage.afterRead = func() error {
+						if err := mgr.Logout(ctx, token); err != nil {
+							return err
+						}
+						pair, err := mgr.LoginWithRefreshTokenOptions(ctx, RefreshTokenOptions{LoginOptions: LoginOptions{
+							LoginID: replacementLoginID, Token: token, Device: "web", DeviceID: "browser",
+						}})
+						if err != nil {
+							return err
+						}
+
+						// Exercise validation branches that would mutate the replacement without lifecycle binding. 覆盖未绑定生命周期时会修改替代记录的校验分支。
+						var activeValue any = time.Now().Unix()
+						switch state {
+						case "active timeout":
+							activeValue = time.Now().Add(-2 * time.Minute).Unix()
+						case "corrupt active marker":
+							activeValue = "invalid-timestamp"
+						}
+						if err = mgr.storage.Set(ctx, mgr.getActiveKey(token), activeValue, 10*time.Minute); err != nil {
+							return err
+						}
+						before = captureTerminalLifecycle(t, mgr, ctx, terminalLifecycleKeys(mgr, token, pair.RefreshToken,
+							mgr.getSessionKey(originalLoginID), mgr.getSessionKey(replacementLoginID)))
+						events = registerTerminalLifecycleEvents(mgr)
+						swapped = true
+						return nil
+					}
+					mgr.storage = storage
+
+					if err := operation.run(mgr, ctx, token); err != nil {
+						t.Fatalf("%s error = %v, want idempotent success", operation.name, err)
+					}
+					if !swapped {
+						t.Fatal("replacement lifecycle was not installed")
+					}
+					assertTerminalLifecycleUnchanged(t, mgr, ctx, before)
+					if got := events(); len(got) != 0 {
+						t.Fatalf("stale request emitted %d unexpected events: %+v", len(got), got)
+					}
+				})
+			}
+		}
+	}
+}
+
 // TestManagerLegacyTerminalLifecycleFallback verifies old token records remain compatible with terminal cleanup. TestManagerLegacyTerminalLifecycleFallback 验证旧格式 Token 记录仍兼容终端清理。
 func TestManagerLegacyTerminalLifecycleFallback(t *testing.T) {
 	ctx := context.Background()

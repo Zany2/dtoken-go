@@ -2,6 +2,8 @@
 
 [English](../security/jwt.md) | 中文文档
 
+本文 dt 表示根包，global 表示可选全局包，adapter 表示 contract，dgenerator 表示 generator/dgenerator。使用实例时调用 auth.Login(ctx, dt.LoginOptions{...}) 或 auth.LoginID；以下全局调用须先完成示例中的注册。
+
 ## 概览
 
 当前项目支持把 Token 生成风格切换为 `JWT`，入口是：
@@ -58,7 +60,7 @@ package main
 
 import (
     dt "github.com/Zany2/dtoken-go"
-    dtoken "github.com/Zany2/dtoken-go/global"
+    global "github.com/Zany2/dtoken-go/global"
     "context"
 
     "github.com/Zany2/dtoken-go/storage/memory"
@@ -66,23 +68,24 @@ import (
 )
 
 func initDToken() {
-    if _, err := dtoken.BuildAndSetManager(
-        dt.NewBuilder().
-            Storage(memory.NewStorage()).
-            TokenStyle(adapter.TokenStyleJWT).
-            JwtSecretKey("your-very-strong-secret-key").
-            Timeout(2 * 60 * 60),
-    ); err != nil {
+    auth, err := dt.NewBuilder().
+        Storage(memory.NewStorage()).
+        TokenStyle(adapter.TokenStyleJWT).
+        JwtSecretKey("your-very-strong-secret-key").
+        Timeout(2 * 60 * 60).
+        Build()
+    if err != nil {
         panic(err)
     }
+    global.SetAuth(auth)
 }
 
 func main() {
     initDToken()
-    defer dtoken.DeleteAllManager()
+    defer global.DeleteAllManager()
 
     ctx := context.Background()
-    token, _ := dtoken.Login(ctx, "10001", "web", "chrome-mac")
+    token, _ := global.Login(ctx, "10001", "web", "chrome-mac")
     _ = token
 }
 ```
@@ -90,11 +93,15 @@ func main() {
 ### 使用快捷方式
 
 ```go
-dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(memory.NewStorage()).
     JwtSecret("your-very-strong-secret-key").
     Timeout(2 * 60 * 60).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 `JwtSecret(...)` 会同时把 `TokenStyle` 切换成 `JWT` 并设置密钥。
@@ -104,12 +111,12 @@ dt.NewBuilder().
 ```go
 ctx := context.Background()
 
-token, err := dtoken.Login(ctx, "10001", "web")
+token, err := global.Login(ctx, "10001", "web")
 
-isLogin := dtoken.IsLogin(ctx, token)
-loginID, err := dtoken.GetLoginID(ctx, token)
-info, err := dtoken.GetTokenInfo(ctx, token)
-ttl, err := dtoken.GetTokenTTL(ctx, token)
+isLogin := global.IsLogin(ctx, token)
+loginID, err := global.GetLoginID(ctx, token)
+info, err := global.GetTokenInfo(ctx, token)
+ttl, err := global.GetTokenTTL(ctx, token)
 ```
 
 这些 API 和普通 UUID Token 的用法一致。

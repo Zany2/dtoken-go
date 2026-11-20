@@ -90,13 +90,14 @@ func (m *Manager) saveSessionWithMinTTL(
 	// Preserve longer existing TTL 保留更长的已有 TTL。
 	if expiration > 0 {
 		currentTTL, err := m.storage.TTL(ctx, key)
-		if err == nil {
-			switch {
-			case currentTTL == adapter.TTLNoExpire:
-				finalExpiration = 0
-			case currentTTL > expiration:
-				finalExpiration = currentTTL
-			}
+		if err != nil {
+			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
+		switch {
+		case currentTTL == adapter.TTLNoExpire:
+			finalExpiration = 0
+		case currentTTL > expiration:
+			finalExpiration = currentTTL
 		}
 	}
 
@@ -124,7 +125,7 @@ func (m *Manager) getDeviceAndDeviceID(deviceAndDeviceID ...string) (string, str
 	return device, deviceID
 }
 
-// saveToStorage serializes and saves data to storage backend. saveToStorage 将指定类型的数据序列化并存储到存储后端。
+// saveToStorage saves with an explicit expiration or updates an existing key while preserving its TTL. saveToStorage 使用显式有效期保存数据，未指定时仅更新已有键并保留其 TTL。
 func (m *Manager) saveToStorage(
 	ctx context.Context,
 	key string,
@@ -137,22 +138,24 @@ func (m *Manager) saveToStorage(
 		return fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
 
-	// Build expiration duration 构建过期时长
-	duration := m.getExpiration()
+	var duration time.Duration
 
 	// Use explicit expiration when provided 存在显式过期时间时优先使用。
 	if len(expiration) > 0 {
 		duration = expiration[0]
 	} else {
-		// Keep existing TTL when possible 尽量保留已有 TTL。
+		// Updates must not recreate expired records or fall back to the configured lifetime. 更新不能重建过期记录，也不能回退到配置有效期。
 		currentTTL, ttlErr := m.storage.TTL(ctx, key)
-		if ttlErr == nil {
-			switch {
-			case currentTTL == adapter.TTLNoExpire:
-				duration = 0
-			case currentTTL > 0:
-				duration = currentTTL
-			}
+		if ttlErr != nil {
+			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, ttlErr)
+		}
+		switch {
+		case currentTTL == adapter.TTLNoExpire:
+			duration = 0
+		case currentTTL > 0:
+			duration = currentTTL
+		default:
+			return derror.ErrKeyNotFound
 		}
 	}
 

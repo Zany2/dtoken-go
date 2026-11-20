@@ -6,10 +6,12 @@ Import aliases for code fragments: dt = github.com/Zany2/dtoken-go.
 
 This page summarizes common DToken-Go configuration options, default behavior, and validation rules. Most projects can start with `dt.NewBuilder()` and override only the options they need.
 
+`Build()` returns Auth; auth in these examples is not the underlying Manager. config names the public config package and contract the component-contract package. auth.Config() returns an independent snapshot. Build another instance for runtime configuration changes and coordinate replacement and shutdown; mutating the snapshot does not reconfigure the engine.
+
 ## Basic Example
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     // AuthType separates auth systems such as user, admin, and app.
     AuthType("user").
     // KeyPrefix is the shared storage key prefix for a project or environment.
@@ -40,8 +42,11 @@ mgr, err := dt.NewBuilder().
     // Banner and logging can be adjusted for production needs.
     IsLog(false).
     IsPrintBanner(false).
-    Storage(storage).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ## Common Options
@@ -63,7 +68,7 @@ mgr, err := dt.NewBuilder().
 | `MaxLoginCount` | `int64` (count) | `12` | Maximum online terminal count |
 | `ReplacedLoginExitMode` | `config.ReplacedLoginExitMode` | `old_device` | Non-concurrent login strategy |
 | `OverflowLogoutMode` | `config.LogoutMode` | `kickout` | How old Tokens are handled when max login count overflows |
-| `TokenStyle` | `adapter.TokenStyle` | `uuid` | Token generation style |
+| `TokenStyle` | `contract.TokenStyle` | `uuid` | Token generation style |
 | `JwtSecretKey` | `string` | `dtoken-go` (placeholder) | JWT mode requires an explicitly configured secret; the default, empty, and whitespace-only keys are rejected |
 | `IsReadHeader` | `bool` | `true` | Whether to read Token from headers |
 | `IsReadCookie` | `bool` | `false` | Whether to read Token from cookies |
@@ -176,7 +181,7 @@ Configure Nonce, OAuth2, Ticket, and ShortKey in their own packages and compose 
 When cookie reading is enabled, cookie attributes can be configured:
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     IsReadHeader(false).
     IsReadCookie(true).
     CookieDomain("example.com").
@@ -185,8 +190,11 @@ mgr, err := dt.NewBuilder().
     CookieHttpOnly(true).
     CookieSameSite(config.SameSiteNone).
     CookieMaxAge(7200).
-    Storage(storage).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 Cookie validation rules:

@@ -1,6 +1,27 @@
 package engine
 
-import "sync"
+import (
+	"context"
+	"sync"
+	"time"
+)
+
+// setRenewMarker bounds the throttle by the token's renewed lifetime. setRenewMarker 根据 Token 本次有效期限制续期节流间隔。
+func (m *Manager) setRenewMarker(ctx context.Context, tokenValue string, expiration time.Duration) error {
+	if m.config.RenewInterval <= 0 {
+		return nil
+	}
+	interval := secondsToDuration(m.config.RenewInterval)
+	if expiration > 0 && interval >= expiration {
+		interval = expiration / 2
+	}
+
+	// A zero duration would create a permanent marker on some backends. 零时长在部分存储中会创建永久标记。
+	if interval <= 0 {
+		return m.storage.Delete(ctx, m.getRenewKey(tokenValue))
+	}
+	return m.storage.Set(ctx, m.getRenewKey(tokenValue), time.Now().Unix(), interval)
+}
 
 // managerMaintenance owns coalesced work for token lifecycle generations. managerMaintenance 持有按 Token 生命周期合并的维护任务。
 type managerMaintenance struct {
@@ -14,6 +35,20 @@ type loginMaintenanceState struct {
 	generation uint64      // generation identifies the token lifecycle task. generation 标识 Token 生命周期任务。
 	activeAt   int64       // activeAt stores the latest validation timestamp. activeAt 存储最近一次校验时间戳。
 	record     tokenRecord // record binds merged activity to the checked lifecycle. record 将合并的活跃时间绑定到已校验生命周期。
+}
+
+// pendingLoginActiveAt snapshots accepted activity before reading storage, so worker completion cannot hide it. pendingLoginActiveAt 在读取存储前快照已接受的活跃时间，避免任务完成后丢失该时间。
+func (m *Manager) pendingLoginActiveAt(tokenValue string, record *tokenRecord) int64 {
+	if record == nil || record.Revoked {
+		return 0
+	}
+	m.maintenanceMu.Lock()
+	defer m.maintenanceMu.Unlock()
+	state, exists := m.maintenance[tokenValue]
+	if !exists || state.record.Revoked || !tokenRecordsMatchLifecycle(record, &state.record) {
+		return 0
+	}
+	return state.activeAt
 }
 
 // beginLoginMaintenance reserves or replaces one in-flight maintenance generation for a token. beginLoginMaintenance 为 Token 登记或替换一个执行中的维护任务代次。

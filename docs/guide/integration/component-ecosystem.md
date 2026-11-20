@@ -6,6 +6,8 @@ Import aliases for code fragments: dt = github.com/Zany2/dtoken-go, adapter = gi
 
 DToken-Go decouples core authentication logic from component implementations. The core depends on interfaces, the root Builder delegates default wiring to private `internal/defaults`, and projects can replace storage, codec, logger, Token generator, and async task pool components as needed.
 
+After a successful build, the engine owns injected storage, logging, and pools by default. On build failure, explicitly supplied components remain caller-owned. Use WithComponentOwnership to set a complete policy for shared components and close them from the application. Basic components ship with the root module; Redis, MsgPack, JSON v2, and GoFrame logging are separate modules.
+
 ## Component Overview
 
 | Type | Interface / Entry | Built-in implementations | Typical use |
@@ -79,7 +81,7 @@ Factories are useful when component creation depends on config values such as `A
 - Single-process tests, examples, and local development: use Memory Storage.
 - Multi-instance deployment, cross-service login-state sharing, and production: use Redis Storage.
 - If `SearchTokenValue` or `SearchSessionId` is needed, storage should implement `ScannerStorage`.
-- If one-time consumption must be safe, storage should implement `AtomicStorage`.
+- Nonce consumption explicitly requires `AtomicStorage`. Other operations use atomic extensions where available and retain ordinary storage fallbacks unless their public contract requires otherwise.
 
 For Redis integration, see [Redis Storage](../integration/redis-storage.md).
 

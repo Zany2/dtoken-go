@@ -7,7 +7,9 @@
 当前项目内置了一个轻量级 OAuth2 服务端实现，核心代码位于：
 
 - `oauth2`
-- oauth2.Service
+- `oauth2.Service`
+
+服务接口和共享数据类型定义在 contract/oauth2，实现位于 oauth2，均随根模块发布。Service 借用存储和编解码器，通过可选 Auth 发布事件，不拥有或关闭这些组件。OAuth2 Access Token 使用自身的校验入口，不等同于 Auth.Login 签发的登录 Token。
 
 ## 当前支持的授权类型
 
@@ -34,7 +36,6 @@ oauth2.GrantTypePassword
 - 授权码：`10` 分钟
 - Access Token：`2` 小时
 - Refresh Token：`30` 天
-
 
 
 ## 显式组合服务
@@ -321,7 +322,7 @@ client := &oauth2.Client{
 
 当前 OAuth2 实现已经能覆盖常见授权场景，但也要注意：
 
-1. 当前 API 没有 `GetOAuth2Server()` 这类公开入口
+1. 应用持有显式创建的 OAuth2Server 和 Service，根 Auth 不管理 OAuth2 服务
 2. PKCE 已内建到授权码助手和统一令牌入口中，但客户端侧仍需要自行生成、保存和传递 `code_verifier`
 3. Token introspection 端点没有内建 HTTP 封装，需要你在应用层自己写路由
 4. 普通存储支持顺序兑换和刷新；跨服务实例的并发一次性消费依赖真正原子的 `adapter.AtomicStorage` 操作

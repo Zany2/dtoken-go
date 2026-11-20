@@ -2,6 +2,10 @@
 
 # DToken-Go 文档中心
 
+新项目从[快速开始](tutorial/quick-start_zh.md)和 [Auth 实例 API](api/auth_zh.md)入手。已有全局调用使用 `global` 包；框架请求显式绑定 Auth，独立能力通过 Service 和 WithCapabilities 组合。
+
+文档约定：`dt` 或 `dtoken` 表示根包，`global` 只表示注册表入口，`auth` 是已构建实例，`mgr` 是其底层 Manager。带 package main 的示例提供完整程序或带标记的组合片段；其他片段需放在持有实例的函数内，补齐对应导入、业务处理器和错误处理。根模块要求 Go 1.25+，仓库工作区要求 Go 1.27+。
+
 ## 文档导航
 
 ### 快速上手
@@ -42,7 +46,8 @@
 - [Core API 速查](guide/reference/core-api-cheatsheet_zh.md) - 常用全局 API 调用方式
 - [配置示例](guide/reference/configuration_zh.md) - Builder 常用配置说明
 - [API 稳定性](guide/reference/api-stability_zh.md) - 公开 API 兼容性与版本规则
-- [DToken API](api/dtoken_zh.md) - 全局工具类完整 API
+- [Auth 实例 API](api/auth_zh.md) - 应用入口、选项与全局调用对照
+- [全局 API](api/dtoken_zh.md) - 全局认证 API 参考
 
 ### 设计文档
 

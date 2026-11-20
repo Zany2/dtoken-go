@@ -11,7 +11,7 @@
 DToken-Go 支持两种权限来源：
 
 1. 写入 Session 的权限和角色，例如 `AddPermissions`、`AddRoles`。
-2. 通过 `AccessProvider` 或兼容回调动态返回权限和角色。
+2. 通过 `AccessProvider` 动态返回权限和角色。
 
 当配置了 `AccessProvider` 时，Provider 返回的非 `nil` 数据优先于 Session 中缓存的数据。Provider 返回 `nil` 时，才会回退到 Session 数据。
 
@@ -97,29 +97,33 @@ PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, e
 
 集成中间件使用基于 Token 的 `Check*` API，保留当前请求的设备与 Token 字段。提供器错误会传递给集成层失败处理器，供其区分服务故障与 `ErrPermissionDenied`、`ErrRoleDenied` 等正常拒绝。
 
-## 兼容回调
+## 函数式 Provider 与旧回调迁移
 
-Builder 也保留了更简单的回调方式：
+当前 Builder 统一使用 `SetAccessProvider`。旧的 `SetCustomPermissionListFunc`、`SetCustomRoleListFunc` 及 Ext 版本不再提供；将回调迁移到 `AccessProviderFunc.PermissionFunc` / `RoleFunc`，通过 subject 读取认证体系、账号、设备和 Token。
 
 ```go
-auth, err := dt.NewBuilder().
-    Storage(storage).
-    SetCustomPermissionListFunc(func(loginID, authType string) ([]string, error) {
-        return []string{"user:read"}, nil
-    }).
-    SetCustomRoleListFunc(func(loginID, authType string) ([]string, error) {
-        return []string{"user"}, nil
-    }).
-    SetCustomPermissionListExtFunc(func(loginID, device, deviceID, authType string) ([]string, error) {
-        if device == "app" {
-            return []string{"mobile:read"}, nil
+provider := dt.AccessProviderFunc{
+    PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
+        if subject.Device == "app" {
+            return []string{"mobile:read", "mobile:write"}, nil
         }
         return nil, nil
-    }).
-    Build()
+    },
+    RoleFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
+        if subject.LoginID == "10001" {
+            return []string{"admin"}, nil
+        }
+        return []string{}, nil
+    },
+}
+auth, err := dt.NewBuilder().SetAccessProvider(provider).Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
-新项目更推荐直接使用 `SetAccessProvider`，表达能力更完整。
+按账号查询时 subject 中没有 Token 和设备信息；需要这些字段时使用按 Token 查询或框架鉴权入口。Provider 返回 nil 才回退到 Session，非 nil 空切片表示明确无权限或角色。
 
 ## 和多认证体系搭配
 

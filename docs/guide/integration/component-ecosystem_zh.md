@@ -6,6 +6,8 @@
 
 DToken-Go 将核心认证逻辑和组件实现解耦。核心只依赖接口，应用通过根包 Builder 调用私有 `internal/defaults` 完成默认装配，也可以按业务需要替换存储、编解码、日志、Token 生成器和异步任务池。
 
+构建成功后，引擎默认负责关闭显式传入的存储、日志和池；构建失败时显式传入的组件仍由调用方清理。共享组件使用 WithComponentOwnership 声明完整策略，并由应用统一关闭。默认组件随根模块发布，Redis、MsgPack、JSON v2 和 GoFrame 日志是独立模块。
+
 ## 组件总览
 
 | 类型 | 接口 / 入口 | 内置实现 | 典型用途 |
@@ -79,7 +81,7 @@ auth, err := dt.NewBuilder().
 - 单进程测试、示例项目、本地开发：使用 Memory Storage。
 - 多实例部署、跨服务共享登录态、生产环境：使用 Redis Storage。
 - 需要 `SearchTokenValue`、`SearchSessionId` 等搜索能力时，存储应实现 `ScannerStorage`。
-- 需要安全的一次性消费时，存储应实现 `AtomicStorage`。
+- 需要跨实例原子消费时，存储应实现 `AtomicStorage`。Nonce 消费显式要求此扩展；其他能力是否提供普通存储回退，以各自契约为准。
 
 Redis 接入方式见 [Redis 存储](../integration/redis-storage_zh.md)。
 

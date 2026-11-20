@@ -2,6 +2,8 @@
 
 **[中文文档](../core/disable_zh.md)**
 
+This page uses `global` for registered-instance calls and `dt` for the root package. Build Auth and call `global.SetAuth(auth)` first; omitted auth types select the default `auth:` namespace. See [Auth API](../../api/auth.md) for instance calls and parameter differences.
+
 DToken-Go supports more than account-level banning. It also supports service disable, service-level disable, device-type disable, and concrete-device disable. Disable state participates in login checks where applicable, and disabled subjects receive the corresponding error.
 
 ## Disable Types
@@ -24,16 +26,16 @@ A duration of `0` means permanent disable; negative durations are invalid. Setti
 ctx := context.Background()
 
 // Disable the account for 2 hours and record a reason.
-err := dtoken.Disable(ctx, "10001", 2*time.Hour, "risk")
+err := global.Disable(ctx, "10001", 2*time.Hour, "risk")
 
-disabled := dtoken.IsDisable(ctx, "10001")
-err = dtoken.CheckDisable(ctx, "10001")
+disabled := global.IsDisable(ctx, "10001")
+err = global.CheckDisable(ctx, "10001")
 
-info, err := dtoken.GetDisableInfo(ctx, "10001")
-ttl, err := dtoken.GetDisableTTL(ctx, "10001")
+info, err := global.GetDisableInfo(ctx, "10001")
+ttl, err := global.GetDisableTTL(ctx, "10001")
 
 // Remove account disable state.
-err = dtoken.Untie(ctx, "10001")
+err = global.Untie(ctx, "10001")
 ```
 
 `GetDisableTTL` return values:
@@ -49,16 +51,16 @@ err = dtoken.Untie(ctx, "10001")
 Service disable is useful when only one business capability should be restricted instead of the entire account.
 
 ```go
-err := dtoken.DisableService(ctx, "10001", "comment", 30*time.Minute)
-err = dtoken.DisableServiceWithReason(ctx, "10001", "comment", 30*time.Minute, "spam")
+err := global.DisableService(ctx, "10001", "comment", 30*time.Minute)
+err = global.DisableServiceWithReason(ctx, "10001", "comment", 30*time.Minute, "spam")
 
-disabled := dtoken.IsDisableService(ctx, "10001", "comment")
-err = dtoken.CheckDisableService(ctx, "10001", []string{"comment", "post"})
+disabled := global.IsDisableService(ctx, "10001", "comment")
+err = global.CheckDisableService(ctx, "10001", []string{"comment", "post"})
 
-info, err := dtoken.GetDisableServiceInfo(ctx, "10001", "comment")
-ttl, err := dtoken.GetDisableServiceTTL(ctx, "10001", "comment")
+info, err := global.GetDisableServiceInfo(ctx, "10001", "comment")
+ttl, err := global.GetDisableServiceTTL(ctx, "10001", "comment")
 
-err = dtoken.UntieService(ctx, "10001", "comment")
+err = global.UntieService(ctx, "10001", "comment")
 ```
 
 ## Service-Level Disable
@@ -66,13 +68,13 @@ err = dtoken.UntieService(ctx, "10001", "comment")
 Service-level disable stores an integer level. A check is considered disabled when the stored level is greater than or equal to the target level.
 
 ```go
-err := dtoken.DisableServiceLevel(ctx, "10001", "pay", 3, time.Hour)
+err := global.DisableServiceLevel(ctx, "10001", "pay", 3, time.Hour)
 
-dtoken.IsDisableServiceLevel(ctx, "10001", "pay", 2) // true
-dtoken.IsDisableServiceLevel(ctx, "10001", "pay", 3) // true
-dtoken.IsDisableServiceLevel(ctx, "10001", "pay", 4) // false
+global.IsDisableServiceLevel(ctx, "10001", "pay", 2) // true
+global.IsDisableServiceLevel(ctx, "10001", "pay", 3) // true
+global.IsDisableServiceLevel(ctx, "10001", "pay", 4) // false
 
-err = dtoken.CheckDisableServiceLevel(ctx, "10001", "pay", 3)
+err = global.CheckDisableServiceLevel(ctx, "10001", "pay", 3)
 ```
 
 This fits layered risk control:
@@ -91,26 +93,26 @@ Device bans preserve the session and terminal credentials. After untie, credenti
 
 ```go
 // Disable app access for this account.
-err := dtoken.DisableDevice(ctx, "10001", "app", time.Hour)
-disabled := dtoken.IsDisableDevice(ctx, "10001", "app")
-err = dtoken.CheckDisableDevice(ctx, "10001", "app")
-err = dtoken.UntieDevice(ctx, "10001", "app")
+err := global.DisableDevice(ctx, "10001", "app", time.Hour)
+disabled := global.IsDisableDevice(ctx, "10001", "app")
+err = global.CheckDisableDevice(ctx, "10001", "app")
+err = global.UntieDevice(ctx, "10001", "app")
 
 // Disable one concrete device.
-err = dtoken.DisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001", time.Hour)
-disabled = dtoken.IsDisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
-err = dtoken.CheckDisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
-err = dtoken.UntieDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
+err = global.DisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001", time.Hour)
+disabled = global.IsDisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
+err = global.CheckDisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
+err = global.UntieDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
 ```
 
 Query disable details:
 
 ```go
-deviceInfo, err := dtoken.GetDisableDeviceInfo(ctx, "10001", "app")
-deviceTTL, err := dtoken.GetDisableDeviceTTL(ctx, "10001", "app")
+deviceInfo, err := global.GetDisableDeviceInfo(ctx, "10001", "app")
+deviceTTL, err := global.GetDisableDeviceTTL(ctx, "10001", "app")
 
-concreteInfo, err := dtoken.GetDisableDeviceAndDeviceIDInfo(ctx, "10001", "app", "iphone-001")
-concreteTTL, err := dtoken.GetDisableDeviceAndDeviceIDTTL(ctx, "10001", "app", "iphone-001")
+concreteInfo, err := global.GetDisableDeviceAndDeviceIDInfo(ctx, "10001", "app", "iphone-001")
+concreteTTL, err := global.GetDisableDeviceAndDeviceIDTTL(ctx, "10001", "app", "iphone-001")
 ```
 
 ## Relationship With Login Checks
@@ -127,8 +129,8 @@ Account disable and device disable participate in Token checks:
 Disable APIs support optional `authType`:
 
 ```go
-err := dtoken.Disable(ctx, "admin-1", time.Hour, "risk", "admin")
-disabled := dtoken.IsDisable(ctx, "admin-1", "admin")
+err := global.Disable(ctx, "admin-1", time.Hour, "risk", "admin")
+disabled := global.IsDisable(ctx, "admin-1", "admin")
 ```
 
 Disable data is isolated by `AuthType`.

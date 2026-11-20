@@ -1,35 +1,37 @@
-# Core API Cheatsheet
+# Global API Cheatsheet
 
-Import aliases for code fragments: dtoken = github.com/Zany2/dtoken-go/global.
+Import aliases for code fragments: global = github.com/Zany2/dtoken-go/global.
 
-This page lists common `dtoken` global API calls. It is intended for quick lookup after the Manager has been initialized.
+This page lists common `global` API calls. It is intended for quick lookup after the Manager has been initialized.
+
+This is a global-call cheatsheet. Register global.SetAuth(auth) first and clean up registration on shutdown. See [Auth API](../../api/auth.md) for instance entry points and signature differences; positional global.Login arguments cannot be passed directly to auth.Login.
 
 ## Login Authentication
 
 ```go
-token, err := dtoken.Login(ctx, "user-1001")
-token, err = dtoken.Login(ctx, "user-1001", "web", "browser-001")
+token, err := global.Login(ctx, "user-1001")
+token, err = global.Login(ctx, "user-1001", "web", "browser-001")
 
-isLogin := dtoken.IsLogin(ctx, token)
-loginID, err := dtoken.GetLoginID(ctx, token)
-tokenInfo, err := dtoken.GetTokenInfo(ctx, token)
-ttl, err := dtoken.GetTokenTTL(ctx, token)
+isLogin := global.IsLogin(ctx, token)
+loginID, err := global.GetLoginID(ctx, token)
+tokenInfo, err := global.GetTokenInfo(ctx, token)
+ttl, err := global.GetTokenTTL(ctx, token)
 
-err = dtoken.RenewTimeout(ctx, token, 2*time.Hour)
-err = dtoken.Logout(ctx, token)
-err = dtoken.LogoutByLoginID(ctx, "user-1001")
+err = global.RenewTimeout(ctx, token, 2*time.Hour)
+err = global.Logout(ctx, token)
+err = global.LogoutByLoginID(ctx, "user-1001")
 ```
 
 ## Roles And Permissions
 
 ```go
-_ = dtoken.AddRoles(ctx, "user-1001", []string{"admin", "auditor"})
-_ = dtoken.AddPermissions(ctx, "user-1001", []string{"order:read", "order:*"})
+_ = global.AddRoles(ctx, "user-1001", []string{"admin", "auditor"})
+_ = global.AddPermissions(ctx, "user-1001", []string{"order:read", "order:*"})
 
-hasRole := dtoken.HasRole(ctx, "user-1001", "admin")
-hasAnyRole := dtoken.HasRolesOr(ctx, "user-1001", []string{"admin", "owner"})
-hasPermission := dtoken.HasPermission(ctx, "user-1001", "order:read")
-hasAllPermission := dtoken.HasPermissionsAnd(ctx, "user-1001", []string{"order:read", "order:write"})
+hasRole := global.HasRole(ctx, "user-1001", "admin")
+hasAnyRole := global.HasRolesOr(ctx, "user-1001", []string{"admin", "owner"})
+hasPermission := global.HasPermission(ctx, "user-1001", "order:read")
+hasAllPermission := global.HasPermissionsAnd(ctx, "user-1001", []string{"order:read", "order:write"})
 
 _, _, _, _ = hasRole, hasAnyRole, hasPermission, hasAllPermission
 ```
@@ -37,19 +39,19 @@ _, _, _, _ = hasRole, hasAnyRole, hasPermission, hasAllPermission
 ## Online State Control
 
 ```go
-_ = dtoken.Kickout(ctx, token)
-_ = dtoken.KickoutByLoginID(ctx, "user-1001")
-_ = dtoken.Replace(ctx, token)
-_ = dtoken.ReplaceByLoginID(ctx, "user-1001")
+_ = global.Kickout(ctx, token)
+_ = global.KickoutByLoginID(ctx, "user-1001")
+_ = global.Replace(ctx, token)
+_ = global.ReplaceByLoginID(ctx, "user-1001")
 ```
 
 ## Ban Control
 
 ```go
-_ = dtoken.Disable(ctx, "user-1001", time.Hour, "risk_control")
-disabled := dtoken.IsDisable(ctx, "user-1001")
-disableInfo, err := dtoken.GetDisableInfo(ctx, "user-1001")
-_ = dtoken.Untie(ctx, "user-1001")
+_ = global.Disable(ctx, "user-1001", time.Hour, "risk_control")
+disabled := global.IsDisable(ctx, "user-1001")
+disableInfo, err := global.GetDisableInfo(ctx, "user-1001")
+_ = global.Untie(ctx, "user-1001")
 
 _, _ = disabled, disableInfo
 ```

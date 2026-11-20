@@ -45,6 +45,10 @@ defer global.DeleteManager("user")
 
 Build() 返回 *dtoken.Auth；auth.Manager() 提供底层管理器。框架优先使用 WithAuth(auth) 或 Context(auth)。策略、装配选项和工厂类型从根包导入，不要导入 internal。所有框架 NewBuilder() 均转发根包构建器，Build() 统一返回 Auth。框架不再转导出全局 API 或组件构造器。HTTP 中间件默认要求绑定实例；全局使用须显式配置 WithManagerResolver(global.GetManager)。
 
+## 权限提供器迁移
+
+旧 SetCustomPermissionListFunc、SetCustomRoleListFunc 及 Ext 变体不再提供。使用根 Builder.SetAccessProvider 注入 AccessProviderFunc，通过 AccessSubject 取得认证体系、账号、设备与 Token；nil 结果回退到 Session，非 nil 空切片表示无权限。见 [AccessProvider](../guide/core/access-provider_zh.md)。
+
 ## 独立能力
 
 Builder 不提供能力开关。通过各自的构造器创建能力 Manager，再通过 NewService(manager, auth) 接入实例事件。使用所属认证实例的 AuthType、KeyPrefix、Storage 和 Codec。httpauth/context.Capabilities 和框架 WithCapabilities 将服务绑定到请求。未绑定的能力返回 ErrModuleNotEnabled。同一 Manager 的后续中间件未指定覆盖配置时保留请求绑定；切换 Manager 时创建新作用域。

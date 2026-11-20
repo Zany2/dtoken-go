@@ -501,11 +501,16 @@ func (m *Manager) isEventEnabledLocked(event Event) bool {
 	return m.defaultEnabled
 }
 
-// TriggerAsync snapshots and dispatches an event asynchronously, and the dispatch is tracked by Wait. TriggerAsync 快照并异步分发事件，整个分发过程会被 Wait 跟踪。
+// TriggerAsync snapshots the payload and default timestamp before asynchronous dispatch tracked by Wait. TriggerAsync 在异步分发前快照载荷及默认时间戳，分发过程由 Wait 跟踪。
 func (m *Manager) TriggerAsync(data *EventData) {
 	snapshot := cloneEventData(data)
 	if snapshot == nil {
 		return
+	}
+
+	// Capture submission time instead of the eventual worker execution time. 记录提交时间，而非后台任务实际执行时间。
+	if snapshot.Timestamp == 0 {
+		snapshot.Timestamp = time.Now().Unix()
 	}
 
 	m.startAsync(nil, func() {

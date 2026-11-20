@@ -44,6 +44,8 @@ Auth.Manager() 返回共享的底层引擎。New(existingManager) 创建共享�
 
 单个引擎的资源关闭是幂等的，但不会对多个引擎共享的组件做全局引用计数。多个 Auth 使用同一存储、日志或任务池时，应明确将相应所有权设为 false，由应用在全部使用者结束后关闭。需要独立组件时，使用每次创建新实例的组件工厂。
 
+下面的片段中，`dtoken` 指根包，`memory` 指 `storage/memory`：
+
 ```go
 shared := memory.NewStorage()
 builder := dtoken.NewBuilder().
@@ -81,7 +83,7 @@ contract/nonce、contract/oauth2、contract/ticket、contract/shortkey 定义服
 
 nonce、oauth2、ticket、shortkey 提供内置实现，通过编译期断言验证满足契约。原能力包中的公开数据类型保留为契约类型的别名，现有结构体字面量、方法签名和序列化字段保持一致。
 
-Capabilities 的字段接受服务接口，自定义服务可直接注入。未绑定服务或带类型的 nil 返回原有模块未启用结果；布尔检查返回 false。WithCapabilities(nil) 保留已有绑定，空 Capabilities 显式清空绑定。请求适配器更换时保留绑定，认证实例更换时清空能力绑定。
+Capabilities 的字段接受服务接口，自定义服务可直接注入。未绑定服务或带类型的 nil 返回原有模块未启用结果；布尔检查返回 false。请求上下文方法 `dCtx.WithCapabilities(nil)` 保留已有绑定，`dCtx.WithCapabilities(&requestcontext.Capabilities{})` 显式清空绑定。框架选项则接收值，例如 `gindt.WithCapabilities(requestcontext.Capabilities{Nonce: service})`。请求适配器更换时保留绑定，认证实例更换时清空能力绑定。
 
 独立 Service 的生命周期由调用方管理。向 NewService 传入 Auth 作为事件发布器，只建立事件联系；直接调用 Service 时仍须保证其借用的存储和编解码器可用。HTTP 请求则由绑定引擎的可用性检查控制。
 

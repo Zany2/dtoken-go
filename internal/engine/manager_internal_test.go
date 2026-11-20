@@ -336,7 +336,7 @@ func TestManagerStorageHelpers(t *testing.T) {
 	manager = newTestManager(t, nil)
 	base := newManagerTestStorage()
 	manager.storage = &managerTestFailingSetStorage{FullStorage: base, failKey: "set-error"}
-	if err := manager.saveToStorage(ctx, "set-error", "value"); !errors.Is(err, derror.ErrStorageUnavailable) {
+	if err := manager.saveToStorage(ctx, "set-error", "value", time.Minute); !errors.Is(err, derror.ErrStorageUnavailable) {
 		t.Fatalf("saveToStorage(storage error) = %v, want ErrStorageUnavailable", err)
 	}
 	manager.storage = &managerTestFailingSetStorage{FullStorage: base, failKey: "set-if-absent-error", failSetIfAbsent: true}

@@ -4,6 +4,8 @@ Import aliases for code fragments: dt = github.com/Zany2/dtoken-go.
 
 [中文文档](../core/concurrency-login_zh.md) | English
 
+config names github.com/Zany2/dtoken-go/config. These settings apply when building Auth; account write locks belong to one engine and do not provide distributed cross-process coordination.
+
 ## Overview
 
 DToken-Go concurrent login behavior is controlled by these configuration fields:
@@ -22,9 +24,13 @@ Together they decide whether one account can stay online from multiple terminals
 `IsConcurrent(true)` allows multiple online terminals for the same account.
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     IsConcurrent(true).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 `IsConcurrent(false)` means the same scope cannot have concurrent logins. New login is handled according to `ReplacedLoginExitMode`.
@@ -47,11 +53,15 @@ Reuse depends on the device dimension:
 `MaxLoginCount` limits how many terminals may remain online in the selected scope.
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     IsConcurrent(true).
     IsShare(false).
     MaxLoginCount(2).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 When the limit is exceeded, the oldest terminal is handled by `OverflowLogoutMode`.

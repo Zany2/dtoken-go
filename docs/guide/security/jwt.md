@@ -2,6 +2,8 @@
 
 [中文文档](../security/jwt_zh.md) | English
 
+Here dt names the root package, global the optional registry package, adapter contract, and dgenerator generator/dgenerator. Instance calls use auth.Login(ctx, dt.LoginOptions{...}) or auth.LoginID; the global examples require the registration shown below.
+
 ## Overview
 
 The current project supports switching the token generation style to `JWT` through:
@@ -51,7 +53,7 @@ package main
 
 import (
     dt "github.com/Zany2/dtoken-go"
-    dtoken "github.com/Zany2/dtoken-go/global"
+    global "github.com/Zany2/dtoken-go/global"
     "context"
 
     "github.com/Zany2/dtoken-go/storage/memory"
@@ -59,23 +61,24 @@ import (
 )
 
 func initDToken() {
-    if _, err := dtoken.BuildAndSetManager(
-        dt.NewBuilder().
-            Storage(memory.NewStorage()).
-            TokenStyle(adapter.TokenStyleJWT).
-            JwtSecretKey("your-very-strong-secret-key").
-            Timeout(2 * 60 * 60),
-    ); err != nil {
+    auth, err := dt.NewBuilder().
+        Storage(memory.NewStorage()).
+        TokenStyle(adapter.TokenStyleJWT).
+        JwtSecretKey("your-very-strong-secret-key").
+        Timeout(2 * 60 * 60).
+        Build()
+    if err != nil {
         panic(err)
     }
+    global.SetAuth(auth)
 }
 
 func main() {
     initDToken()
-    defer dtoken.DeleteAllManager()
+    defer global.DeleteAllManager()
 
     ctx := context.Background()
-    token, _ := dtoken.Login(ctx, "10001", "web", "chrome-mac")
+    token, _ := global.Login(ctx, "10001", "web", "chrome-mac")
     _ = token
 }
 ```
@@ -83,11 +86,15 @@ func main() {
 ### Shortcut
 
 ```go
-dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(memory.NewStorage()).
     JwtSecret("your-very-strong-secret-key").
     Timeout(2 * 60 * 60).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 `JwtSecret(...)` both enables JWT style and sets the secret.
@@ -97,12 +104,12 @@ dt.NewBuilder().
 ```go
 ctx := context.Background()
 
-token, err := dtoken.Login(ctx, "10001", "web")
+token, err := global.Login(ctx, "10001", "web")
 
-isLogin := dtoken.IsLogin(ctx, token)
-loginID, err := dtoken.GetLoginID(ctx, token)
-info, err := dtoken.GetTokenInfo(ctx, token)
-ttl, err := dtoken.GetTokenTTL(ctx, token)
+isLogin := global.IsLogin(ctx, token)
+loginID, err := global.GetLoginID(ctx, token)
+info, err := global.GetTokenInfo(ctx, token)
+ttl, err := global.GetTokenTTL(ctx, token)
 ```
 
 The usage is the same as with UUID or random token styles.

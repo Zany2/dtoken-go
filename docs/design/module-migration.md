@@ -45,6 +45,10 @@ defer global.DeleteManager("user")
 
 Build() returns *dtoken.Auth; auth.Manager() exposes the underlying manager. Prefer framework WithAuth(auth) or Context(auth). Import strategies, assembly options, and factories from the root, never from internal. Every framework NewBuilder() forwards to the root builder and Build() returns Auth. Frameworks no longer re-export global APIs or component constructors. HTTP middleware requires a bound instance; enable global lookup explicitly with WithManagerResolver(global.GetManager).
 
+## Access provider migration
+
+SetCustomPermissionListFunc, SetCustomRoleListFunc, and their Ext variants are no longer provided. Inject AccessProviderFunc with root Builder.SetAccessProvider and read namespace, account, device, and token from AccessSubject. Nil results fall back to the session; non-nil empty slices mean no access. See [AccessProvider](../guide/core/access-provider.md).
+
 ## Independent capabilities
 
 The builder has no capability switches. Construct capability Managers and use NewService(manager, auth) for instance events. Share the intended AuthType, KeyPrefix, Storage, and Codec. Bind request services with httpauth/context.Capabilities and framework WithCapabilities. Missing services return ErrModuleNotEnabled. Middleware without an override preserves bindings for the same Manager; changing Manager creates a new scope.

@@ -106,7 +106,10 @@ func (m *Manager) triggerTerminalLifecycleEvents(loginID string, events []termin
 	}
 }
 
-// Emit publishes events from separately composed capabilities. Emit 发布独立组合能力的事件。
+// Emit publishes capability events only while the manager is open. Emit 仅在 Manager 未关闭时发布独立能力事件。
 func (m *Manager) Emit(event listener.Event, loginID, device, deviceID, token string, extra map[string]any) {
+	if m.IsClosed() {
+		return
+	}
 	m.triggerEvent(event, loginID, device, deviceID, token, extra)
 }

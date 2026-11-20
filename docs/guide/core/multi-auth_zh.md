@@ -1,10 +1,12 @@
 # 多认证体系
 
-代码片段的导入别名：dt = github.com/Zany2/dtoken-go, dtoken = github.com/Zany2/dtoken-go/global.
+代码片段的导入别名：dt = github.com/Zany2/dtoken-go, global = github.com/Zany2/dtoken-go/global.
 
 [English](../core/multi-auth.md) | 中文文档
 
 多认证体系用于在同一个项目里维护多套互相隔离的认证逻辑，例如普通用户、后台管理员、开放平台客户端。DToken-Go 通过 `AuthType` 区分不同认证体系。
+
+多实例本身不要求全局注册：分别构建 userAuth、adminAuth，并通过 WithAuth 注入即可。下文演示额外启用注册表的方式，使用 global 表示全局包、dt 表示根包。
 
 ## 核心概念
 
@@ -28,14 +30,14 @@ import (
 	"context"
 
 	dt "github.com/Zany2/dtoken-go"
-	dtoken "github.com/Zany2/dtoken-go/global"
+	global "github.com/Zany2/dtoken-go/global"
 	gindt "github.com/Zany2/dtoken-go/integrations/gin"
 	"github.com/Zany2/dtoken-go/storage/memory"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
-	defer dtoken.DeleteAllManager()
+	defer global.DeleteAllManager()
 	ctx := context.Background()
 	storage := memory.NewStorage()
 	sharedOwnership := dt.WithComponentOwnership(dt.ComponentOwnership{
@@ -54,7 +56,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	dtoken.SetAuth(userAuth)
+	global.SetAuth(userAuth)
 
 	adminAuth, err := dt.NewBuilder().
 		AuthType("admin").
@@ -66,10 +68,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	dtoken.SetAuth(adminAuth)
+	global.SetAuth(adminAuth)
 
-	userToken, _ := dtoken.Login(ctx, "10001", "", "", "user")
-	adminToken, _ := dtoken.Login(ctx, "admin-1", "", "", "admin")
+	userToken, _ := global.Login(ctx, "10001", "", "", "user")
+	adminToken, _ := global.Login(ctx, "admin-1", "", "", "admin")
 	_, _ = userToken, adminToken
 	registerRoutes(ctx, gin.New(), userAuth, adminAuth)
 }
@@ -77,12 +79,12 @@ func main() {
 
 Manager 默认持有并关闭通过 Builder 配置的 Storage、Logger 和 Pool。`ComponentOwnership` 是完整的所有权策略，所有字段都应显式设置，因为未填写的布尔字段值为 `false`。共享组件时，将对应字段设为 `false`；共享组件随后由调用方在应用退出时统一关闭。由调用方持有的 Pool 必须保持运行，直到使用它的全部 Manager 都已关闭，因为每个 Manager 在关闭时都会等待自己已接收的异步任务。
 
-应先停止接收新业务请求、等待执行中的同步调用结束，再由应用外部关闭流程调用 `CloseManager()`。不要在 Manager 任务或事件监听器内部同步调用它：关闭过程会等待已接收的任务和监听器，可能包含调用者自身。回调需要发起关闭时，应通知应用生命周期控制方后返回。关闭后不再支持业务调用；`CloseManager` 不负责排空业务请求。
+应先停止接收新业务请求、等待执行中的同步调用结束，再由应用外部关闭流程调用 `Auth.Close()`；高级 Manager 入口为 `CloseManager()`。不要在 Manager 任务或事件监听器内部同步调用它：关闭过程会等待已接收的任务和监听器，可能包含调用者自身。回调需要发起关闭时，应通知应用生命周期控制方后返回。关闭后不再支持业务调用；`CloseManager` 不负责排空业务请求。
 
 也可以使用 `BuildAndSetManager` 在构建时覆盖并注册 `AuthType`：
 
 ```go
-_, err := dtoken.BuildAndSetManager(
+_, err := global.BuildAndSetManager(
     dt.NewBuilder().
         KeyPrefix("dtoken").
         Storage(storage).
@@ -96,11 +98,11 @@ _, err := dtoken.BuildAndSetManager(
 全局 API 大多支持最后一个可选 `authType` 参数：
 
 ```go
-token, err := dtoken.Login(ctx, "10001", "web", "chrome", "user")
+token, err := global.Login(ctx, "10001", "web", "chrome", "user")
 
-loginID, err := dtoken.GetLoginID(ctx, token, "user")
-err = dtoken.CheckPermission(ctx, "10001", "user:read", "user")
-roles, err := dtoken.GetRoles(ctx, "10001", "user")
+loginID, err := global.GetLoginID(ctx, token, "user")
+err = global.CheckPermission(ctx, "10001", "user:read", "user")
+roles, err := global.GetRoles(ctx, "10001", "user")
 ```
 
 如果不传 `authType`，会使用默认认证体系 `auth:`。
@@ -123,7 +125,7 @@ func registerRoutes(ctx context.Context, r *gin.Engine, userAuth, adminAuth *dt.
 
 这样 `/api` 只能识别 `user` 体系的 Token，`/admin` 只能识别 `admin` 体系的 Token。
 
-各路由组通过 `WithAuth` 显式绑定实例，与全局注册无关。若需要按认证类型动态查询注册表，应显式配置 `WithManagerResolver(dtoken.GetManager)`，再使用 `WithAuthType` 选择认证类型。
+各路由组通过 `WithAuth` 显式绑定实例，与全局注册无关。若需要按认证类型动态查询注册表，应显式配置 `WithManagerResolver(global.GetManager)`，再使用 `WithAuthType` 选择认证类型。
 
 ## Redis Key 隔离
 
@@ -149,7 +151,7 @@ dt.NewBuilder().
 事件数据会携带 `AuthType`，便于审计时区分来源：
 
 ```go
-eventManager, _ := dtoken.GetEventManager("admin")
+eventManager, _ := global.GetEventManager("admin")
 ```
 
 `AccessProvider` 的 `AccessSubject` 也会携带 `AuthType`，可以在同一个权限服务里按认证体系返回不同权限。

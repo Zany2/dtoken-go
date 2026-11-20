@@ -96,7 +96,7 @@ func TestManagerDisableSupportsInlinePoolAndEmptySessions(t *testing.T) {
 					t.Fatal(err)
 				}
 			} else if mode == "empty session" {
-				if err := mgr.saveToStorage(ctx, mgr.getSessionKey(id), *defaultCreateSession(mgr.config.AuthType, id, time.Now().Unix())); err != nil {
+				if err := mgr.saveToStorage(ctx, mgr.getSessionKey(id), *defaultCreateSession(mgr.config.AuthType, id, time.Now().Unix()), mgr.getExpiration()); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -144,7 +144,7 @@ func TestManagerDisablePreservesForeignTerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess.LoginID = "stale-owner"
-	if err := mgr.saveToStorage(ctx, mgr.getSessionKey(sess.LoginID), *sess); err != nil {
+	if err := mgr.saveToStorage(ctx, mgr.getSessionKey(sess.LoginID), *sess, mgr.getExpiration()); err != nil {
 		t.Fatal(err)
 	}
 	before := captureTerminalLifecycle(t, mgr, ctx, []string{mgr.getSessionKey(pair.LoginID), mgr.getTokenKey(pair.AccessToken), mgr.getActiveKey(pair.AccessToken), mgr.getTokenRefreshKey(pair.AccessToken), mgr.getRefreshTokenKey(pair.RefreshToken)})

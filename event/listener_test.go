@@ -227,6 +227,34 @@ func TestTriggerAsyncWaitTracksDispatchAndSnapshotsInput(t *testing.T) {
 	}
 }
 
+// TestTriggerAsyncTimestampSnapshot checks submission timestamps and explicit caller timestamps without modifying input. TestTriggerAsyncTimestampSnapshot 校验提交时间与调用方显式时间戳，且不改写输入。
+func TestTriggerAsyncTimestampSnapshot(t *testing.T) {
+	for _, timestamp := range []int64{0, 123456789} {
+		t.Run(fmt.Sprintf("timestamp_%d", timestamp), func(t *testing.T) {
+			manager := NewManager()
+			var got int64
+			manager.RegisterFuncWithConfig(EventLogin, func(data *EventData) {
+				got = data.Timestamp
+			}, ListenerConfig{Async: false})
+			input := &EventData{Event: EventLogin, Timestamp: timestamp}
+			before := time.Now().Unix()
+			manager.TriggerAsync(input)
+			after := time.Now().Unix()
+			manager.Wait()
+			if timestamp == 0 {
+				if got < before || got > after {
+					t.Fatalf("timestamp = %d, want submission time within [%d, %d]", got, before, after)
+				}
+			} else if got != timestamp {
+				t.Fatalf("explicit timestamp = %d, want %d", got, timestamp)
+			}
+			if input.Timestamp != timestamp {
+				t.Fatal("asynchronous dispatch modified the caller timestamp")
+			}
+		})
+	}
+}
+
 // TestAsyncListenerCanReenterTriggerSync verifies an async listener can synchronously trigger another event without waiting on itself. TestAsyncListenerCanReenterTriggerSync 验证异步监听器可同步重入触发其他事件且不会等待自身。
 func TestAsyncListenerCanReenterTriggerSync(t *testing.T) {
 	manager := NewManager()

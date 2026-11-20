@@ -1,12 +1,14 @@
 English | [中文文档](dtoken_zh.md)
 
-# DToken API Documentation
+# Global API Reference
 
 ## Overview
 
-This reference uses dtoken as an import alias for github.com/Zany2/dtoken-go/global. The root exposes instance APIs; Nonce, OAuth2, Ticket, and ShortKey are called through independent services. `dt` refers to the root package `github.com/Zany2/dtoken-go` for public models and engine extension types.
+This reference uses global as an import alias for github.com/Zany2/dtoken-go/global. The root exposes instance APIs; Nonce, OAuth2, Ticket, and ShortKey are called through independent services. `dt` refers to the root package `github.com/Zany2/dtoken-go` for public models and engine extension types.
 
-In the current version, `dtoken` uses `context.Context` as the unified entry, and different auth systems can be selected through the optional `authType` parameter.
+In the current version, `global` uses `context.Context` as the unified entry, and different auth systems can be selected through the optional `authType` parameter.
+
+New applications should prefer the [Auth instance API](auth.md). Function signatures on this page belong to global; typed options are declared in the root package, aliased as dt in examples.
 
 ## Initialization
 
@@ -19,7 +21,7 @@ import (
 	"fmt"
 
 	dt "github.com/Zany2/dtoken-go"
-	dtoken "github.com/Zany2/dtoken-go/global"
+	global "github.com/Zany2/dtoken-go/global"
 )
 
 func main() {
@@ -27,9 +29,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	dtoken.SetAuth(auth)
-	defer dtoken.DeleteAllManager()
-	token, err := dtoken.Login(context.Background(), "alice")
+	global.SetAuth(auth)
+	defer global.DeleteAllManager()
+	token, err := global.Login(context.Background(), "alice")
 	if err != nil {
 		panic(err)
 	}
@@ -59,9 +61,9 @@ func Login(ctx context.Context, loginID string, params ...string) (string, error
 
 **Example**:
 ```go
-token, _ := dtoken.Login(ctx, "1000")
-token, _ := dtoken.Login(ctx, "1000", "mobile")
-token, _ := dtoken.Login(ctx, "1000", "mobile", "device-001", "user")
+token, _ := global.Login(ctx, "1000")
+token, _ := global.Login(ctx, "1000", "mobile")
+token, _ := global.Login(ctx, "1000", "mobile", "device-001", "user")
 ```
 
 ### LoginWithRefreshToken
@@ -71,12 +73,12 @@ Login and return an access token plus a refresh token.
 **Signature**:
 ```go
 func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*dt.RefreshTokenPair, error)
-func LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions, authType ...string) (*dt.RefreshTokenPair, error)
+func LoginWithRefreshTokenOptions(ctx context.Context, opts dt.RefreshTokenOptions, authType ...string) (*dt.RefreshTokenPair, error)
 ```
 
 **Example**:
 ```go
-pair, err := dtoken.LoginWithRefreshToken(ctx, "1000", "web", "browser-001")
+pair, err := global.LoginWithRefreshToken(ctx, "1000", "web", "browser-001")
 if err != nil {
     return err
 }
@@ -98,18 +100,18 @@ func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...st
 
 **Example**:
 ```go
-nextPair, err := dtoken.RefreshToken(ctx, pair.RefreshToken)
+nextPair, err := global.RefreshToken(ctx, pair.RefreshToken)
 if err != nil {
     return err
 }
 
-ttl, err := dtoken.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
+ttl, err := global.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
 if err != nil {
     return err
 }
 fmt.Println(ttl)
 
-if err := dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken); err != nil {
+if err := global.RevokeRefreshToken(ctx, nextPair.RefreshToken); err != nil {
     return err
 }
 ```
@@ -125,7 +127,7 @@ func IntrospectToken(ctx context.Context, tokenValue string, authType ...string)
 
 **Example**:
 ```go
-info, err := dtoken.IntrospectToken(ctx, token)
+info, err := global.IntrospectToken(ctx, token)
 if err != nil {
     return err
 }
@@ -145,7 +147,7 @@ func IsLogin(ctx context.Context, tokenValue string, authType ...string) bool
 
 **Example**:
 ```go
-if dtoken.IsLogin(ctx, token) {
+if global.IsLogin(ctx, token) {
     // logged in
 }
 ```
@@ -161,7 +163,7 @@ func GetLoginID(ctx context.Context, tokenValue string, authType ...string) (str
 
 **Example**:
 ```go
-loginID, err := dtoken.GetLoginID(ctx, token)
+loginID, err := global.GetLoginID(ctx, token)
 ```
 
 ### Logout
@@ -175,7 +177,7 @@ func Logout(ctx context.Context, tokenValue string, authType ...string) error
 
 **Example**:
 ```go
-_ = dtoken.Logout(ctx, token)
+_ = global.Logout(ctx, token)
 ```
 
 ### Kickout
@@ -189,7 +191,7 @@ func Kickout(ctx context.Context, tokenValue string, authType ...string) error
 
 **Example**:
 ```go
-_ = dtoken.Kickout(ctx, token)
+_ = global.Kickout(ctx, token)
 ```
 
 ### Common Extended Methods
@@ -197,7 +199,7 @@ _ = dtoken.Kickout(ctx, token)
 ```go
 func LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, params ...string) (string, error)
 func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*dt.RefreshTokenPair, error)
-func LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions, authType ...string) (*dt.RefreshTokenPair, error)
+func LoginWithRefreshTokenOptions(ctx context.Context, opts dt.RefreshTokenOptions, authType ...string) (*dt.RefreshTokenPair, error)
 func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*dt.RefreshTokenPair, error)
 func RevokeRefreshToken(ctx context.Context, refreshToken string, authType ...string) error
 func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...string) (int64, error)
@@ -235,7 +237,7 @@ func AddPermissions(ctx context.Context, loginID string, permissions []string, a
 
 **Example**:
 ```go
-_ = dtoken.AddPermissions(ctx, "1000", []string{
+_ = global.AddPermissions(ctx, "1000", []string{
     "user:read",
     "user:write",
     "admin:*",
@@ -253,7 +255,7 @@ func HasPermission(ctx context.Context, loginID string, permission string, authT
 
 **Example**:
 ```go
-if dtoken.HasPermission(ctx, "1000", "user:read") {
+if global.HasPermission(ctx, "1000", "user:read") {
     // has permission
 }
 ```
@@ -305,7 +307,7 @@ func AddRoles(ctx context.Context, loginID string, roles []string, authType ...s
 
 **Example**:
 ```go
-_ = dtoken.AddRoles(ctx, "1000", []string{"admin", "manager"})
+_ = global.AddRoles(ctx, "1000", []string{"admin", "manager"})
 ```
 
 ### HasRole
@@ -319,7 +321,7 @@ func HasRole(ctx context.Context, loginID string, role string, authType ...strin
 
 **Example**:
 ```go
-if dtoken.HasRole(ctx, "1000", "admin") {
+if global.HasRole(ctx, "1000", "admin") {
     // has admin role
 }
 ```
@@ -330,8 +332,8 @@ Multiple role checks.
 
 **Example**:
 ```go
-dtoken.HasRolesAnd(ctx, "1000", []string{"admin", "manager"})
-dtoken.HasRolesOr(ctx, "1000", []string{"admin", "super-admin"})
+global.HasRolesAnd(ctx, "1000", []string{"admin", "manager"})
+global.HasRolesOr(ctx, "1000", []string{"admin", "super-admin"})
 ```
 
 ### Common Extended Methods
@@ -368,7 +370,7 @@ func Disable(ctx context.Context, loginID string, duration time.Duration, reason
 
 **Example**:
 ```go
-_ = dtoken.Disable(ctx, "1000", 1*time.Hour, "manual disable")
+_ = global.Disable(ctx, "1000", 1*time.Hour, "manual disable")
 ```
 
 ### IsDisable
@@ -438,17 +440,17 @@ func GetSessionByToken(ctx context.Context, tokenValue string, authType ...strin
 
 **Example**:
 ```go
-if err := dtoken.SetSessionValue(ctx, "1000", "nickname", "John"); err != nil {
+if err := global.SetSessionValue(ctx, "1000", "nickname", "John"); err != nil {
     return err
 }
-nickname, found, err := dtoken.GetSessionValue(ctx, "1000", "nickname")
+nickname, found, err := global.GetSessionValue(ctx, "1000", "nickname")
 if err != nil {
     return err
 }
 fmt.Println(nickname, found)
 ```
 
-`GetSession` and `GetSessionByToken` return decoded snapshots. Calling `sess.Set(...)` only changes that local value. Use `SetSessionValue` or `SetSessionValueByToken` to persist account data while preserving the Session lifetime.
+`GetSession` and `GetSessionByToken` return decoded snapshots. Changing `sess.Data` only changes that local value. Use `SetSessionValue` or `SetSessionValueByToken` to persist account data while preserving the Session lifetime.
 
 ### Common Extended Methods
 
@@ -514,7 +516,7 @@ Applications should register instances with `SetAuth`; `Default` returns the def
 
 `SetManager` replaces and immediately closes the previous manager for the same auth type. Runtime replacement should begin only after the old manager has no new or in-flight work; callers must not register a manager again after it has been replaced or closed. `DeleteManager` and `DeleteAllManager` remove managers from the registry before releasing their resources. When managers share Storage, Logger, or Pool components, use `dt.WithComponentOwnership` to mark those shared components as caller-owned.
 
-## Complete Method List
+## Common Method Index
 
 ### Manager Lifecycle
 - `SetAuth`
@@ -564,6 +566,12 @@ Applications should register instances with `SetAuth`; `Default` returns the def
 - `ForEachTerminalByDevice`
 - `GetSession`
 - `GetSessionByToken`
+- `SetSessionValue`
+- `GetSessionValue`
+- `DeleteSessionValue`
+- `SetSessionValueByToken`
+- `GetSessionValueByToken`
+- `DeleteSessionValueByToken`
 - `GetTokenValueListByLoginID`
 - `GetTokenValueListByDeviceAndDeviceID`
 - `GetTokenValueListByDevice`
@@ -627,7 +635,6 @@ Applications should register instances with `SetAuth`; `Default` returns the def
 - `CheckRole`
 - `CheckRoleAnd`
 - `CheckRoleOr`
-
 
 ## Next Steps
 

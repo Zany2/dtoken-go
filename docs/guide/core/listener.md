@@ -1,8 +1,10 @@
 # Event Listener Guide
 
-Fragment aliases: dt = github.com/Zany2/dtoken-go, dtoken = github.com/Zany2/dtoken-go/global, listener = github.com/Zany2/dtoken-go/event.
+Fragment aliases: dt = github.com/Zany2/dtoken-go, global = github.com/Zany2/dtoken-go/global, listener = github.com/Zany2/dtoken-go/event.
 
 [中文文档](listener_zh.md) | English
+
+Independent capabilities publish to an Auth event manager when created with NewService(manager, auth) and called through Service. Direct capability Manager calls bypass this service wrapper. Register application listeners before accepting requests and close the engine through Auth.Close outside listener callbacks.
 
 ## Current Status
 
@@ -15,7 +17,7 @@ It is used for authentication and lifecycle events, access checks and changes, r
 The current version exposes the event manager through the global facade, the instance facade, and `dt.Manager`:
 
 ```go
-globalEventMgr, err := dtoken.GetEventManager("user")
+globalEventMgr, err := global.GetEventManager("user")
 if err != nil {
     // Handle the lookup error.
 }
@@ -176,7 +178,7 @@ _ = ok
 ### Trigger Events
 
 - `Trigger` dispatches on the current goroutine. Synchronous listeners run inline; asynchronous listeners are started without being awaited.
-- `TriggerAsync` snapshots the payload before returning, schedules the whole dispatch asynchronously, and returns immediately.
+- `TriggerAsync` snapshots the payload before returning, fills a zero `Timestamp` with the submission time, and schedules the whole dispatch asynchronously. Explicit timestamps are preserved and the caller's payload is not modified.
 - `TriggerSync` dispatches on the current goroutine and waits for the listeners started directly by that dispatch. It does not wait for unrelated asynchronous work or background descendants started through `Trigger` or `TriggerAsync`; a nested `TriggerSync` remains part of the calling listener's completion.
 - `Wait` waits until the manager has no accepted asynchronous dispatch or listener tasks remaining.
 
@@ -194,7 +196,7 @@ eventMgr.TriggerSync(data)
 
 ```go
 eventMgr.AddFilter(func(data *listener.EventData) bool {
-    return data.AuthType == "dtoken:"
+    return data.AuthType == "auth:"
 })
 ```
 
@@ -251,6 +253,8 @@ These usually appear in the `Extra` payload of permission and role check events.
 ## Practical Recommendation
 
 Obtain the event manager from the facade or Manager instance and register application listeners before serving traffic. During shutdown, stop event producers before using `Wait` to drain accepted asynchronous work.
+
+The public `Auth.Emit` and `Manager.Emit` entry points ignore new events once the authentication engine starts closing, regardless of `AsyncEvent`. Already accepted asynchronous events and internal renewal completion events still drain before resource release. This does not close a separately held `event.Manager`; callers that use its `Trigger` methods directly must stop their own event producers before shutdown.
 
 Before calling `Manager.CloseManager`, stop and drain application requests, then call it from outside tasks and listeners. It rejects new asynchronous tasks, stops background status logging, drains accepted tasks and asynchronous listeners, and finally releases its owned Pool, Storage, and Logger. Caller-owned components remain open. Accepted renewal tasks dispatch their renewal event within the same task, avoiding both nested pool submission and event loss from rejected submissions during shutdown. Each listener's own `Async` setting still applies.
 

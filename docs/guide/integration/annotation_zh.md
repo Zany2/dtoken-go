@@ -23,6 +23,7 @@
 | 字段 | 说明 |
 |------|------|
 | `AuthType` | 指定认证体系 |
+| `ManagerResolver` | 显式解析认证实例，可沿用请求中绑定的解析器 |
 | `CheckLogin` | 是否校验登录 |
 | `CheckRole` | 角色列表 |
 | `CheckPermission` | 权限列表 |
@@ -68,7 +69,7 @@ r.GET("/user/info",
     gindt.CheckLoginMiddleware(ctx, nil, nil),
     func(c *gin.Context) {
         dCtx, _ := gindt.GetDTokenContext(c)
-        loginID, _ := dCtx.Auth().GetLoginID(ctx)
+        loginID, _ := dCtx.Auth().GetLoginID(c.Request.Context())
         c.JSON(200, gin.H{"loginId": loginID})
     },
 )
@@ -105,7 +106,7 @@ r.GET("/comment/send",
 
 ### OR 逻辑
 
-默认是 `OR` 逻辑，只要满足任一角色或任一权限即可。
+Gin 注解的空 LogicType 按 OR 处理；普通 AuthOptions 默认 AND。LogicType 分别作用于角色列表和权限列表，同时配置两者时，两组检查都必须通过。建议显式填写 LogicOr 或 LogicAnd。
 
 ```go
 r.GET("/reports",

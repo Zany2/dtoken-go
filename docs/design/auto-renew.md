@@ -2,6 +2,8 @@
 
 # Auto-Renew Design
 
+Here auth is a root-built Auth, dt names the root package, gindt the Gin adapter, memory storage/memory, and adapter contract. Bind HTTP requests through WithAuth(auth) first. Internal maintenance lives in internal/engine/internal_maintenance.go and internal_lifecycle.go; applications do not import internal.
+
 ## Design Goals
 
 The goals of auto-renew are:
@@ -18,6 +20,8 @@ The goals of auto-renew are:
 Login validation checks the token lifecycle, Session, account/device disable state, and inactivity timeout before scheduling maintenance.
 
 `prepareLoginMaintenance` coalesces requests for the same token lifecycle into one pending task. If inactivity tracking is enabled, it records the latest successful request time. Without inactivity tracking, a task is submitted only when automatic renewal is due.
+
+Inactivity checks use the later of the valid persisted activity timestamp and the accepted activity queued for the same lifecycle in this Manager. Login validation, terminal queries, and expired-terminal cleanup follow this rule, so pool delays do not discard accepted activity. Cancelled tasks and other lifecycles cannot contribute activity; missing or malformed persisted markers and storage errors still fail validation. Pending activity is local to this Manager; other instances see it only after persistence.
 
 `submitAsync` prefers the configured pool and falls back to a tracked goroutine when no pool is available or submission fails. A closing Manager rejects new tasks.
 
@@ -63,6 +67,8 @@ In the current implementation, auto-renew typically requires all of the followin
 - `TTL <= RenewMaxRefresh`, or `RenewMaxRefresh <= 0`
 - the renew-throttle condition of `RenewInterval` is not hit
 
+The throttle normally uses the configured `RenewInterval`. If a token's positive lifetime is no longer than that interval, the marker instead lasts half that lifetime. For example, a 60-second token with `RenewInterval = 300` uses a 30-second interval. This rule applies to initial login, shared login, automatic and forced renewal, and `RenewTimeout`; manual renewal resets the marker using the new lifetime. The calculation uses duration precision, including subsecond lifetimes. Disabled intervals and unlimited token lifetimes retain their existing semantics. Renewal still requires an eligible request and timely execution before the token expires.
+
 This means:
 
 - renew does not happen on every request
@@ -82,65 +88,79 @@ r.Use(gindt.AuthMiddleware(ctx))
 ### 2. Annotation-Style Login Check
 
 ```go
-annotation.GET("/profile",
-    gindt.CheckLoginMiddleware(ctx, handleProfile, handleAuthFail))
+router.GET("/profile",
+    gindt.CheckLoginMiddleware(ctx, nil, handleAuthFail),
+    handleProfile,
+)
 ```
 
 ### 3. Manual Login Check
 
 ```go
-dtoken.IsLogin(ctx, token)
-dtoken.CheckLogin(ctx, token)
+auth.IsLogin(ctx, token)
+auth.CheckLogin(ctx, token)
 ```
 
 ### 4. Fetching Checked Login Information
 
 ```go
-dtoken.GetLoginID(ctx, token)
-dtoken.GetDevice(ctx, token)
+auth.GetLoginID(ctx, token)
+auth.GetDevice(ctx, token)
 ```
 
-`dtoken.GetTokenInfo` only loads the stored Token information and does not run login validation, so it does not trigger auto-renew.
+`auth.GetTokenInfo` only loads the stored Token information and does not run login validation, so it does not trigger auto-renew.
 
 ## Configuration Options
 
 ### Enable Auto-Renew
 
 ```go
-dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ### Set Renew Trigger Threshold
 
 ```go
-dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
     RenewMaxRefresh(3600). // only renew within the last hour
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ### Set Minimum Renew Interval
 
 ```go
-dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
     RenewMaxRefresh(3600).
     RenewInterval(300). // at most once every 5 minutes for the same token
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ### Combine with Active Timeout
 
 ```go
-dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(memory.NewStorage()).
     Timeout(86400).
     ActiveTimeout(1800).
@@ -148,6 +168,10 @@ dt.NewBuilder().
     RenewMaxRefresh(3600).
     RenewInterval(300).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 **Effect**:
@@ -202,7 +226,7 @@ Async renew failure does not directly block the current request:
 ### Recommended Production Configuration
 
 ```go
-dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(redisStorage).
     Timeout(86400).
     ActiveTimeout(1800).
@@ -210,26 +234,38 @@ dt.NewBuilder().
     RenewMaxRefresh(3600).
     RenewInterval(300).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ### Recommended Development Configuration
 
 ```go
-dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(memory.NewStorage()).
     Timeout(7200).
     AutoRenew(true).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ### Security-First Configuration
 
 ```go
-dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(redisStorage).
     Timeout(1800).
     AutoRenew(false).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ## Next Steps

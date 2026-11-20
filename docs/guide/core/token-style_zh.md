@@ -4,6 +4,8 @@
 
 DToken-Go 的 `TokenStyle` 控制 Token 字符串的生成方式。无论使用哪种风格，登录态、Session、权限、封禁、踢下线和顶下线仍然由服务端存储参与管理。
 
+代码片段中 dt 为根包、adapter 为 contract；storage 表示已创建的存储。Build 返回 Auth，使用结束后关闭。
+
 ## 支持的风格
 
 | 风格 | 常量 | 特点 | 适用场景 |
@@ -21,29 +23,41 @@ DToken-Go 的 `TokenStyle` 控制 Token 字符串的生成方式。无论使用�
 ## 基本使用
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     TokenStyle(adapter.TokenStyleRandom64).
     Storage(storage).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 JWT 风格需要设置密钥：
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     TokenStyle(adapter.TokenStyleJWT).
     JwtSecretKey("your-very-strong-secret").
     Storage(storage).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 也可以使用快捷方法：
 
 ```go
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     JwtSecret("your-very-strong-secret").
     Storage(storage).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ## JWT 不是纯无状态
@@ -82,10 +96,14 @@ func (MyGenerator) Generate(loginID, device, deviceID string) (string, error) {
     return hex.EncodeToString(value[:]), nil
 }
 
-mgr, err := dt.NewBuilder().
+auth, err := dt.NewBuilder().
     SetGenerator(MyGenerator{}).
     Storage(storage).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 自定义生成器应保证：

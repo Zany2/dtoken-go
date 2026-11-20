@@ -2,6 +2,8 @@
 
 # 自动续签设计
 
+本文的 auth 是根包构建的 Auth，dt 表示根包；gindt 表示 Gin 适配器，memory 表示 storage/memory，adapter 表示 contract。HTTP 示例先通过 WithAuth(auth) 绑定请求。内部流程位于 internal/engine/internal_maintenance.go 和 internal_lifecycle.go；应用不直接导入 internal。
+
 ## 设计目标
 
 自动续签的目标是：
@@ -18,6 +20,8 @@
 登录校验先检查 Token 生命周期、Session、账号和设备封禁状态，以及不活跃超时，再调度维护任务。
 
 `prepareLoginMaintenance` 将同一 Token 生命周期的并发请求合并为一个待执行任务。启用活跃跟踪时会记录最近一次成功请求的时间；未启用活跃跟踪时，仅在满足自动续期条件后提交任务。
+
+不活跃超时判断取有效的持久化活跃时间与当前 Manager 内同一生命周期已接受、待写入的活跃时间中的较大值。登录校验、终端查询和过期终端清理统一遵循此规则，避免协程池排队导致已接受的活跃记录被忽略。已取消任务及其他生命周期的记录不参与判断；持久化标记缺失、损坏或读取失败时仍判定校验失败。排队活跃时间仅对当前 Manager 可见，其他实例需等待持久化后才能读取。
 
 `submitAsync` 优先使用配置的协程池；没有池或提交失败时，回退到受 Manager 跟踪的 goroutine。Manager 关闭期间拒绝新任务。
 
@@ -63,6 +67,8 @@
 - `TTL <= RenewMaxRefresh`，或者 `RenewMaxRefresh <= 0`
 - 未命中 `RenewInterval` 的节流限制
 
+节流标记通常使用配置的 `RenewInterval`。当 Token 的正有效期不大于该间隔时，标记时长改为本次有效期的一半。例如 Token 有效期为 60 秒、`RenewInterval = 300` 时，实际间隔为 30 秒。首次登录、共享登录、自动或强制续期及 `RenewTimeout` 均遵循此规则；手动续期会按新有效期重设标记。计算保留时长精度，支持不足一秒的有效期。禁用间隔和无限期 Token 保留原有语义。续期仍需要在 Token 到期前有满足条件的请求，并及时执行维护任务。
+
 这意味着：
 
 - 不是每次请求都会续期
@@ -82,65 +88,79 @@ r.Use(gindt.AuthMiddleware(ctx))
 ### 2. 注解式登录校验
 
 ```go
-annotation.GET("/profile",
-    gindt.CheckLoginMiddleware(ctx, handleProfile, handleAuthFail))
+router.GET("/profile",
+    gindt.CheckLoginMiddleware(ctx, nil, handleAuthFail),
+    handleProfile,
+)
 ```
 
 ### 3. 手动检查登录
 
 ```go
-dtoken.IsLogin(ctx, token)
-dtoken.CheckLogin(ctx, token)
+auth.IsLogin(ctx, token)
+auth.CheckLogin(ctx, token)
 ```
 
 ### 4. 获取已校验的登录信息
 
 ```go
-dtoken.GetLoginID(ctx, token)
-dtoken.GetDevice(ctx, token)
+auth.GetLoginID(ctx, token)
+auth.GetDevice(ctx, token)
 ```
 
-`dtoken.GetTokenInfo` 只读取存储中的 Token 信息，不执行登录校验，因此不会触发自动续签。
+`auth.GetTokenInfo` 只读取存储中的 Token 信息，不执行登录校验，因此不会触发自动续签。
 
 ## 配置选项
 
 ### 启用自动续签
 
 ```go
-dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ### 指定续签触发阈值
 
 ```go
-dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
     RenewMaxRefresh(3600). // 剩余 1 小时内才触发续签
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ### 指定最小续期间隔
 
 ```go
-dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
     RenewMaxRefresh(3600).
     RenewInterval(300). // 同一 Token 至少 5 分钟才续一次
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ### 结合最大不活跃时长
 
 ```go
-dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(memory.NewStorage()).
     Timeout(86400).
     ActiveTimeout(1800).
@@ -148,6 +168,10 @@ dt.NewBuilder().
     RenewMaxRefresh(3600).
     RenewInterval(300).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 **效果**：
@@ -202,7 +226,7 @@ type Storage interface {
 ### 生产环境建议
 
 ```go
-dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(redisStorage).
     Timeout(86400).
     ActiveTimeout(1800).
@@ -210,26 +234,38 @@ dt.NewBuilder().
     RenewMaxRefresh(3600).
     RenewInterval(300).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ### 开发环境建议
 
 ```go
-dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(memory.NewStorage()).
     Timeout(7200).
     AutoRenew(true).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ### 安全优先配置
 
 ```go
-dt.NewBuilder().
+auth, err := dt.NewBuilder().
     Storage(redisStorage).
     Timeout(1800).
     AutoRenew(false).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ## 下一步

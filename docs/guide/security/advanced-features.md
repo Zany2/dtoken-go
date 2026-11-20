@@ -1,8 +1,10 @@
 # Advanced Features
 
+English | [中文文档](advanced-features_zh.md)
+
 This page lists advanced DToken-Go capabilities that can be used on top of the normal login, logout, permission, and role APIs.
 
-
+The following are topic-specific fragments. ctx is the current context.Context; place fragments returning errors in an error-returning function. dt names the root package, listener names event, and the SSO fragment additionally imports the independent sso module. Auth introspection and refresh-token APIs are separate from capability services.
 
 ## Explicit composition
 
@@ -26,6 +28,8 @@ nonceService := nonce.NewService(nonce.NewDefaultNonceManager(cfg.AuthType, cfg.
 ticketService := ticket.NewService(ticket.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
 shortKeyService := shortkey.NewService(shortkey.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
 ```
+
+Service interfaces live in contract/nonce, contract/ticket, and contract/shortkey. HTTP binds these interfaces through WithCapabilities and supports custom implementations. Services borrow Auth components and do not close them; stop using those components when Auth closes.
 
 ## Token Introspection
 
@@ -83,7 +87,7 @@ For one-time tickets, temporary authorization, and system-to-system ticket excha
 
 Ticket validation and state updates use the precise `ExpiresAt` deadline. `CreateTime` remains a Unix timestamp in seconds and `ExpiresIn` remains the TTL rounded up to seconds. Stored tickets without `ExpiresAt` retain their previous whole-second expiration behavior.
 
-Consumption prefers `adapter.AtomicStorage`. With plain `Storage`, consumption and revocation are serialized within one Ticket manager instance; this fallback does not provide atomic consumption across manager instances or processes. Use atomic storage when multiple instances share tickets.
+Consumption prefers `contract.AtomicStorage`. With plain `Storage`, consumption and revocation are serialized within one Ticket manager instance; this fallback does not provide atomic consumption across manager instances or processes. Use atomic storage when multiple instances share tickets.
 
 ```go
 createdTicket, err := ticketService.CreateTicket(ctx, ticket.CreateOptions{LoginID: "user-1001"})
@@ -104,7 +108,7 @@ For short-link access, QR confirmation, temporary authorization, and system-to-s
 
 Short keys use the precise `ExpiresAt` deadline for validation and state updates. `CreateTime`, `UpdateTime`, and `ExpiresIn` retain their second-based units; stored keys without `ExpiresAt` retain the previous expiration rules.
 
-Creation writes, confirmation, consumption, and revocation are serialized within each ShortKey manager instance. Creation and consumption prefer `adapter.AtomicStorage`; plain `Storage` supports a local fallback. This instance lock does not coordinate separate managers or processes, and atomic create/consume operations do not make cross-instance confirmation and revocation transactional.
+Creation writes, confirmation, consumption, and revocation are serialized within each ShortKey manager instance. Creation and consumption prefer `contract.AtomicStorage`; plain `Storage` supports a local fallback. This instance lock does not coordinate separate managers or processes, and atomic create/consume operations do not make cross-instance confirmation and revocation transactional.
 
 ```go
 createdKey, err := shortKeyService.CreateShortKey(ctx, shortkey.CreateOptions{})
@@ -130,6 +134,7 @@ For unified login, ticket exchange, cross-system login-state sharing, and unifie
 
 ```go
 server := sso.NewServer()
+defer server.Close()
 err := server.RegisterClient(&sso.Client{
 	ClientID:     "app-a",
 	ClientSecret: "secret-a",
@@ -190,3 +195,9 @@ eventMgr.RegisterFunc(listener.EventAll, func(data *listener.EventData) {
 	fmt.Println(data.Event, data.LoginID, data.Token)
 })
 ```
+
+## Related Documentation
+
+- [Auth instance API](../../api/auth.md)
+- [Lifecycle](../../design/api-lifecycle.md)
+- [SSO Redis storage](../../../sso/storage/redis/README.md)

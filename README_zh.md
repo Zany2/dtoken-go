@@ -23,7 +23,9 @@
 
 ## DToken-Go 是什么
 
-DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，已提供登录认证、Token 管理、Session 管理、终端管理、角色权限校验、账号与设备封禁、Nonce 防重放、OAuth2 服务端、事件监听、Ticket 临时凭证、短 Key 访问凭证、Token Introspection 和独立 Refresh Token 等核心能力，SSO 单点登录模块仍在开发中。框架支持插件化组件替换与自定义扩展，并适配主流 Go Web 框架，既可以作为独立认证核心使用，也可以快速接入现有业务项目。
+DToken-Go 以有状态认证引擎为核心，提供登录认证、授权、会话、终端及 Token 生命周期管理。应用通过根包 `dtoken` 构建和使用 `Auth` 实例，通过公共契约替换存储、编解码、日志等组件，通过框架适配器接入 HTTP 请求。
+
+Nonce、OAuth2、Ticket 和 ShortKey 作为独立服务按需组合；`global` 提供可选的全局注册与调用。SSO 使用独立模块和生命周期，目前仍在开发中。
 
 你可以把它用于：
 
@@ -61,12 +63,18 @@ DToken-Go 是一个模块化、可插拔的 Go 认证授权框架，已提供登
 
 ```bash
 go get github.com/Zany2/dtoken-go
+
+# 使用 Gin 时添加框架适配模块
 go get github.com/Zany2/dtoken-go/integrations/gin
 ```
 
-框架集成、SSO、Redis 存储、MsgPack、JSON v2 和 GoFrame 日志各自使用独立模块。路径与版本升级见[迁移指南](docs/design/module-migration_zh.md)。
+根模块包含 Auth、公共契约、内部引擎、基础组件、共享 HTTP 层，以及 Nonce、OAuth2、Ticket、ShortKey 能力包。能力包独立组合，但随根模块一起发布。
+
+框架集成、Redis 存储、MsgPack、JSON v2、GoFrame 日志、SSO 和 SSO Redis 存储使用独立模块，按需添加。旧目录结构的包路径及部分 API 已变更，升级步骤和发布版本约定见[迁移指南](docs/design/module-migration_zh.md)。
 
 ## 5 分钟上手
+
+默认 Builder 使用进程内存储并装配基础组件，无需启动外部服务。以下示例演示为已确认身份的用户签发 Token；账号密码或其他身份凭据的验证由应用完成。
 
 <!-- dtoken-compile: instance -->
 ```go
@@ -96,17 +104,25 @@ func main() {
     if err != nil {
         panic(err)
     }
-    _ = auth.AddRoles(ctx, dtoken.RoleOptions{LoginID: "user-1001", Roles: []string{"admin"}})
+    if err := auth.AddRoles(ctx, dtoken.RoleOptions{LoginID: "user-1001", Roles: []string{"admin"}}); err != nil {
+        panic(err)
+    }
     fmt.Println(auth.IsLogin(ctx, token))
-    _ = auth.LogoutByToken(ctx, token)
+    if err := auth.LogoutByToken(ctx, token); err != nil {
+        panic(err)
+    }
 }
 ```
 
-需要全局 API 时，显式导入 `github.com/Zany2/dtoken-go/global`，调用 `global.SetAuth(auth)`，并由 `global.DeleteManager` 或 `global.DeleteAllManager` 清理注册项。实例之间无需全局注册。
+直接使用 Auth 无需全局注册。默认内存存储不跨进程共享；多实例共享认证数据时，可配置 [Redis 存储](docs/guide/integration/redis-storage_zh.md)，或实现 `contract.Storage`。
+
+需要全局 API 时，显式导入 `github.com/Zany2/dtoken-go/global`，调用 `global.SetAuth(auth)`，并由 `global.DeleteManager` 或 `global.DeleteAllManager` 清理注册项。注册表与 Auth 共享引擎，替换或删除注册项会关闭原引擎。
 
 ## Web 框架接入
 
-根包构建实例，框架通过 `WithAuth` 或 `Context` 注入。
+支持 Gin、Echo、Fiber、Chi、GoFrame、Hertz、Kratos 和 Beego。根包构建实例，框架通过 `WithAuth` 注入；下面的 Gin 示例使用 `Context(auth)` 绑定请求实例，再用 `RequireLogin()` 保护路由。
+
+示例的 `/login` 固定使用演示账号，只展示 Token 签发。实际应用应先验证身份，再调用 `LoginID`。
 
 <!-- dtoken-compile: gin -->
 ```go
@@ -153,13 +169,24 @@ func main() {
 }
 ```
 
+请求 `/user/me` 时，将登录响应中的 Token 放入 `Authorization` 请求头。框架中间件通过绑定的实例完成鉴权；需要从全局注册表选择实例时，显式配置 `WithManagerResolver(global.GetManager)`。更多接入方式见[框架集成指南](docs/guide/integration/framework-integration_zh.md)。
+
 ## 组合独立能力
 
-Nonce、OAuth2、Ticket 和 ShortKey 通过各自包的构造器创建；`NewService` 可接收认证实例作为事件发布器。使用相同的配置命名空间和存储即可与认证实例组合，Builder 不再提供能力开关。请求上下文通过 `WithCapabilities` 显式接收服务；未注入的能力返回 `ErrModuleNotEnabled`。以下片段在注册路由前使用，需同时导入标准库 `context`。
+Nonce、OAuth2、Ticket 和 ShortKey 通过各自包的构造器创建；`NewService` 可接收 Auth 作为事件发布器。能力服务复用实例的命名空间、存储及所需编解码器，Builder 不提供能力开关。HTTP 通过 `contract` 下的服务接口绑定能力，也支持自定义实现。
+
+在上面的 Gin 示例中，补充以下导入，并用后面的绑定片段替换 `router.Use(gindt.Context(auth))`，放在所有路由注册之前：
 
 ```go
-// Imports: nonce "github.com/Zany2/dtoken-go/nonce",
-// requestcontext "github.com/Zany2/dtoken-go/httpauth/context".
+import (
+    "context"
+
+    requestcontext "github.com/Zany2/dtoken-go/httpauth/context"
+    "github.com/Zany2/dtoken-go/nonce"
+)
+```
+
+```go
 cfg := auth.Config()
 service := nonce.NewService(
     nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage()),
@@ -172,18 +199,30 @@ options := []gindt.AuthOption{
 router.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), options...))
 ```
 
-## 包边界
+请求现在可以通过绑定的 Nonce 服务执行操作；OAuth2、Ticket 和 ShortKey 按同样方式组合。未绑定能力时，返回错误的能力操作报告 `ErrModuleNotEnabled`，布尔检查返回 false。服务借用实例组件，使用期间应保持 Auth 可用。完整用法见 [Nonce 指南](docs/guide/security/nonce_zh.md)和[高级能力指南](docs/guide/security/advanced-features_zh.md)。
+
+## 架构与目录
+
+实例调用沿 `应用 → Auth → 认证引擎 → 组件接口` 执行；HTTP 调用沿 `框架适配器 → 公共 HTTP 层 → 引擎或能力服务接口` 执行。具体组件和能力服务由应用装配。
 
 | 包 | 职责 |
 | --- | --- |
-| `dtoken` | 实例门面与默认 Builder |
+| 根包 `dtoken` | Auth 实例 API、应用 Builder 和公开高级扩展类型 |
 | `global` | 全局认证 API 与注册表 |
-| `contract`、`config`、`errors`、`event` | 公共契约、配置、错误、事件 |
+| `contract`、`config`、`errors`、`event` | 公共契约与共享模型、核心配置、错误、事件发布与监听分发 |
 | `internal/engine` | 内部认证引擎，应用不直接导入 |
+| `internal/builder`、`internal/defaults` | 通用组件装配与内置默认组件工厂 |
 | `nonce`、`oauth2`、`ticket`、`shortkey` | 独立组合的能力与服务 |
 | `httpauth`、`httpauth/context` | 共享 HTTP 鉴权与请求上下文 |
 | `codec`、`generator`、`logging`、`pool`、`storage` | 可插拔组件实现 |
-| `integrations/<framework>`、`sso` | 框架适配与独立 SSO 模块 |
+| `integrations/<framework>` | 各框架的中间件、请求适配与快捷操作 |
+| `sso` | 独立 SSO 子系统及其协议、客户端和服务端 |
+| `examples`、`tests`、`docs` | 接入示例、应用级验证与文档 |
+| `.github` | CI、仓库检查脚本与协作配置 |
+
+引擎依赖组件契约，HTTP 公共层依赖能力服务契约；它们不选择具体组件或隐式查找全局实例。包目录划分职责，`go.mod` 划分发布模块，`go.work` 组合本地开发工作区。
+
+应用优先使用 Auth；自定义集成可从 `auth.Manager()` 获取受支持的高级 API。多个门面或中间件绑定同一引擎时共享生命周期：关闭 Auth 会使这些绑定不可用。应用退出时先停止接收请求并等待处理完成，再关闭 Auth；组件所有权及全局替换规则见生命周期文档。
 
 维护者可先阅读[架构设计](docs/design/architecture_zh.md)，再通过[源码目录](docs/design/source-layout_zh.md)定位文件和放置改动。[模块化设计](docs/design/modular_zh.md)定义依赖与发布边界，[API 与生命周期](docs/design/api-lifecycle_zh.md)定义公开契约和资源所有权。
 
@@ -196,6 +235,7 @@ router.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), options..
 - [登录认证](docs/guide/core/authentication_zh.md)
 - [权限管理](docs/guide/core/permission_zh.md)
 - [多认证体系](docs/guide/core/multi-auth_zh.md)
+- [Session 与终端](docs/guide/core/session-terminal_zh.md)
 - [封禁体系](docs/guide/core/disable_zh.md)
 - [Token 风格](docs/guide/core/token-style_zh.md)
 - [AccessProvider](docs/guide/core/access-provider_zh.md)
@@ -205,16 +245,18 @@ router.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), options..
 - [JWT 集成](docs/guide/security/jwt_zh.md)
 - [Redis 存储](docs/guide/integration/redis-storage_zh.md)
 - [OAuth2](docs/guide/security/oauth2_zh.md)
+- [Ticket、ShortKey 等高级能力](docs/guide/security/advanced-features_zh.md)
 - [SSO 单点登录](sso/README_zh.md)
+- [SSO Redis 存储](sso/storage/redis/README_zh.md)
 - [SSO 测试说明](sso/TESTING_zh.md)
 - [Refresh Token](docs/guide/security/refresh-token_zh.md)
-- [API 参考](docs/api/dtoken_zh.md)
+- [全局 API 参考](docs/api/dtoken_zh.md)
 
 ### 示例项目
 
 | 示例 | 说明 |
 | --- | --- |
-| [examples/quick_start](examples/quick_start/) | 默认 Builder + 全局 API 最小使用方式 |
+| [examples/quick_start](examples/quick_start/) | Auth 实例配合自定义 Gin 处理器，演示登录、角色与权限校验 |
 | [examples/gin](examples/gin/) | Gin 中间件、登录校验和角色校验 |
 | [examples/sso_gin_server](examples/sso_gin_server/) | Gin SSO 统一登录中心示例 |
 | [examples/sso_gin_client](examples/sso_gin_client/) | Gin SSO 子系统接入示例 |

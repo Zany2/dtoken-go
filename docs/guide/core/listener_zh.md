@@ -1,8 +1,10 @@
 # 事件监听指南
 
-代码片段中，dt = github.com/Zany2/dtoken-go，dtoken = github.com/Zany2/dtoken-go/global，listener = github.com/Zany2/dtoken-go/event。
+代码片段中，dt = github.com/Zany2/dtoken-go，global = github.com/Zany2/dtoken-go/global，listener = github.com/Zany2/dtoken-go/event。
 
 [English](listener.md) | 中文文档
+
+独立能力只有经 NewService(manager, auth) 绑定发布器并调用 Service 时，才向该 Auth 的事件管理器发布对应能力事件。直接调用能力 Manager 不经过服务封装。应用监听器应在开始接收请求前注册，在监听器之外通过 Auth.Close 统一关闭引擎。
 
 ## 当前状态
 
@@ -15,7 +17,7 @@
 当前版本可通过全局门面、实例门面和 `dt.Manager` 获取事件管理器：
 
 ```go
-globalEventMgr, err := dtoken.GetEventManager("user")
+globalEventMgr, err := global.GetEventManager("user")
 if err != nil {
     // 处理查找错误。
 }
@@ -184,7 +186,7 @@ _ = ok
 ### 触发事件
 
 - `Trigger` 在当前 goroutine 中分发；同步监听器内联执行，异步监听器启动后不会等待其完成。
-- `TriggerAsync` 在返回前取得载荷快照，再异步调度整个分发过程并立即返回。
+- `TriggerAsync` 在返回前取得载荷快照，将零值 `Timestamp` 补为提交时间，再异步调度整个分发过程。显式时间戳保持不变，调用方传入的载荷不会被修改。
 - `TriggerSync` 在当前 goroutine 中分发，并等待本次分发直接启动的监听器完成；它不会等待无关异步任务，也不会等待监听器通过 `Trigger` 或 `TriggerAsync` 启动的后台后代任务，但嵌套调用 `TriggerSync` 仍属于当前监听器的完成过程。
 - `Wait` 会等待事件管理器已接收的异步分发和异步监听器任务全部结束。
 
@@ -202,7 +204,7 @@ eventMgr.TriggerSync(data)
 
 ```go
 eventMgr.AddFilter(func(data *listener.EventData) bool {
-    return data.AuthType == "dtoken:"
+    return data.AuthType == "auth:"
 })
 ```
 
@@ -259,6 +261,8 @@ listener.LogicOr
 ## 使用建议
 
 通过门面或 Manager 实例取得事件管理器，并在开始处理业务流量前完成应用监听器注册。关闭时先停止事件生产方，再调用 `Wait` 排空已接收的异步任务。
+
+公开的 `Auth.Emit` 和 `Manager.Emit` 入口在认证引擎开始关闭后忽略新事件，不受 `AsyncEvent` 配置影响。已经接收的异步事件及内部续期完成事件仍会在释放资源前排空。这不会关闭单独持有的 `event.Manager`；直接调用其 `Trigger` 系列方法的调用方仍须在关闭前停止自己的事件生产方。
 
 使用 `Manager.CloseManager` 时，应先停止并等待业务请求结束，再从任务和监听器之外调用。它会拒绝新的异步任务，停止后台状态日志，等待已接收的任务和异步监听器完成，最后释放自有 Pool、Storage 和 Logger；调用方持有的组件不会被关闭。已接收的续期任务会在自身任务内分发续期事件，因此关闭期间不会因再次提交被拒绝而丢失该事件，也不会再次占用同一个 Pool。监听器自身的 `Async` 配置仍然有效。
 

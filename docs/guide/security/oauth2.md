@@ -7,7 +7,9 @@ English | [中文文档](../security/oauth2_zh.md)
 The current project includes a lightweight OAuth2 authorization server implementation under:
 
 - `oauth2`
-- oauth2.Service
+- `oauth2.Service`
+
+Service interfaces and shared types live in contract/oauth2; implementations live in oauth2. Both ship with the root module. Service borrows storage and codecs and optionally publishes events through Auth; it does not own or close those components. OAuth2 access tokens use their own validation APIs and are distinct from login tokens issued by Auth.Login.
 
 ## Supported Grant Types
 
@@ -34,7 +36,6 @@ According to the current code:
 - authorization code: `10` minutes
 - access token: `2` hours
 - refresh token: `30` days
-
 
 
 ## Explicit service composition
@@ -285,6 +286,18 @@ The current implementation checks whether requested scopes belong to the client 
 If the client `Scopes` field is empty, scope restriction is treated as open.
 
 Authorization-code exchange and refresh also recheck the current client scope allowlist. Code exchange additionally requires the original redirect URI to remain registered. These checks apply to new issuance; they do not retroactively revoke existing access tokens.
+
+```go
+client := &oauth2.Client{
+	ClientID:     "web-app",
+	ClientSecret: "secret",
+	RedirectURIs: []string{"http://localhost:3000/callback"},
+	GrantTypes: []oauth2.GrantType{
+		oauth2.GrantTypeAuthorizationCode,
+	},
+	Scopes: []string{"read", "write", "profile"},
+}
+```
 
 ## Recommended Integration Model
 

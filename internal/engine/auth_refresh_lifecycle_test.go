@@ -49,8 +49,8 @@ func TestManagerOldRefreshTokenPreservesReusedAccess(t *testing.T) {
 							}
 						}
 
-						// Expire only the access side; the old refresh credential remains usable. 仅模拟访问侧过期，旧刷新凭证保持可用。
-						if err = mgr.storage.Delete(ctx, mgr.getTokenKey(opts.Token), mgr.getSessionKey(opts.LoginID), mgr.getTokenRefreshKey(opts.Token), mgr.getActiveKey(opts.Token), mgr.getRenewKey(opts.Token)); err != nil {
+						// Natural access expiry leaves the longer-lived refresh credential and reverse index intact. 访问侧自然过期时，有效期更长的刷新凭据与反向索引仍保留。
+						if err = mgr.storage.Delete(ctx, mgr.getTokenKey(opts.Token), mgr.getSessionKey(opts.LoginID), mgr.getActiveKey(opts.Token), mgr.getRenewKey(opts.Token)); err != nil {
 							t.Fatalf("expire access fixture error = %v", err)
 						}
 						if loginMode == "foreign pair" {
@@ -64,6 +64,12 @@ func TestManagerOldRefreshTokenPreservesReusedAccess(t *testing.T) {
 						}
 						if err != nil {
 							t.Fatalf("new login error = %v", err)
+						}
+						if !mgr.storage.Exists(ctx, mgr.getRefreshTokenKey(oldPair.RefreshToken)) {
+							t.Fatal("new login revoked the previous lifecycle's independent refresh credential")
+						}
+						if loginMode == "plain" && mgr.storage.Exists(ctx, mgr.getTokenRefreshKey(opts.Token)) {
+							t.Fatal("new plain login retained the previous lifecycle's reverse index")
 						}
 						current, err := mgr.getTokenRecord(ctx, opts.Token)
 						if err != nil || current.AccessID == "" || current.AccessID == oldAccess.AccessID {

@@ -15,7 +15,6 @@ Selection order: explicit WithAuth/WithManager, the bound request instance, then
 ```bash
 go get github.com/Zany2/dtoken-go
 go get github.com/Zany2/dtoken-go/integrations/gin
-go get github.com/Zany2/dtoken-go/storage/memory
 ```
 
 Other supported integration packages follow the same pattern:
@@ -156,73 +155,63 @@ auth.Get("/me", func(c *gofiber.Ctx) error {
 package main
 
 import (
-    dt "github.com/Zany2/dtoken-go"
-    dtoken "github.com/Zany2/dtoken-go/global"
-    "context"
     "net/http"
 
-    "github.com/Zany2/dtoken-go/storage/memory"
+    dt "github.com/Zany2/dtoken-go"
     gindt "github.com/Zany2/dtoken-go/integrations/gin"
     "github.com/gin-gonic/gin"
 )
 
 func main() {
-    ctx := context.Background()
-    storage := memory.NewStorage()
-
-    mgr, err := dt.NewBuilder().
-        Storage(storage).
-        TokenName("token").
-        Timeout(2 * 60 * 60).
-        Build()
+    auth, err := dt.NewBuilder().TokenName("Authorization").Build()
     if err != nil {
         panic(err)
     }
-    dtoken.SetManager(mgr.Manager())
+    defer auth.Close()
 
-    r := gin.Default()
-    r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(mgr)))
-
-    r.POST("/login", func(c *gin.Context) {
-        token, err := dtoken.Login(ctx, "1000")
+    router := gin.Default()
+    router.Use(gindt.Context(auth))
+    router.POST("/login", func(c *gin.Context) {
+        token, err := auth.LoginID(c.Request.Context(), "user-1001")
         if err != nil {
-            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
             return
         }
         c.JSON(http.StatusOK, gin.H{"token": token})
     })
-
-    user := r.Group("/user")
-    user.Use(gindt.AuthMiddleware(ctx))
-    user.GET("/info", func(c *gin.Context) {
-        dCtx, _ := gindt.GetDTokenContext(c)
-        token := dCtx.GetTokenValue()
-        loginID, _ := dtoken.GetLoginID(ctx, token)
+    users := router.Group("/user")
+    users.Use(gindt.RequireLogin())
+    users.GET("/me", func(c *gin.Context) {
+        loginID, err := gindt.GetLoginIDByContext(c)
+        if err != nil {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+            return
+        }
         c.JSON(http.StatusOK, gin.H{"loginId": loginID})
     })
-
-    _ = r.Run(":8080")
+    if err := router.Run(":8080"); err != nil {
+        panic(err)
+    }
 }
 ```
 
 ## Common API Surface
 
-Core authentication APIs come from `dtoken`:
+Call core authentication through a built Auth. Below, authInstance is the instance and dt aliases the root package:
 
 ```go
-dtoken.SetManager(mgr.Manager())
-mgr, err := dtoken.GetManager()
-
-token, err := dtoken.Login(ctx, "1000")
-ok := dtoken.IsLogin(ctx, token)
-loginID, err := dtoken.GetLoginID(ctx, token)
-err = dtoken.Logout(ctx, token)
-
-err = dtoken.AddPermissions(ctx, "1000", []string{"user:read"})
-hasPermission := dtoken.HasPermission(ctx, "1000", "user:read")
-
-err = dtoken.AddRoles(ctx, "1000", []string{"admin"})
-hasRole := dtoken.HasRole(ctx, "1000", "admin")
+token, err := authInstance.LoginID(ctx, "1000")
+ok := authInstance.IsLogin(ctx, token)
+loginID, err := authInstance.GetLoginID(ctx, token)
+err = authInstance.AddPermissions(ctx, dt.PermissionOptions{
+    LoginID: "1000", Permissions: []string{"user:read"},
+})
+hasPermission := authInstance.HasPermission(ctx, "1000", "user:read")
+err = authInstance.AddRoles(ctx, dt.RoleOptions{
+    LoginID: "1000", Roles: []string{"admin"},
+})
+hasRole := authInstance.HasRole(ctx, "1000", "admin")
+err = authInstance.LogoutByToken(ctx, token)
 ```
 
 Integration packages expose framework middleware:
@@ -264,22 +253,22 @@ r.GET("/admin",
 
 ### Select Auth System
 
-In multi-auth scenarios, `WithAuthType` lets different route groups use different managers:
+After registering user/admin instances with global.SetAuth, explicitly inject a resolver. Here global imports github.com/Zany2/dtoken-go/global; WithAuthType alone does not enable registry lookup:
 
 ```go
 userGroup := r.Group("/api")
-userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("user")))
+userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(global.GetManager), gindt.WithAuthType("user")))
 
 adminGroup := r.Group("/admin")
-adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("admin")))
-adminGroup.Use(gindt.PermissionMiddleware(ctx, []string{"admin:read"}, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("admin")))
+adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(global.GetManager), gindt.WithAuthType("admin")))
+adminGroup.Use(gindt.PermissionMiddleware(ctx, []string{"admin:read"}, gindt.WithManagerResolver(global.GetManager), gindt.WithAuthType("admin")))
 ```
 
-For applications that do not use a registry, inject the root-built Auth with `WithAuth`. The explicit manager takes precedence over `WithAuthType` and works with context, auth, access, permission, and role middleware:
+For applications that do not use a registry, inject the Manager from a root-built Auth with `WithManager`. The explicit manager takes precedence over `WithAuthType` and works with context, auth, access, permission, and role middleware:
 
 ```go
-auth.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(mgr)))
-auth.Use(gindt.AuthMiddleware(ctx, gindt.WithAuth(mgr)))
+userGroup.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithManager(authInstance.Manager())))
+userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManager(authInstance.Manager())))
 ```
 
 Annotation handlers with an empty `AuthType` reuse the manager already stored in the request context. An explicit annotation AuthType uses the configured ManagerResolver; no registry is enabled implicitly.
@@ -391,7 +380,7 @@ Recommended aliases:
 | Kratos | `github.com/Zany2/dtoken-go/integrations/kratos` | `kratosdt` |
 | Beego | `github.com/Zany2/dtoken-go/integrations/beego` | `beegodt` |
 
-## When To Import Core Directly
+## Framework-Independent Applications And Extensions
 
 Use the root `dtoken` package for framework-agnostic applications and libraries. Extend it through public `Manager`, `ManagerOption`, and `Strategy` types, implement interfaces from `contract`, and import components from their own packages. `internal/builder`, `internal/defaults`, and `internal/engine` are private implementation packages. Import integrations where framework-specific request handling is needed.
 

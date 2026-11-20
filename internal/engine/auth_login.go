@@ -114,7 +114,7 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 
 	// Try sharing before token generation so a generator failure cannot block a valid shared login. 在生成 Token 前尝试共享，避免生成器故障阻断有效的共享登录。
 	var policy loginPolicy
-	if sess != nil && !internal.skipConcurrencyControl {
+	if sess != nil {
 		policy = m.resolveLoginPolicy(opts)
 
 		// Keep per-login token and terminal metadata independent instead of silently ignoring overrides on a shared token. 存在单次 Token 或终端元数据时保持独立登录，避免共享 Token 静默忽略覆盖项。
@@ -140,6 +140,12 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 
 				// A valid shared token normally keeps the session alive; fall back to a fresh login if concurrent storage changes removed it. 有效共享 Token 通常会保留 Session；并发存储变更导致其消失时回退为新登录。
 				if !destroyedByClean {
+					result, limitErr := m.enforceSharedLoginLimit(ctx, sess, sharedToken, policy)
+					concurrencyEvents = append(concurrencyEvents, result.terminalEvents...)
+					if limitErr != nil {
+						return "", limitErr
+					}
+
 					unlock()
 					unlock = func() {}
 					m.triggerTerminalLifecycleEvents(opts.LoginID, concurrencyEvents)
@@ -176,8 +182,9 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 	destroyedSession := false
 
 	// Handle concurrency strategy 处理并发策略
-	if sess != nil && internal.skipConcurrencyControl {
-		// Rotation skips eviction, but still removes expired terminal entries. 轮换跳过并发淘汰，但仍清理过期终端条目。
+	skipConcurrencyControl := false
+	if sess != nil && internal.rotation != nil {
+		// Prune expired terminals before deciding whether rotation still owns a login slot. 判断轮换是否仍占有登录名额前，先清理过期终端。
 		var expired []TerminalInfo
 		destroyedSession, expired, err = m.cleanExpiredTerminals(ctx, sess)
 		for _, terminal := range expired {
@@ -186,9 +193,23 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 		if err != nil {
 			return "", err
 		}
+
+		// Only replacing an attached original lifecycle may bypass ordinary login policy. 只有替换仍挂载的原生命周期时，才能跳过普通登录策略。
+		current, readErr := m.getTokenRecord(ctx, internal.rotation.AccessToken)
+		if readErr != nil && !isTokenInactiveError(readErr) {
+			return "", readErr
+		}
+		if readErr == nil && refreshMatchesAccessRecord(internal.rotation, current) {
+			for _, terminal := range sess.TerminalInfos {
+				if terminal.Token == internal.rotation.AccessToken && terminalMatchesTokenRecord(sess.LoginID, terminal, current) {
+					skipConcurrencyControl = true
+					break
+				}
+			}
+		}
 	}
 
-	if sess != nil && !internal.skipConcurrencyControl {
+	if sess != nil && !destroyedSession && !skipConcurrencyControl {
 		// Sharing was attempted before candidate generation; do not repeat it after the candidate is validated. 共享已在候选 Token 生成前尝试，候选校验后不再重复执行。
 		policy.isShare = false
 		result, err := m.handleConcurrency(ctx, sess, opts.LoginID, device, deviceID, policy)
@@ -341,13 +362,19 @@ func (m *Manager) persistLoginToken(
 		return fmt.Errorf("%w: token already exists", derror.ErrInvalidParam)
 	}
 
+	// Detach an earlier lifecycle's reverse index without revoking its independent refresh credential. 解除旧生命周期的反向索引，不撤销其独立有效的刷新凭据。
+	if err = m.storage.Delete(ctx, m.getTokenRefreshKey(token)); err != nil {
+		_ = m.storage.Delete(ctx, m.getTokenKey(token))
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+
 	// Invalidate maintenance from an expired earlier lifecycle that reused the same token value. 使复用同一 Token 值的旧生命周期维护任务失效。
 	m.cancelLoginMaintenance(token)
 
 	// Initialize token metadata 初始化 token 元数据。
 	if m.config.RenewInterval > 0 {
 		// Initialize renew marker 初始化续期标记。
-		if err = m.storage.Set(ctx, m.getRenewKey(token), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {
+		if err = m.setRenewMarker(ctx, token, expiration); err != nil {
 			persistErr := fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 			if rollbackErr := m.rollbackPersistedLoginToken(ctx, token); rollbackErr != nil {
 				return fmt.Errorf("%w (token rollback failed: %v)", persistErr, rollbackErr)
@@ -633,6 +660,11 @@ func (m *Manager) RenewTimeout(ctx context.Context, tokenValue string, timeout t
 		return err
 	}
 
+	// Reset the throttle using the new lifetime, including manual shortening. 按新有效期重置节流标记，兼容手动缩短有效期。
+	if err = m.setRenewMarker(ctx, tokenValue, expiration); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+
 	if m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout) > 0 {
 		// Load current active marker 加载当前活跃标记。
 		activeValue, activeErr := m.storage.Get(ctx, m.getActiveKey(tokenValue))
@@ -718,7 +750,7 @@ func (m *Manager) renewTokenAndSessionLocked(ctx context.Context, tokenValue str
 
 	// Set the minimum renewal interval marker. 设置最小续期间隔标记。
 	if m.config.RenewInterval > 0 {
-		if err := m.storage.Set(ctx, m.getRenewKey(tokenValue), time.Now().Unix(), time.Duration(m.config.RenewInterval)*time.Second); err != nil {
+		if err := m.setRenewMarker(ctx, tokenValue, expiration); err != nil {
 			m.logger.Errorf("manager.renewTokenAndSessionLocked: failed to set renew key, token=%s, error=%v", tokenValue, err)
 			return false
 		}

@@ -84,4 +84,9 @@ func TestDecodePreservesPointerAllocationAndUnknownFields(t *testing.T) {
 	if !reflect.DeepEqual(got, &payload{Name: "alice", Data: []byte{0, 128, 255}}) {
 		t.Fatalf("decoded payload = %+v", got)
 	}
+
+	// Encoded nil must remain distinguishable from an allocated empty object. 编码空值必须与已分配的空对象保持可区分。
+	if err := s.Decode([]byte{0xc0}, &got); err != nil || got != nil {
+		t.Fatalf("decoded nil pointer = %+v, %v", got, err)
+	}
 }
