@@ -200,6 +200,34 @@ eventMgr.TriggerSync(data)
 
 ## 高级能力
 
+### 可选的独立事件池
+
+事件任务默认使用 goroutine。可通过 `SetAsyncPool(pool contract.Pool)` 接入现有的池接口及实现。应为事件单独创建一个实例，不要传入引擎的续期池，并在接收请求前完成配置：
+
+```go
+import eventpool "github.com/Zany2/dtoken-go/pool/ants"
+
+cfg := eventpool.DefaultRenewPoolConfig()
+cfg.SetNonBlocking(true)
+eventPool, err := eventpool.NewRenewPoolManagerWithConfig(cfg)
+if err != nil {
+    panic(err)
+}
+auth.EventManager().SetAsyncPool(eventPool)
+```
+
+现有构造器名称虽然包含 `Renew`，其实现可以执行通用任务，因此可以单独实例化为事件池。独立使用的 `listener.NewManager()` 同样支持此设置。框架不会自动创建事件池，引擎的 `AsyncEvent` 分发配置及续期池装配保持不变。
+
+- `Trigger` 将异步监听器提交到事件池，同步监听器仍内联执行。
+- `TriggerAsync` 将整个分发任务提交到事件池，其中的异步监听器也使用事件池。
+- `TriggerSync` 始终用 goroutine 执行并等待本次异步监听器，避免池中回调嵌套调用时发生等待死锁；即使池支持任务排队，也不依赖空闲工作协程。
+- 提交被拒绝时回退 goroutine，保持事件投递，但**不提供严格的并发数量上限**。
+- `SetAsyncPool(nil)` 使后续提交恢复 goroutine；已接收任务仍由原池执行，并继续由 `Wait` 跟踪。
+
+传入的池必须提供并发安全、非阻塞的提交：接受任务后恰好异步执行一次，或返回错误且不执行该任务。不能阻塞等待容量、静默丢弃已接收任务或内联执行任务。嵌套分发可能在池工作协程中再次提交，阻塞等待容量会造成死锁。现有 ants 池应设置 `NonBlocking: true`。
+
+事件池由应用持有，事件管理器不会调用它的 `Stop`。关闭时先停止并排空请求及事件生产方，在回调之外调用 `auth.Close()`，再调用 `eventPool.Stop()`。独立事件管理器则先调用 `eventMgr.Wait()`，再停止池。替换池时，也应保持旧池存活直到其已接收任务排空。
+
 ### 全局过滤器
 
 ```go

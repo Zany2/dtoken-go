@@ -130,6 +130,7 @@ type Manager struct {
 	asyncMu         sync.Mutex     // asyncMu protects asynchronous task accounting. asyncMu 保护异步任务计数。
 	asyncCond       *sync.Cond     // asyncCond wakes lifecycle waiters when tasks finish. asyncCond 在任务完成时唤醒生命周期等待方。
 	asyncTasks      int            // asyncTasks counts accepted asynchronous tasks. asyncTasks 统计已接收的异步任务。
+	asyncPool       adapter.Pool   // asyncPool is caller-owned and protected by asyncMu. asyncPool 由调用方持有并由 asyncMu 保护。
 	filters         []EventFilter  // filters stores global filters filters 存储全局事件过滤器。
 	stats           *EventStats    // stats stores event stats stats 存储事件统计。
 	enableStats     bool           // enableStats controls stats collection enableStats 控制是否收集统计。
@@ -170,6 +171,13 @@ func NewManager(loggers ...adapter.Log) *Manager {
 	}
 
 	return m
+}
+
+// SetAsyncPool sets a caller-owned pool separate from renewal before serving; Submit must be concurrency-safe and nonblocking, execute accepted tasks asynchronously exactly once and never execute rejected tasks; nil or rejection uses goroutines, TriggerSync bypasses the pool, and the caller stops it after producers and tasks drain. SetAsyncPool 在服务启动前设置调用方持有且独立于续期的事件池；Submit 必须并发安全、非阻塞，对接受的任务恰好异步执行一次且不执行被拒绝的任务；nil 或拒绝时使用 goroutine，TriggerSync 不使用池，调用方须在生产方及任务排空后关闭池。
+func (m *Manager) SetAsyncPool(pool adapter.Pool) {
+	m.asyncMu.Lock()
+	defer m.asyncMu.Unlock()
+	m.asyncPool = pool
 }
 
 // SetPanicHandler sets the listener and filter panic handler. SetPanicHandler 设置监听器和过滤器的 panic 处理器。
@@ -518,7 +526,7 @@ func (m *Manager) TriggerAsync(data *EventData) {
 	})
 }
 
-// TriggerSync dispatches an event and waits for asynchronous listeners started directly by this dispatch. TriggerSync 分发事件并等待本次分发直接启动的异步监听器完成。
+// TriggerSync dispatches an event and waits for its direct asynchronous listeners, using goroutines to avoid nested pool waits. TriggerSync 分发事件并等待本次直接启动的异步监听器，使用 goroutine 避免嵌套等待池任务。
 func (m *Manager) TriggerSync(data *EventData) {
 	snapshot := cloneEventData(data)
 	if snapshot == nil {
@@ -538,15 +546,26 @@ func (m *Manager) startAsync(localWaitGroup *sync.WaitGroup, task func()) {
 
 	m.asyncMu.Lock()
 	m.asyncTasks++
+	pool := m.asyncPool
 	m.asyncMu.Unlock()
 
-	go func() {
+	trackedTask := func() {
 		if localWaitGroup != nil {
 			defer localWaitGroup.Done()
 		}
 		defer m.finishAsync()
 		task()
-	}()
+	}
+
+	// Scoped waits must not depend on workers occupied by their calling listeners. 局部等待不能依赖被调用方监听器占用的工作协程。
+	if pool != nil && localWaitGroup == nil {
+		if err := pool.Submit(trackedTask); err == nil {
+			return
+		}
+	}
+
+	// Preserve delivery when no pool is configured or submission is rejected. 未配置池或提交被拒绝时保持原有投递行为。
+	go trackedTask()
 }
 
 // finishAsync marks one asynchronous task complete. finishAsync 标记一个异步任务完成。

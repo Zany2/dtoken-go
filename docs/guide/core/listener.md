@@ -192,6 +192,34 @@ eventMgr.TriggerSync(data)
 
 ## Advanced Features
 
+### Optional Independent Event Pool
+
+By default, event tasks use goroutines. `SetAsyncPool(pool contract.Pool)` optionally reuses the existing pool contract and implementations. Create a separate instance for events; do not pass the engine's renewal pool. Configure it before accepting requests:
+
+```go
+import eventpool "github.com/Zany2/dtoken-go/pool/ants"
+
+cfg := eventpool.DefaultRenewPoolConfig()
+cfg.SetNonBlocking(true)
+eventPool, err := eventpool.NewRenewPoolManagerWithConfig(cfg)
+if err != nil {
+    panic(err)
+}
+auth.EventManager().SetAsyncPool(eventPool)
+```
+
+The existing constructor name includes `Renew`, but its implementation accepts general tasks and can be instantiated separately for events. A standalone `listener.NewManager()` supports the same setter. No new pool is created automatically, and the engine's `AsyncEvent` dispatch configuration and renewal pool wiring remain unchanged.
+
+- `Trigger` submits asynchronous listeners to the event pool; synchronous listeners still run inline.
+- `TriggerAsync` submits its dispatch to the event pool, and its asynchronous listeners also use that pool.
+- `TriggerSync` always uses goroutines for its asynchronous listeners and waits for them, avoiding deadlocks when invoked by a callback already occupying a pool worker, including pools with a task queue.
+- A rejected submission falls back to a goroutine. This preserves delivery but does **not** impose a strict concurrency limit.
+- `SetAsyncPool(nil)` restores goroutines for subsequent submissions; already accepted tasks stay with their original pool and remain tracked by `Wait`.
+
+The injected pool must provide concurrency-safe, nonblocking submission: accept a task for asynchronous execution exactly once, or return an error without executing it. Do not use blocking submission, silently discard accepted tasks, or run tasks inline. Nested dispatch can submit more work from a pool worker, so waiting for capacity can deadlock. Existing ants pools must use `NonBlocking: true`.
+
+The application owns the event pool; the event manager never calls its `Stop`. At shutdown, stop and drain request/event producers, call `auth.Close()` outside callbacks, then call `eventPool.Stop()`. For a standalone event manager, use `eventMgr.Wait()` before stopping the pool. Keep old pools alive until their accepted tasks drain when replacing a pool.
+
 ### Global Filters
 
 ```go
