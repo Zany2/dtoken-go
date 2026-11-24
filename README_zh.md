@@ -114,7 +114,55 @@ func main() {
 
 Build 自动注册并返回 Auth；BuildInstance 创建不注册的独立实例。默认内存存储不跨进程共享；多实例共享认证数据时，可配置 [Redis 存储](docs/guide/integration/redis-storage_zh.md)，或实现 `contract.Storage`。
 
-默认体系使用 `dtoken.CheckLogin(ctx, token)`，指定体系使用 `dtoken.AuthType("user").CheckLogin(ctx, token)`。Build 拒绝同名注册，构建后无需 SetAuth；应用排空请求后调用 `dtoken.CloseAll()`。旧 global 包共用这张注册表。独立实例、替换及迁移方式见 [API 与生命周期](docs/design/api-lifecycle_zh.md)。
+### AuthType 构建与调用
+
+构建时通过 `AuthType` 区分用户、管理员等认证体系。`Build()` 自动注册并返回 `*Auth`，无需再调用 `SetAuth`；`MustBuild()` 行为相同，失败时 panic。下面是独立示例，用户 Token 有效期为 1 天，管理员 Token 有效期为 30 分钟，`Timeout` 的单位为秒：
+
+<!-- dtoken-compile: multi-auth -->
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+
+    "github.com/Zany2/dtoken-go"
+)
+
+func main() {
+    defer dtoken.CloseAll()
+    userAuth := dtoken.NewBuilder().
+        AuthType("user").TokenName("user-token").Timeout(86400).
+        IsPrintBanner(false).MustBuild()
+    dtoken.NewBuilder().
+        AuthType("admin").TokenName("admin-token").Timeout(1800).
+        IsPrintBanner(false).MustBuild()
+
+    ctx := context.Background()
+    token, err := dtoken.AuthType("user").Login(ctx, dtoken.LoginOptions{
+        LoginID: "10001",
+        Device: "web",
+    })
+    if err != nil {
+        panic(err)
+    }
+    if err := userAuth.CheckLogin(ctx, token); err != nil {
+        panic(err)
+    }
+    fmt.Println(dtoken.AuthType("user").IsLogin(ctx, token))  // true
+    fmt.Println(dtoken.AuthType("admin").IsLogin(ctx, token)) // false
+}
+```
+
+| 调用方式 | 使用的认证体系 |
+| --- | --- |
+| `dtoken.CheckLogin(ctx, token)` | Builder 未设置 AuthType 时注册的默认体系 `auth:` |
+| `dtoken.AuthType("user").CheckLogin(ctx, token)` | 当前注册的 user 体系 |
+| `userAuth.CheckLogin(ctx, token)` | 构建返回的固定实例，与该体系的注册项共享引擎 |
+
+上例只注册 user 和 admin，不包含默认体系。未注册的体系不会回退到默认体系，`CheckLogin` 返回 `ErrManagerNotFound`，`IsLogin` 返回 false。同名 `Build` 返回 `ErrManagerAlreadyRegistered`；需要不注册的独立实例时使用 `BuildInstance()`。根包业务函数与实例方法签名一致，通过调用入口选择体系，`LoginOptions.AuthType` 不改变这些入口的体系选择。
+
+应用退出时先停止接收并排空请求，再调用 `dtoken.CloseAll()` 关闭当前注册实例；未注册实例单独调用 `auth.Close()`。旧 global 包共用这张注册表。更多用法见[多认证体系](docs/guide/core/multi-auth_zh.md)和 [API 与生命周期](docs/design/api-lifecycle_zh.md)。
 
 ## Web 框架接入
 

@@ -114,7 +114,55 @@ func main() {
 
 Build automatically registers and returns an Auth. BuildInstance creates an unregistered instance. Default memory storage is not shared across processes; configure [Redis storage](docs/guide/integration/redis-storage.md) or implement `contract.Storage` when multiple instances need shared authentication data.
 
-Use `dtoken.CheckLogin(ctx, token)` for the default namespace, or `dtoken.AuthType("user").CheckLogin(ctx, token)` for a named namespace. Build rejects duplicate names; no SetAuth is needed after Build. Call `dtoken.CloseAll()` after draining requests. The legacy global package shares this registry. See [API and lifecycle](docs/design/api-lifecycle.md) for isolated instances, replacement, and migration.
+### Building And Calling With AuthType
+
+Set `AuthType` when building separate user, administrator, or other authentication systems. `Build()` automatically registers and returns `*Auth`, with no additional `SetAuth` call. `MustBuild()` does the same and panics on failure. This standalone example gives user tokens a one-day lifetime and administrator tokens a 30-minute lifetime; `Timeout` is measured in seconds:
+
+<!-- dtoken-compile: multi-auth -->
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+
+    "github.com/Zany2/dtoken-go"
+)
+
+func main() {
+    defer dtoken.CloseAll()
+    userAuth := dtoken.NewBuilder().
+        AuthType("user").TokenName("user-token").Timeout(86400).
+        IsPrintBanner(false).MustBuild()
+    dtoken.NewBuilder().
+        AuthType("admin").TokenName("admin-token").Timeout(1800).
+        IsPrintBanner(false).MustBuild()
+
+    ctx := context.Background()
+    token, err := dtoken.AuthType("user").Login(ctx, dtoken.LoginOptions{
+        LoginID: "10001",
+        Device: "web",
+    })
+    if err != nil {
+        panic(err)
+    }
+    if err := userAuth.CheckLogin(ctx, token); err != nil {
+        panic(err)
+    }
+    fmt.Println(dtoken.AuthType("user").IsLogin(ctx, token))  // true
+    fmt.Println(dtoken.AuthType("admin").IsLogin(ctx, token)) // false
+}
+```
+
+| Calling style | Authentication system |
+| --- | --- |
+| `dtoken.CheckLogin(ctx, token)` | Default namespace `auth:`, registered by omitting AuthType on the builder |
+| `dtoken.AuthType("user").CheckLogin(ctx, token)` | Currently registered user system |
+| `userAuth.CheckLogin(ctx, token)` | Fixed instance returned by the builder, sharing its engine with that registration |
+
+This example registers only user and admin, with no default system. Missing systems do not fall back to the default: `CheckLogin` returns `ErrManagerNotFound`, and `IsLogin` returns false. Duplicate `Build` calls return `ErrManagerAlreadyRegistered`; use `BuildInstance()` for unregistered instances. Root business functions and instance methods have matching signatures. Select the system through the calling entry point; `LoginOptions.AuthType` does not change routing for these APIs.
+
+On application shutdown, stop accepting requests and drain active handlers before calling `dtoken.CloseAll()` to close current registrations. Close unregistered instances separately with `auth.Close()`. The legacy global package shares this registry. See [multi-auth](docs/guide/core/multi-auth.md) and [API and lifecycle](docs/design/api-lifecycle.md) for more details.
 
 ## Web Framework Integration
 
