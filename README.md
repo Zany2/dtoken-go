@@ -23,9 +23,7 @@
 
 ## What Is DToken-Go
 
-DToken-Go provides authentication, authorization, sessions, terminals, and token lifecycle management around a stateful authentication engine. Applications build and use `Auth` instances through the root `dtoken` package, replace storage, codecs, and logging through public contracts, and connect HTTP requests through framework adapters.
-
-Nonce, OAuth2, Ticket, and ShortKey are composed as independent services; the root provides default calls and AuthType selectors, while `global` retains legacy calls. SSO has its own module and lifecycle and remains under development.
+DToken-Go is an authentication and authorization framework for Go applications, providing login validation, automatic token renewal, roles and permissions, account bans, and multi-device session management. It supports isolated authentication systems, concurrent login control, and terminal logout. A unified API and adapters for mainstream web frameworks simplify integration, while storage, codecs, logging, and other components can be replaced as needed. Applications can compose Nonce, OAuth2, Ticket, ShortKey, and the independent SSO module to meet authentication needs for both standalone applications and cross-system login.
 
 You can use it for:
 
