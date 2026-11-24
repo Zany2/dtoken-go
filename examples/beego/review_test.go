@@ -167,7 +167,7 @@ func TestStorageErrorsUseUnifiedResponse(t *testing.T) {
 	t.Cleanup(dt3.DeleteAllManager)
 	storage := &failingBeegoStorage{Storage: dt2.NewStorage()}
 	builtAuth1, err := dtoken.NewBuilder().Storage(storage).
-		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).Build()
+		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
 	mgr := builtAuth1.Manager()
 
 	if err != nil {

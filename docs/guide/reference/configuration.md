@@ -6,7 +6,9 @@ Import aliases for code fragments: dt = github.com/Zany2/dtoken-go.
 
 This page summarizes common DToken-Go configuration options, default behavior, and validation rules. Most projects can start with `dt.NewBuilder()` and override only the options they need.
 
-`Build()` returns Auth; auth in these examples is not the underlying Manager. config names the public config package and contract the component-contract package. auth.Config() returns an independent snapshot. Build another instance for runtime configuration changes and coordinate replacement and shutdown; mutating the snapshot does not reconfigure the engine.
+`Build()` automatically registers and returns Auth; auth in these examples is not the underlying Manager. config names the public config package and contract the component-contract package. auth.Config() returns an independent snapshot. For runtime configuration changes, use BuildInstance followed by SetAuth to explicitly replace the same namespace after coordinating request draining; mutating the snapshot does not reconfigure the engine.
+
+Duplicate Build calls for the same AuthType return ErrManagerAlreadyRegistered. BuildInstance creates unregistered instances, including independent instances with the same name. The snippets below are independent configuration alternatives.
 
 ## Basic Example
 

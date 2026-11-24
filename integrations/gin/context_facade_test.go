@@ -24,7 +24,7 @@ func TestContextFacadeUsesRegisteredManager(t *testing.T) {
 	builtAuth1, err := dtoken.NewBuilder().
 		IsPrintBanner(false).
 		AutoRenew(false).
-		Build()
+		BuildInstance()
 	mgr := builtAuth1.Manager()
 
 	if err != nil {
@@ -96,7 +96,7 @@ func TestContextFacadeMissingManagerAndToken(t *testing.T) {
 	if _, err := GetTokenValueByContext(c); !errors.Is(err, derror.ErrManagerNotFound) {
 		t.Fatalf("GetTokenValueByContext without manager error = %v, want ErrManagerNotFound", err)
 	}
-	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
 	mgr := builtAuth2.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -119,7 +119,7 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 		IsPrintBanner(false).
 		AutoRenew(false).
 		AuthType("gin-annotation").
-		Build()
+		BuildInstance()
 	mgr := builtAuth3.Manager()
 
 	if err != nil {
@@ -182,7 +182,7 @@ func TestAnnotationReusesExplicitManager(t *testing.T) {
 		IsPrintBanner(false).
 		AutoRenew(false).
 		AuthType("gin-explicit").
-		Build()
+		BuildInstance()
 	mgr := builtAuth4.Manager()
 
 	if err != nil {

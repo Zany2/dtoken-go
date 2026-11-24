@@ -4,9 +4,9 @@
 
 ## Overview
 
-The root exposes instance APIs; global exposes registered global calls. Applications use root NewBuilder().Build() and framework WithAuth(auth) or WithManager(auth.Manager()). Bind independent request services with WithCapabilities.
+The root exposes instance APIs, default namespace functions, and AuthType selectors; global retains legacy calls. NewBuilder().Build() automatically registers and returns Auth. Bind HTTP explicitly with WithAuth(auth) or WithManager(auth.Manager()). Bind independent request services with WithCapabilities.
 
-Frameworks provide HTTP adapters, middleware, and request helpers. Their NewBuilder() returns the root Builder and Build() returns Auth. Import global APIs from global and Redis, MsgPack, and other components from their own packages.
+Frameworks provide HTTP adapters, middleware, and request helpers. Their NewBuilder() returns the root Builder and Build() automatically registers and returns Auth; BuildInstance() does not register. Use root registry calls or legacy positional calls from global. Import Redis, MsgPack, and other components from their own packages.
 
 Selection order: explicit WithAuth/WithManager, the bound request instance, then an explicitly configured ManagerResolver. WithAuthType selects a namespace through that resolver; without one, it must match the bound instance. A request without either a binding or a resolver returns ErrManagerNotFound. Checks without an override preserve instance and capability bindings; switching instances clears capability bindings.
 
@@ -253,15 +253,15 @@ r.GET("/admin",
 
 ### Select Auth System
 
-After registering user/admin instances with global.SetAuth, explicitly inject a resolver. Here global imports github.com/Zany2/dtoken-go/global; WithAuthType alone does not enable registry lookup:
+After Build automatically registers user/admin instances, explicitly inject the root resolver. Here dtoken imports github.com/Zany2/dtoken-go; WithAuthType alone does not enable registry lookup:
 
 ```go
 userGroup := r.Group("/api")
-userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(global.GetManager), gindt.WithAuthType("user")))
+userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("user")))
 
 adminGroup := r.Group("/admin")
-adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(global.GetManager), gindt.WithAuthType("admin")))
-adminGroup.Use(gindt.PermissionMiddleware(ctx, []string{"admin:read"}, gindt.WithManagerResolver(global.GetManager), gindt.WithAuthType("admin")))
+adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("admin")))
+adminGroup.Use(gindt.PermissionMiddleware(ctx, []string{"admin:read"}, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("admin")))
 ```
 
 For applications that do not use a registry, inject the Manager from a root-built Auth with `WithManager`. The explicit manager takes precedence over `WithAuthType` and works with context, auth, access, permission, and role middleware:

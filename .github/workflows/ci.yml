@@ -14,6 +14,10 @@ on:
         description: 'Published Gin integration version / Gin 集成发布版本'
         required: false
         type: string
+      sso_version:
+        description: 'Optional published SSO version; requires root and Gin versions / 可选 SSO 发布版本，须同时填写根模块及 Gin 版本'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -46,6 +50,40 @@ jobs:
         run: |
           go vet -mod=readonly ./...
           go test -mod=readonly -race -count=1 -timeout=10m ./...
+
+  sso-minimum-go:
+    name: SSO minimum Go (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [sso, sso/storage/redis]
+    env:
+      GOWORK: 'off'
+      GOTOOLCHAIN: local
+    steps:
+      - name: Check out source / 检出源码
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up module minimum Go / 配置模块最低 Go 版本
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache-dependency-path: '**/go.sum'
+
+      - name: Check isolated SSO module / 检查独立 SSO 模块
+        env:
+          SSO_MODULE: ${{ matrix.module }}
+        run: |
+          go test ./.github/scripts/check-modules
+          go run ./.github/scripts/check-modules -sso "./$SSO_MODULE"
+
+      - name: Check SSO public consumers / 检查 SSO 公开使用方
+        if: matrix.module == 'sso'
+        run: bash .github/scripts/check-sso-consumer.sh
 
   workspace:
     name: Workspace checks
@@ -97,6 +135,14 @@ jobs:
             echo "::endgroup::"
           done <<< "$modules"
 
+      - name: Race-check SSO and applications / 检查 SSO 及应用竞态
+        run: >-
+          go test -race -count=1 -timeout=10m
+          ./sso/... ./sso/storage/redis/...
+          ./examples/sso_server/... ./examples/sso_client/...
+          ./examples/sso_gin_server/... ./examples/sso_gin_client/...
+          ./examples/sso_deployment/...
+
       - name: Test Redis-backed scenarios / 测试 Redis 场景
         env:
           DTOKEN_REDIS_URL: redis://127.0.0.1:6379/0
@@ -106,7 +152,11 @@ jobs:
             echo "::group::Redis - $module"
             (
               cd "$module"
-              go test -count=1 -timeout=5m ./...
+              flags=()
+              if [[ "$module" == "sso/storage/redis" ]]; then
+                flags+=(-race)
+              fi
+              go test "${flags[@]}" -count=1 -timeout=5m ./...
             )
             echo "::endgroup::"
           done
@@ -147,8 +197,14 @@ jobs:
         run: bash .github/scripts/check-consumer.sh
 
       - name: Check published consumer / 检查发布版本使用方
-        if: ${{ inputs.root_version != '' || inputs.gin_version != '' }}
+        if: ${{ inputs.root_version != '' || inputs.gin_version != '' || inputs.sso_version != '' }}
         env:
           ROOT_VERSION: ${{ inputs.root_version }}
           GIN_VERSION: ${{ inputs.gin_version }}
-        run: bash .github/scripts/check-consumer.sh "$ROOT_VERSION" "$GIN_VERSION"
+          SSO_VERSION: ${{ inputs.sso_version }}
+        run: |
+          if [[ -n "$SSO_VERSION" ]]; then
+            bash .github/scripts/check-consumer.sh "$ROOT_VERSION" "$GIN_VERSION" "$SSO_VERSION"
+          else
+            bash .github/scripts/check-consumer.sh "$ROOT_VERSION" "$GIN_VERSION"
+          fi

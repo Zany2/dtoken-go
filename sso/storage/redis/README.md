@@ -83,4 +83,6 @@ Stop HTTP request handling before closing the server. With injected resources, c
 
 ## Verification
 
+The new [replica lifecycle suite](REPLICAS.md) uses independent Redis connections for one-time credential competition, shared nonces, key rotation, cross-replica browser callbacks in four modes, and reconnecting after failed account-logout delivery. Sources are ready but have not run.
+
 Redis integration tests read `DTOKEN_REDIS_URL`; only tests requiring a live Redis instance are skipped when it is unset. Constructor and ownership tests can still run without Redis. Integration tests use a unique key prefix per run and clean up their records before closing the connection. See the [SSO testing guide](../../TESTING.md) for verification instructions.

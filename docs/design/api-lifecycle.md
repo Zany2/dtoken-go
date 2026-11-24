@@ -25,7 +25,7 @@ Root LoginOptions and ManagerLoginOptions serve different API levels and are not
 
 ## Instances and engines
 
-Root and framework builders return Auth. Auth.Manager() exposes the shared engine; New(existingManager) creates another facade over that engine, not an independent copy. Closing any wrapper makes every wrapper unavailable. IsClosed reports this state, auth operations return ErrManagerNotFound, and Config, Storage, Codec, and EventManager return nil.
+Root and framework builders register and return Auth through Build; MustBuild panics on failure. BuildInstance and MustBuildInstance create unregistered instances. Auth.Manager() exposes the shared engine; New(existingManager) creates another facade over that engine, not an independent copy. Closing any wrapper makes every wrapper unavailable. IsClosed reports this state, auth operations return ErrManagerNotFound, and Config, Storage, Codec, and EventManager return nil.
 
 Obtain Manager from a built Auth. Its zero value is unsupported. Do not mutate runtime configuration or replace components after serving requests; build another instance instead.
 
@@ -34,7 +34,8 @@ Obtain Manager from a built Auth. Its zero value is unsupported. Do not mutate r
 | Situation | Ownership |
 | --- | --- |
 | Successful build | Storage, logger, and pool are engine-owned by default, including explicitly supplied components |
-| Failed build | Factory-created components are cleaned up; explicitly supplied components remain caller-owned |
+| Failed assembly | Factory-created components are cleaned up; explicitly supplied components remain caller-owned |
+| Lost registration race | The assembled candidate closes resources according to ComponentOwnership; the registered instance remains unchanged |
 | WithComponentOwnership | Sets the complete policy; false fields remain caller-owned |
 | Builder.Clone | Copies configuration but shares injected components, providers, and callback state |
 | New(existingManager) | Shares the original engine lifetime |
@@ -65,15 +66,31 @@ Auth.Close stops maintenance, waits for accepted asynchronous work, and releases
 
 ## Global registration
 
-Applications register through global.SetAuth(auth). SetManager remains available for advanced adapters. Both share the same registry and ownership rules:
+The root owns one registry; legacy `global` entry points delegate to it. Build no longer needs a separate SetAuth:
 
-- Re-registering the same instance leaves it open.
-- Replacement under the same auth type closes the old engine.
-- DeleteManager and DeleteAllManager remove entries before closing engines.
-- Nil and closed instances cannot be registered.
-- Registration does not clone the instance. Auth.Close remains available, and later registry lookups remove closed entries.
+```go
+userAuth, err := dtoken.NewBuilder().AuthType("user").Build()
+if err != nil { panic(err) }
+defer userAuth.Close()
 
-WithAuth binds a concrete instance and never follows registry replacement automatically. WithManagerResolver(global.GetManager) explicitly selects through the registry per request. An established request scope keeps its instance; closing it does not silently switch that request to a replacement. Applications requiring uninterrupted in-flight requests must coordinate routing and drain requests before retiring the old instance.
+token, err := userAuth.LoginID(ctx, "10001")
+if err != nil { panic(err) }
+err = dtoken.AuthType("user").CheckLogin(ctx, token)
+```
+
+- A builder without AuthType registers the default `auth:` namespace. Package functions such as `dtoken.Login` and `dtoken.IsLogin` always use that namespace and match the Auth method signatures.
+- `dtoken.AuthType("user")` is a selector that resolves the registry on every operation, including after explicit replacement. Missing names return ErrManagerNotFound or false for boolean checks; they never fall back to the default.
+- Root and Auth operations ignore the AuthType option field for routing. That field remains for legacy `global.*WithOptions` calls.
+- Duplicate Build calls return `errors.ErrManagerAlreadyRegistered` and preserve the original instance. Only one concurrent build wins; a losing assembled candidate closes its owned resources. Mark shared components as caller-owned.
+- For explicit replacement, use BuildInstance followed by dtoken.SetAuth. Legacy global.SetAuth, SetManager and BuildAndSetManager retain their replacement behavior and close the old engine. Setting the same instance again does not close it.
+- Instance Close immediately removes entries still pointing to its engine before closing it. Closing an old instance cannot remove its replacement.
+- `dtoken.Close()` closes the default namespace; `dtoken.AuthType("user").Close()` closes the current user namespace; `dtoken.CloseAll()` closes all current registered instances. Repeated calls are safe. CloseAll excludes unregistered instances and does not prevent later builds.
+
+WithAuth binds a concrete engine and does not follow replacement. WithManagerResolver(dtoken.GetManager) selects through the registry per request; legacy global.GetManager also works. An established request scope retains its original engine. Coordinate routing and drain requests before closing the old engine.
+
+Migration: remove redundant SetAuth after Build; change builds that require independent instances with the same namespace to BuildInstance. Obtain the advanced Manager with auth.Manager(). Closing instances and the registry follows shared ownership; individual Close calls do not require an additional CloseAll.
+
+The library does not install signal handlers or call os.Exit. The application handles shutdown signals, stops accepting requests, waits for in-flight handlers, and then calls CloseAll. Forced process termination cannot guarantee cleanup.
 
 ## Capability contracts
 
@@ -107,5 +124,53 @@ func main() {
 	shared := dtoken.New(auth.Manager())
 	shared.Close()
 	fmt.Println(auth.IsClosed()) // true
+}
+```
+
+## Application-managed shutdown signals
+
+This example drains HTTP handlers before deferred CloseAll runs. Applications with hijacked connections such as WebSockets must also wait for those handlers. Do not close an engine synchronously from its own async task or event listener.
+
+<!-- dtoken-compile: graceful-shutdown -->
+```go
+package main
+
+import (
+    "context"
+    "errors"
+    "net/http"
+    "os"
+    "os/signal"
+    "syscall"
+
+    "github.com/Zany2/dtoken-go"
+)
+
+func main() {
+    dtoken.NewBuilder().IsPrintBanner(false).MustBuild()
+    defer dtoken.CloseAll()
+
+    stopped, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+    defer stop()
+    server := &http.Server{Addr: ":8080", Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        if err := dtoken.CheckLogin(r.Context(), r.Header.Get("Authorization")); err != nil {
+            w.WriteHeader(http.StatusUnauthorized)
+            return
+        }
+        w.WriteHeader(http.StatusNoContent)
+    })}
+    done := make(chan error, 1)
+    go func() { done <- server.ListenAndServe() }()
+    var serveErr error
+    select {
+    case serveErr = <-done:
+    case <-stopped.Done():
+    }
+    if err := server.Shutdown(context.Background()); err != nil {
+        panic(err)
+    }
+    if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+        panic(serveErr)
+    }
 }
 ```

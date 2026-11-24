@@ -2,10 +2,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/Zany2/dtoken-go"
@@ -42,13 +46,30 @@ type application struct {
 
 func main() {
 	auth := initDToken()
-	defer auth.Close()
+	defer dtoken.CloseAll()
 
 	r := gin.Default()
 	registerRoutes(r, auth)
 
-	if err := r.Run(":8080"); err != nil {
+	// The application owns process signals; the authentication library only owns its resources. 应用管理进程信号，认证库仅管理自身资源。
+	stopped, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	server := &http.Server{Addr: ":8080", Handler: r}
+	done := make(chan error, 1)
+	go func() { done <- server.ListenAndServe() }()
+
+	var serveErr error
+	select {
+	case serveErr = <-done:
+	case <-stopped.Done():
+	}
+
+	// Keep authentication resources available until all HTTP handlers finish. HTTP 处理器全部结束后才释放认证资源。
+	if err := server.Shutdown(context.Background()); err != nil {
 		panic(err)
+	}
+	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		panic(serveErr)
 	}
 }
 

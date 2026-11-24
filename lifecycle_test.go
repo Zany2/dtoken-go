@@ -33,7 +33,7 @@ func TestRegistryReplacementPreservesCallerOwnedStorage(t *testing.T) {
 		t.Helper()
 		auth, err := dtoken.NewBuilder().AuthType("shared-lifecycle").
 			Storage(shared).IsPrintBanner(false).IsLog(false).AutoRenew(false).
-			UseManagerOption(dtoken.WithComponentOwnership(dtoken.ComponentOwnership{Storage: false, Logger: true, Pool: true})).Build()
+			UseManagerOption(dtoken.WithComponentOwnership(dtoken.ComponentOwnership{Storage: false, Logger: true, Pool: true})).BuildInstance()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -78,7 +78,7 @@ func TestRegistryReplacementPreservesCallerOwnedStorage(t *testing.T) {
 // TestAuthOwnsStorageOnce verifies repeated closure and wrapper aliases release owned resources once. TestAuthOwnsStorageOnce 验证重复关闭与门面别名仅释放一次自有资源。
 func TestAuthOwnsStorageOnce(t *testing.T) {
 	storage := &lifecycleStorage{Storage: memory.NewStorage()}
-	auth, err := dtoken.NewBuilder().Storage(storage).IsPrintBanner(false).IsLog(false).AutoRenew(false).Build()
+	auth, err := dtoken.NewBuilder().Storage(storage).IsPrintBanner(false).IsLog(false).AutoRenew(false).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}

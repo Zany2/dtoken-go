@@ -37,6 +37,8 @@ var documents = []string{
 	"docs/api/dtoken_zh.md",
 	"docs/guide/core/access-provider.md",
 	"docs/guide/core/access-provider_zh.md",
+	"sso/CONFIGURATION.md",
+	"sso/CONFIGURATION_zh.md",
 }
 
 // Repeated names join initialization and usage fragments within one document. 同一文档中的重复名称连接初始化与使用片段。
@@ -96,6 +98,7 @@ func checkDocs() error {
 	commands := [][]string{
 		{"mod", "init", "example.com/dtoken-docs"},
 		{"mod", "edit", "-require=github.com/Zany2/dtoken-go@v0.0.0", "-require=github.com/Zany2/dtoken-go/integrations/gin@v0.0.0", "-replace=github.com/Zany2/dtoken-go=" + root, "-replace=github.com/Zany2/dtoken-go/integrations/gin=" + filepath.Join(root, "integrations", "gin")},
+		{"mod", "edit", "-require=github.com/Zany2/dtoken-go/sso@v0.0.0", "-replace=github.com/Zany2/dtoken-go/sso=" + filepath.Join(root, "sso")},
 		{"mod", "tidy"},
 		{"test", "-mod=readonly", "-run=^$", "./..."},
 	}

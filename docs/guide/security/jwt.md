@@ -2,7 +2,7 @@
 
 [中文文档](../security/jwt_zh.md) | English
 
-Here dt names the root package, global the optional registry package, adapter contract, and dgenerator generator/dgenerator. Instance calls use auth.Login(ctx, dt.LoginOptions{...}) or auth.LoginID; the global examples require the registration shown below.
+Here dt names the root, global the legacy compatibility package, adapter contract, and dgenerator generator/dgenerator. Build registers automatically. Use auth.Login(ctx, dt.LoginOptions{...}), dt.LoginID, or dt.AuthType(name). The examples below retain legacy global positional calls.
 
 ## Overview
 
@@ -61,7 +61,7 @@ import (
 )
 
 func initDToken() {
-    auth, err := dt.NewBuilder().
+    _, err := dt.NewBuilder().
         Storage(memory.NewStorage()).
         TokenStyle(adapter.TokenStyleJWT).
         JwtSecretKey("your-very-strong-secret-key").
@@ -70,12 +70,11 @@ func initDToken() {
     if err != nil {
         panic(err)
     }
-    global.SetAuth(auth)
 }
 
 func main() {
     initDToken()
-    defer global.DeleteAllManager()
+    defer dt.CloseAll()
 
     ctx := context.Background()
     token, _ := global.Login(ctx, "10001", "web", "chrome-mac")

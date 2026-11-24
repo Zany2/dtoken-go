@@ -4,7 +4,7 @@ Import aliases for code fragments: global = github.com/Zany2/dtoken-go/global.
 
 This page lists common `global` API calls. It is intended for quick lookup after the Manager has been initialized.
 
-This is a global-call cheatsheet. Register global.SetAuth(auth) first and clean up registration on shutdown. See [Auth API](../../api/auth.md) for instance entry points and signature differences; positional global.Login arguments cannot be passed directly to auth.Login.
+This cheatsheet retains legacy global calls. Build registers automatically; drain requests before closing instances or calling dtoken.CloseAll. BuildInstance does not register. See [Auth API](../../api/auth.md) for instance entry points and signature differences; positional global.Login arguments cannot be passed directly to auth.Login.
 
 ## Login Authentication
 

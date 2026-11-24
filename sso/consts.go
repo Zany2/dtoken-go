@@ -14,6 +14,8 @@ const (
 	DefaultOAuth2CodeExpiration = 10 * time.Minute
 	// DefaultLogoutCallbackMaxAge stores max age for SSO logout callback verification. DefaultLogoutCallbackMaxAge 存储 SSO 注销回调校验最大时间差。
 	DefaultLogoutCallbackMaxAge = 5 * time.Minute
+	// DefaultClientMaxResponseBytes bounds protocol response bodies read by ClientApp. DefaultClientMaxResponseBytes 限制 ClientApp 读取的协议响应体大小。
+	DefaultClientMaxResponseBytes int64 = 1 << 20
 
 	// TicketLength stores ticket random byte length before hex encoding. TicketLength 存储十六进制编码前的 Ticket 随机字节长度。
 	TicketLength = 32

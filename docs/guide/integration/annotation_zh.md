@@ -45,7 +45,7 @@ r := gin.Default()
 r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(auth)))
 ```
 
-注解复用请求绑定的实例。切换 AuthType 需要显式配置 ManagerResolver，例如注册中间件的 WithManagerResolver(global.GetManager)；缺少绑定或解析器时返回 ErrManagerNotFound。
+这里 dt 表示根包 github.com/Zany2/dtoken-go。注解复用请求绑定的实例。切换 AuthType 需要显式配置 ManagerResolver，例如注册中间件的 WithManagerResolver(dt.GetManager)；缺少绑定或解析器时返回 ErrManagerNotFound。
 
 Gin 的 `GetHandler` 显式收到空注解指针（`nil`）时会返回参数错误并终止请求；需要跳过检查时使用 `IgnoreMiddleware` 或 `Ignore: true`。
 

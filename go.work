@@ -14,6 +14,7 @@ use (
 	./examples/kratos
 	./examples/quick_start
 	./examples/sso_client
+	./examples/sso_deployment
 	./examples/sso_gin_client
 	./examples/sso_gin_server
 	./examples/sso_server

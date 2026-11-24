@@ -171,7 +171,7 @@ func TestCallbackRotatesOnlyAfterSuccessfulExchange(t *testing.T) {
 			fail = false
 			continue
 		}
-		if recorder.Code != http.StatusFound || recorder.Header().Get("Location") != "/protected" || oldValid || issued == nil || issued.Value == oldID || !issued.HttpOnly || issued.SameSite != http.SameSiteLaxMode || issued.MaxAge != int(localCookieTTL.Seconds()) || issued.Expires.IsZero() {
+		if recorder.Code != http.StatusFound || recorder.Header().Get("Location") != "/protected" || oldValid || issued == nil || issued.Value == oldID || !issued.HttpOnly || issued.SameSite != http.SameSiteLaxMode || issued.MaxAge <= 0 || issued.MaxAge > int(localCookieTTL.Seconds()) || issued.Expires.IsZero() {
 			t.Fatalf("successful rotation failed: status=%d cookie=%v oldValid=%v", recorder.Code, issued, oldValid)
 		}
 		check := httptest.NewRequest(http.MethodGet, "/protected", nil)

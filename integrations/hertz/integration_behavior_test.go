@@ -41,7 +41,7 @@ func TestHertzAnnotationHandlerControlFlow(t *testing.T) {
 	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
 	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -112,7 +112,7 @@ func TestHertzContextFacadeUsesCachedManager(t *testing.T) {
 	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
 	mgr := builtAuth2.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)

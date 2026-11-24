@@ -1,0 +1,54 @@
+# Replace domains, certificate paths and upstream addresses before use.
+# 使用前替换域名、证书路径和上游地址。此文件是独立 nginx 配置模板。
+events {}
+http {
+    # Authorization URLs contain signatures and credentials: do not log query strings.
+    # 授权 URL 携带签名及凭证，日志仅记录路径，不记录查询串、Cookie 或请求正文。
+    log_format sso_path '$remote_addr $request_method $uri $status';
+    access_log /var/log/nginx/sso-access.log sso_path;
+    error_log /var/log/nginx/sso-error.log crit;
+    client_max_body_size 64k;
+    # Let SSO enforce its 8 KiB query limit before nginx rejects a moderately larger request line.
+    # 为略大于 8 KiB 的查询串留出请求行空间，由 SSO 返回协议级 413。
+    large_client_header_buffers 4 16k;
+    proxy_connect_timeout 3s;
+    proxy_read_timeout 65s;
+    proxy_send_timeout 15s;
+    proxy_next_upstream off;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    # Preserve the browser Origin; never synthesize it from the target host.
+    # 保留浏览器 Origin，禁止根据目标主机伪造 Origin。
+
+    upstream center { server 127.0.0.1:9200; }
+    upstream alpha { server 127.0.0.1:9201; }
+    upstream beta { server 127.0.0.1:9202; }
+
+    server {
+        listen 443 ssl;
+        server_name login.example.com;
+        ssl_certificate /etc/nginx/tls/login/fullchain.pem;
+        ssl_certificate_key /etc/nginx/tls/login/key.pem;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        location /health/ { allow 127.0.0.1; allow ::1; deny all; proxy_pass http://center; }
+        location / { proxy_pass http://center; }
+    }
+    server {
+        listen 443 ssl;
+        server_name alpha.example.com;
+        ssl_certificate /etc/nginx/tls/alpha/fullchain.pem;
+        ssl_certificate_key /etc/nginx/tls/alpha/key.pem;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        location /health/ { allow 127.0.0.1; allow ::1; deny all; proxy_pass http://alpha; }
+        location / { proxy_pass http://alpha; }
+    }
+    server {
+        listen 443 ssl;
+        server_name beta.example.com;
+        ssl_certificate /etc/nginx/tls/beta/fullchain.pem;
+        ssl_certificate_key /etc/nginx/tls/beta/key.pem;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        location /health/ { allow 127.0.0.1; allow ::1; deny all; proxy_pass http://beta; }
+        location / { proxy_pass http://beta; }
+    }
+}

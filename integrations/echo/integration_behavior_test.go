@@ -41,7 +41,7 @@ func TestAuthMiddlewareSuccessAndFailure(t *testing.T) {
 	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
 	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -81,7 +81,7 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).AuthType("echo-annotation").Build()
+	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).AuthType("echo-annotation").BuildInstance()
 	mgr := builtAuth2.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)

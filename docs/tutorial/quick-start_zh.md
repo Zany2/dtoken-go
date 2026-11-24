@@ -2,7 +2,7 @@
 
 [English](quick-start.md) | 中文文档
 
-应用通过根包构建 Auth 并显式注入 HTTP 中间件。实例调用无需全局注册；Nonce、OAuth2、Ticket 和 ShortKey 按需创建独立服务。
+应用通过根包构建 Auth 并显式注入 HTTP 中间件。Build 自动注册并返回实例，BuildInstance 可创建不注册的独立实例；Nonce、OAuth2、Ticket 和 ShortKey 按需创建独立服务。
 
 ## 安装
 
@@ -74,7 +74,7 @@ if err != nil {
 defer auth.Close()
 ```
 
-Build 返回 *dtoken.Auth。Timeout、ActiveTimeout 使用秒数；WithAuth 绑定哪个实例，请求就使用哪个实例。默认内存存储不跨进程共享，需要共享数据时配置 Redis 或其他存储实现。运行期间不要修改底层 Manager 配置。
+Build 自动注册并返回 *dtoken.Auth，同名构建报错。Timeout、ActiveTimeout 使用秒数；WithAuth 绑定哪个实例，请求就使用哪个实例。默认内存存储不跨进程共享，需要共享数据时配置 Redis 或其他存储实现。运行期间不要修改底层 Manager 配置。
 
 ## 接入 Gin
 
@@ -90,19 +90,24 @@ users.Use(gindt.RequireLogin())
 
 将 Token 放入 Authorization 请求头。登录接口应注册在受保护路由组之外。完整服务与身份验证示例见根 README 和 examples/quick_start。退出时先排空 HTTP 请求，再关闭 Auth。
 
-## 可选全局入口
+## 默认与指定体系调用
 
-需要全局调用时，显式导入 global 并注册已有实例。注册表共享引擎；删除或替换注册项会关闭对应引擎，不能作为与 Auth 相互独立的副本使用。
+Build 后无需 SetAuth。未设置 AuthType 时，可直接调用 `dtoken.LoginID(ctx, "1000")`、`dtoken.CheckLogin(ctx, token)`。使用上文配置的 user 体系时：
 
 ```go
-import "github.com/Zany2/dtoken-go/global"
-
-global.SetAuth(auth)
-defer global.DeleteManager(auth.Config().AuthType)
-token, err := global.Login(ctx, "1000", "", "", auth.Config().AuthType)
+user := dtoken.AuthType("user")
+token, err := user.Login(ctx, dtoken.LoginOptions{LoginID: "1000"})
+if err != nil {
+    panic(err)
+}
+err = user.CheckLogin(ctx, token)
 ```
 
-HTTP 若通过全局注册表选择实例，还需显式配置 WithManagerResolver(global.GetManager)。直接 WithAuth(auth) 注入无需注册。
+注册表与构建返回的 Auth 共用引擎。缺失体系不回退默认体系；重复 Build 不替换已有实例。需要独立实例时使用 BuildInstance，并由持有者 Close；需要显式替换时使用 BuildInstance 后 SetAuth。
+
+HTTP 注册表查找须显式配置 `WithManagerResolver(dtoken.GetManager)`；WithAuth 绑定固定引擎。旧 global 包继续共用该注册表，但其位置参数接口与根包的类型化选项接口有区别。
+
+退出时先停止接收并排空请求，再调用 `dtoken.CloseAll()`；这不会关闭未注册实例。框架不监听进程信号，应用处理方式见[生命周期示例](../design/api-lifecycle_zh.md)。
 
 ## 继续阅读
 

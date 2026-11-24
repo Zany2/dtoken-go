@@ -10,9 +10,10 @@ import (
 	manager "github.com/Zany2/dtoken-go/internal/engine"
 )
 
-// Auth is an instance-oriented facade over Manager. Auth 是基于 Manager 的实例化门面。
+// Auth wraps a fixed Manager or resolves a registry namespace through AuthType. Auth 包装固定 Manager，或通过 AuthType 动态查找注册体系。
 type Auth struct {
-	manager atomic.Pointer[manager.Manager] // manager stores the underlying auth manager. manager 存储底层鉴权管理器。
+	authType string                          // authType selects a registry namespace when nonempty. authType 非空时指定动态查找的注册体系。
+	manager  atomic.Pointer[manager.Manager] // manager stores the underlying auth manager. manager 存储底层鉴权管理器。
 }
 
 // New wraps an existing engine and shares its lifetime; it does not clone resources. New 包装现有引擎并共享其生命周期，不复制资源。
@@ -27,10 +28,14 @@ func (a *Auth) Manager() *Manager {
 	if a == nil {
 		return nil
 	}
+	if a.authType != "" {
+		mgr, _ := GetManager(a.authType)
+		return mgr
+	}
 	return a.manager.Load()
 }
 
-// IsClosed reports whether this facade is detached or its shared engine is closed. IsClosed 判断门面已分离或共享引擎已关闭。
+// IsClosed reports whether the fixed or currently selected engine is unavailable. IsClosed 判断固定引擎或当前选择的引擎是否不可用。
 func (a *Auth) IsClosed() bool {
 	mgr := a.Manager()
 	return mgr == nil || mgr.IsClosed()
@@ -45,9 +50,14 @@ func (a *Auth) EventManager() *listener.Manager {
 	return mgr.GetEventManager()
 }
 
-// Close detaches this facade and closes the shared engine, invalidating other wrappers and middleware; drain requests before releasing shared resources. Close 分离当前门面并关闭共享引擎，使其他门面和中间件不可用；释放共享资源前须排空请求。
+// Close unregisters and closes the shared engine; selectors close the currently registered instance. Drain requests first. Close 注销并关闭共享引擎；选择器关闭当前注册实例，调用前应排空请求。
 func (a *Auth) Close() {
 	if a == nil {
+		return
+	}
+
+	if a.authType != "" {
+		_ = DeleteManager(a.authType)
 		return
 	}
 
@@ -56,11 +66,14 @@ func (a *Auth) Close() {
 		return
 	}
 
-	mgr.CloseManager()
+	closeAndUnregisterManager(mgr)
 }
 
 // requireManager returns the underlying manager or an explicit error. requireManager 返回底层管理器或明确错误。
 func (a *Auth) requireManager() (*manager.Manager, error) {
+	if a != nil && a.authType != "" {
+		return GetManager(a.authType)
+	}
 	mgr := a.Manager()
 	if mgr == nil || mgr.IsClosed() {
 		return nil, derror.ErrManagerNotFound

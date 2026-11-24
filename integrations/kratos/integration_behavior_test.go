@@ -267,7 +267,7 @@ func TestKratosContextLookupHandlesNilAndTypedNil(t *testing.T) {
 
 func newKratosBehaviorManager(t *testing.T) *manager.Manager {
 	t.Helper()
-	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
 	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)

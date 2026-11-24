@@ -9,7 +9,7 @@ DToken-Go centers on a stateful authentication engine. Public contracts support 
 | Area | Location | Responsibility |
 | --- | --- | --- |
 | Application entry | Root dtoken package | Auth instance APIs, application Builder, public options and types |
-| Global access | global | Optional registry and convenience calls |
+| Registry access | Root registry.go and default_*.go; global compatibility facades | Automatic registration, AuthType selection and default calls |
 | Core authentication | internal/engine | Authentication state, Session, terminals, and core lifecycle |
 | Assembly | internal/builder, internal/defaults | Generic component assembly and bundled default factories |
 | Public foundations | contract, config, errors, event | Contracts, shared models, configuration, errors, and event services |
@@ -26,10 +26,11 @@ This diagram shows primary dependencies, omitting some configuration, error, and
 ```mermaid
 flowchart TD
     App["Application"] --> Auth["Root Auth"]
-    App --> Global["Global registry"]
-    Global --> Auth
-    Global --> Engine["internal/engine"]
-    Auth --> Engine
+    App --> Registry["Root registry / AuthType / default APIs"]
+    App --> Global["Legacy global APIs"]
+    Global --> Registry
+    Registry --> Auth
+    Auth --> Engine["internal/engine"]
     App --> Framework["integrations"]
     Framework --> HTTP["httpauth / httpauth/context"]
     HTTP --> Engine
@@ -43,7 +44,7 @@ flowchart TD
 
 - The engine depends on contracts, not concrete components, capabilities, or frameworks.
 - Shared HTTP code depends on capability service interfaces, without importing implementations or global.
-- global provides optional registration and lookup; direct Auth usage needs no registration.
+- The root owns the shared registry; Build registers automatically, BuildInstance remains isolated, and global delegates to the same registry.
 - The root Builder is an assembly entry and can select bundled components. Component selection stays outside engine operations.
 
 See [modular design](modular.md) for complete dependency rules and Go module releases. These layers describe responsibilities, not a requirement for one Go module per layer.
@@ -52,7 +53,7 @@ See [modular design](modular.md) for complete dependency rules and Go module rel
 
 1. Applications configure instances through the root NewBuilder, choosing components, factories, and engine options.
 2. internal/defaults supplies bundled factories; internal/builder validates configuration, resolves components, and builds Manager.
-3. The root Builder returns Auth. Applications use its instance operations; custom integrations may access Manager through the root's supported advanced types.
+3. Build registers and returns Auth; BuildInstance returns an unregistered Auth. Applications use instance operations, AuthType selectors, or default package functions; custom integrations may access Manager.
 4. Applications separately create capability Managers or Servers and their Services. Bundled services can use an Auth configuration snapshot, Storage, Codec, and event emitter.
 5. HTTP applications inject engines through WithAuth or WithManager and bind services through WithCapabilities. Registry lookup requires an explicit WithManagerResolver.
 
@@ -63,7 +64,7 @@ The three construction locations serve application configuration, generic assemb
 | Call style | Main path |
 | --- | --- |
 | Instance operation | Application → Auth → engine → component contracts |
-| Global operation | Application → global registry and facade → registered engine |
+| Global operation | Application → root default/selected facade (or legacy global) → shared registry → registered engine |
 | HTTP core authentication | Framework adapter → shared HTTP checks or request context → engine |
 | HTTP capability operation | Framework request entry → bound capability interface → service implementation |
 | Direct capability operation | Application → explicitly constructed service → borrowed components |

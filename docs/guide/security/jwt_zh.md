@@ -2,7 +2,7 @@
 
 [English](../security/jwt.md) | 中文文档
 
-本文 dt 表示根包，global 表示可选全局包，adapter 表示 contract，dgenerator 表示 generator/dgenerator。使用实例时调用 auth.Login(ctx, dt.LoginOptions{...}) 或 auth.LoginID；以下全局调用须先完成示例中的注册。
+本文 dt 表示根包，global 表示旧版兼容包，adapter 表示 contract，dgenerator 表示 generator/dgenerator。Build 自动注册；可使用 auth.Login(ctx, dt.LoginOptions{...})、dt.LoginID 或 dt.AuthType(name) 调用。以下示例保留 global 的位置参数接口。
 
 ## 概览
 
@@ -68,7 +68,7 @@ import (
 )
 
 func initDToken() {
-    auth, err := dt.NewBuilder().
+    _, err := dt.NewBuilder().
         Storage(memory.NewStorage()).
         TokenStyle(adapter.TokenStyleJWT).
         JwtSecretKey("your-very-strong-secret-key").
@@ -77,12 +77,11 @@ func initDToken() {
     if err != nil {
         panic(err)
     }
-    global.SetAuth(auth)
 }
 
 func main() {
     initDToken()
-    defer global.DeleteAllManager()
+    defer dt.CloseAll()
 
     ctx := context.Background()
     token, _ := global.Login(ctx, "10001", "web", "chrome-mac")

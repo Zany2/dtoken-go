@@ -16,7 +16,7 @@ This is a complete package and API migration. Old paths are not compatibility en
 
 | Previous entry | Current entry |
 | --- | --- |
-| dtoken subdirectory | Root instance API and explicit global package |
+| dtoken subdirectory | Root instance/default APIs and AuthType selectors; legacy global compatibility |
 | core/adapter | contract |
 | core/config, core/derror, core/listener | config, errors, event |
 | core/manager, core/builder, defaults | Root NewBuilder and public extension types |
@@ -29,7 +29,6 @@ This is a complete package and API migration. Old paths are not compatibility en
 ```go
 import (
     "github.com/Zany2/dtoken-go"
-    "github.com/Zany2/dtoken-go/global"
 )
 
 auth, err := dtoken.NewBuilder().AuthType("user").Build()
@@ -38,12 +37,14 @@ if err != nil {
 }
 defer auth.Close()
 
-// Optional global registration. 可选全局注册。
-global.SetAuth(auth)
-defer global.DeleteManager("user")
+// Build registers automatically. Build 自动注册。
+selected := dtoken.AuthType("user")
+_ = selected
 ```
 
-Build() returns *dtoken.Auth; auth.Manager() exposes the underlying manager. Prefer framework WithAuth(auth) or Context(auth). Import strategies, assembly options, and factories from the root, never from internal. Every framework NewBuilder() forwards to the root builder and Build() returns Auth. Frameworks no longer re-export global APIs or component constructors. HTTP middleware requires a bound instance; enable global lookup explicitly with WithManagerResolver(global.GetManager).
+Build() automatically registers and returns *dtoken.Auth; auth.Manager() exposes the underlying manager. Prefer framework WithAuth(auth) or Context(auth). Import strategies, assembly options, and factories from the root, never from internal. Every framework NewBuilder() forwards to the root builder and Build() returns Auth. Frameworks no longer re-export global APIs or component constructors. HTTP middleware requires a bound instance; enable global lookup explicitly with WithManagerResolver(dtoken.GetManager).
+
+Duplicate Build calls return ErrManagerAlreadyRegistered. Use BuildInstance for independent instances with the same namespace, or BuildInstance followed by SetAuth for explicit replacement. Root default calls, AuthType selectors, and legacy global calls share one registry. Drain requests before CloseAll. See [API and lifecycle](api-lifecycle.md).
 
 ## Access provider migration
 

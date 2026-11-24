@@ -17,23 +17,28 @@ The goals of auto-renew are:
 
 ### Asynchronous Renew Strategy
 
-Login validation checks the token lifecycle, Session, account/device disable state, and inactivity timeout before scheduling maintenance.
+Ordinary login and identity checks (`IsLogin`, `CheckLogin`, `GetLoginID`, and device queries) validate the stored token, account/device disable state, and inactivity timeout without loading the account Session on the normal path. Token records still require decoding. Session-dependent queries, access checks, and inactive-timeout cleanup load and validate the Session when needed.
 
-`prepareLoginMaintenance` coalesces requests for the same token lifecycle into one pending task. If inactivity tracking is enabled, it records the latest successful request time. Without inactivity tracking, a task is submitted only when automatic renewal is due.
+`prepareLoginMaintenance` coalesces requests for the same token lifecycle into one pending task. Configuration determines whether to schedule automatic-renew eligibility checks or activity maintenance; token TTL, renewal threshold, and interval checks run in the worker. If inactivity tracking is enabled, admission records the latest successful request time. A worker that finds no renewal due and no activity to refresh exits without loading token or Session records.
+
+Deleting or corrupting a Session alone no longer invalidates ordinary token checks. Use logout or kickout APIs to revoke credentials. Session-dependent operations still reject invalid Sessions, and background maintenance skips renewal and activity persistence when it cannot load a valid Session.
 
 Inactivity checks use the later of the valid persisted activity timestamp and the accepted activity queued for the same lifecycle in this Manager. Login validation, terminal queries, and expired-terminal cleanup follow this rule, so pool delays do not discard accepted activity. Cancelled tasks and other lifecycles cannot contribute activity; missing or malformed persisted markers and storage errors still fail validation. Pending activity is local to this Manager; other instances see it only after persistence.
 
 `submitAsync` prefers the configured pool and falls back to a tracked goroutine when no pool is available or submission fails. A closing Manager rejects new tasks.
+
+Validation does not wait for background maintenance to finish. The worker may start before the caller receives its result; custom pools that execute inline or block submission can still delay the call. Task coalescing limits concurrent work for one lifecycle, but a later request can schedule another eligibility check after completion.
 
 ## Workflow
 
 ### Synchronous Part
 
 ```text
-1. Load and validate TokenInfo and Session
+1. Load and decode the token record; reject expired or retired credentials
 2. Check account/device disable state and ActiveTimeout
-3. Reserve or update maintenance for the current token lifecycle
-4. Submit after releasing the account lock, then return validation success
+3. Load Session only if required by the operation or inactive-timeout cleanup
+4. Reserve or update maintenance for the current token lifecycle
+5. Submit after releasing any account lock, then return validation success
 ```
 
 ### Asynchronous Part
@@ -41,9 +46,10 @@ Inactivity checks use the later of the valid persisted activity timestamp and th
 ```text
 One maintenance task
   ↓
-1. Recheck task generation and token lifecycle under the account lock
+1. Recheck task generation under the account lock; evaluate renewal TTL,
+   threshold, and interval; exit if neither renewal nor activity refresh is needed
   ↓
-2. Reload Session and recheck disable state
+2. Reload the token, verify its lifecycle and disable state, then load Session
   ↓
 3. If renewal is due, extend the token using its own timeout,
    preserve the longer Session TTL, and write the renew interval marker
@@ -211,7 +217,7 @@ If no pool is explicitly provided, a default renew pool may still be created int
 
 Async renew failure does not directly block the current request:
 
-1. the current login validation result has already been returned
+1. renewal failure does not change the successful validation result
 2. renew failure only affects the extension of future lifetime
 3. renew can still be retried on the next eligible request
 

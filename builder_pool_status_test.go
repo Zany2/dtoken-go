@@ -34,7 +34,7 @@ func TestBuilderPoolStatusLifecycle(t *testing.T) {
 							Storage: true, Logger: true, Pool: false,
 						}))
 				}
-				auth, err := b.Build()
+				auth, err := b.BuildInstance()
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -90,7 +90,7 @@ func TestBuilderPoolStatusDisabled(t *testing.T) {
 				case "build failure":
 					b.TokenName("")
 				}
-				auth, err := b.Build()
+				auth, err := b.BuildInstance()
 				if auth != nil {
 					defer auth.Close()
 				}

@@ -6,7 +6,9 @@
 
 本页整理 DToken-Go 常用配置项、默认行为和配置约束。大多数业务只需要使用 `dt.NewBuilder()`，按需覆盖少量配置即可。
 
-`Build()` 返回 Auth，配置片段中的 auth 不是底层 Manager。config 表示公开 config 包，contract 表示组件契约包。auth.Config() 返回独立快照；运行时配置变更应构建新实例，再协调替换与关闭，不能通过修改快照更新运行中的引擎。
+`Build()` 自动注册并返回 Auth，配置片段中的 auth 不是底层 Manager。config 表示公开 config 包，contract 表示组件契约包。auth.Config() 返回独立快照；运行时配置变更应通过 BuildInstance 构建新实例，协调请求排空后再用 SetAuth 显式替换同名体系，不能通过修改快照更新运行中的引擎。
+
+同名 AuthType 重复 Build 返回 ErrManagerAlreadyRegistered。BuildInstance 创建不注册的实例，也允许同名独立实例。下文配置片段是各自独立的方案。
 
 ## 基本示例
 

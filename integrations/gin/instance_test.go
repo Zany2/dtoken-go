@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// TestInstanceAndExplicitRegistry checks the public builder and opt-in registry across real middleware. TestInstanceAndExplicitRegistry 通过真实中间件验证公开构建器与显式注册表。
+// TestInstanceAndExplicitRegistry checks automatic registration and explicit HTTP resolver binding. TestInstanceAndExplicitRegistry 验证自动注册与 HTTP 解析器的显式绑定。
 func TestInstanceAndExplicitRegistry(t *testing.T) {
 	global.DeleteAllManager()
 	t.Cleanup(global.DeleteAllManager)
@@ -22,7 +22,6 @@ func TestInstanceAndExplicitRegistry(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer auth.Close()
-	global.SetManager(auth.Manager())
 	token, err := auth.LoginID(context.Background(), "user")
 	if err != nil {
 		t.Fatal(err)
@@ -34,7 +33,8 @@ func TestInstanceAndExplicitRegistry(t *testing.T) {
 	}{
 		{"unbound", nil, http.StatusNotFound},
 		{"instance", []gindt.AuthOption{gindt.WithAuth(auth)}, http.StatusNoContent},
-		{"registry", []gindt.AuthOption{gindt.WithManagerResolver(global.GetManager)}, http.StatusNoContent},
+		{"registry", []gindt.AuthOption{gindt.WithManagerResolver(dtoken.GetManager)}, http.StatusNoContent},
+		{"legacy registry", []gindt.AuthOption{gindt.WithManagerResolver(global.GetManager)}, http.StatusNoContent},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			router := gin.New()
@@ -50,4 +50,48 @@ func TestInstanceAndExplicitRegistry(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestNamedRegistryResolverFollowsReplacement verifies existing middleware selects the current engine and never falls back for a missing namespace. TestNamedRegistryResolverFollowsReplacement 验证既有中间件选择当前引擎，缺失体系不会回退。
+func TestNamedRegistryResolverFollowsReplacement(t *testing.T) {
+	dtoken.CloseAll()
+	t.Cleanup(dtoken.CloseAll)
+	ctx := context.Background()
+	builder := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false)
+	defaultAuth := builder.Clone().MustBuild()
+	userAuth := builder.Clone().AuthType("user").MustBuild()
+	tokenName := userAuth.Config().TokenName
+	login := func(auth *dtoken.Auth) string {
+		t.Helper()
+		token, err := auth.LoginID(ctx, "user")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return token
+	}
+	defaultToken, oldToken := login(defaultAuth), login(userAuth)
+	router := gin.New()
+	router.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("user")))
+	router.Use(gindt.RequireLogin())
+	router.GET("/", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	check := func(token string, want int) {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodGet, "/", nil)
+		request.Header.Set(tokenName, token)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		if response.Code != want {
+			t.Fatalf("status = %d, want %d", response.Code, want)
+		}
+	}
+	check(oldToken, http.StatusNoContent)
+	check(defaultToken, http.StatusUnauthorized)
+
+	replacement := builder.Clone().AuthType("user").MustBuildInstance()
+	t.Cleanup(replacement.Close)
+	dtoken.SetAuth(replacement)
+	check(login(replacement), http.StatusNoContent)
+	check(oldToken, http.StatusUnauthorized)
+	dtoken.AuthType("user").Close()
+	check(defaultToken, http.StatusNotFound)
 }

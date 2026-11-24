@@ -7,6 +7,7 @@ import (
 
 	"github.com/Zany2/dtoken-go/config"
 	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
 	"github.com/Zany2/dtoken-go/internal/builder"
 	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
@@ -612,8 +613,40 @@ func (b *Builder) buildManager() (*manager.Manager, error) {
 	return mgr, nil
 }
 
-// Build creates an authentication instance. Build 创建认证实例。
+// Build creates and registers an Auth, rejecting duplicate auth types; use BuildInstance for isolated ownership. Build 创建并注册 Auth，拒绝同名体系；独立实例使用 BuildInstance。
 func (b *Builder) Build() (*Auth, error) {
+	// Reject existing names before allocating owned resources. 在分配自有资源前拒绝已注册名称。
+	authType := getAutoType(b.GetConfig().AuthType)
+	if _, err := GetManager(authType); err == nil {
+		return nil, fmt.Errorf("%w: %s", derror.ErrManagerAlreadyRegistered, authType)
+	} else if err != derror.ErrManagerNotFound {
+		return nil, err
+	}
+
+	auth, err := b.BuildInstance()
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish atomically; a concurrent winner keeps its registration while this candidate releases its owned resources. 原子发布；并发获胜者保留注册，本次候选释放其自有资源。
+	if err := registerManager(auth.Manager()); err != nil {
+		auth.Close()
+		return nil, err
+	}
+	return auth, nil
+}
+
+// MustBuild creates and registers an Auth, panicking on failure. MustBuild 创建并注册 Auth，失败时 panic。
+func (b *Builder) MustBuild() *Auth {
+	auth, err := b.Build()
+	if err != nil {
+		panic(err)
+	}
+	return auth
+}
+
+// BuildInstance creates an isolated Auth without registry access. BuildInstance 创建独立 Auth，不访问注册表。
+func (b *Builder) BuildInstance() (*Auth, error) {
 	mgr, err := b.buildManager()
 	if err != nil {
 		return nil, err
@@ -621,13 +654,13 @@ func (b *Builder) Build() (*Auth, error) {
 	return New(mgr), nil
 }
 
-// MustBuild creates an Auth instance and panics on error. MustBuild 创建 Auth 实例，失败时 panic。
-func (b *Builder) MustBuild() *Auth {
-	mgr, err := b.Build()
+// MustBuildInstance creates an isolated Auth and panics on failure. MustBuildInstance 创建独立 Auth，失败时 panic。
+func (b *Builder) MustBuildInstance() *Auth {
+	auth, err := b.BuildInstance()
 	if err != nil {
 		panic(err)
 	}
-	return mgr
+	return auth
 }
 
 // applyDefaultFactories wires config-aware default factories applyDefaultFactories 装配读取配置的默认工厂

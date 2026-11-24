@@ -4,7 +4,7 @@
 
 本页整理 `global` API 的常用调用方式，适合在已经完成 Manager 初始化后快速查阅。
 
-本页是 global 调用速查，使用前先 global.SetAuth(auth)，并在退出时清理注册项。新应用的实例入口及签名对照见 [Auth API](../../api/auth_zh.md)；global.Login 的位置参数不能直接用于 auth.Login。
+本页保留旧 global 调用速查。Build 自动注册，退出时先排空请求再关闭实例或调用 dtoken.CloseAll；BuildInstance 不自动注册。新应用的实例入口及签名对照见 [Auth API](../../api/auth_zh.md)；global.Login 的位置参数不能直接用于 auth.Login。
 
 ## 登录认证
 

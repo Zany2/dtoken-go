@@ -2,9 +2,9 @@ English | [中文文档](README_zh.md)
 
 # DToken-Go Documentation Center
 
-Start new applications with [quick start](tutorial/quick-start.md) and the [Auth instance API](api/auth.md). Use `global` for registry calls, explicitly bind Auth for framework requests, and compose independent capabilities through Service and WithCapabilities.
+Start new applications with [quick start](tutorial/quick-start.md) and the [Auth instance API](api/auth.md). Build registers automatically; use root default functions or AuthType selectors, retain `global` for legacy calls, explicitly bind Auth for framework requests, and compose independent capabilities through Service and WithCapabilities.
 
-Documentation conventions: `dt` or `dtoken` names the root package, `global` names registry access, `auth` is a built instance, and `mgr` is its underlying Manager. Examples with package main provide complete programs or marked fragments composed together; other snippets belong in a function holding the instance and need their imports, business handlers, and error handling. The root module requires Go 1.25+; the repository workspace requires Go 1.27+.
+Documentation conventions: `dt` or `dtoken` names the root package, `global` names legacy calls sharing the root registry, `auth` is a built instance, and `mgr` is its underlying Manager. Examples with package main provide complete programs or marked fragments composed together; other snippets belong in a function holding the instance and need their imports, business handlers, and error handling. The root module requires Go 1.25+; the repository workspace requires Go 1.27+.
 
 ## Navigation
 

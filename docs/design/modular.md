@@ -6,7 +6,7 @@ This document defines package dependencies and Go module release boundaries. See
 
 | Layer | Packages |
 | --- | --- |
-| Application entry | Root instance facade, global registry |
+| Application entry | Root instance/default facades and shared registry; legacy global facades |
 | Public contracts and configuration | contract, config, errors |
 | Event services | event: emitter contracts and listener dispatch implementation |
 | Implementation | internal/engine, internal/builder, internal/defaults |
@@ -22,7 +22,7 @@ This document defines package dependencies and Go module release boundaries. See
 - Capabilities depend on public contracts and shared primitives. They receive components and optional event emitters through constructors, without depending on the root facade, global, or engine.
 - contract contains shared interfaces and data types, without importing capabilities, frameworks, or default wiring. event includes runtime implementation.
 - config may depend on contract and errors; contract does not depend back on config. errors and internal primitives do not depend on upper runtime layers, and event does not depend on the engine or assembly.
-- The root assembles basic components through the internal builder and default factories. Instances require no global registration; global depends on the root facade and owns its registry.
+- The root assembles basic components through the internal builder and default factories. Build automatically registers; BuildInstance opts out. The root owns the shared registry and global delegates to it.
 - internal/builder depends on the engine and component contracts without selecting implementations. internal/defaults explicitly selects bundled JSON, generator, logger, pool, and memory storage implementations; update its import allow-list when changing bundled defaults.
 - Shared HTTP code calls the engine and capability service contracts. It imports neither concrete capabilities nor global. Registry lookup requires an explicit ManagerResolver.
 - Framework adapters use shared HTTP code and handle native requests, responses, and handler chains. Their builders forward to the root and return Auth; they do not re-export global calls or optional component constructors.

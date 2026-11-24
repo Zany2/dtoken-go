@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -57,8 +58,30 @@ var clientApp = sso.NewClientApp(sso.ClientConfig{
 })
 
 func main() {
+	browserFlow := flag.Bool("browser-flow", false, "use the reusable SSO browser login flow")
+	flag.Parse()
+	if err := runClientDemo(*browserFlow); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// runClientDemo releases borrowed flow storage before reporting server errors. runClientDemo 在报告服务错误前释放流程借用的存储。
+func runClientDemo(browserFlow bool) error {
+	if err := clientApp.Validate(); err != nil {
+		return err
+	}
+	handler := http.Handler(newDemoHandler())
+	if browserFlow {
+		var closeStorage func()
+		var err error
+		handler, closeStorage, err = newBrowserDemoHandler()
+		if err != nil {
+			return err
+		}
+		defer closeStorage()
+	}
 	log.Printf("SSO client listening on http://%s", addr)
-	log.Fatal(http.ListenAndServe(addr, newDemoHandler()))
+	return http.ListenAndServe(addr, handler)
 }
 
 // newDemoHandler shares the actual routes with regression tests. newDemoHandler 与回归测试共用实际路由。
@@ -128,6 +151,7 @@ func callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sso.ClearLoginIDCookie(w, loginStateCookie)
+	exchangeStarted := time.Now()
 	result, err := clientApp.ExchangeTicket(r.Context(), ticket, callbackURL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
@@ -137,7 +161,12 @@ func callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "sso response missing loginId", http.StatusBadGateway)
 		return
 	}
-	sessionID, err := newLocalSession(result.LoginID)
+	expiresAt, err := localSessionExpiry(result, exchangeStarted)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	sessionID, err := newLocalSessionUntil(result.LoginID, expiresAt)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -151,8 +180,8 @@ func callback(w http.ResponseWriter, r *http.Request) {
 		Name:     localCookie,
 		Value:    sessionID,
 		Path:     "/",
-		MaxAge:   int(localCookieTTL.Seconds()),
-		Expires:  time.Now().Add(localCookieTTL),
+		MaxAge:   max(1, int(time.Until(expiresAt)/time.Second)),
+		Expires:  expiresAt,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
@@ -209,6 +238,30 @@ func localLoginID(r *http.Request) (string, bool) {
 
 // newLocalSession creates a local session for an SSO login ID. newLocalSession 为 SSO 登录 ID 创建本地会话。
 func newLocalSession(loginID string) (string, error) {
+	return newLocalSessionUntil(loginID, time.Now().Add(localCookieTTL))
+}
+
+// localSessionExpiry bounds local login by center lifetimes and includes exchange latency. localSessionExpiry 根据中心有效期限制本地登录期限，并计入换票耗时。
+func localSessionExpiry(result *sso.TicketExchangeResult, exchangeStarted time.Time) (time.Time, error) {
+	ttl := localCookieTTL
+	for _, seconds := range []int64{result.RemainTokenTimeout, result.RemainSessionTimeout} {
+		if seconds < -1 {
+			return time.Time{}, fmt.Errorf("invalid center session timeout")
+		}
+		// Compare seconds before conversion to avoid overflowing a Duration on large remote values. 先比较秒数再转换，避免远端大值导致 Duration 溢出。
+		if seconds > 0 && seconds < int64(ttl/time.Second) {
+			ttl = time.Duration(seconds) * time.Second
+		}
+	}
+	expiresAt := exchangeStarted.Add(ttl)
+	if !time.Now().Before(expiresAt) {
+		return time.Time{}, fmt.Errorf("center session lifetime exhausted during exchange")
+	}
+	return expiresAt, nil
+}
+
+// newLocalSessionUntil creates a local session with an explicit server-side deadline. newLocalSessionUntil 使用明确的服务端截止时间创建本地会话。
+func newLocalSessionUntil(loginID string, expiresAt time.Time) (string, error) {
 	if loginID == "" {
 		return "", fmt.Errorf("login id is empty")
 	}
@@ -222,12 +275,15 @@ func newLocalSession(loginID string) (string, error) {
 
 	// Reclaim expired records during login without a background goroutine. 登录时回收过期记录，无需后台协程。
 	now := time.Now()
+	if !now.Before(expiresAt) {
+		return "", fmt.Errorf("session deadline has expired")
+	}
 	for id, session := range localSessions.values {
 		if !now.Before(session.expiresAt) {
 			delete(localSessions.values, id)
 		}
 	}
-	localSessions.values[sessionID] = localSession{loginID: loginID, expiresAt: now.Add(localCookieTTL)}
+	localSessions.values[sessionID] = localSession{loginID: loginID, expiresAt: expiresAt}
 	return sessionID, nil
 }
 

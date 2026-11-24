@@ -2,7 +2,7 @@
 
 [中文文档](../core/authentication_zh.md) | English
 
-This page uses `global` for registered-instance calls and `dt` for the root package. Build Auth and call `global.SetAuth(auth)` first; omitted auth types select the default `auth:` namespace. See [Auth API](../../api/auth.md) for instance calls and parameter differences.
+This page retains positional examples for the legacy `global` API; `dt` names the root package. Build automatically registers and returns Auth, so SetAuth is unnecessary. An omitted namespace selects `auth:`. New calls may use dt package functions or dt.AuthType("user"); their business signatures match Auth methods, not legacy global positional signatures. See [Auth API](../../api/auth.md).
 
 ## Basic Login
 
@@ -21,18 +21,17 @@ import (
 )
 
 func initDToken() {
-    auth, err := dt.NewBuilder().
+    _, err := dt.NewBuilder().
         Storage(memory.NewStorage()).
         Build()
     if err != nil {
         panic(err)
     }
-    global.SetAuth(auth)
 }
 
 func main() {
     initDToken()
-    defer global.DeleteAllManager()
+    defer dt.CloseAll()
 
     ctx := context.Background()
     token, _ := global.Login(ctx, "10001")
@@ -103,7 +102,9 @@ loginID, err := global.GetLoginID(ctx, token)
 
 ### Get Token Info
 
-`GetTokenInfo` reads stored metadata; success does not prove the token is logged in. It does not check account/device bans, inactivity timeout, or session validity. Use `CheckLogin` or `IntrospectToken` for login validation. Identity queries such as `GetLoginID` validate both the token and the account session.
+`GetTokenInfo` reads stored metadata; success does not prove the token is logged in. It does not check account/device bans, inactivity timeout, or session validity. Use `IsLogin` or `CheckLogin` for ordinary login validation. These methods and identity queries such as `GetLoginID` validate the token and current restrictions without reading or decoding the account Session on the normal path. Token records still require decoding; storage TTL determines their expiry. Renewal eligibility is checked by background maintenance.
+
+Session queries, permission/role checks, and `IntrospectToken` still require a valid account Session. Inactive-timeout cleanup also loads the Session. Deleting or corrupting a Session alone no longer revokes a token for ordinary login checks; use logout or kickout APIs to revoke credentials. Background maintenance does not renew or persist activity if the Session is invalid.
 
 ```go
 ctx := context.Background()
@@ -224,6 +225,8 @@ singleCount, err := global.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001
 
 ## Login Configuration
 
+The configuration fragments below are alternative builds. Do not build the same registered namespace repeatedly in one process; use BuildInstance for independent instances with the same name.
+
 ### Concurrent Login
 
 ```go
@@ -234,7 +237,7 @@ auth, err := dt.NewBuilder().
 if err != nil {
     panic(err)
 }
-global.SetAuth(auth)
+defer auth.Close()
 ```
 
 `IsConcurrent(true)` allows multiple active terminals for the same account.  
@@ -251,7 +254,7 @@ auth, err := dt.NewBuilder().
 if err != nil {
     panic(err)
 }
-global.SetAuth(auth)
+defer auth.Close()
 ```
 
 `IsShare(true)` reuses an existing token during concurrent login, but only within the same device dimension.  
@@ -269,7 +272,7 @@ auth, err := dt.NewBuilder().
 if err != nil {
     panic(err)
 }
-global.SetAuth(auth)
+defer auth.Close()
 ```
 
 When `MaxLoginCount > 0`, older terminals beyond the limit are removed automatically.
@@ -289,7 +292,7 @@ auth, err := dt.NewBuilder().
 if err != nil {
     panic(err)
 }
-global.SetAuth(auth)
+defer auth.Close()
 ```
 
 ### How It Works
@@ -316,7 +319,7 @@ auth, err := dt.NewBuilder().
 if err != nil {
     panic(err)
 }
-global.SetAuth(auth)
+defer auth.Close()
 ```
 
 ### How It Works
@@ -349,7 +352,7 @@ auth, err := dt.NewBuilder().
 if err != nil {
     panic(err)
 }
-global.SetAuth(auth)
+defer auth.Close()
 ```
 
 ## Related Documentation

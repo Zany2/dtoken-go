@@ -9,7 +9,7 @@ import (
 var NewBuilder = dtoken.NewBuilder
 
 func buildTestManager(b *dtoken.Builder) (*manager.Manager, error) {
-	auth, err := b.Build()
+	auth, err := b.BuildInstance()
 	if err != nil {
 		return nil, err
 	}

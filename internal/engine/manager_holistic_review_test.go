@@ -47,6 +47,9 @@ func TestManagerLateValidationMaintenanceRejectsTokenReuse(t *testing.T) {
 			events := registerManagerValidationEventCollector(mgr, listener.EventRenew)
 			var before terminalLifecycleSnapshot
 			storage := &managerAfterSessionReadStorage{Storage: mgr.storage, sessionKey: mgr.getSessionKey(opts.LoginID)}
+			if query.name == "login check" {
+				storage.afterKey = mgr.getTokenKey(token)
+			}
 			mgr.storage = storage
 			storage.afterRead = func() {
 				if err := mgr.Logout(ctx, token); err != nil {
@@ -112,12 +115,17 @@ func TestManagerLateValidationMaintenanceRejectsTokenReuse(t *testing.T) {
 type managerAfterSessionReadStorage struct {
 	adapter.Storage
 	sessionKey string
+	afterKey   string // afterKey overrides the read that triggers the interleaving. afterKey 覆盖触发交错操作的读取键。
 	afterRead  func()
 }
 
 func (s *managerAfterSessionReadStorage) Get(ctx context.Context, key string) (any, error) {
 	value, err := s.Storage.Get(ctx, key)
-	if err == nil && key == s.sessionKey && s.afterRead != nil {
+	afterKey := s.afterKey
+	if afterKey == "" {
+		afterKey = s.sessionKey
+	}
+	if err == nil && key == afterKey && s.afterRead != nil {
 		afterRead := s.afterRead
 		s.afterRead = nil
 		afterRead()

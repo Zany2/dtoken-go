@@ -167,7 +167,7 @@ func TestMePropagatesAccessProviderErrors(t *testing.T) {
 				},
 			}
 			builtAuth1, err := dtoken.NewBuilder().AutoRenew(false).ActiveTimeout(-1).AsyncEvent(false).
-				IsLog(false).IsPrintBanner(false).SetAccessProvider(provider).Build()
+				IsLog(false).IsPrintBanner(false).SetAccessProvider(provider).BuildInstance()
 			mgr := builtAuth1.Manager()
 
 			if err != nil {

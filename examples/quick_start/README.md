@@ -27,7 +27,7 @@ Any non-empty username can log in with the fixed demo password. Every successful
 
 Protected routes read the raw token from `Authorization: <token>`; this example does not parse the `Bearer` prefix or read tokens from cookies, query parameters, or request bodies. The custom middleware uses each HTTP request's context. Missing or invalid login credentials return HTTP 401; a logged-in user without the required role or permission receives HTTP 403.
 
-Account/device restrictions also return HTTP 403. Backend and Manager failures return HTTP 500 with a fixed message; internal errors are recorded in Gin's request error log. The Auth instance is closed when `main` returns or unwinds after a startup error. Handlers and custom middleware share that explicit instance; global registration is unnecessary.
+Account/device restrictions also return HTTP 403. Backend and Manager failures return HTTP 500 with a fixed message; internal errors are recorded in Gin's request error log. Build automatically registers the default Auth, and handlers share that returned instance. The application handles Ctrl+C and SIGTERM: it stops accepting requests, waits for active HTTP handlers, then calls `dtoken.CloseAll()`. The authentication library does not install process signal handlers. Shutdown waits for handlers without a fixed timeout; forced process termination cannot guarantee cleanup.
 
 ## Try
 
@@ -65,3 +65,5 @@ err = auth.CheckLogin(ctx, token)
 loginID, err = auth.GetLoginID(ctx, token)
 err = auth.Logout(ctx, dtoken.LogoutOptions{Token: token})
 ```
+
+Build also makes the same engine available through `dtoken.CheckLogin(ctx, token)`. For named systems, build with `.AuthType("user")` and call `dtoken.AuthType("user").CheckLogin(ctx, token)`. Use `BuildInstance()` when constructing unregistered, independent instances.

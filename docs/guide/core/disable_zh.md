@@ -2,7 +2,7 @@
 
 [English](../core/disable.md) | 中文文档
 
-本文使用 `global` 包演示已注册实例的全局调用，`dt` 表示根包。先构建 Auth 并调用 `global.SetAuth(auth)`；未指定认证类型时使用默认 `auth:`。实例调用及参数差异见 [Auth API](../../api/auth_zh.md)。
+本文保留 `global` 兼容入口的位置参数示例，`dt` 表示根包。`Build()` 自动注册并返回 Auth，无需再调用 SetAuth；省略认证类型时使用默认 `auth:`。新调用可使用 `dt.XXX()` 或 `dt.AuthType("user").XXX()`，其业务方法签名与实例一致，不能直接沿用 global 的位置参数。见 [Auth API](../../api/auth_zh.md)。
 
 DToken-Go 的封禁体系不只支持账号封禁，还支持服务封禁、服务等级封禁、设备类型封禁和具体设备封禁。封禁状态会参与登录态校验，被封禁对象会在访问时得到对应错误。
 

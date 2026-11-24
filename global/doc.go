@@ -1,6 +1,6 @@
-// Package global provides optional registry-based access to authentication instances. Package global 提供基于可选注册表的认证实例访问入口。
+// Package global preserves legacy access to the root dtoken registry. Package global 保留访问根 dtoken 注册表的旧版入口。
 //
-// Applications build Auth through the root dtoken package and register it with SetAuth; instance operations do not require global registration. 应用通过根 dtoken 包构建 Auth，并使用 SetAuth 注册；实例操作不要求全局注册。
+// Root Builder.Build registers automatically; SetAuth explicitly registers or replaces instances built with BuildInstance. 根 Builder.Build 自动注册；SetAuth 用于显式注册或替换通过 BuildInstance 构建的实例。
 //
 // Registry entries share their engine with Auth wrappers, and replacement or deletion closes the registered engine. 注册项与 Auth 门面共享引擎，替换或删除注册项会关闭对应引擎。
 //

@@ -45,7 +45,7 @@ r := gin.Default()
 r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(auth)))
 ```
 
-Annotations reuse the bound request instance. Switching AuthType requires an explicit ManagerResolver, such as WithManagerResolver(global.GetManager) on registration middleware. Missing bindings or resolvers return ErrManagerNotFound.
+Here dt names the root package github.com/Zany2/dtoken-go. Annotations reuse the bound request instance. Switching AuthType requires an explicit ManagerResolver, such as WithManagerResolver(dt.GetManager) on registration middleware. Missing bindings or resolvers return ErrManagerNotFound.
 
 Passing an explicit nil annotation pointer to Gin's `GetHandler` returns an invalid-parameter error and aborts the request. Use `IgnoreMiddleware` or `Ignore: true` when authentication should be skipped.
 

@@ -111,30 +111,27 @@ auth, err := dt.NewBuilder().
 
 ## 全局与框架入口
 
-全局 API 从 global 包显式导入，并在注册实例后使用：
+Build 已自动注册实例，可通过根包选择器调用；以下 auth 是已构建的实例：
 
 ```go
-import global "github.com/Zany2/dtoken-go/global"
-
-global.SetAuth(auth)
-defer global.DeleteManager(auth.Config().AuthType)
-pair, err := global.LoginWithRefreshTokenOptions(ctx, dt.RefreshTokenOptions{LoginOptions: dt.LoginOptions{LoginID: "user-1001"}}, auth.Config().AuthType)
+selected := dt.AuthType(auth.Config().AuthType)
+pair, err := selected.LoginWithRefreshTokenOptions(ctx, dt.RefreshTokenOptions{LoginOptions: dt.LoginOptions{LoginID: "user-1001"}})
 if err != nil {
 	return err
 }
 
-nextPair, err := global.RefreshToken(ctx, pair.RefreshToken, auth.Config().AuthType)
+nextPair, err := selected.RefreshToken(ctx, pair.RefreshToken)
 if err != nil {
 	return err
 }
 
-ttl, err := global.GetRefreshTokenTTL(ctx, nextPair.RefreshToken, auth.Config().AuthType)
+ttl, err := selected.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
 if err != nil {
 	return err
 }
 fmt.Println(ttl)
 
-if err := global.RevokeRefreshToken(ctx, nextPair.RefreshToken, auth.Config().AuthType); err != nil {
+if err := selected.RevokeRefreshToken(ctx, nextPair.RefreshToken); err != nil {
 	return err
 }
 ```

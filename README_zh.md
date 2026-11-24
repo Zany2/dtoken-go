@@ -25,7 +25,7 @@
 
 DToken-Go 以有状态认证引擎为核心，提供登录认证、授权、会话、终端及 Token 生命周期管理。应用通过根包 `dtoken` 构建和使用 `Auth` 实例，通过公共契约替换存储、编解码、日志等组件，通过框架适配器接入 HTTP 请求。
 
-Nonce、OAuth2、Ticket 和 ShortKey 作为独立服务按需组合；`global` 提供可选的全局注册与调用。SSO 使用独立模块和生命周期，目前仍在开发中。
+Nonce、OAuth2、Ticket 和 ShortKey 作为独立服务按需组合；根包提供自动注册与 AuthType 选择，`global` 保留旧调用入口。SSO 使用独立模块和生命周期，目前仍在开发中。
 
 你可以把它用于：
 
@@ -114,9 +114,9 @@ func main() {
 }
 ```
 
-直接使用 Auth 无需全局注册。默认内存存储不跨进程共享；多实例共享认证数据时，可配置 [Redis 存储](docs/guide/integration/redis-storage_zh.md)，或实现 `contract.Storage`。
+Build 自动注册并返回 Auth；BuildInstance 创建不注册的独立实例。默认内存存储不跨进程共享；多实例共享认证数据时，可配置 [Redis 存储](docs/guide/integration/redis-storage_zh.md)，或实现 `contract.Storage`。
 
-需要全局 API 时，显式导入 `github.com/Zany2/dtoken-go/global`，调用 `global.SetAuth(auth)`，并由 `global.DeleteManager` 或 `global.DeleteAllManager` 清理注册项。注册表与 Auth 共享引擎，替换或删除注册项会关闭原引擎。
+默认体系使用 `dtoken.CheckLogin(ctx, token)`，指定体系使用 `dtoken.AuthType("user").CheckLogin(ctx, token)`。Build 拒绝同名注册，构建后无需 SetAuth；应用排空请求后调用 `dtoken.CloseAll()`。旧 global 包共用这张注册表。独立实例、替换及迁移方式见 [API 与生命周期](docs/design/api-lifecycle_zh.md)。
 
 ## Web 框架接入
 
@@ -169,7 +169,7 @@ func main() {
 }
 ```
 
-请求 `/user/me` 时，将登录响应中的 Token 放入 `Authorization` 请求头。框架中间件通过绑定的实例完成鉴权；需要从全局注册表选择实例时，显式配置 `WithManagerResolver(global.GetManager)`。更多接入方式见[框架集成指南](docs/guide/integration/framework-integration_zh.md)。
+请求 `/user/me` 时，将登录响应中的 Token 放入 `Authorization` 请求头。框架中间件通过绑定的实例完成鉴权；需要从全局注册表选择实例时，显式配置 `WithManagerResolver(dtoken.GetManager)`。更多接入方式见[框架集成指南](docs/guide/integration/framework-integration_zh.md)。
 
 ## 组合独立能力
 
@@ -207,8 +207,8 @@ router.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), options..
 
 | 包 | 职责 |
 | --- | --- |
-| 根包 `dtoken` | Auth 实例 API、应用 Builder 和公开高级扩展类型 |
-| `global` | 全局认证 API 与注册表 |
+| 根包 `dtoken` | 实例/默认 API、AuthType 选择器、共享注册表、Builder 与高级扩展类型 |
+| `global` | 转发到根共享注册表的旧版兼容 API |
 | `contract`、`config`、`errors`、`event` | 公共契约与共享模型、核心配置、错误、事件发布与监听分发 |
 | `internal/engine` | 内部认证引擎，应用不直接导入 |
 | `internal/builder`、`internal/defaults` | 通用组件装配与内置默认组件工厂 |
@@ -262,6 +262,7 @@ router.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), options..
 | [examples/sso_gin_client](examples/sso_gin_client/) | Gin SSO 子系统接入示例 |
 | [examples/sso_server](examples/sso_server/) | 标准库 SSO 统一登录中心示例 |
 | [examples/sso_client](examples/sso_client/) | 标准库 SSO 子系统接入示例 |
+| [examples/sso_deployment](examples/sso_deployment/README_zh.md) | 完整签名 SSO 中心与多子应用、Redis、PKCE、防重放及部署指南 |
 | [examples/echo](examples/echo/) | Echo 框架接入示例 |
 | [examples/fiber](examples/fiber/) | Fiber 框架接入示例 |
 | [examples/chi](examples/chi/) | Chi 框架接入示例 |

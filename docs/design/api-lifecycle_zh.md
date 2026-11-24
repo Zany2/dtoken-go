@@ -25,7 +25,7 @@
 
 ## 实例与引擎
 
-NewBuilder().Build() 返回 Auth。框架 NewBuilder() 转发根包构建器，返回类型相同。
+`NewBuilder().Build()` 自动注册并返回 `*Auth`，`MustBuild()` 失败时 panic。`BuildInstance()` / `MustBuildInstance()` 创建不注册的独立实例。框架 NewBuilder() 转发根包构建器，行为相同。
 
 Auth.Manager() 返回共享的底层引擎。New(existingManager) 创建共享同一引擎的门面，不复制配置、存储或任务池。任何一个门面关闭引擎后，其他门面的 IsClosed() 也返回 true，认证操作返回 ErrManagerNotFound。已关闭 Auth 的 Config、Storage、Codec、EventManager 返回 nil。
 
@@ -36,7 +36,8 @@ Auth.Manager() 返回共享的底层引擎。New(existingManager) 创建共享�
 | 场景 | 所有权与关闭行为 |
 | --- | --- |
 | 构建成功 | 存储、日志和任务池默认归引擎管理，包括显式传入的组件 |
-| 构建失败 | 构建过程创建的组件会清理；显式传入的组件仍归调用方 |
+| 装配失败 | 工厂创建的组件会清理；显式传入的组件仍归调用方 |
+| 注册竞争失败 | 已完成装配的候选实例按 ComponentOwnership 关闭，已注册的实例保持不变 |
 | WithComponentOwnership | 完整指定所有权，false 字段归调用方管理 |
 | Builder.Clone | 复制配置；显式传入的组件、访问提供器和回调内部状态仍共享 |
 | New(existingManager) | 与已有门面共享引擎生命周期；不会获得独立资源 |
@@ -67,15 +68,32 @@ Auth.Close() 停止引擎维护任务、等待已接收的异步工作并释放�
 
 ## 全局注册表
 
-应用使用 global.SetAuth(auth) 注册实例；自定义底层集成仍可使用 SetManager。两者共享同一注册表及关闭规则：
+根包持有唯一注册表；`global` 保留兼容入口并转发到该注册表。普通构建不再需要 `SetAuth`：
 
-- 同一实例重复注册不会关闭实例。
-- 同认证类型的新实例替换旧实例时，注册表关闭旧引擎。
-- DeleteManager 和 DeleteAllManager 先移除注册项，再关闭相应引擎。
-- 空实例及已关闭实例不会被重新注册。
-- 注册不会创建独立副本，应用仍可主动调用 Auth.Close()；注册表查询会清理已关闭条目。
+```go
+userAuth, err := dtoken.NewBuilder().AuthType("user").Build()
+if err != nil { panic(err) }
+defer userAuth.Close()
 
-WithAuth(auth) 绑定具体实例，替换注册项不会让该中间件自动切换。需要每次请求通过注册表选择实例时，显式配置 WithManagerResolver(global.GetManager)。已经建立的请求作用域保持自己的实例，关闭后不会隐式借用新实例。需要不中断正在执行的请求时，应用必须先协调路由切换和请求排空，再退役旧实例。
+// Both paths use the same engine. 两种调用路径使用同一引擎。
+token, err := userAuth.LoginID(ctx, "10001")
+if err != nil { panic(err) }
+err = dtoken.AuthType("user").CheckLogin(ctx, token)
+```
+
+- 不设置 AuthType 的 Builder 注册默认体系 `auth:`。`dtoken.Login`、`dtoken.IsLogin` 等包级方法始终使用默认体系，签名与 Auth 方法一致。
+- `dtoken.AuthType("user")` 返回动态选择器，每次业务操作查注册表；缓存选择器也会跟随显式替换。缺失体系返回 `ErrManagerNotFound`，布尔校验返回 false，不回退到默认体系。
+- Auth 方法和根包方法不使用选项结构体中的 AuthType 字段路由；该字段仅为旧 `global.*WithOptions` 保留。
+- `Build()` 同名注册返回 `errors.ErrManagerAlreadyRegistered`，保留原实例。并发构建仅一个成功；竞争失败时关闭已装配候选的自有资源。共享组件须显式声明为调用方所有。
+- 需要显式替换时，先 `BuildInstance()`，再 `dtoken.SetAuth(auth)`；旧 `global.SetAuth`、`SetManager`、`BuildAndSetManager` 保留替换行为，关闭旧引擎。同一实例重复 Set 不会关闭它。
+- 实例 `auth.Close()` 立即注销仍指向自身的注册项，再关闭共享引擎；旧实例关闭不会移除替换后的新实例。
+- `dtoken.Close()` 关闭默认体系，`dtoken.AuthType("user").Close()` 关闭当前 user 体系，`dtoken.CloseAll()` 关闭所有当前注册实例；重复调用安全。CloseAll 不关闭未注册的独立实例，也不禁止应用随后重新构建。
+
+`WithAuth(auth)` 绑定具体引擎，不跟随注册表替换。需要每次请求从注册表选择时，显式传入 `WithManagerResolver(dtoken.GetManager)`；旧 `global.GetManager` 同样可用。已经建立的请求作用域保持原实例。应用应先协调路由切换并排空请求，再关闭旧引擎。
+
+迁移已有应用时：删除 Build 后冗余的 SetAuth；将依赖“同名但独立”行为的构建改为 BuildInstance；需要直接使用底层 Manager 时调用返回实例的 Manager()。关闭入口共享资源所有权，不需要逐个关闭后再额外 CloseAll。
+
+框架不安装 signal 监听器，也不调用 os.Exit。应用负责监听退出信号，停止接收请求并等待处理完成，再调用 CloseAll。强制终止进程无法保证执行关闭回调。
 
 ## 能力契约
 
@@ -109,5 +127,53 @@ func main() {
 	shared := dtoken.New(auth.Manager())
 	shared.Close()
 	fmt.Println(auth.IsClosed()) // true
+}
+```
+
+## 应用管理退出信号
+
+此示例等待 HTTP 请求处理完毕后，才执行 defer CloseAll。使用 WebSocket 等长连接时，应用还须等待其处理循环退出。关闭回调不能从引擎自己的异步任务或事件监听器内同步执行。
+
+<!-- dtoken-compile: graceful-shutdown -->
+```go
+package main
+
+import (
+    "context"
+    "errors"
+    "net/http"
+    "os"
+    "os/signal"
+    "syscall"
+
+    "github.com/Zany2/dtoken-go"
+)
+
+func main() {
+    dtoken.NewBuilder().IsPrintBanner(false).MustBuild()
+    defer dtoken.CloseAll()
+
+    stopped, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+    defer stop()
+    server := &http.Server{Addr: ":8080", Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        if err := dtoken.CheckLogin(r.Context(), r.Header.Get("Authorization")); err != nil {
+            w.WriteHeader(http.StatusUnauthorized)
+            return
+        }
+        w.WriteHeader(http.StatusNoContent)
+    })}
+    done := make(chan error, 1)
+    go func() { done <- server.ListenAndServe() }()
+    var serveErr error
+    select {
+    case serveErr = <-done:
+    case <-stopped.Done():
+    }
+    if err := server.Shutdown(context.Background()); err != nil {
+        panic(err)
+    }
+    if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+        panic(serveErr)
+    }
 }
 ```

@@ -16,7 +16,7 @@
 
 | Previous entry | Current entry |
 | --- | --- |
-| dtoken subdirectory | Root instance API and explicit global package |
+| dtoken subdirectory | Root instance/default APIs and AuthType selectors; legacy global compatibility |
 | core/adapter | contract |
 | core/config, core/derror, core/listener | config, errors, event |
 | core/manager, core/builder, defaults | Root NewBuilder and public extension types |
@@ -29,7 +29,6 @@
 ```go
 import (
     "github.com/Zany2/dtoken-go"
-    "github.com/Zany2/dtoken-go/global"
 )
 
 auth, err := dtoken.NewBuilder().AuthType("user").Build()
@@ -38,12 +37,14 @@ if err != nil {
 }
 defer auth.Close()
 
-// Optional global registration. 可选全局注册。
-global.SetAuth(auth)
-defer global.DeleteManager("user")
+// Build registers automatically. Build 自动注册。
+selected := dtoken.AuthType("user")
+_ = selected
 ```
 
-Build() 返回 *dtoken.Auth；auth.Manager() 提供底层管理器。框架优先使用 WithAuth(auth) 或 Context(auth)。策略、装配选项和工厂类型从根包导入，不要导入 internal。所有框架 NewBuilder() 均转发根包构建器，Build() 统一返回 Auth。框架不再转导出全局 API 或组件构造器。HTTP 中间件默认要求绑定实例；全局使用须显式配置 WithManagerResolver(global.GetManager)。
+Build() 自动注册并返回 *dtoken.Auth；auth.Manager() 提供底层管理器。框架优先使用 WithAuth(auth) 或 Context(auth)。策略、装配选项和工厂类型从根包导入，不要导入 internal。所有框架 NewBuilder() 均转发根包构建器，Build() 统一返回 Auth。框架不再转导出全局 API 或组件构造器。HTTP 中间件默认要求绑定实例；全局使用须显式配置 WithManagerResolver(dtoken.GetManager)。
+
+同名 Build 返回 ErrManagerAlreadyRegistered；同名独立实例改用 BuildInstance。显式替换使用 BuildInstance 后 SetAuth。默认包级调用与 AuthType 选择器共用根注册表，旧 global 调用仍可用。退出时先排空请求，再 CloseAll。详见 [API 与生命周期](api-lifecycle_zh.md)。
 
 ## 权限提供器迁移
 

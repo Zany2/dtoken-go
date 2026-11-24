@@ -10,7 +10,7 @@
 | `SECURITY.md` | Private vulnerability reporting guidance / 私密漏洞报告说明 |
 | `workflows/ci.yml` | Workspace vet/tests and Redis scenarios / 工作区检查、测试与 Redis 场景 |
 | `dependabot.yml` | Weekly Go dependency and GitHub Actions updates / 每周检查 Go 依赖与 GitHub Actions 更新 |
-| `scripts/check-consumer.sh` | Local-source or published-version facade and Gin consumer checks / 当前源码或发布版本的门面与 Gin 使用方检查 |
+| `scripts/check-consumer.sh` | Local-source or published-version facade, Gin and SSO consumer checks / 当前源码或发布版本的门面、Gin 及 SSO 使用方检查 |
 
 ## Activation / 生效方式
 
@@ -40,8 +40,26 @@ CI 还会通过 `.github/scripts/check-modules.sh` 关闭工作区解析，使�
 
 The minimum-Go job reads go.mod and checks the main module with GOWORK=off, including race detection. The external consumer checks root instance APIs, public extension types, explicit global registration, middleware capability bindings, and logout.
 
-最低 Go 版本任务从 go.mod 读取版本，在 GOWORK=off 下检查主模块并启用竞态检测。仓库外消费者检查覆盖根实例 API、公共扩展类型、显式全局注册、中间件能力绑定和退出。
+最低 Go 版本任务从 go.mod 读取版本，在 GOWORK=off 下检查主模块并启用竞态检测。仓库外消费者检查覆盖根实例 API、公共扩展类型、自动注册、根包体系选择与旧 global 兼容、中间件能力绑定和退出。
 
-Manual CI accepts `root_version` and `gin_version` together to check published modules. These run the consumer script with explicit versions and remote dependency resolution. The regular consumer step uses the current checkout. See the migration guide for the command and release order.
+Manual CI accepts `root_version` and `gin_version` together to check published modules. Supplying `sso_version` as well includes the SSO consumer; omitting it preserves the two-module check. Every requested version must be nonempty and remain exactly selected after dependency resolution. The regular consumer step uses the current checkout and includes SSO. See the [SSO upgrade guide](../sso/MIGRATION.md) for scope and commands.
 
-手动 CI 可同时填写 `root_version` 与 `gin_version` 检查发布模块，消费者脚本使用显式版本和远程依赖解析。常规消费者步骤使用当前源码。命令与发布顺序见迁移指南。
+手动 CI 可同时填写 `root_version` 与 `gin_version` 检查发布模块；再填写 `sso_version` 时加入 SSO 使用方，省略则保持原来的双模块检查。请求的版本均须非空，依赖解析后仍须精确选中。常规使用方步骤使用当前源码并包含 SSO。范围和命令见 [SSO 升级指南](../sso/MIGRATION_zh.md)。
+
+The workspace job also race-checks SSO, its Redis adapter and all five SSO examples. Redis integration runs separately with the service URL configured and now enables race detection for the SSO Redis adapter, including replica lifecycle scenarios. The general race step still runs without live Redis. Documentation compilation now includes both SSO configuration guides. None of these additions establishes a passing result until CI or the documented commands actually run.
+
+工作区任务还对 SSO、其 Redis 适配器及全部五个 SSO 示例执行竞态检查。真实 Redis 集成在单独配置服务地址的步骤执行，并为 SSO Redis 适配器启用竞态检测，覆盖多副本生命周期；通用竞态步骤仍不连接真实 Redis。文档编译已纳入中英文 SSO 配置指南。这些入口需要实际运行后才能记录通过结果。
+
+## SSO release verification / SSO 发布验证
+
+`ci.yml` adds `SSO minimum Go (sso)` and `SSO minimum Go (sso/storage/redis)`, reading each module's go.mod with workspace and automatic toolchain upgrades disabled. The `check-modules -sso` discovery path reads only the four release manifests, avoiding the newer go.work requirement. The SSO matrix entry also runs the dedicated source consumer.
+
+`ci.yml` 新增两个 SSO 最低 Go 检查，分别读取 SSO 和 SSO Redis 的 go.mod，关闭工作区及自动工具链升级。`check-modules -sso` 仅读取四个发布模块的清单，避免加载版本更高的 go.work；SSO 矩阵项还运行专用源码消费者。
+
+[scripts/check-sso-consumer.sh](scripts/check-sso-consumer.sh) accepts zero arguments for local sources, or four exact versions in root / SSO / storage Redis / SSO Redis order. It verifies selected versions without replacements in published mode and runs public consumer fixtures with vet and race detection. It does not connect to Redis or start a listener; dependencies may be downloaded.
+
+专用消费者脚本接受零参数（当前源码）或按根模块／SSO／通用 Redis／SSO Redis 顺序传入四个精确版本。发布模式不加源码替换并检查实际选中版本，随后运行公开使用方的 vet 和竞态回归。它不连接 Redis、不监听端口，但可能下载依赖。
+
+[workflows/sso-release.yml](workflows/sso-release.yml) provides a manual-only published check with four required versions, independent of Gin. It never publishes or tags. Fixtures come from the selected workflow ref and require its current public API; use compatible release versions. Existing general consumer invocations remain unchanged. All new execution results are pending; see [SSO release acceptance](../sso/RELEASE_CHECKLIST.md).
+
+独立手动工作流要求填写四个版本，不依赖 Gin，不创建标签或发布。验收源码来自所选工作流 ref，并要求对应的当前公开 API，应选择兼容版本。原通用消费者调用方式保持不变。新增运行结果均待确认，见 [SSO 发布验收](../sso/RELEASE_CHECKLIST_zh.md)。

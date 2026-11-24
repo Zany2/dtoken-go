@@ -9,7 +9,7 @@ import (
 
 // LoginOptions describes a typed login request. LoginOptions 描述类型化登录请求。
 type LoginOptions struct {
-	// AuthType stores the auth namespace. AuthType 存储认证命名空间。
+	// AuthType selects the namespace only for legacy global option calls; Auth and root calls use their selected namespace. AuthType 仅供旧 global 选项调用选择体系；Auth 与根包调用使用其已选体系。
 	AuthType string
 	// LoginID stores the subject id. LoginID 存储主体 ID。
 	LoginID string
@@ -49,7 +49,7 @@ type RefreshTokenOptions struct {
 
 // LogoutOptions describes a typed logout or terminal operation. LogoutOptions 描述类型化登出或终端操作。
 type LogoutOptions struct {
-	// AuthType stores the auth namespace. AuthType 存储认证命名空间。
+	// AuthType selects the namespace only for legacy global option calls; Auth and root calls use their selected namespace. AuthType 仅供旧 global 选项调用选择体系；Auth 与根包调用使用其已选体系。
 	AuthType string
 	// LoginID stores the subject id. LoginID 存储主体 ID。
 	LoginID string
@@ -66,7 +66,7 @@ type TerminateOptions = LogoutOptions
 
 // DisableOptions describes an account disable request. DisableOptions 描述账号封禁请求。
 type DisableOptions struct {
-	// AuthType stores the auth namespace. AuthType 存储认证命名空间。
+	// AuthType selects the namespace only for legacy global option calls; Auth and root calls use their selected namespace. AuthType 仅供旧 global 选项调用选择体系；Auth 与根包调用使用其已选体系。
 	AuthType string
 	// LoginID stores the subject id. LoginID 存储主体 ID。
 	LoginID string
@@ -78,7 +78,7 @@ type DisableOptions struct {
 
 // ServiceDisableOptions describes a service-scoped disable request. ServiceDisableOptions 描述服务维度封禁请求。
 type ServiceDisableOptions struct {
-	// AuthType stores the auth namespace. AuthType 存储认证命名空间。
+	// AuthType selects the namespace only for legacy global option calls; Auth and root calls use their selected namespace. AuthType 仅供旧 global 选项调用选择体系；Auth 与根包调用使用其已选体系。
 	AuthType string
 	// LoginID stores the subject id. LoginID 存储主体 ID。
 	LoginID string
@@ -94,7 +94,7 @@ type ServiceDisableOptions struct {
 
 // DeviceDisableOptions describes a device-scoped disable request. DeviceDisableOptions 描述设备维度封禁请求。
 type DeviceDisableOptions struct {
-	// AuthType stores the auth namespace. AuthType 存储认证命名空间。
+	// AuthType selects the namespace only for legacy global option calls; Auth and root calls use their selected namespace. AuthType 仅供旧 global 选项调用选择体系；Auth 与根包调用使用其已选体系。
 	AuthType string
 	// LoginID stores the subject id. LoginID 存储主体 ID。
 	LoginID string
@@ -110,7 +110,7 @@ type DeviceDisableOptions struct {
 
 // PermissionOptions describes permission mutations and checks. PermissionOptions 描述权限变更和校验。
 type PermissionOptions struct {
-	// AuthType stores the auth namespace. AuthType 存储认证命名空间。
+	// AuthType selects the namespace only for legacy global option calls; Auth and root calls use their selected namespace. AuthType 仅供旧 global 选项调用选择体系；Auth 与根包调用使用其已选体系。
 	AuthType string
 	// LoginID stores the subject id. LoginID 存储主体 ID。
 	LoginID string
@@ -124,7 +124,7 @@ type PermissionOptions struct {
 
 // RoleOptions describes role mutations and checks. RoleOptions 描述角色变更和校验。
 type RoleOptions struct {
-	// AuthType stores the auth namespace. AuthType 存储认证命名空间。
+	// AuthType selects the namespace only for legacy global option calls; Auth and root calls use their selected namespace. AuthType 仅供旧 global 选项调用选择体系；Auth 与根包调用使用其已选体系。
 	AuthType string
 	// LoginID stores the subject id. LoginID 存储主体 ID。
 	LoginID string

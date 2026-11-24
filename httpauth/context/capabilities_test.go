@@ -31,7 +31,7 @@ func TestCapabilitiesRequireExplicitBindings(t *testing.T) {
 
 // TestCapabilitiesUseComposedServices verifies request facades share capability storage and instance events. TestCapabilitiesUseComposedServices 验证请求门面复用组合服务的存储与实例事件。
 func TestCapabilitiesUseComposedServices(t *testing.T) {
-	auth, err := dtoken.NewBuilder().AuthType("capabilities").IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Build()
+	auth, err := dtoken.NewBuilder().AuthType("capabilities").IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}

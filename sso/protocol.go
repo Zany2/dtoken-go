@@ -98,6 +98,12 @@ func (e Endpoints) ReplacePrefix(prefix string) Endpoints {
 
 // ParamNames stores conventional SSO parameter names. ParamNames 存储 SSO 约定参数名。
 type ParamNames struct {
+	// CodeChallenge names the PKCE challenge parameter. CodeChallenge 指定 PKCE 挑战参数名。
+	CodeChallenge string
+	// CodeChallengeMethod names the PKCE method parameter. CodeChallengeMethod 指定 PKCE 算法参数名。
+	CodeChallengeMethod string
+	// CodeVerifier names the PKCE exchange proof parameter. CodeVerifier 指定 PKCE 兑换证明参数名。
+	CodeVerifier string
 	// Redirect stores callback parameter name. Redirect 存储回调地址参数名。
 	Redirect string
 	// Ticket stores ticket parameter name. Ticket 存储 Ticket 参数名。
@@ -136,6 +142,8 @@ type ParamNames struct {
 	Timestamp string
 	// Nonce stores nonce parameter name. Nonce 存储随机值参数名。
 	Nonce string
+	// Action stores the signed protocol operation parameter name. Action 存储签名协议操作的参数名。
+	Action string
 	// Sign stores sign parameter name. Sign 存储签名参数名。
 	Sign string
 	// RemainSessionTimeout stores session ttl parameter name. RemainSessionTimeout 存储会话剩余有效期参数名。
@@ -149,6 +157,9 @@ type ParamNames struct {
 // DefaultParamNames returns default SSO parameter names. DefaultParamNames 返回默认 SSO 参数名。
 func DefaultParamNames() ParamNames {
 	return ParamNames{
+		CodeChallenge:        "code_challenge",
+		CodeChallengeMethod:  "code_challenge_method",
+		CodeVerifier:         "code_verifier",
 		Redirect:             "redirect",
 		Ticket:               "ticket",
 		Code:                 "code",
@@ -168,6 +179,7 @@ func DefaultParamNames() ParamNames {
 		Password:             "pwd",
 		Timestamp:            "timestamp",
 		Nonce:                "nonce",
+		Action:               "action",
 		Sign:                 "sign",
 		RemainSessionTimeout: "remainSessionTimeout",
 		RemainTokenTimeout:   "remainTokenTimeout",
@@ -183,9 +195,9 @@ type TicketExchangeResult struct {
 	TokenValue string `json:"tokenValue,omitempty"`
 	// DeviceID stores login device id. DeviceID 存储登录设备 ID。
 	DeviceID string `json:"deviceId,omitempty"`
-	// RemainTokenTimeout stores token ttl seconds. RemainTokenTimeout 存储 Token 剩余秒数。
+	// RemainTokenTimeout stores center token TTL seconds; zero is unspecified and -1 means no expiry. RemainTokenTimeout 存储中心 Token 剩余秒数；零表示未指定，-1 表示永不过期。
 	RemainTokenTimeout int64 `json:"remainTokenTimeout,omitempty"`
-	// RemainSessionTimeout stores session ttl seconds. RemainSessionTimeout 存储会话剩余秒数。
+	// RemainSessionTimeout stores center session TTL seconds; zero is unspecified and -1 means no expiry. RemainSessionTimeout 存储中心会话剩余秒数；零表示未指定，-1 表示永不过期。
 	RemainSessionTimeout int64 `json:"remainSessionTimeout,omitempty"`
 	// CenterID stores center-side subject id. CenterID 存储认证中心主体 ID。
 	CenterID string `json:"centerId,omitempty"`
@@ -277,6 +289,15 @@ func normalizeEndpoints(value Endpoints) Endpoints {
 // normalizeParamNames fills omitted fields while preserving explicit values. normalizeParamNames 补齐未设置的参数名并保留显式配置。
 func normalizeParamNames(value ParamNames) ParamNames {
 	defaults := DefaultParamNames()
+	if value.CodeChallenge == "" {
+		value.CodeChallenge = defaults.CodeChallenge
+	}
+	if value.CodeChallengeMethod == "" {
+		value.CodeChallengeMethod = defaults.CodeChallengeMethod
+	}
+	if value.CodeVerifier == "" {
+		value.CodeVerifier = defaults.CodeVerifier
+	}
 	if value.Redirect == "" {
 		value.Redirect = defaults.Redirect
 	}
@@ -334,6 +355,9 @@ func normalizeParamNames(value ParamNames) ParamNames {
 	if value.Nonce == "" {
 		value.Nonce = defaults.Nonce
 	}
+	if value.Action == "" {
+		value.Action = defaults.Action
+	}
 	if value.Sign == "" {
 		value.Sign = defaults.Sign
 	}
@@ -347,6 +371,30 @@ func normalizeParamNames(value ParamNames) ParamNames {
 		value.SingleDeviceIDLogout = defaults.SingleDeviceIDLogout
 	}
 	return value
+}
+
+// distinctParamNames rejects empty or colliding normalized protocol names. distinctParamNames 拒绝规范化协议参数名中的空值与冲突。
+func distinctParamNames(names ParamNames) bool {
+	seen := make(map[string]bool)
+	for _, name := range protocolParamNames(names) {
+		if name == "" || seen[name] || hasConfigWhitespace(name) {
+			return false
+		}
+		seen[name] = true
+	}
+	return true
+}
+
+// protocolParamNames enumerates configured scalar fields for configuration and request validation. protocolParamNames 枚举配置中的单值字段，供配置及请求校验使用。
+func protocolParamNames(names ParamNames) []string {
+	return []string{
+		names.CodeChallenge, names.CodeChallengeMethod, names.CodeVerifier,
+		names.Redirect, names.Ticket, names.Code, names.SessionID, names.Back, names.Mode,
+		names.Scope, names.LoginID, names.Client, names.TokenName, names.TokenValue,
+		names.DeviceID, names.ClientSecret, names.Callback, names.AutoLogout, names.Name,
+		names.Password, names.Timestamp, names.Nonce, names.Action, names.Sign,
+		names.RemainSessionTimeout, names.RemainTokenTimeout, names.SingleDeviceIDLogout,
+	}
 }
 
 // joinPath joins a prefix with a protocol path. joinPath 连接前缀与协议路径。

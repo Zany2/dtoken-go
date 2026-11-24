@@ -2,12 +2,18 @@
 set -euo pipefail
 
 # Accept explicit published versions or use the checkout modules. 接收显式发布版本，默认使用当前源码模块。
-if [[ $# != 0 && $# != 2 ]]; then
-  echo 'Usage: bash .github/scripts/check-consumer.sh [root-version gin-version]' >&2
+if [[ $# != 0 && $# != 2 && $# != 3 ]]; then
+  echo 'Usage: bash .github/scripts/check-consumer.sh [root-version gin-version [sso-version]]' >&2
   exit 1
 fi
 root_version="${1:-v0.0.0}"
 gin_version="${2:-v0.0.0}"
+sso_version="${3:-v0.0.0}"
+check_sso=false
+if [[ $# == 0 || $# == 3 ]]; then
+  check_sso=true
+fi
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 modules=""
 if [[ $# == 0 ]]; then
   checkout_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -17,8 +23,8 @@ if [[ $# == 0 ]]; then
     checkout_native="$(cygpath -m "$checkout_root")"
   fi
   modules="$(GOWORK="$checkout_native/go.work" go list -m -f '{{.Path}}={{.Dir}}')"
-elif [[ -z "$1" || -z "$2" ]]; then
-  echo 'Both published versions must be provided.' >&2
+elif [[ -z "$1" || -z "$2" || ( $# == 3 && -z "${3-}" ) ]]; then
+  echo 'Every requested published version must be provided.' >&2
   exit 1
 fi
 
@@ -30,6 +36,10 @@ export GOWORK=off
 go mod init example.com/dtoken-consumer
 go mod edit "-require=github.com/Zany2/dtoken-go@$root_version"
 go mod edit "-require=github.com/Zany2/dtoken-go/integrations/gin@$gin_version"
+if [[ "$check_sso" == true ]]; then
+  go mod edit "-require=github.com/Zany2/dtoken-go/sso@$sso_version"
+  cp "$script_dir/testdata/sso-consumer_test.go" sso_consumer_test.go
+fi
 while IFS= read -r replacement; do
   if [[ -n "$replacement" ]]; then
     go mod edit -replace="$replacement"
@@ -67,8 +77,13 @@ func TestConsumerInstanceGlobalAndCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	global.SetAuth(auth)
-	t.Cleanup(func() { _ = global.DeleteManager("consumer") })
+	registered, err := dtoken.GetManager("consumer")
+	if err != nil || registered != auth.Manager() {
+		t.Fatalf("Build did not register its engine: %v", err)
+	}
+	if err := dtoken.AuthType("consumer").CheckLogin(ctx, token); err != nil {
+		t.Fatal(err)
+	}
 	if err := global.CheckLogin(ctx, token, "consumer"); err != nil {
 		t.Fatal(err)
 	}
@@ -103,6 +118,10 @@ func TestConsumerInstanceGlobalAndCapabilities(t *testing.T) {
 	if auth.IsLogin(ctx, token) {
 		t.Fatal("token remained active after logout")
 	}
+	dtoken.CloseAll()
+	if !auth.IsClosed() || dtoken.AuthType("consumer").Manager() != nil {
+		t.Fatal("CloseAll left the registered engine available")
+	}
 }
 GO
 
@@ -110,8 +129,12 @@ gofmt -w consumer_test.go
 go mod tidy
 
 # Verify the selected versions after transitive requirements are resolved. 解析传递依赖后核对最终选中版本。
-if [[ $# == 2 ]]; then
-  for requirement in "github.com/Zany2/dtoken-go=$root_version" "github.com/Zany2/dtoken-go/integrations/gin=$gin_version"; do
+if [[ $# != 0 ]]; then
+  requirements=("github.com/Zany2/dtoken-go=$root_version" "github.com/Zany2/dtoken-go/integrations/gin=$gin_version")
+  if [[ "$check_sso" == true ]]; then
+    requirements+=("github.com/Zany2/dtoken-go/sso=$sso_version")
+  fi
+  for requirement in "${requirements[@]}"; do
     module_path="${requirement%=*}"
     expected_version="${requirement#*=}"
     selected_version="$(go list -m -f '{{.Version}}' "$module_path")"

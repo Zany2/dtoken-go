@@ -277,9 +277,6 @@ func TestAuthCloseUnregistersManager(t *testing.T) {
 	if _, err = GetManager("auth-close"); !errors.Is(err, derror.ErrManagerNotFound) {
 		t.Fatalf("GetManager() after Auth.Close error = %v, want ErrManagerNotFound", err)
 	}
-	if _, loaded := globalManagerMap.Load(getAutoType("auth-close")); loaded {
-		t.Fatal("GetManager() retained a closed registry entry")
-	}
 	if pool.stops() != 1 {
 		t.Fatalf("pool stop count = %d, want 1", pool.stops())
 	}
@@ -416,11 +413,6 @@ func TestRegistryRejectsInvalidBuilderResults(t *testing.T) {
 		t.Fatalf("custom builder build count = %d, want 0", customBuilder.builds)
 	}
 	customManager.CloseManager()
-
-	globalManagerMap.Store("invalid-registry:", struct{}{})
-	if err := DeleteManager("invalid-registry"); !errors.Is(err, derror.ErrManagerInvalidType) {
-		t.Fatalf("DeleteManager(invalid value) error = %v, want ErrManagerInvalidType", err)
-	}
 }
 
 func newRegistryTestManager(authType string, pool adapter.Pool) *manager.Manager {

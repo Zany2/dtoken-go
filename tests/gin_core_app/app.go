@@ -321,7 +321,7 @@ func newDemoManager(cfg Config, authType string, storage adapter.Storage) (*dtok
 	if cfg.UseAccessProvider {
 		builder.SetAccessProvider(demoAccessProvider{})
 	}
-	mgr, err := builder.Build()
+	mgr, err := builder.BuildInstance()
 	if err != nil {
 		// Failed builds leave explicit storage caller-owned. 构建失败时显式传入的存储仍由调用方负责释放。
 		if closer, ok := storage.(io.Closer); ok {

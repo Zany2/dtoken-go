@@ -2,7 +2,7 @@
 
 **[中文文档](../core/disable_zh.md)**
 
-This page uses `global` for registered-instance calls and `dt` for the root package. Build Auth and call `global.SetAuth(auth)` first; omitted auth types select the default `auth:` namespace. See [Auth API](../../api/auth.md) for instance calls and parameter differences.
+This page retains positional examples for the legacy `global` API; `dt` names the root package. Build automatically registers and returns Auth, so SetAuth is unnecessary. An omitted namespace selects `auth:`. New calls may use dt package functions or dt.AuthType("user"); their business signatures match Auth methods, not legacy global positional signatures. See [Auth API](../../api/auth.md).
 
 DToken-Go supports more than account-level banning. It also supports service disable, service-level disable, device-type disable, and concrete-device disable. Disable state participates in login checks where applicable, and disabled subjects receive the corresponding error.
 

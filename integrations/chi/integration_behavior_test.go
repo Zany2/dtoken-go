@@ -44,7 +44,7 @@ func TestChiMiddlewareSuccessAndFailure(t *testing.T) {
 	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
 	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -88,7 +88,7 @@ func TestChiPermissionPathMiddleware(t *testing.T) {
 	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
 	mgr := builtAuth2.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -122,7 +122,7 @@ func TestChiAnnotationHandlers(t *testing.T) {
 	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	builtAuth3, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth3, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
 	mgr := builtAuth3.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -179,7 +179,7 @@ func TestChiContextFacadeUsesCachedManager(t *testing.T) {
 	t.Cleanup(dtglobal.DeleteAllManager)
 
 	ctx := context.Background()
-	builtAuth4, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth4, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
 	mgr := builtAuth4.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)

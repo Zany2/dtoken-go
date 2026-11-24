@@ -42,18 +42,18 @@ func TestManagerAutoRenewUsesExactTTL(t *testing.T) {
 			if err := mgr.CheckLogin(ctx, token); err != nil {
 				t.Fatal(err)
 			}
-			wantTasks := 0
-			if input.want {
-				wantTasks = 1
+			if pool.taskCount() != 1 {
+				t.Fatalf("queued eligibility checks = %d, want 1", pool.taskCount())
 			}
-			if pool.taskCount() != wantTasks {
-				t.Fatalf("queued renewals = %d, want %d", pool.taskCount(), wantTasks)
+			wantRenews := 0
+			if input.want {
+				wantRenews = 1
 			}
 			var renews int
 			mgr.GetEventManager().RegisterFuncWithConfig(listener.EventRenew, func(*listener.EventData) { renews++ }, listener.ListenerConfig{Async: false})
 			pool.runAll()
-			if renews != wantTasks {
-				t.Fatalf("renewal events = %d, want %d", renews, wantTasks)
+			if renews != wantRenews {
+				t.Fatalf("renewal events = %d, want %d", renews, wantRenews)
 			}
 		})
 	}

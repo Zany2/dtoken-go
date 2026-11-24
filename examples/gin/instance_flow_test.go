@@ -21,14 +21,14 @@ func TestInjectedInstanceOwnsLoginAndRefresh(t *testing.T) {
 	ctx := context.Background()
 	for _, name := range []string{"tenant-a", "tenant-b"} {
 		t.Run(name, func(t *testing.T) {
-			auth, err := dtoken.NewBuilder().AuthType(name).AutoRenew(false).IsPrintBanner(false).IsLog(false).Build()
+			auth, err := dtoken.NewBuilder().AuthType(name).AutoRenew(false).IsPrintBanner(false).IsLog(false).BuildInstance()
 			if err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(auth.Close)
 			var global *dtoken.Auth
 			if name == "tenant-b" {
-				global, err = dtoken.NewBuilder().AutoRenew(false).IsPrintBanner(false).IsLog(false).Build()
+				global, err = dtoken.NewBuilder().AutoRenew(false).IsPrintBanner(false).IsLog(false).BuildInstance()
 				if err != nil {
 					t.Fatal(err)
 				}

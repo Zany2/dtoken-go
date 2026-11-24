@@ -33,12 +33,14 @@ func TestSSOSignedProtocolLifecycle(t *testing.T) {
 				server := NewServer(storageOption)
 				defer server.Close()
 				registered := newTestClient()
+				registered.SecretKey = "app-a-signing-key"
 				registered.Modes = []Mode{mode}
 				if err := server.RegisterClient(registered); err != nil {
 					t.Fatal(err)
 				}
 				other := *registered
 				other.ClientID, other.ClientSecret = "app-b", "secret-b"
+				other.SecretKey = "app-b-signing-key"
 				if err := server.RegisterClient(&other); err != nil {
 					t.Fatal(err)
 				}
@@ -49,7 +51,7 @@ func TestSSOSignedProtocolLifecycle(t *testing.T) {
 				var center http.Handler
 				app := NewClientApp(ClientConfig{
 					Mode: mode, ClientID: registered.ClientID, ClientSecret: registered.ClientSecret,
-					ServerURL: "https://center.example.com", CheckSign: true, SecretKey: "protocol-secret",
+					ServerURL: "https://center.example.com", CheckSign: true, SecretKey: registered.SecretKey,
 					RegisterCallback: true, LogoutCallbackURL: "https://app.example.com/sso/logout-callback",
 					Params: params, Endpoints: endpoints,
 					HTTPClient: &http.Client{Transport: logoutReviewTransport(func(r *http.Request) (*http.Response, error) {
@@ -111,6 +113,7 @@ func TestSSOSignedProtocolLifecycle(t *testing.T) {
 				// A different registered client must not read or revoke this credential. 其他已注册客户端不得读取或撤销当前凭证。
 				otherConfig := app.Config()
 				otherConfig.ClientID, otherConfig.ClientSecret = other.ClientID, other.ClientSecret
+				otherConfig.SecretKey = other.SecretKey
 				otherApp := NewClientApp(otherConfig)
 				if info, err := otherApp.Introspect(ctx, credential); err != nil || info.Active || info.LoginID != "" {
 					t.Fatalf("cross-client introspection: %+v, %v", info, err)

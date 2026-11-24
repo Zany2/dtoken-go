@@ -16,7 +16,9 @@ dtoken-go/
 ├── types.go              公共领域类型别名
 ├── engine_api.go         高级引擎 API 与装配类型
 ├── config.go             根包配置入口
-├── global/               全局注册表与便捷调用
+├── registry.go           共享注册表、AuthType 选择与关闭
+├── default_*.go          默认体系转发
+├── global/               旧注册表与门面入口转发
 ├── internal/
 │   ├── engine/           核心认证实现
 │   ├── builder/          配置与组件装配
@@ -59,7 +61,7 @@ dtoken-go/
 | 根 `builder.go` | 应用配置入口、内置日志和池配置、返回 `Auth` | 使用内部构建器和默认工厂完成装配 |
 | `options.go`、`types.go`、`config.go` | 公开选项、共享模型别名与配置入口 | 保持公共模型的唯一声明来源 |
 | `engine_api.go` | 暴露受支持的高级引擎类型与装配选项 | 类型别名仍属于公开 API，不能因实现位于 internal 而任意变更 |
-| `global/registry.go` 与分类门面 | 注册表及通过注册表进行的调用 | 核心引擎和 HTTP 公共层不反向依赖 global |
+| 根 `registry.go`、`default_*.go` 与旧 `global` 门面 | 共享注册表、默认调用及 AuthType 选择器 | 核心引擎和 HTTP 公共层不反向依赖注册表 |
 | `internal/builder` | 配置校验、组件和工厂解析、引擎构建 | 接收组件契约，不选择具体存储、日志或池实现 |
 | `internal/defaults` | 提供内置默认组件工厂 | 默认实现的选择集中在这里；应用仍可显式替换组件 |
 
@@ -143,7 +145,7 @@ Gin 的两个导出文件是标准源，`integrations/gin/internal/integrationex
 | 独立能力实现 | 对应能力包；需要 HTTP 注入时维护其服务契约 |
 | 所有框架共用的请求鉴权 | `httpauth` 或 `httpauth/context` |
 | 某个框架的原生行为适配 | 对应 `integrations/<framework>` |
-| 全局注册与查找 | `global` |
+| 全局注册与查找 | 根 `registry.go`，`global` 兼容转发 |
 | 跨组件使用场景 | `examples` 或 `tests`，按教学与验证目的区分 |
 
 SSO 保留为独立模块，本指南仅标示它的仓库位置，内部目录和协议另行梳理。

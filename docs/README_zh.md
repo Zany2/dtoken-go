@@ -2,9 +2,9 @@
 
 # DToken-Go 文档中心
 
-新项目从[快速开始](tutorial/quick-start_zh.md)和 [Auth 实例 API](api/auth_zh.md)入手。已有全局调用使用 `global` 包；框架请求显式绑定 Auth，独立能力通过 Service 和 WithCapabilities 组合。
+新项目从[快速开始](tutorial/quick-start_zh.md)和 [Auth 实例 API](api/auth_zh.md)入手。Build 自动注册，根包提供默认调用和 AuthType 选择器，`global` 保留旧版兼容调用；框架请求显式绑定 Auth，独立能力通过 Service 和 WithCapabilities 组合。
 
-文档约定：`dt` 或 `dtoken` 表示根包，`global` 只表示注册表入口，`auth` 是已构建实例，`mgr` 是其底层 Manager。带 package main 的示例提供完整程序或带标记的组合片段；其他片段需放在持有实例的函数内，补齐对应导入、业务处理器和错误处理。根模块要求 Go 1.25+，仓库工作区要求 Go 1.27+。
+文档约定：`dt` 或 `dtoken` 表示根包，`global` 表示旧版兼容入口，与根包共用注册表，`auth` 是已构建实例，`mgr` 是其底层 Manager。带 package main 的示例提供完整程序或带标记的组合片段；其他片段需放在持有实例的函数内，补齐对应导入、业务处理器和错误处理。根模块要求 Go 1.25+，仓库工作区要求 Go 1.27+。
 
 ## 文档导航
 

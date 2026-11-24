@@ -2,7 +2,7 @@
 
 [English](../core/permission.md) | 中文文档
 
-本文使用 `global` 包演示已注册实例的全局调用，`dt` 表示根包。先构建 Auth 并调用 `global.SetAuth(auth)`；未指定认证类型时使用默认 `auth:`。实例调用及参数差异见 [Auth API](../../api/auth_zh.md)。
+本文保留 `global` 兼容入口的位置参数示例，`dt` 表示根包。`Build()` 自动注册并返回 Auth，无需再调用 SetAuth；省略认证类型时使用默认 `auth:`。新调用可使用 `dt.XXX()` 或 `dt.AuthType("user").XXX()`，其业务方法签名与实例一致，不能直接沿用 global 的位置参数。见 [Auth API](../../api/auth_zh.md)。
 
 ## 概览
 
@@ -18,19 +18,17 @@ package main
 
 import (
     dt "github.com/Zany2/dtoken-go"
-    global "github.com/Zany2/dtoken-go/global"
 
     "github.com/Zany2/dtoken-go/storage/memory"
 )
 
 func initDToken() {
-    auth, err := dt.NewBuilder().
+    _, err := dt.NewBuilder().
         Storage(memory.NewStorage()).
         Build()
     if err != nil {
         panic(err)
     }
-    global.SetAuth(auth)
 }
 ```
 
@@ -220,7 +218,7 @@ _ = global.UntieService(ctx, "10001", "comment")
 
 ## 自定义权限与角色提供器
 
-下面创建独立实例。PermissionFunc 与 RoleFunc 使用同一个 AccessSubject，不再区分普通和 Ext 回调。
+下面配置并注册使用自定义提供器的实例。请用它替换前面的初始化，避免重复注册默认体系。PermissionFunc 与 RoleFunc 使用同一个 AccessSubject，不再区分普通和 Ext 回调。
 
 ```go
 provider := dt.AccessProviderFunc{
@@ -244,7 +242,7 @@ if err != nil {
 defer auth.Close()
 ```
 
-需要用于前文全局调用时，显式 global.SetAuth(auth)；用于 HTTP 时通过 WithAuth(auth) 注入同一个实例。详见 [AccessProvider](access-provider_zh.md)。
+Build 自动注册实例，前文 global 调用可直接使用；用于 HTTP 时通过 WithAuth(auth) 注入同一个实例。详见 [AccessProvider](access-provider_zh.md)。
 
 ## Gin 路由中使用
 

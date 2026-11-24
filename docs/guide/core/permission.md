@@ -2,7 +2,7 @@
 
 [中文文档](../core/permission_zh.md) | English
 
-This page uses `global` for registered-instance calls and `dt` for the root package. Build Auth and call `global.SetAuth(auth)` first; omitted auth types select the default `auth:` namespace. See [Auth API](../../api/auth.md) for instance calls and parameter differences.
+This page retains positional examples for the legacy `global` API; `dt` names the root package. Build automatically registers and returns Auth, so SetAuth is unnecessary. An omitted namespace selects `auth:`. New calls may use dt package functions or dt.AuthType("user"); their business signatures match Auth methods, not legacy global positional signatures. See [Auth API](../../api/auth.md).
 
 ## Overview
 
@@ -18,19 +18,17 @@ package main
 
 import (
     dt "github.com/Zany2/dtoken-go"
-    global "github.com/Zany2/dtoken-go/global"
 
     "github.com/Zany2/dtoken-go/storage/memory"
 )
 
 func initDToken() {
-    auth, err := dt.NewBuilder().
+    _, err := dt.NewBuilder().
         Storage(memory.NewStorage()).
         Build()
     if err != nil {
         panic(err)
     }
-    global.SetAuth(auth)
 }
 ```
 
@@ -220,7 +218,7 @@ _ = global.UntieService(ctx, "10001", "comment")
 
 ## Custom Permission And Role Provider
 
-This creates an independent instance. PermissionFunc and RoleFunc use AccessSubject instead of separate normal and Ext callbacks.
+This configures and registers an instance with a custom provider. Use it in place of the initialization above to avoid registering the default namespace twice. PermissionFunc and RoleFunc use AccessSubject instead of separate normal and Ext callbacks.
 
 ```go
 provider := dt.AccessProviderFunc{
@@ -244,7 +242,7 @@ if err != nil {
 defer auth.Close()
 ```
 
-For the global calls above, explicitly register global.SetAuth(auth). For HTTP, inject the same instance with WithAuth(auth). See [AccessProvider](access-provider.md).
+Build automatically registers this instance for the legacy global calls above. For HTTP, inject the same instance with WithAuth(auth). See [AccessProvider](access-provider.md).
 
 ## Using With Gin Routes
 

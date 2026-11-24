@@ -25,7 +25,7 @@
 
 DToken-Go provides authentication, authorization, sessions, terminals, and token lifecycle management around a stateful authentication engine. Applications build and use `Auth` instances through the root `dtoken` package, replace storage, codecs, and logging through public contracts, and connect HTTP requests through framework adapters.
 
-Nonce, OAuth2, Ticket, and ShortKey are composed as independent services; `global` provides optional registry-based access. SSO has its own module and lifecycle and remains under development.
+Nonce, OAuth2, Ticket, and ShortKey are composed as independent services; the root provides default calls and AuthType selectors, while `global` retains legacy calls. SSO has its own module and lifecycle and remains under development.
 
 You can use it for:
 
@@ -114,9 +114,9 @@ func main() {
 }
 ```
 
-Auth instances operate without global registration. Default memory storage is not shared across processes; configure [Redis storage](docs/guide/integration/redis-storage.md) or implement `contract.Storage` when multiple instances need shared authentication data.
+Build automatically registers and returns an Auth. BuildInstance creates an unregistered instance. Default memory storage is not shared across processes; configure [Redis storage](docs/guide/integration/redis-storage.md) or implement `contract.Storage` when multiple instances need shared authentication data.
 
-For global APIs, explicitly import `github.com/Zany2/dtoken-go/global`, call `global.SetAuth(auth)`, and clean up registrations with `global.DeleteManager` or `global.DeleteAllManager`. The registry and Auth share an engine; replacing or deleting a registration closes the previous engine.
+Use `dtoken.CheckLogin(ctx, token)` for the default namespace, or `dtoken.AuthType("user").CheckLogin(ctx, token)` for a named namespace. Build rejects duplicate names; no SetAuth is needed after Build. Call `dtoken.CloseAll()` after draining requests. The legacy global package shares this registry. See [API and lifecycle](docs/design/api-lifecycle.md) for isolated instances, replacement, and migration.
 
 ## Web Framework Integration
 
@@ -169,7 +169,7 @@ func main() {
 }
 ```
 
-When requesting `/user/me`, put the token returned by login in the `Authorization` header. Middleware authenticates using the bound instance; explicitly configure `WithManagerResolver(global.GetManager)` to select instances from the global registry. See the [framework integration guide](docs/guide/integration/framework-integration.md) for other integration options.
+When requesting `/user/me`, put the token returned by login in the `Authorization` header. Middleware authenticates using the bound instance; explicitly configure `WithManagerResolver(dtoken.GetManager)` to select instances from the global registry. See the [framework integration guide](docs/guide/integration/framework-integration.md) for other integration options.
 
 ## Compose Independent Capabilities
 
@@ -207,8 +207,8 @@ Instance calls follow `application → Auth → authentication engine → compon
 
 | Package | Responsibility |
 | --- | --- |
-| Root `dtoken` package | Auth instance APIs, application builder, and public advanced extension types |
-| `global` | Global authentication API and registry |
+| Root `dtoken` package | Instance/default APIs, AuthType selectors, shared registry, builder, and advanced extension types |
+| `global` | Legacy APIs forwarding to the shared root registry |
 | `contract`, `config`, `errors`, `event` | Public contracts and shared models, core configuration, errors, event publishing and listener dispatch |
 | `internal/engine` | Internal authentication engine; applications do not import it |
 | `internal/builder`, `internal/defaults` | Generic component assembly and bundled default component factories |
@@ -262,6 +262,7 @@ Maintainers can start with [architecture](docs/design/architecture.md), then use
 | [examples/sso_gin_client](examples/sso_gin_client/) | Gin SSO client-app example |
 | [examples/sso_server](examples/sso_server/) | net/http SSO login-center example |
 | [examples/sso_client](examples/sso_client/) | net/http SSO client-app example |
+| [examples/sso_deployment](examples/sso_deployment/README.md) | Complete signed SSO center and multiple apps, Redis, PKCE, replay protection, and deployment guide |
 | [examples/echo](examples/echo/) | Echo framework integration example |
 | [examples/fiber](examples/fiber/) | Fiber framework integration example |
 | [examples/chi](examples/chi/) | Chi framework integration example |

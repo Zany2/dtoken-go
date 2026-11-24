@@ -16,7 +16,9 @@ dtoken-go/
 ├── types.go              Public domain type aliases
 ├── engine_api.go         Advanced engine APIs and assembly types
 ├── config.go             Root configuration entry
-├── global/               Global registry and convenience calls
+├── registry.go           Shared registry, AuthType selection and shutdown
+├── default_*.go          Default namespace forwarding
+├── global/               Legacy registry and facade forwarding
 ├── internal/
 │   ├── engine/           Core authentication implementation
 │   ├── builder/          Configuration and component assembly
@@ -59,7 +61,7 @@ dtoken-go/
 | Root `builder.go` | Application configuration, bundled logger/pool options, and construction of `Auth` | Delegate assembly to the internal builder and default factories |
 | `options.go`, `types.go`, `config.go` | Public options, shared model aliases, and configuration entry points | Keep one declaration source for shared models |
 | `engine_api.go` | Supported advanced engine types and assembly options | Aliases remain public APIs even when their implementation lives under internal |
-| `global/registry.go` and grouped facades | Registry management and registry-based calls | Engine and shared HTTP code must not depend on global |
+| Root `registry.go`, `default_*.go`, and legacy `global` facades | Shared registry, default calls and AuthType selectors | Engine and shared HTTP code must not depend on the registry |
 | `internal/builder` | Validate configuration, resolve components/factories, and build the engine | Accept contracts rather than selecting storage, logger, or pool implementations |
 | `internal/defaults` | Supply bundled component factories | Keep default implementation selection here; applications may override components |
 
@@ -143,7 +145,7 @@ Package-local `*_test.go` files follow their implementation. Root `architecture*
 | Independent capability | Its capability package and service contract when HTTP injection is needed |
 | Shared request authentication | `httpauth` or `httpauth/context` |
 | Native framework behavior | The corresponding `integrations/<framework>` |
-| Global registration and lookup | `global` |
+| Global registration and lookup | Root `registry.go`; `global` forwards for compatibility |
 | Cross-component usage scenario | `examples` for guidance or `tests` for verification |
 
 SSO remains an independent module. This guide identifies its repository location; its internal layout and protocols are reviewed separately.

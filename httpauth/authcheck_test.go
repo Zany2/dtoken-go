@@ -233,6 +233,59 @@ func (g *authcheckTestGenerator) Generate(loginID, device, deviceID string) (str
 	return fmt.Sprintf("token-%s-%s-%s-%d", loginID, device, deviceID, g.seq), nil
 }
 
+// TestCheckLoginLoadsSessionOnlyForAccessChecks keeps login-only middleware on the lightweight identity path. TestCheckLoginLoadsSessionOnlyForAccessChecks 确保仅校验登录的中间件使用轻量身份路径。
+func TestCheckLoginLoadsSessionOnlyForAccessChecks(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.DefaultConfig()
+	cfg.AutoRenew = false
+	cfg.ActiveTimeout = config.NoLimit
+	cfg.AsyncEvent = false
+	codec := &authcheckSessionCountingCodec{}
+	mgr := manager.NewManager(cfg, &authcheckTestGenerator{}, newAuthcheckTestStorage(), codec, adapter.NewNopLogger(), nil, nil)
+	t.Cleanup(mgr.CloseManager)
+	token, err := mgr.Login(ctx, "lightweight-http")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mgr.AddPermissions(ctx, "lightweight-http", []string{"profile:read"}); err != nil {
+		t.Fatal(err)
+	}
+	codec.sessions = 0
+	if _, err := Check(ctx, mgr, Request{TokenValue: token, CheckLogin: true}); err != nil {
+		t.Fatal(err)
+	}
+	if codec.sessions != 0 {
+		t.Fatalf("login-only session decodes = %d, want 0", codec.sessions)
+	}
+	if _, err := Check(ctx, mgr, Request{TokenValue: token, CheckLogin: true, Permissions: []string{"profile:read"}}); err != nil {
+		t.Fatal(err)
+	}
+	if codec.sessions != 1 {
+		t.Fatalf("combined login/access session decodes = %d, want 1", codec.sessions)
+	}
+	if err := mgr.Logout(ctx, token); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Check(ctx, mgr, Request{TokenValue: token, CheckLogin: true}); !errors.Is(err, derror.ErrNotLogin) {
+		t.Fatalf("revoked middleware token = %v, want ErrNotLogin", err)
+	}
+}
+
+// authcheckSessionCountingCodec observes account data loading through the public HTTP entry. authcheckSessionCountingCodec 观察公共 HTTP 入口的账号数据加载。
+type authcheckSessionCountingCodec struct {
+	authcheckTestCodec
+	sessions int
+}
+
+// Decode counts complete sessions and delegates ordinary decoding. Decode 统计完整会话解码，并转发普通解码操作。
+func (c *authcheckSessionCountingCodec) Decode(data []byte, target any) error {
+	switch target.(type) {
+	case *adapter.Session, **adapter.Session:
+		c.sessions++
+	}
+	return c.authcheckTestCodec.Decode(data, target)
+}
+
 type authcheckTestCodec struct{}
 
 // Name returns the test codec name. Name 返回测试编解码器名称。

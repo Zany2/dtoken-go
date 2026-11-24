@@ -196,7 +196,7 @@ func TestLoginPayloads(t *testing.T) {
 func TestFormLoginOwnsUsername(t *testing.T) {
 	dtglobal.DeleteAllManager()
 	t.Cleanup(dtglobal.DeleteAllManager)
-	builtAuth1, err := dtoken.NewBuilder().AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
 	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatal(err)
@@ -255,7 +255,7 @@ func TestHandlersReportStorageFailures(t *testing.T) {
 	builtAuth2, err := dtoken.NewBuilder().
 		Storage(&fiberFailingStorage{Storage: dt3.NewStorage()}).
 		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).
-		Build()
+		BuildInstance()
 	mgr := builtAuth2.Manager()
 
 	if err != nil {

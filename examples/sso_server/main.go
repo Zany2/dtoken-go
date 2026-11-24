@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	dtoken "github.com/Zany2/dtoken-go"
 	"github.com/Zany2/dtoken-go/sso"
 )
 
@@ -45,9 +46,14 @@ func main() {
 
 // run owns the demo server so returning errors still release its storage. run 持有示例服务端，确保错误返回时仍释放存储。
 func run() error {
+	auth, err := newCenterAuth()
+	if err != nil {
+		return err
+	}
+	defer auth.Close()
 	server := sso.NewServer()
 	defer server.Close()
-	handler, err := newDemoHandler(server)
+	handler, err := newDemoHandler(server, auth)
 	if err != nil {
 		return err
 	}
@@ -56,9 +62,11 @@ func run() error {
 }
 
 // newDemoHandler shares the actual demo routes with regression tests. newDemoHandler 与回归测试共用实际示例路由。
-func newDemoHandler(server *sso.Server) (http.Handler, error) {
+func newDemoHandler(server *sso.Server, auth *dtoken.Auth) (http.Handler, error) {
+	center := &demoCenter{auth: auth}
+
 	// Register the demo client accepted by the SSO server. 注册 SSO 服务端接受的示例客户端。
-	if err := server.RegisterClient(&sso.Client{
+	if err := server.RegisterClientChecked(&sso.Client{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		Name:         "Demo Client",
@@ -69,38 +77,62 @@ func newDemoHandler(server *sso.Server) (http.Handler, error) {
 		return nil, err
 	}
 
-	// Configure protocol endpoints and cookie-based login resolution. 配置协议端点和基于 Cookie 的登录解析。
-	httpSSO := sso.NewHTTPServer(server, sso.HTTPOptions{
+	// Bind protocol issuance, exchange, and logout to the same center Auth. 将协议签发、换票和注销绑定到同一中心 Auth。
+	httpSSO, err := sso.NewHTTPServerChecked(server, sso.HTTPOptions{
 		ServerOptions: sso.ServerOptions{
-			EnableSLO: true,
-			CheckSign: false,
-			Endpoints: sso.DefaultEndpoints(),
-			Params:    sso.DefaultParamNames(),
+			EnableSLO:                 true,
+			LogoutCallbackConcurrency: 4,
+			LogoutCallbackMaxAttempts: 1,
+			CheckSign:                 false,
+			Endpoints:                 sso.DefaultEndpoints(),
+			Params:                    sso.DefaultParamNames(),
 		},
-		LoginIDResolver: sso.LoginIDFromCookie(cookie),
-		LoginPageURL:    "http://localhost:9000/login",
-		Cookie:          cookie,
+		LoginIDResolver:       center.loginID,
+		AuthorizationExtra:    center.authorizationExtra,
+		EnrichExchangeResult:  center.enrichExchange,
+		CheckCredentialActive: center.checkCredentialActive,
+		CenterLogout:          center.logout,
+		OnLogoutResult:        observeLogoutResult,
+		LoginPageURL:          "http://localhost:9000/login",
+		Cookie:                cookie,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	// Register SSO endpoints and local demo pages. 注册 SSO 端点和本地示例页面。
 	mux := http.NewServeMux()
 	httpSSO.Register(mux)
-	mux.HandleFunc("/", home)
+	mux.HandleFunc("/", center.home)
 
 	// Protect browser login submissions without restricting server-to-server SSO POSTs. 保护浏览器登录提交，不限制服务间的 SSO POST 请求。
-	mux.Handle("/login", http.NewCrossOriginProtection().Handler(http.HandlerFunc(login)))
+	mux.Handle("/login", http.NewCrossOriginProtection().Handler(http.HandlerFunc(center.login)))
 	return mux, nil
 }
 
+// observeLogoutResult logs safe callback diagnostics for both strict and best-effort policies. observeLogoutResult 为严格与尽力策略记录安全的回调诊断信息。
+func observeLogoutResult(_ *http.Request, result sso.LogoutResult) {
+	if result.Cause != nil {
+		log.Printf("SSO logout stopped at stage %s", result.Stage)
+	}
+	if result.Notifications != nil {
+		for _, target := range result.Notifications.Clients {
+			if target.Status == sso.LogoutCallbackFailed || target.Status == sso.LogoutCallbackCanceled {
+				log.Printf("SSO logout client=%q status=%s attempts=%d reason=%s", target.ClientID, target.Status, target.Attempts, target.Reason)
+			}
+		}
+	}
+}
+
 // home renders the SSO server status page. home 渲染 SSO 服务端状态页。
-func home(w http.ResponseWriter, r *http.Request) {
+func (c *demoCenter) home(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	loginID, ok := sso.LoginIDFromCookie(cookie)(r)
+	loginID, ok := c.loginID(r)
 	if !ok {
 		loginID = "not logged in"
 	}
@@ -108,7 +140,7 @@ func home(w http.ResponseWriter, r *http.Request) {
 }
 
 // login renders the login page and handles demo login submission. login 渲染登录页并处理示例登录提交。
-func login(w http.ResponseWriter, r *http.Request) {
+func (c *demoCenter) login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	switch r.Method {
 	case http.MethodGet:
@@ -126,7 +158,10 @@ func login(w http.ResponseWriter, r *http.Request) {
 		if loginID == "" {
 			loginID = "user-1001"
 		}
-		sso.SetLoginIDCookie(w, cookie, loginID)
+		if err := c.startSession(w, r, loginID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		back := safeBack(r.PostForm.Get("back"))
 		http.Redirect(w, r, back, http.StatusFound)
 	default:

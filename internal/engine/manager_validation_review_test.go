@@ -12,8 +12,8 @@ import (
 	derror "github.com/Zany2/dtoken-go/errors"
 )
 
-// TestManagerValidationRejectsInvalidAccountSession checks identity APIs against the same session failures. TestManagerValidationRejectsInvalidAccountSession 验证各身份接口一致拒绝无效账号 Session。
-func TestManagerValidationRejectsInvalidAccountSession(t *testing.T) {
+// TestManagerTokenValidationDefersAccountSession checks that only session-dependent operations load invalid account data. TestManagerTokenValidationDefersAccountSession 验证仅依赖会话的操作读取无效账号数据。
+func TestManagerTokenValidationDefersAccountSession(t *testing.T) {
 	ctx := context.Background()
 	for _, state := range []string{"missing", "null", "foreign namespace", "malformed", "read failure"} {
 		t.Run(state, func(t *testing.T) {
@@ -44,27 +44,38 @@ func TestManagerValidationRejectsInvalidAccountSession(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := mgr.CheckLogin(ctx, token); !errors.Is(err, wantErr) {
-				t.Fatalf("CheckLogin = %v, want %v", err, wantErr)
+			before := captureTerminalLifecycle(t, mgr, ctx, []string{mgr.getTokenKey(token), mgr.getActiveKey(token)})
+			if err := mgr.CheckLogin(ctx, token); err != nil {
+				t.Fatalf("CheckLogin unexpectedly loaded session: %v", err)
 			}
-			if mgr.IsLogin(ctx, token) {
-				t.Fatal("IsLogin accepted invalid session")
+			if !mgr.IsLogin(ctx, token) {
+				t.Fatal("IsLogin rejected valid token mapping")
 			}
 			for _, query := range []struct {
 				name string
 				call func(context.Context, string) (string, error)
+				want string
 			}{
-				{"login ID", mgr.GetLoginID}, {"device", mgr.GetDevice}, {"device ID", mgr.GetDeviceID},
+				{"login ID", mgr.GetLoginID, "session-validation"}, {"device", mgr.GetDevice, "web"}, {"device ID", mgr.GetDeviceID, "browser"},
 			} {
-				if value, err := query.call(ctx, token); value != "" || !errors.Is(err, wantErr) {
-					t.Fatalf("%s = %q, %v, want empty and %v", query.name, value, err, wantErr)
+				if value, err := query.call(ctx, token); value != query.want || err != nil {
+					t.Fatalf("%s = %q, %v, want %q and nil", query.name, value, err, query.want)
 				}
 			}
-			if device, id, err := mgr.GetDeviceAndDeviceID(ctx, token); device != "" || id != "" || !errors.Is(err, wantErr) {
+			if device, id, err := mgr.GetDeviceAndDeviceID(ctx, token); device != "web" || id != "browser" || err != nil {
 				t.Fatalf("device identity = %q/%q, %v", device, id, err)
 			}
-			if created, err := mgr.GetTokenCreateTime(ctx, token); created != 0 || !errors.Is(err, wantErr) {
+			if created, err := mgr.GetTokenCreateTime(ctx, token); created <= 0 || err != nil {
 				t.Fatalf("creation time = %d, %v", created, err)
+			}
+			if _, err := mgr.GetSessionByToken(ctx, token); !errors.Is(err, wantErr) {
+				t.Fatalf("GetSessionByToken = %v, want %v", err, wantErr)
+			}
+			if _, err := mgr.GetPermissionsByToken(ctx, token); !errors.Is(err, wantErr) {
+				t.Fatalf("GetPermissionsByToken = %v, want %v", err, wantErr)
+			}
+			if _, err := mgr.GetRolesByToken(ctx, token); !errors.Is(err, wantErr) {
+				t.Fatalf("GetRolesByToken = %v, want %v", err, wantErr)
 			}
 			if err := mgr.LoginByToken(ctx, token); !errors.Is(err, wantErr) {
 				t.Fatalf("LoginByToken = %v, want %v", err, wantErr)
@@ -77,9 +88,11 @@ func TestManagerValidationRejectsInvalidAccountSession(t *testing.T) {
 			} else if result != nil || !errors.Is(err, wantErr) {
 				t.Fatalf("introspection = %+v, %v, want infrastructure error %v", result, err, wantErr)
 			}
-			if pool.taskCount() != 0 {
-				t.Fatal("invalid session scheduled token maintenance")
+			if pool.taskCount() != 1 {
+				t.Fatalf("coalesced maintenance tasks = %d, want 1", pool.taskCount())
 			}
+			pool.runAll()
+			assertTerminalLifecycleUnchanged(t, mgr, ctx, before)
 
 			// Metadata reads intentionally remain available for diagnostics. 元数据读取仍用于诊断，不代表登录态有效。
 			if info, err := mgr.GetTokenInfo(ctx, token); err != nil || info.LoginID != "session-validation" {

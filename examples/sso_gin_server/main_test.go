@@ -40,7 +40,7 @@ func TestGinLoginAndHome(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	server := sso.NewServer()
 	defer server.Close()
-	router, err := newDemoRouter(server)
+	router, err := newDemoRouter(server, newTestCenter(t).auth)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestGinSSORoutesIssueAndExchangeTicket(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	server := sso.NewServer()
 	defer server.Close()
-	router, err := newDemoRouter(server)
+	router, err := newDemoRouter(server, newTestCenter(t).auth)
 	if err != nil {
 		t.Fatal(err)
 	}

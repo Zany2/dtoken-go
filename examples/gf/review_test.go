@@ -208,7 +208,7 @@ func TestStorageFailuresStayServerErrors(t *testing.T) {
 	dt4.DeleteAllManager()
 	t.Cleanup(dt4.DeleteAllManager)
 	builtAuth1, err := dtoken.NewBuilder().Storage(&failingGFStorage{Storage: dt3.NewStorage()}).
-		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).Build()
+		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
 	mgr := builtAuth1.Manager()
 
 	if err != nil {

@@ -2,7 +2,7 @@
 
 This example shows how to use `github.com/Zany2/dtoken-go/integrations/echo` with Echo middleware.
 
-The application builds one Auth instance, binds it with `WithAuth`, and closes it during shutdown. Login and request checks share that instance without global registration.
+Build automatically registers and returns one Auth instance. The application explicitly binds that instance with `WithAuth`; login and request checks use the bound engine. Close it after draining requests. Use `BuildInstance()` for an unregistered instance.
 
 ## Run
 

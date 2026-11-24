@@ -58,8 +58,8 @@ func TestManagerBasicLoginValidationSkipsTerminalLookup(t *testing.T) {
 	}
 }
 
-// TestManagerBasicLoginValidationRejectsDetachedMapping verifies a deleted Account Session keeps residual mappings invalid. TestManagerBasicLoginValidationRejectsDetachedMapping 验证账号 Session 删除后残留映射保持无效。
-func TestManagerBasicLoginValidationRejectsDetachedMapping(t *testing.T) {
+// TestManagerBasicLoginValidationUsesTokenState verifies session deletion does not replace credential revocation. TestManagerBasicLoginValidationUsesTokenState 验证删除 Session 不能替代撤销凭据。
+func TestManagerBasicLoginValidationUsesTokenState(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
 		cfg.AutoRenew = false
@@ -73,8 +73,17 @@ func TestManagerBasicLoginValidationRejectsDetachedMapping(t *testing.T) {
 	if err = mgr.GetStorage().Delete(ctx, mgr.getSessionKey("detached-mapping")); err != nil {
 		t.Fatalf("Delete(session) error = %v", err)
 	}
-	if err = mgr.CheckLogin(ctx, token); !errors.Is(err, derror.ErrInvalidToken) {
-		t.Fatalf("CheckLogin() error = %v, want ErrInvalidToken", err)
+	if err = mgr.CheckLogin(ctx, token); err != nil {
+		t.Fatalf("CheckLogin() error = %v, want valid token mapping", err)
+	}
+	if _, err = mgr.GetSessionByToken(ctx, token); !errors.Is(err, derror.ErrInvalidToken) {
+		t.Fatalf("GetSessionByToken() error = %v, want ErrInvalidToken", err)
+	}
+	if err = mgr.Logout(ctx, token); err != nil {
+		t.Fatal(err)
+	}
+	if mgr.IsLogin(ctx, token) {
+		t.Fatal("logged-out token remains valid without a session")
 	}
 }
 

@@ -1,14 +1,14 @@
 [English](dtoken.md) | 中文文档
 
-# 全局 API 参考
+# global 兼容 API 参考
 
 ## 概述
 
-本页使用 global 作为 github.com/Zany2/dtoken-go/global 的导入别名，记录全局认证 API。根包提供实例 API，Nonce、OAuth2、Ticket 和 ShortKey 通过独立服务调用。 本页 `dt` 指向根包 `github.com/Zany2/dtoken-go`，用于公开模型与引擎扩展类型。
+本页使用 global 作为 github.com/Zany2/dtoken-go/global 的导入别名，记录全局认证 API。根包提供实例方法、默认体系包级方法和 AuthType 选择器，Nonce、OAuth2、Ticket 和 ShortKey 通过独立服务调用。 本页 `dt` 指向根包 `github.com/Zany2/dtoken-go`，用于公开模型与引擎扩展类型。
 
 当前版本的 `global` 以 `context.Context` 为统一入口，认证体系可通过可选 `authType` 参数区分。
 
-新应用优先使用 [Auth 实例 API](auth_zh.md)。本页函数签名属于 global 包；类型化选项以根包声明为准，示例中的 dt 为根包别名。
+新应用使用根包的[统一门面 API](auth_zh.md)。Build 自动注册，旧 global 与根包共用注册表。本页函数签名属于 global 包；类型化选项以根包声明为准，示例中的 dt 为根包别名。
 
 ## 初始化
 
@@ -29,8 +29,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	global.SetAuth(auth)
-	defer global.DeleteAllManager()
+	defer auth.Close()
 	token, err := global.Login(context.Background(), "alice")
 	if err != nil {
 		panic(err)

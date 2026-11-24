@@ -16,7 +16,7 @@ func TestBuilderConfiguresZapLogging(t *testing.T) {
 		LoggerPath(dir).LoggerFilename("auth.log").LoggerStdout(false).
 		LoggerPrefix("[AUTH] ").LoggerLevel(dlog.LevelWarn).
 		LoggerMaxSize(1).LoggerMaxBackups(2).LoggerMaxAge(3).
-		LoggerCompress(true).LoggerLocalTime(true).Build()
+		LoggerCompress(true).LoggerLocalTime(true).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestBuilderConfiguresZapLogging(t *testing.T) {
 
 // TestBuilderRejectsInvalidZapLogging verifies invalid native rotation settings fail before assembly. TestBuilderRejectsInvalidZapLogging 验证非法原生轮转配置在装配前被拒绝。
 func TestBuilderRejectsInvalidZapLogging(t *testing.T) {
-	if _, err := NewBuilder().LoggerMaxSize(-1).Build(); err == nil {
+	if _, err := NewBuilder().LoggerMaxSize(-1).BuildInstance(); err == nil {
 		t.Fatal("invalid logging configuration was accepted")
 	}
 }

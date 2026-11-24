@@ -135,18 +135,15 @@ func TestDefaultAndMustDefaultSuccess(t *testing.T) {
 	must.Close()
 }
 
-// TestMustDefaultPreservesRegistryError verifies MustDefault does not hide registry errors. TestMustDefaultPreservesRegistryError 验证 MustDefault 不会丢失注册表错误。
+// TestMustDefaultPreservesRegistryError verifies MustDefault preserves a missing-manager error. TestMustDefaultPreservesRegistryError 验证 MustDefault 保留管理器缺失错误。
 func TestMustDefaultPreservesRegistryError(t *testing.T) {
 	DeleteAllManager()
 	t.Cleanup(DeleteAllManager)
-	globalManagerMap.Store(config.DefaultAuthType, struct{}{})
-	defer globalManagerMap.Delete(config.DefaultAuthType)
-
 	defer func() {
 		recovered := recover()
 		err, ok := recovered.(error)
-		if !ok || !errors.Is(err, derror.ErrManagerInvalidType) {
-			t.Fatalf("MustDefault() panic = %#v, want ErrManagerInvalidType", recovered)
+		if !ok || !errors.Is(err, derror.ErrManagerNotFound) {
+			t.Fatalf("MustDefault() panic = %#v, want ErrManagerNotFound", recovered)
 		}
 	}()
 	MustDefault()

@@ -8,7 +8,7 @@ The following are topic-specific fragments. ctx is the current context.Context; 
 
 ## Explicit composition
 
-These examples use an authentication instance and independent capability services. Inject HTTP capabilities with WithCapabilities; no global Manager registration is required.
+These examples use Auth and independent capability services. Build registers Auth automatically; compose capabilities through constructors and inject them with WithCapabilities, without separately registering capability services. Use BuildInstance for an unregistered Auth.
 
 ```go
 import (

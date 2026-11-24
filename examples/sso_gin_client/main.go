@@ -59,6 +59,9 @@ var clientApp = sso.NewClientApp(sso.ClientConfig{
 })
 
 func main() {
+	if err := clientApp.Validate(); err != nil {
+		log.Fatal(err)
+	}
 	gin.SetMode(gin.ReleaseMode)
 	log.Printf("Gin SSO client listening on http://%s", addr)
 	log.Fatal(newDemoRouter().Run(addr))
@@ -127,6 +130,7 @@ func callback(c *gin.Context) {
 		return
 	}
 	sso.ClearLoginIDCookie(c.Writer, loginStateCookie)
+	exchangeStarted := time.Now()
 	result, err := clientApp.ExchangeTicket(c.Request.Context(), ticket, callbackURL)
 	if err != nil {
 		c.String(http.StatusBadGateway, err.Error())
@@ -136,7 +140,12 @@ func callback(c *gin.Context) {
 		c.String(http.StatusBadGateway, "sso response missing loginId")
 		return
 	}
-	sessionID, err := newLocalSession(result.LoginID)
+	expiresAt, err := localSessionExpiry(result, exchangeStarted)
+	if err != nil {
+		c.String(http.StatusBadGateway, err.Error())
+		return
+	}
+	sessionID, err := newLocalSessionUntil(result.LoginID, expiresAt)
 	if err != nil {
 		c.String(http.StatusInternalServerError, err.Error())
 		return
@@ -150,8 +159,8 @@ func callback(c *gin.Context) {
 		Name:     localCookie,
 		Value:    sessionID,
 		Path:     "/",
-		MaxAge:   int(localCookieTTL.Seconds()),
-		Expires:  time.Now().Add(localCookieTTL),
+		MaxAge:   max(1, int(time.Until(expiresAt)/time.Second)),
+		Expires:  expiresAt,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
@@ -203,6 +212,30 @@ func localLoginID(r *http.Request) (string, bool) {
 
 // newLocalSession creates a local session for an SSO login ID. newLocalSession 为 SSO 登录 ID 创建本地会话。
 func newLocalSession(loginID string) (string, error) {
+	return newLocalSessionUntil(loginID, time.Now().Add(localCookieTTL))
+}
+
+// localSessionExpiry bounds local login by center lifetimes and includes exchange latency. localSessionExpiry 根据中心有效期限制本地登录期限，并计入换票耗时。
+func localSessionExpiry(result *sso.TicketExchangeResult, exchangeStarted time.Time) (time.Time, error) {
+	ttl := localCookieTTL
+	for _, seconds := range []int64{result.RemainTokenTimeout, result.RemainSessionTimeout} {
+		if seconds < -1 {
+			return time.Time{}, fmt.Errorf("invalid center session timeout")
+		}
+		// Compare seconds before conversion to avoid overflowing a Duration on large remote values. 先比较秒数再转换，避免远端大值导致 Duration 溢出。
+		if seconds > 0 && seconds < int64(ttl/time.Second) {
+			ttl = time.Duration(seconds) * time.Second
+		}
+	}
+	expiresAt := exchangeStarted.Add(ttl)
+	if !time.Now().Before(expiresAt) {
+		return time.Time{}, fmt.Errorf("center session lifetime exhausted during exchange")
+	}
+	return expiresAt, nil
+}
+
+// newLocalSessionUntil creates a local session with an explicit server-side deadline. newLocalSessionUntil 使用明确的服务端截止时间创建本地会话。
+func newLocalSessionUntil(loginID string, expiresAt time.Time) (string, error) {
 	if loginID == "" {
 		return "", fmt.Errorf("login id is empty")
 	}
@@ -216,12 +249,15 @@ func newLocalSession(loginID string) (string, error) {
 
 	// Reclaim expired records during login without a background goroutine. 登录时回收过期记录，无需后台协程。
 	now := time.Now()
+	if !now.Before(expiresAt) {
+		return "", fmt.Errorf("session deadline has expired")
+	}
 	for id, session := range localSessions.values {
 		if !now.Before(session.expiresAt) {
 			delete(localSessions.values, id)
 		}
 	}
-	localSessions.values[sessionID] = localSession{loginID: loginID, expiresAt: now.Add(localCookieTTL)}
+	localSessions.values[sessionID] = localSession{loginID: loginID, expiresAt: expiresAt}
 	return sessionID, nil
 }
 

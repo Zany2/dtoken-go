@@ -8,7 +8,7 @@
 
 ## 显式组合
 
-以下片段使用根认证实例和独立能力服务。HTTP 接入通过 WithCapabilities 注入，不需要注册全局 Manager。
+以下片段使用根认证实例和独立能力服务。Build 自动注册 Auth；能力服务通过构造器组合，HTTP 接入通过 WithCapabilities 注入，无需额外注册能力服务。需要不注册的 Auth 时使用 BuildInstance。
 
 ```go
 import (

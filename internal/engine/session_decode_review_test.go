@@ -43,8 +43,8 @@ func TestManagerSessionDecodeDistinguishesNullFromEmpty(t *testing.T) {
 					if sess != nil || !errors.Is(err, derror.ErrInvalidToken) {
 						t.Fatalf("null session = %+v, %v", sess, err)
 					}
-					if err = mgr.CheckLogin(ctx, token); !errors.Is(err, derror.ErrInvalidToken) {
-						t.Fatalf("null session authentication = %v", err)
+					if err = mgr.CheckLogin(ctx, token); err != nil {
+						t.Fatalf("token authentication unexpectedly loaded null session: %v", err)
 					}
 					if err = mgr.RenewTimeout(ctx, token, time.Minute); !errors.Is(err, derror.ErrInvalidToken) {
 						t.Fatalf("null session renewal = %v", err)

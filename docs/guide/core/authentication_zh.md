@@ -2,7 +2,7 @@
 
 [English](../core/authentication.md) | 中文文档
 
-本文使用 `global` 包演示已注册实例的全局调用，`dt` 表示根包。先构建 Auth 并调用 `global.SetAuth(auth)`；未指定认证类型时使用默认 `auth:`。实例调用及参数差异见 [Auth API](../../api/auth_zh.md)。
+本文保留 `global` 兼容入口的位置参数示例，`dt` 表示根包。`Build()` 自动注册并返回 Auth，无需再调用 SetAuth；省略认证类型时使用默认 `auth:`。新调用可使用 `dt.XXX()` 或 `dt.AuthType("user").XXX()`，其业务方法签名与实例一致，不能直接沿用 global 的位置参数。见 [Auth API](../../api/auth_zh.md)。
 
 ## 基本登录
 
@@ -21,18 +21,17 @@ import (
 )
 
 func initDToken() {
-    auth, err := dt.NewBuilder().
+    _, err := dt.NewBuilder().
         Storage(memory.NewStorage()).
         Build()
     if err != nil {
         panic(err)
     }
-    global.SetAuth(auth)
 }
 
 func main() {
     initDToken()
-    defer global.DeleteAllManager()
+    defer dt.CloseAll()
 
     ctx := context.Background()
     token, _ := global.Login(ctx, "10001")
@@ -103,7 +102,9 @@ loginID, err := global.GetLoginID(ctx, token)
 
 ### 获取 Token 信息
 
-`GetTokenInfo` 读取已存储的元数据，成功返回不代表登录态有效；它不检查账号或设备封禁、活跃超时及 Session 有效性。判断登录态请使用 `CheckLogin` 或 `IntrospectToken`。`GetLoginID` 等身份查询会同时校验 Token 和账号 Session。
+`GetTokenInfo` 读取已存储的元数据，成功返回不代表登录态有效；它不检查账号或设备封禁、活跃超时及 Session 有效性。普通登录态判断请使用 `IsLogin` 或 `CheckLogin`。这些方法以及 `GetLoginID` 等身份查询校验 Token 和当前限制，正常路径不读取、解码账号 Session。Token 记录本身仍需解码，存储 TTL 决定其是否到期；续期资格交由后台维护判断。
+
+Session 查询、权限和角色检查以及 `IntrospectToken` 仍要求账号 Session 有效，不活跃超时清理也会加载 Session。单独删除或损坏 Session 不再使普通登录校验中的 Token 失效；撤销凭据应使用注销或踢人 API。Session 无效时，后台维护不会续期或持久化活跃时间。
 
 ```go
 ctx := context.Background()
@@ -224,6 +225,8 @@ singleCount, err := global.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001
 
 ## 登录配置
 
+下面各配置片段是独立的构建方案，不要在同一进程中连续构建同名体系；需要同名独立实例时使用 BuildInstance。
+
 ### 并发登录
 
 ```go
@@ -234,7 +237,7 @@ auth, err := dt.NewBuilder().
 if err != nil {
     panic(err)
 }
-global.SetAuth(auth)
+defer auth.Close()
 ```
 
 `IsConcurrent(true)` 表示允许同账号多端并发登录。  
@@ -251,7 +254,7 @@ auth, err := dt.NewBuilder().
 if err != nil {
     panic(err)
 }
-global.SetAuth(auth)
+defer auth.Close()
 ```
 
 `IsShare(true)` 表示并发登录时可复用已有 token，但只会在相同设备维度内复用。  
@@ -269,7 +272,7 @@ auth, err := dt.NewBuilder().
 if err != nil {
     panic(err)
 }
-global.SetAuth(auth)
+defer auth.Close()
 ```
 
 当 `MaxLoginCount > 0` 时，超过上限的旧终端会被自动清理。
@@ -289,7 +292,7 @@ auth, err := dt.NewBuilder().
 if err != nil {
     panic(err)
 }
-global.SetAuth(auth)
+defer auth.Close()
 ```
 
 ### 工作机制
@@ -316,7 +319,7 @@ auth, err := dt.NewBuilder().
 if err != nil {
     panic(err)
 }
-global.SetAuth(auth)
+defer auth.Close()
 ```
 
 ### 工作机制
@@ -349,7 +352,7 @@ auth, err := dt.NewBuilder().
 if err != nil {
     panic(err)
 }
-global.SetAuth(auth)
+defer auth.Close()
 ```
 
 ## 相关文档

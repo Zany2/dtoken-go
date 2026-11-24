@@ -2,7 +2,7 @@
 
 [中文文档](quick-start_zh.md) | English
 
-Build Auth through the root package and explicitly inject it into HTTP middleware. Instance calls need no global registration; compose Nonce, OAuth2, Ticket, and ShortKey as independent services when needed.
+Build Auth through the root package and explicitly inject it into HTTP middleware. Build automatically registers and returns Auth; BuildInstance creates an unregistered instance. Compose Nonce, OAuth2, Ticket, and ShortKey as independent services when needed.
 
 ## Installation
 
@@ -74,7 +74,7 @@ if err != nil {
 defer auth.Close()
 ```
 
-Build returns *dtoken.Auth. Timeout and ActiveTimeout use seconds. WithAuth selects the instance used by requests. Default memory storage is process-local; use Redis or another storage implementation for shared data. Do not mutate the underlying Manager configuration while serving requests.
+Build automatically registers and returns *dtoken.Auth; duplicate names are rejected. Timeout and ActiveTimeout use seconds. WithAuth selects the instance used by requests. Default memory storage is process-local; use Redis or another storage implementation for shared data. Do not mutate the underlying Manager configuration while serving requests.
 
 ## Connect Gin
 
@@ -90,19 +90,24 @@ users.Use(gindt.RequireLogin())
 
 Send the token in the Authorization header. Register login outside the protected group. See the root README and examples/quick_start for complete server and credential-validation examples. Drain HTTP requests before closing Auth.
 
-## Optional Global Access
+## Default And Named Namespace Calls
 
-For global calls, explicitly import global and register an existing instance. The registry shares its engine; deleting or replacing a registration closes that engine rather than an independent copy.
+Build needs no SetAuth. Without a configured AuthType, call `dtoken.LoginID(ctx, "1000")` or `dtoken.CheckLogin(ctx, token)` directly. For the user namespace configured above:
 
 ```go
-import "github.com/Zany2/dtoken-go/global"
-
-global.SetAuth(auth)
-defer global.DeleteManager(auth.Config().AuthType)
-token, err := global.Login(ctx, "1000", "", "", auth.Config().AuthType)
+user := dtoken.AuthType("user")
+token, err := user.Login(ctx, dtoken.LoginOptions{LoginID: "1000"})
+if err != nil {
+    panic(err)
+}
+err = user.CheckLogin(ctx, token)
 ```
 
-HTTP registry lookup additionally requires explicit WithManagerResolver(global.GetManager). Direct WithAuth(auth) injection needs no registration.
+The registry shares the engine returned as Auth. Missing namespaces never fall back; duplicate Build does not replace an instance. Use BuildInstance for isolated instances and close them through their owner. For explicit replacement, use BuildInstance followed by SetAuth.
+
+HTTP registry lookup requires `WithManagerResolver(dtoken.GetManager)`; WithAuth binds a fixed engine. Legacy global calls share the same registry, but their positional signatures differ from root typed option calls.
+
+On shutdown, stop accepting and drain requests before dtoken.CloseAll. It excludes unregistered instances. The library does not install signal handlers; see the [application lifecycle example](../design/api-lifecycle.md).
 
 ## Next Steps
 

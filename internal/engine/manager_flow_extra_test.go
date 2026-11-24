@@ -38,6 +38,7 @@ func TestManagerAutoRenewHonorsThresholdAndInterval(t *testing.T) {
 	if err = mgr.CheckLogin(ctx, token); err != nil {
 		t.Fatalf("CheckLogin(above threshold) error = %v", err)
 	}
+	mgr.asyncWG.Wait()
 	if storage.Exists(ctx, mgr.getRenewKey(token)) {
 		t.Fatal("renew marker exists above threshold, want no auto renew")
 	}

@@ -17,7 +17,7 @@ import (
 
 // TestExplicitCapabilitiesSurviveLoginMiddleware verifies middleware preserves request service bindings without global registration. TestExplicitCapabilitiesSurviveLoginMiddleware 验证登录中间件无需全局注册即可保留请求服务绑定。
 func TestExplicitCapabilitiesSurviveLoginMiddleware(t *testing.T) {
-	auth, err := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).Build()
+	auth, err := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,12 +53,12 @@ func TestExplicitCapabilitiesSurviveLoginMiddleware(t *testing.T) {
 
 // TestManagerSwitchClearsCapabilities verifies a new auth scope cannot borrow another instance's services. TestManagerSwitchClearsCapabilities 验证新认证作用域不会借用另一实例的服务。
 func TestManagerSwitchClearsCapabilities(t *testing.T) {
-	first, err := dtoken.NewBuilder().AuthType("first").IsPrintBanner(false).IsLog(false).AutoRenew(false).Build()
+	first, err := dtoken.NewBuilder().AuthType("first").IsPrintBanner(false).IsLog(false).AutoRenew(false).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(first.Close)
-	second, err := dtoken.NewBuilder().AuthType("second").IsPrintBanner(false).IsLog(false).AutoRenew(false).Build()
+	second, err := dtoken.NewBuilder().AuthType("second").IsPrintBanner(false).IsLog(false).AutoRenew(false).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}

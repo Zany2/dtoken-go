@@ -201,7 +201,7 @@ func TestHandlersReportStorageFailures(t *testing.T) {
 	builtAuth1, err := dtoken.NewBuilder().
 		Storage(&chiFailingStorage{Storage: dt2.NewStorage()}).
 		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).
-		Build()
+		BuildInstance()
 	mgr := builtAuth1.Manager()
 
 	if err != nil {

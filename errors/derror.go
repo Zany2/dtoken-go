@@ -101,6 +101,9 @@ var (
 	ErrTypeConvert = errors.New("type conversion failed: unable to convert value to target type")
 	// ErrManagerNotFound indicates manager not found ErrManagerNotFound 表示未找到指定认证类型的管理器。
 	ErrManagerNotFound = errors.New("manager not found")
+	// ErrManagerAlreadyRegistered indicates that Build cannot replace an existing auth type. ErrManagerAlreadyRegistered 表示 Build 不能覆盖已注册的认证体系。
+	ErrManagerAlreadyRegistered = errors.New("manager already registered")
+
 	// ErrManagerInvalidType indicates invalid manager type ErrManagerInvalidType 表示全局存储中的管理器类型不正确。
 	ErrManagerInvalidType = errors.New("manager has invalid type")
 	// ErrStorageCapabilityUnsupported indicates required storage capability is missing ErrStorageCapabilityUnsupported 表示存储能力不支持。

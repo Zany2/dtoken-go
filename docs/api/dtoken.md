@@ -1,14 +1,14 @@
 English | [中文文档](dtoken_zh.md)
 
-# Global API Reference
+# Legacy global API Reference
 
 ## Overview
 
-This reference uses global as an import alias for github.com/Zany2/dtoken-go/global. The root exposes instance APIs; Nonce, OAuth2, Ticket, and ShortKey are called through independent services. `dt` refers to the root package `github.com/Zany2/dtoken-go` for public models and engine extension types.
+This reference uses global as an import alias for github.com/Zany2/dtoken-go/global. The root exposes instance methods, default namespace functions, and AuthType selectors; Nonce, OAuth2, Ticket, and ShortKey are called through independent services. `dt` refers to the root package `github.com/Zany2/dtoken-go` for public models and engine extension types.
 
 In the current version, `global` uses `context.Context` as the unified entry, and different auth systems can be selected through the optional `authType` parameter.
 
-New applications should prefer the [Auth instance API](auth.md). Function signatures on this page belong to global; typed options are declared in the root package, aliased as dt in examples.
+New applications use the root [unified facade API](auth.md). Build registers automatically, and legacy global shares the root registry. Function signatures on this page belong to global; typed options are declared in the root package, aliased as dt in examples.
 
 ## Initialization
 
@@ -29,8 +29,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	global.SetAuth(auth)
-	defer global.DeleteAllManager()
+	defer auth.Close()
 	token, err := global.Login(context.Background(), "alice")
 	if err != nil {
 		panic(err)

@@ -4,9 +4,9 @@
 
 ## 概览
 
-根包提供实例 API，global 提供全局 API。应用通过根包 NewBuilder().Build() 创建实例，框架通过 WithAuth(auth) 或 WithManager(auth.Manager()) 注入。独立服务通过 WithCapabilities 显式接入请求。
+根包提供实例 API、默认体系函数及 AuthType 选择器，global 保留兼容入口。NewBuilder().Build() 自动注册并返回实例；框架通过 WithAuth(auth) 或 WithManager(auth.Manager()) 显式注入。独立服务通过 WithCapabilities 显式接入请求。
 
-框架只提供 HTTP 适配、中间件和请求快捷方法。框架 NewBuilder() 与根包一致，Build() 返回 Auth。全局 API 从 global 导入；Redis、MsgPack 等组件从各自包导入。
+框架只提供 HTTP 适配、中间件和请求快捷方法。框架 NewBuilder() 与根包一致，Build() 自动注册并返回 Auth，BuildInstance() 不注册。根包提供注册表调用；旧位置参数 API 从 global 导入；Redis、MsgPack 等组件从各自包导入。
 
 实例选择顺序：显式 WithAuth/WithManager；已有请求实例；显式配置的 ManagerResolver。WithAuthType 通过配置的解析器切换认证类型，未配置解析器时只能匹配当前请求的认证类型。请求未绑定实例且未配置解析器时返回 ErrManagerNotFound。未指定覆盖的中间件保留请求实例与能力绑定；切换实例时清空能力绑定。
 
@@ -255,15 +255,15 @@ r.GET("/admin",
 
 ### 指定认证体系
 
-已通过 global.SetAuth 注册 user/admin 实例时，可以显式注入解析器。下例 global 是 github.com/Zany2/dtoken-go/global 的导入名；只指定 WithAuthType 不会自动访问注册表：
+通过 Build 构建 user/admin 实例后已自动注册，可以显式注入根包解析器。下例 dtoken 是根包导入名；只指定 WithAuthType 不会自动访问注册表：
 
 ```go
 userGroup := r.Group("/api")
-userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(global.GetManager), gindt.WithAuthType("user")))
+userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("user")))
 
 adminGroup := r.Group("/admin")
-adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(global.GetManager), gindt.WithAuthType("admin")))
-adminGroup.Use(gindt.PermissionMiddleware(ctx, []string{"admin:read"}, gindt.WithManagerResolver(global.GetManager), gindt.WithAuthType("admin")))
+adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("admin")))
+adminGroup.Use(gindt.PermissionMiddleware(ctx, []string{"admin:read"}, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("admin")))
 ```
 
 如果应用不使用全局 Manager 注册表，可以通过 `WithManager` 直接注入 Manager。显式注入的 Manager 优先于 `WithAuthType`，并适用于上下文、认证、访问、权限和角色中间件：

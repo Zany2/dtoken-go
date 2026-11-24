@@ -60,7 +60,7 @@ func TestProductionRouteFailures(t *testing.T) {
 	check(http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "", http.StatusInternalServerError, dterror.CodeServerError)
 	check(http.MethodGet, "/admin", "", "", http.StatusInternalServerError, dterror.CodeServerError)
 	builtAuth1, err := dtoken.NewBuilder().Storage(&fiberFailingStorage{Storage: dt1.NewStorage()}).
-		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).Build()
+		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
 	mgr := builtAuth1.Manager()
 
 	if err != nil {

@@ -493,7 +493,7 @@ func (m *Manager) CheckLogin(ctx context.Context, tokenValue string) error {
 
 // GetLoginID retrieves the login ID from a token. GetLoginID 根据 Token 获取登录 ID。
 func (m *Manager) GetLoginID(ctx context.Context, tokenValue string) (string, error) {
-	// Validate token and account session before returning identity. 返回身份前校验 Token 与账号 Session。
+	// Validate token state before returning identity. 返回身份前校验 Token 状态。
 	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return "", err
@@ -511,7 +511,7 @@ func (m *Manager) GetTokenInfo(ctx context.Context, tokenValue string) (*TokenIn
 
 // GetDevice retrieves the device type for a token. GetDevice 获取 Token 的设备类型。
 func (m *Manager) GetDevice(ctx context.Context, tokenValue string) (string, error) {
-	// Validate token and account session before returning identity. 返回身份前校验 Token 与账号 Session。
+	// Validate token state before returning identity. 返回身份前校验 Token 状态。
 	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return "", err
@@ -523,7 +523,7 @@ func (m *Manager) GetDevice(ctx context.Context, tokenValue string) (string, err
 
 // GetDeviceID retrieves the device ID for a token. GetDeviceID 获取 Token 的设备 ID。
 func (m *Manager) GetDeviceID(ctx context.Context, tokenValue string) (string, error) {
-	// Validate token and account session before returning identity. 返回身份前校验 Token 与账号 Session。
+	// Validate token state before returning identity. 返回身份前校验 Token 状态。
 	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return "", err
@@ -547,7 +547,7 @@ func (m *Manager) GetDeviceAndDeviceID(ctx context.Context, tokenValue string) (
 
 // GetTokenCreateTime retrieves the creation time for a token. GetTokenCreateTime 获取 Token 的创建时间戳。
 func (m *Manager) GetTokenCreateTime(ctx context.Context, tokenValue string) (int64, error) {
-	// Validate token and account session before returning metadata. 返回元数据前校验 Token 与账号 Session。
+	// Validate token state before returning metadata. 返回元数据前校验 Token 状态。
 	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
 		return 0, err
