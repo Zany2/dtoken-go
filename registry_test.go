@@ -9,8 +9,11 @@ import (
 	"github.com/Zany2/dtoken-go/config"
 	"github.com/Zany2/dtoken-go/contract"
 	derror "github.com/Zany2/dtoken-go/errors"
+	corebuilder "github.com/Zany2/dtoken-go/internal/builder"
 	"github.com/Zany2/dtoken-go/storage/memory"
 )
+
+var _ managerBuilder = (*corebuilder.Builder)(nil) // Keep the core builder compatible with registry assembly. 保证核心构建器兼容注册表装配接口。
 
 // registryBuilder avoids background work in registry lifecycle checks. registryBuilder 在注册表生命周期检查中禁用后台任务。
 func registryBuilder() *Builder {

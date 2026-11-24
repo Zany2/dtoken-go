@@ -11,7 +11,6 @@ import (
 	adapter "github.com/Zany2/dtoken-go/contract"
 	derror "github.com/Zany2/dtoken-go/errors"
 	"github.com/Zany2/dtoken-go/generator/dgenerator"
-	corebuilder "github.com/Zany2/dtoken-go/internal/builder"
 	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
 
@@ -606,5 +605,3 @@ func dtokenContains(values []string, want string) bool {
 	}
 	return false
 }
-
-var _ managerBuilder = (*corebuilder.Builder)(nil)
