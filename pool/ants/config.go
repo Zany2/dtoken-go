@@ -25,7 +25,7 @@ type RenewPoolConfig struct {
 	PrintStatusInterval time.Duration
 	// Whether to pre-allocate memory, disables dynamic scaling 是否预分配内存，会禁用动态扩缩容
 	PreAlloc bool
-	// Use true for Manager async events to avoid nested submission deadlocks Manager 异步事件应设为 true，避免嵌套提交死锁
+	// NonBlocking must be true to satisfy the asynchronous pool contract. NonBlocking 必须为 true，以满足异步池提交契约。
 	NonBlocking bool
 }
 
@@ -86,6 +86,9 @@ func (c *RenewPoolConfig) Validate() error {
 	}
 	if c.PreAlloc {
 		return fmt.Errorf("RenewPoolConfig.PreAlloc must be false because dynamic scaling requires ants Tune")
+	}
+	if !c.NonBlocking {
+		return fmt.Errorf("RenewPoolConfig.NonBlocking must be true for asynchronous submission")
 	}
 
 	return nil
@@ -148,7 +151,7 @@ func (c *RenewPoolConfig) SetPreAlloc(prealloc bool) *RenewPoolConfig {
 	return c
 }
 
-// SetNonBlocking sets the non blocking mode 设置是否非阻塞模式
+// SetNonBlocking sets submission mode; only true satisfies the pool contract. SetNonBlocking 设置提交模式，只有 true 满足池契约。
 func (c *RenewPoolConfig) SetNonBlocking(nonblocking bool) *RenewPoolConfig {
 	c.NonBlocking = nonblocking
 	return c

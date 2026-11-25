@@ -45,12 +45,18 @@ func TestRegistryReplacementPreservesCallerOwnedStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dtoken.SetAuth(first)
-	dtoken.SetAuth(first)
+	if err := dtoken.SetAuth(first); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
+	if err := dtoken.SetAuth(first); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	if first.IsClosed() {
 		t.Fatal("duplicate registration closed the instance")
 	}
-	dtoken.SetAuth(second)
+	if err := dtoken.SetAuth(second); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	if !first.IsClosed() || !alias.IsClosed() || second.IsClosed() {
 		t.Fatal("replacement did not preserve shared engine lifecycle")
 	}
@@ -92,6 +98,9 @@ func TestAuthOwnsStorageOnce(t *testing.T) {
 	if !missing.IsClosed() || !(&dtoken.Auth{}).IsClosed() {
 		t.Fatal("empty Auth should be unavailable")
 	}
-	dtoken.SetAuth(missing)
-	dtoken.SetAuth(auth)
+	for _, invalid := range []*dtoken.Auth{missing, auth} {
+		if err := dtoken.SetAuth(invalid); !errors.Is(err, derror.ErrManagerNotFound) {
+			t.Fatalf("SetAuth(unavailable) = %v", err)
+		}
+	}
 }

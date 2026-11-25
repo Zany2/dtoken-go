@@ -7,6 +7,7 @@ import (
 	"github.com/Zany2/dtoken-go/contract/oauth2"
 	"github.com/Zany2/dtoken-go/contract/shortkey"
 	"github.com/Zany2/dtoken-go/contract/ticket"
+	derror "github.com/Zany2/dtoken-go/errors"
 )
 
 // Capabilities groups explicitly composed services for a request's authentication instance. Capabilities 聚合为请求认证实例显式组合的服务。
@@ -27,40 +28,63 @@ func (c *DTokenContext) WithCapabilities(capabilities *Capabilities) *DTokenCont
 		c.capabilities = *capabilities
 
 		// Normalize typed nils introduced by interface bindings. 归一化接口绑定中的带类型空值。
-		if isNilCapability(c.capabilities.Nonce) {
+		if isNilBinding(c.capabilities.Nonce) {
 			c.capabilities.Nonce = nil
 		}
-		if isNilCapability(c.capabilities.OAuth2) {
+		if isNilBinding(c.capabilities.OAuth2) {
 			c.capabilities.OAuth2 = nil
 		}
-		if isNilCapability(c.capabilities.Ticket) {
+		if isNilBinding(c.capabilities.Ticket) {
 			c.capabilities.Ticket = nil
 		}
-		if isNilCapability(c.capabilities.ShortKey) {
+		if isNilBinding(c.capabilities.ShortKey) {
 			c.capabilities.ShortKey = nil
 		}
 	}
 	return c
 }
 
-func (c *DTokenContext) nonceService() nonce.Service {
-	return c.capabilities.Nonce
+func (c *DTokenContext) nonceService() (nonce.Service, error) {
+	if c == nil {
+		return nil, derror.ErrManagerNotFound
+	}
+	return c.capabilities.Nonce, c.requireCapability(c.capabilities.Nonce)
 }
 
-func (c *DTokenContext) oauth2Service() oauth2.Service {
-	return c.capabilities.OAuth2
+func (c *DTokenContext) oauth2Service() (oauth2.Service, error) {
+	if c == nil {
+		return nil, derror.ErrManagerNotFound
+	}
+	return c.capabilities.OAuth2, c.requireCapability(c.capabilities.OAuth2)
 }
 
-func (c *DTokenContext) ticketService() ticket.Service {
-	return c.capabilities.Ticket
+func (c *DTokenContext) ticketService() (ticket.Service, error) {
+	if c == nil {
+		return nil, derror.ErrManagerNotFound
+	}
+	return c.capabilities.Ticket, c.requireCapability(c.capabilities.Ticket)
 }
 
-func (c *DTokenContext) shortKeyService() shortkey.Service {
-	return c.capabilities.ShortKey
+func (c *DTokenContext) shortKeyService() (shortkey.Service, error) {
+	if c == nil {
+		return nil, derror.ErrManagerNotFound
+	}
+	return c.capabilities.ShortKey, c.requireCapability(c.capabilities.ShortKey)
 }
 
-// isNilCapability detects absent services without invoking methods on typed nil values. isNilCapability 检测缺失服务，避免调用带类型空值的方法。
-func isNilCapability(service any) bool {
+// requireCapability preserves standalone services but rejects operations tied to a closed engine. requireCapability 保留独立服务用法，但拒绝绑定已关闭引擎的操作。
+func (c *DTokenContext) requireCapability(service any) error {
+	if c.manager != nil && c.manager.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+	if service == nil {
+		return derror.ErrModuleNotEnabled
+	}
+	return nil
+}
+
+// isNilBinding detects absent bindings without invoking methods on typed nil values. isNilBinding 检测缺失绑定，避免调用带类型空值的方法。
+func isNilBinding(service any) bool {
 	if service == nil {
 		return true
 	}

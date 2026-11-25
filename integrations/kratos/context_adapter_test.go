@@ -2,12 +2,14 @@ package kratos
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 )
 
@@ -58,8 +60,8 @@ func TestKratosContextAdapterRequestAndResponse(t *testing.T) {
 		if got := ctx.GetString("name"); got != "dtoken" {
 			t.Errorf("GetString(name) = %q, want dtoken", got)
 		}
-		if got := ctx.MustGet("name"); got != "dtoken" {
-			t.Errorf("MustGet(name) = %v, want dtoken", got)
+		if got, err := ctx.GetRequired("name"); err != nil || got != "dtoken" {
+			t.Errorf("GetRequired(name) = %v, want dtoken", got)
 		}
 
 		ctx.SetHeader("X-Result", "ok")
@@ -103,15 +105,12 @@ func TestKratosContextAdapterRequestAndResponse(t *testing.T) {
 	}
 }
 
-// TestKratosContextMustGetPanicsWhenMissing verifies missing values panic. TestKratosContextMustGetPanicsWhenMissing 验证缺失值会触发 panic。
-func TestKratosContextMustGetPanicsWhenMissing(t *testing.T) {
+// TestKratosContextGetRequiredReturnsErrorWhenMissing verifies missing values return an error. TestKratosContextGetRequiredReturnsErrorWhenMissing 验证缺失值返回错误。
+func TestKratosContextGetRequiredReturnsErrorWhenMissing(t *testing.T) {
 	ctx := NewKratosContext(nil)
-	defer func() {
-		if recover() == nil {
-			t.Fatal("MustGet(missing) should panic")
-		}
-	}()
-	ctx.MustGet("missing")
+	if value, err := ctx.GetRequired("missing"); value != nil || !errors.Is(err, derror.ErrKeyNotFound) {
+		t.Fatalf("GetRequired(missing) = (%v, %v), want ErrKeyNotFound", value, err)
+	}
 }
 
 // TestKratosContextJSON verifies JSON response encoding and status. TestKratosContextJSON 验证 JSON 响应编码和状态码。

@@ -17,7 +17,7 @@ import (
 // TestOAuth2AuthorizationCodeFlow verifies authorization code exchange is single-use TestOAuth2AuthorizationCodeFlow 验证授权码只能交换一次
 func TestOAuth2AuthorizationCodeFlow(t *testing.T) {
 	ctx := context.Background()
-	server := newOAuth2TestServer()
+	server := newOAuth2TestServer(t)
 	client := oauth2TestClient()
 
 	if err := server.RegisterClient(client); err != nil {
@@ -47,7 +47,7 @@ func TestOAuth2AuthorizationCodeFlow(t *testing.T) {
 // TestOAuth2TokenEndpointDispatch verifies token endpoint grants and validation failures TestOAuth2TokenEndpointDispatch 验证令牌端点分发和校验失败
 func TestOAuth2TokenEndpointDispatch(t *testing.T) {
 	ctx := context.Background()
-	server := newOAuth2TestServer()
+	server := newOAuth2TestServer(t)
 	client := oauth2TestClient()
 	if err := server.RegisterClient(client); err != nil {
 		t.Fatalf("RegisterClient() error = %v", err)
@@ -105,7 +105,7 @@ func TestOAuth2TokenEndpointDispatch(t *testing.T) {
 
 // TestOAuth2ClientRegistrationBoundaries verifies client registration and lookup boundaries TestOAuth2ClientRegistrationBoundaries 验证客户端注册和查询边界
 func TestOAuth2ClientRegistrationBoundaries(t *testing.T) {
-	server := newOAuth2TestServer()
+	server := newOAuth2TestServer(t)
 
 	if err := server.RegisterClient(nil); !errors.Is(err, derror.ErrClientOrClientIDEmpty) {
 		t.Fatalf("RegisterClient(nil) error = %v, want ErrClientOrClientIDEmpty", err)
@@ -145,7 +145,7 @@ func TestOAuth2ClientRegistrationBoundaries(t *testing.T) {
 // TestOAuth2TokenEndpointBoundaries verifies token endpoint invalid requests TestOAuth2TokenEndpointBoundaries 验证令牌端点非法请求
 func TestOAuth2TokenEndpointBoundaries(t *testing.T) {
 	ctx := context.Background()
-	server := newOAuth2TestServer()
+	server := newOAuth2TestServer(t)
 	client := oauth2TestClient()
 	if err := server.RegisterClient(client); err != nil {
 		t.Fatalf("RegisterClient() error = %v", err)
@@ -175,7 +175,7 @@ func TestOAuth2TokenEndpointBoundaries(t *testing.T) {
 // TestOAuth2AuthorizationCodeBoundaries verifies authorization code validation boundaries TestOAuth2AuthorizationCodeBoundaries 验证授权码创建边界
 func TestOAuth2AuthorizationCodeBoundaries(t *testing.T) {
 	ctx := context.Background()
-	server := newOAuth2TestServer()
+	server := newOAuth2TestServer(t)
 	client := oauth2TestClient()
 	if err := server.RegisterClient(client); err != nil {
 		t.Fatalf("RegisterClient() error = %v", err)
@@ -204,7 +204,7 @@ func TestOAuth2AuthorizationCodeBoundaries(t *testing.T) {
 // TestOAuth2ScopesAreDefensivelyCopied verifies scope slices are copied. TestOAuth2ScopesAreDefensivelyCopied 验证 scopes 切片会被防御性复制。
 func TestOAuth2ScopesAreDefensivelyCopied(t *testing.T) {
 	ctx := context.Background()
-	server := newOAuth2TestServer()
+	server := newOAuth2TestServer(t)
 	client := oauth2TestClient()
 	if err := server.RegisterClient(client); err != nil {
 		t.Fatalf("RegisterClient() error = %v", err)
@@ -234,7 +234,7 @@ func TestOAuth2ScopesAreDefensivelyCopied(t *testing.T) {
 // TestOAuth2PKCES256Flow verifies S256 PKCE challenge verification. TestOAuth2PKCES256Flow 验证 S256 PKCE 挑战校验流程。
 func TestOAuth2PKCES256Flow(t *testing.T) {
 	ctx := context.Background()
-	server := newOAuth2TestServer()
+	server := newOAuth2TestServer(t)
 	client := oauth2TestClient()
 	if err := server.RegisterClient(client); err != nil {
 		t.Fatalf("RegisterClient() error = %v", err)
@@ -263,7 +263,7 @@ func TestOAuth2PKCES256Flow(t *testing.T) {
 // TestOAuth2PKCEPlainDefault verifies an empty PKCE method defaults to plain. TestOAuth2PKCEPlainDefault 验证空 PKCE 方法默认使用 plain。
 func TestOAuth2PKCEPlainDefault(t *testing.T) {
 	ctx := context.Background()
-	server := newOAuth2TestServer()
+	server := newOAuth2TestServer(t)
 	client := oauth2TestClient()
 	if err := server.RegisterClient(client); err != nil {
 		t.Fatalf("RegisterClient() error = %v", err)
@@ -289,11 +289,14 @@ func TestOAuth2PKCEPlainDefault(t *testing.T) {
 // TestOAuth2ConfigFallbacksAndDurationRounding verifies constructor defaults and sub-second metadata rounding. TestOAuth2ConfigFallbacksAndDurationRounding 验证构造器默认值和亚秒元数据取整。
 func TestOAuth2ConfigFallbacksAndDurationRounding(t *testing.T) {
 	storage := newOAuth2TestStorage()
-	server := NewOAuth2ServerWithConfig("auth:", "dt:", storage, oauth2TestCodec{}, &Config{
+	server, constructorErr := NewOAuth2ServerWithConfig("auth:", "dt:", storage, oauth2TestCodec{}, &Config{
 		CodeExpiration:    500 * time.Millisecond,
 		TokenExpiration:   500 * time.Millisecond,
 		RefreshExpiration: 1500 * time.Millisecond,
 	})
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	if server.codeExpiration != 500*time.Millisecond || server.tokenExpiration != 500*time.Millisecond || server.refreshExpiration != 1500*time.Millisecond {
 		t.Fatalf("constructor changed configured durations: %+v", server)
 	}
@@ -304,7 +307,10 @@ func TestOAuth2ConfigFallbacksAndDurationRounding(t *testing.T) {
 		t.Fatalf("durationSeconds(2s) = %d, want 2", got)
 	}
 
-	defaulted := NewOAuth2ServerWithConfig("auth:", "dt:", storage, oauth2TestCodec{}, &Config{})
+	defaulted, constructorErr := NewOAuth2ServerWithConfig("auth:", "dt:", storage, oauth2TestCodec{}, nil)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	if defaulted.codeExpiration != DefaultCodeExpiration || defaulted.tokenExpiration != DefaultTokenExpiration || defaulted.refreshExpiration != DefaultRefreshTTL {
 		t.Fatalf("constructor fallback durations = %v/%v/%v, want defaults", defaulted.codeExpiration, defaulted.tokenExpiration, defaulted.refreshExpiration)
 	}
@@ -340,7 +346,7 @@ func TestOAuth2PKCEValidationBoundaries(t *testing.T) {
 // TestOAuth2TokenEndpointPKCE verifies the token endpoint forwards the code verifier. TestOAuth2TokenEndpointPKCE 验证令牌端点会传递 PKCE 校验器。
 func TestOAuth2TokenEndpointPKCE(t *testing.T) {
 	ctx := context.Background()
-	server := newOAuth2TestServer()
+	server := newOAuth2TestServer(t)
 	client := oauth2TestClient()
 	if err := server.RegisterClient(client); err != nil {
 		t.Fatalf("RegisterClient() error = %v", err)
@@ -377,7 +383,10 @@ func TestOAuth2ExchangeCodeFailsWhenUsedStateCannotBeSaved(t *testing.T) {
 		TokenExpiration:   time.Minute,
 		RefreshExpiration: time.Hour,
 	}
-	server := NewOAuth2ServerWithConfig("auth:", "dtoken:", storage, oauth2TestCodec{}, cfg)
+	server, constructorErr := NewOAuth2ServerWithConfig("auth:", "dtoken:", storage, oauth2TestCodec{}, cfg)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	client := oauth2TestClient()
 	if err := server.RegisterClient(client); err != nil {
 		t.Fatalf("RegisterClient() error = %v", err)
@@ -398,7 +407,7 @@ func TestOAuth2ExchangeCodeFailsWhenUsedStateCannotBeSaved(t *testing.T) {
 // TestOAuth2RefreshAndRevoke verifies refresh rotation and revoke cleanup TestOAuth2RefreshAndRevoke 验证刷新轮换和撤销清理
 func TestOAuth2RefreshAndRevoke(t *testing.T) {
 	ctx := context.Background()
-	server := newOAuth2TestServer()
+	server := newOAuth2TestServer(t)
 	client := oauth2TestClient()
 	if err := server.RegisterClient(client); err != nil {
 		t.Fatalf("RegisterClient() error = %v", err)
@@ -441,7 +450,10 @@ func TestOAuth2RefreshKeepsOldTokensWhenNewTokenGenerationFails(t *testing.T) {
 		TokenExpiration:   time.Minute,
 		RefreshExpiration: time.Hour,
 	}
-	server := NewOAuth2ServerWithConfig("auth:", "dtoken:", storage.oauth2TestStorage, oauth2TestCodec{}, cfg)
+	server, constructorErr := NewOAuth2ServerWithConfig("auth:", "dtoken:", storage.oauth2TestStorage, oauth2TestCodec{}, cfg)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	client := oauth2TestClient()
 	if err := server.RegisterClient(client); err != nil {
 		t.Fatalf("RegisterClient() error = %v", err)
@@ -472,7 +484,10 @@ func TestOAuth2RefreshRollsBackNewTokenWhenOldRefreshDeleteFails(t *testing.T) {
 		TokenExpiration:   time.Minute,
 		RefreshExpiration: time.Hour,
 	}
-	server := NewOAuth2ServerWithConfig("auth:", "dtoken:", storage.oauth2TestStorage, oauth2TestCodec{}, cfg)
+	server, constructorErr := NewOAuth2ServerWithConfig("auth:", "dtoken:", storage.oauth2TestStorage, oauth2TestCodec{}, cfg)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	client := oauth2TestClient()
 	if err := server.RegisterClient(client); err != nil {
 		t.Fatalf("RegisterClient() error = %v", err)
@@ -511,7 +526,10 @@ func TestOAuth2GenerateTokenRollsBackAccessTokenOnRefreshSaveFailure(t *testing.
 		TokenExpiration:   time.Minute,
 		RefreshExpiration: time.Hour,
 	}
-	server := NewOAuth2ServerWithConfig("auth:", "dtoken:", storage, oauth2TestCodec{}, cfg)
+	server, constructorErr := NewOAuth2ServerWithConfig("auth:", "dtoken:", storage, oauth2TestCodec{}, cfg)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	client := oauth2TestClient()
 	if err := server.RegisterClient(client); err != nil {
 		t.Fatalf("RegisterClient() error = %v", err)
@@ -537,7 +555,10 @@ func TestOAuth2RevokeReturnsStorageErrorWhenRefreshDeleteFails(t *testing.T) {
 		TokenExpiration:   time.Minute,
 		RefreshExpiration: time.Hour,
 	}
-	server := NewOAuth2ServerWithConfig("auth:", "dtoken:", storage.oauth2TestStorage, oauth2TestCodec{}, cfg)
+	server, constructorErr := NewOAuth2ServerWithConfig("auth:", "dtoken:", storage.oauth2TestStorage, oauth2TestCodec{}, cfg)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	client := oauth2TestClient()
 	if err := server.RegisterClient(client); err != nil {
 		t.Fatalf("RegisterClient() error = %v", err)
@@ -557,13 +578,18 @@ func TestOAuth2RevokeReturnsStorageErrorWhenRefreshDeleteFails(t *testing.T) {
 	}
 }
 
-func newOAuth2TestServer() *OAuth2Server {
+func newOAuth2TestServer(t *testing.T) *OAuth2Server {
+	t.Helper()
 	cfg := &Config{
 		CodeExpiration:    time.Minute,
 		TokenExpiration:   time.Minute,
 		RefreshExpiration: time.Hour,
 	}
-	return NewOAuth2ServerWithConfig("auth:", "dtoken:", newOAuth2TestStorage(), oauth2TestCodec{}, cfg)
+	instance, err := NewOAuth2ServerWithConfig("auth:", "dtoken:", newOAuth2TestStorage(), oauth2TestCodec{}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return instance
 }
 
 func oauth2PKCEChallenge(verifier string) string {

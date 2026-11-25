@@ -6,7 +6,6 @@ import (
 	"errors"
 	"github.com/Zany2/dtoken-go"
 	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
-	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
 	"github.com/Zany2/dtoken-go/storage/memory"
 	gingonic "github.com/gin-gonic/gin"
@@ -22,11 +21,12 @@ import (
 func TestGinReplacedRequestTokenSources(t *testing.T) {
 	for _, source := range []string{"query", "form", "multipart"} {
 		t.Run(source, func(t *testing.T) {
-			mgr, err := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
-				IsReadHeader(false).IsReadCookie(false).IsReadQuery(source == "query").IsReadBody(source != "query").Build()
+			mgrAuth, err := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+				IsReadHeader(false).IsReadCookie(false).IsReadQuery(source == "query").IsReadBody(source != "query").BuildInstance()
 			if err != nil {
 				t.Fatal(err)
 			}
+			mgr := mgrAuth.Manager()
 			t.Cleanup(mgr.CloseManager)
 			for _, id := range []string{"old", "current"} {
 				if _, err := mgr.LoginWithOptions(context.Background(), manager.LoginOptions{LoginID: id, Token: id + "-token"}); err != nil {
@@ -123,7 +123,9 @@ func TestGinRepeatedRegistration(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newGinReviewManager(t, "", nil)
 	local := newGinReviewManager(t, "gin-registration", nil)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, tc := range []struct {
 		name string
 		opts []AuthOption
@@ -159,7 +161,9 @@ func TestGinInvalidManagerScopeCannotUseGlobal(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newGinReviewManager(t, "", nil)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	token, err := global.Login(context.Background(), "reader")
 	if err != nil {
 		t.Fatal(err)

@@ -14,7 +14,7 @@
 
 根包包级业务方法与 Auth 方法签名一致，例如 `dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "10001"})`。省略 Builder.AuthType 注册默认体系；指定名称的体系不存在时返回 ErrManagerNotFound，布尔检查返回 false，不会回退到默认体系。选择器在每次操作时查找注册表，固定实例不会跟随替换。
 
-Build / MustBuild 自动注册，同名 Build 返回 errors.ErrManagerAlreadyRegistered，MustBuild 失败时 panic。BuildInstance / MustBuildInstance 不注册，允许同名独立实例。显式替换使用 BuildInstance 后调用 dtoken.SetAuth，替换会关闭原引擎。普通 Build 后无需 SetAuth。
+Build 自动注册，同名 Build 返回 errors.ErrManagerAlreadyRegistered。BuildInstance 不注册，允许同名独立实例。两者均返回 (*Auth, error)，错误由调用方处理。显式替换使用 BuildInstance 后调用 dtoken.SetAuth 并检查错误，替换成功会关闭原引擎。普通 Build 后无需 SetAuth。
 
 ## 入口与选项
 
@@ -34,7 +34,7 @@ Build / MustBuild 自动注册，同名 Build 返回 errors.ErrManagerAlreadyReg
 | Session 查询与持久化 | `auth.GetSession` / `auth.SetSessionValue` / `auth.GetSessionValue` |
 | 刷新令牌 | `auth.LoginWithRefreshToken` / `auth.LoginWithRefreshTokenOptions` / `auth.RefreshToken` |
 
-实例方法使用自身认证体系；选项中的 `AuthType` 不会让实例切换到其他引擎。要使用另一个认证体系，可调用另一个 Auth，或通过 dtoken.AuthType(name) 选择。该选项字段为源码兼容保留，不参与体系选择。
+实例方法使用自身认证体系。业务选项不再包含 AuthType；要使用另一个认证体系，可调用另一个 Auth，或通过 dtoken.AuthType(name) 选择。
 
 ## 登录与权限示例
 
@@ -69,11 +69,14 @@ HTTP 通过 WithAuth(auth) 或显式 WithManagerResolver(dt.GetManager) 接入�
 
 ## 生命周期与扩展
 
-- `auth.Config()` 返回配置快照；修改快照不会改变引擎。
+- `auth.Config()` 和 `auth.Manager().GetConfig()` 返回独立配置快照；修改快照不会改变引擎。
 - `auth.Storage()` 和 `auth.Codec()` 用于借用组件、组合独立能力，使用期间保持 Auth 可用。
-- `auth.Manager()` 暴露受支持的高级 API，从根包引用其类型，不导入 `internal`。
+- `auth.Manager()` 暴露受支持的高级 API，从根包引用其类型，不导入 `internal`。共享引擎开始关闭后返回 nil，包括通过其他门面、注册表或 Manager 直接关闭的情况。
 - `dtoken.New(auth.Manager())` 包装同一个引擎，关闭任一门面会影响全部共享者。
 - `auth.Close()` 注销仍指向自身的注册项并释放自有资源；`dtoken.Close()` 关闭默认体系，`dtoken.AuthType(name).Close()` 关闭指定体系，`dtoken.CloseAll()` 关闭全部当前注册实例。未注册实例由调用方单独关闭；先排空 HTTP 请求。
+- 固定实例的重复 `Close()` 会等待同一引擎的资源释放完成。AuthType 选择器和根包关闭函数针对调用时的注册项；注册项已被其他调用移除时，不等待该调用正在进行的清理。需要等待已移除引擎时，使用构建返回的固定 Auth。
 - Nonce、OAuth2、Ticket 和 ShortKey 从各自 Service 调用，通过 `WithCapabilities` 接入 HTTP；它们不是 Auth 方法。
 
 详见 [API 与生命周期](../design/api-lifecycle_zh.md)、[独立能力](../guide/security/advanced-features_zh.md)和[框架集成](../guide/integration/framework-integration_zh.md)。
+
+`WithAuth(auth)` 和 `Context(auth)` 均返回结果及 `error`；实例为空或已关闭时返回 `ErrManagerNotFound`。注册中间件前先检查错误。

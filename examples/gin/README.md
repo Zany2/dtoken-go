@@ -65,6 +65,8 @@ Handlers and authentication middleware share the same error response callback. R
 
 ## Key APIs
 
+The middleware fragments below belong in a setup function that returns `error`; propagate binding errors to the caller and stop startup if setup fails.
+
 Build an instance first and keep it open while the server handles requests. These fragments use the handlers and error callbacks from `main.go`.
 
 ```go
@@ -74,7 +76,11 @@ defer authInstance.Close()
 ```
 
 ```go
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(authInstance), gindt.WithFailFunc(writeAuthError)))
+authOption1, authErr := gindt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, authOption1, gindt.WithFailFunc(writeAuthError)))
 
 auth := r.Group("/")
 auth.Use(gindt.AuthMiddleware(ctx, gindt.WithFailFunc(writeAuthError)))

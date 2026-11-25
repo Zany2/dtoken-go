@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"sync"
 
 	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
 	"github.com/go-kratos/kratos/v2/transport"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	"google.golang.org/grpc/credentials"
@@ -309,13 +311,13 @@ func (k *KratosContext) GetString(key string) string {
 	return str
 }
 
-// MustGet implements adapter.RequestContext MustGet 实现 adapter.RequestContext 接口
-func (k *KratosContext) MustGet(key string) any {
-	value, exists := k.Get(key)
-	if !exists {
-		panic("key not found: " + key)
+// GetRequired returns a context value or ErrKeyNotFound when missing. GetRequired 返回上下文值，不存在时返回 ErrKeyNotFound。
+func (k *KratosContext) GetRequired(key string) (any, error) {
+	value, ok := k.Get(key)
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", derror.ErrKeyNotFound, key)
 	}
-	return value
+	return value, nil
 }
 
 // Abort implements adapter.RequestContext Abort 实现 adapter.RequestContext 接口

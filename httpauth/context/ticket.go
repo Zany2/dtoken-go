@@ -6,14 +6,13 @@ import (
 	"time"
 
 	"github.com/Zany2/dtoken-go/contract/ticket"
-	derror "github.com/Zany2/dtoken-go/errors"
 )
 
 // Create creates a temporary ticket Create 创建临时 Ticket
 func (c *TicketContext) Create(ctx context.Context, opts ticket.CreateOptions) (*ticket.Ticket, error) {
-	service := c.d.ticketService()
-	if service == nil {
-		return nil, derror.ErrModuleNotEnabled
+	service, err := c.d.ticketService()
+	if err != nil {
+		return nil, err
 	}
 	return service.CreateTicket(ctx, opts)
 }
@@ -25,63 +24,63 @@ func (c *TicketContext) CreateForCurrentLogin(ctx context.Context, opts ticket.C
 		return nil, err
 	}
 	opts.LoginID = loginID
-	service := c.d.ticketService()
-	if service == nil {
-		return nil, derror.ErrModuleNotEnabled
+	service, err := c.d.ticketService()
+	if err != nil {
+		return nil, err
 	}
 	return service.CreateTicket(ctx, opts)
 }
 
 // CreateWithTimeout creates a ticket with timeout CreateWithTimeout 使用指定有效期创建 Ticket
 func (c *TicketContext) CreateWithTimeout(ctx context.Context, opts ticket.CreateOptions, timeout time.Duration) (*ticket.Ticket, error) {
-	service := c.d.ticketService()
-	if service == nil {
-		return nil, derror.ErrModuleNotEnabled
+	service, err := c.d.ticketService()
+	if err != nil {
+		return nil, err
 	}
 	return service.CreateTicketWithTimeout(ctx, opts, timeout)
 }
 
 // Validate validates a ticket without consuming it Validate 校验 Ticket 但不消费
 func (c *TicketContext) Validate(ctx context.Context, ticketValue string, opts ...ticket.ValidateOptions) (*ticket.Ticket, error) {
-	service := c.d.ticketService()
-	if service == nil {
-		return nil, derror.ErrModuleNotEnabled
+	service, err := c.d.ticketService()
+	if err != nil {
+		return nil, err
 	}
 	return service.ValidateTicket(ctx, ticketValue, opts...)
 }
 
 // Consume validates and consumes a ticket Consume 校验并消费 Ticket
 func (c *TicketContext) Consume(ctx context.Context, ticketValue string, opts ...ticket.ValidateOptions) (*ticket.ConsumeResult, error) {
-	service := c.d.ticketService()
-	if service == nil {
-		return nil, derror.ErrModuleNotEnabled
+	service, err := c.d.ticketService()
+	if err != nil {
+		return nil, err
 	}
 	return service.ConsumeTicket(ctx, ticketValue, opts...)
 }
 
 // Revoke revokes a ticket Revoke 撤销 Ticket
 func (c *TicketContext) Revoke(ctx context.Context, ticketValue string) error {
-	service := c.d.ticketService()
-	if service == nil {
-		return derror.ErrModuleNotEnabled
+	service, err := c.d.ticketService()
+	if err != nil {
+		return err
 	}
 	return service.RevokeTicket(ctx, ticketValue)
 }
 
 // GetStatus gets ticket status GetStatus 获取 Ticket 状态
 func (c *TicketContext) GetStatus(ctx context.Context, ticketValue string) (ticket.Status, error) {
-	service := c.d.ticketService()
-	if service == nil {
-		return ticket.StatusInvalid, derror.ErrModuleNotEnabled
+	service, err := c.d.ticketService()
+	if err != nil {
+		return ticket.StatusInvalid, err
 	}
 	return service.GetTicketStatus(ctx, ticketValue)
 }
 
 // GetTTL gets ticket TTL GetTTL 获取 Ticket 剩余有效期
 func (c *TicketContext) GetTTL(ctx context.Context, ticketValue string) (int64, error) {
-	service := c.d.ticketService()
-	if service == nil {
-		return 0, derror.ErrModuleNotEnabled
+	service, err := c.d.ticketService()
+	if err != nil {
+		return 0, err
 	}
 	return service.GetTicketTTL(ctx, ticketValue)
 }

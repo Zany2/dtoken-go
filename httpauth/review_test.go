@@ -18,7 +18,9 @@ func TestResolveManagerFromContextMissingCache(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
 	mgr := newAuthcheckTestManager(t)
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 
 	var missingContext *corecontext.DTokenContext
 	for _, cached := range []any{nil, missingContext, (*managerSource)(nil), struct{}{}} {
@@ -37,7 +39,9 @@ func TestResolveManagerFromContextRejectsEmptyScope(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newAuthcheckTestManager(t)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, cached := range []any{managerSource{}, &managerSource{}, corecontext.NewContext(nil, nil)} {
 		if got, err := ResolveManagerFromContext("", cached); got != nil || !errors.Is(err, derror.ErrManagerNotFound) {
 			t.Fatalf("cached %T: manager=%p error=%v", cached, got, err)
@@ -53,7 +57,9 @@ func TestCheckRejectsUnavailableManager(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
 	active := newAuthcheckTestManager(t)
-	dtoken.SetManager(active)
+	if err := dtoken.SetManager(active); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	closed := newAuthcheckTestManager(t)
 	ctx := context.Background()
 	token, err := closed.Login(ctx, "user")

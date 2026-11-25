@@ -103,8 +103,8 @@ type RequestContext interface {
 	// GetString gets string value from context GetString 从上下文获取字符串值
 	GetString(key string) string
 
-	// MustGet gets value or panics MustGet 获取上下文值且不存在时 panic
-	MustGet(key string) any
+	// GetRequired returns a context value or errors.ErrKeyNotFound when missing. GetRequired 返回上下文值，不存在时返回 errors.ErrKeyNotFound。
+	GetRequired(key string) (any, error)
 
 	// Request control methods 请求控制方法
 

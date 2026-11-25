@@ -17,7 +17,9 @@ func TestFacadeRejectsClosedManager(t *testing.T) {
 			DeleteAllManager()
 			t.Cleanup(DeleteAllManager)
 			mgr := newRegistryTestManager("closed-facade", &registryTestPool{})
-			SetManager(mgr)
+			if err := SetManager(mgr); err != nil {
+				t.Fatalf("register authentication: %v", err)
+			}
 			auth := New(mgr)
 			t.Cleanup(auth.Close)
 			if got, err := requireTestManager(auth); err != nil || got != mgr {
@@ -30,7 +32,9 @@ func TestFacadeRejectsClosedManager(t *testing.T) {
 				mgr.CloseManager()
 			case "replace":
 				replacement = newRegistryTestManager("closed-facade", &registryTestPool{})
-				SetManager(replacement)
+				if err := SetManager(replacement); err != nil {
+					t.Fatalf("register authentication: %v", err)
+				}
 			case "delete":
 				if err := DeleteManager("closed-facade"); err != nil {
 					t.Fatal(err)
@@ -40,6 +44,9 @@ func TestFacadeRejectsClosedManager(t *testing.T) {
 			}
 
 			ctx := context.Background()
+			if !auth.IsClosed() || auth.Manager() != nil {
+				t.Fatal("fixed facade exposed an engine closed through another entry point")
+			}
 			if got, err := requireTestManager(auth); got != nil || !errors.Is(err, derror.ErrManagerNotFound) {
 				t.Fatalf("closed requireManager() = %v, %v", got, err)
 			}
@@ -84,7 +91,9 @@ func TestDisableFacadePreservesValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	SetManager(mgr)
+	if err := SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	auth := New(mgr)
 	ctx := context.Background()
 

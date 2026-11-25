@@ -50,7 +50,7 @@ type ManagerResolver = func(authType ...string) (*manager.Manager, error)
 
 // ResolveManager validates an explicitly selected manager. ResolveManager 验证显式选择的管理器。
 func ResolveManager(explicit *manager.Manager, _ string) (*manager.Manager, error) {
-	if explicit == nil || explicit.IsClosed() || explicit.GetConfig() == nil {
+	if explicit == nil || explicit.IsClosed() || manager.RuntimeConfig(explicit) == nil {
 		return nil, derror.ErrManagerNotFound
 	}
 	return explicit, nil
@@ -86,7 +86,7 @@ func ResolveManagerFromContext(authType string, cached any, resolvers ...Manager
 			if err != nil {
 				return nil, err
 			}
-			if strings.TrimSuffix(strings.TrimSpace(authType), ":") == strings.TrimSuffix(mgr.GetConfig().AuthType, ":") {
+			if strings.TrimSuffix(strings.TrimSpace(authType), ":") == strings.TrimSuffix(manager.RuntimeConfig(mgr).AuthType, ":") {
 				return mgr, nil
 			}
 		}
@@ -131,78 +131,25 @@ func Check(ctx context.Context, mgr *manager.Manager, req Request) (*Result, err
 		req.LoginError = derror.ErrNotLogin
 	}
 
-	// Reuse the fully validated identity in combined checks. 组合检查复用完整登录校验取得的身份。
-	if req.CheckLogin {
-		loginID, err := mgr.GetLoginID(ctx, req.TokenValue)
-		if err != nil {
+	// One check reuses the token identity and optional session across all access rules. 单次检查在全部访问规则之间复用 Token 身份及可选 Session。
+	loginID, err := manager.CheckTokenAccess(ctx, mgr, req.TokenValue, req.Permissions, req.Roles, req.LogicType == LogicAnd)
+	if err != nil {
+		// Only initial credential failures use LoginError; provider and session errors retain their causes. 仅初始凭证失败映射 LoginError，提供器与 Session 错误保留原始原因。
+		if req.CheckLogin && loginID == "" {
 			switch {
 			case errors.Is(err, derror.ErrNotLogin), errors.Is(err, derror.ErrInvalidToken),
 				errors.Is(err, derror.ErrTokenExpired), errors.Is(err, derror.ErrActiveTimeout),
 				errors.Is(err, derror.ErrTokenKickout), errors.Is(err, derror.ErrTokenReplaced),
 				errors.Is(err, derror.ErrSessionNotFound):
 				return nil, req.LoginError
-			default:
-				return nil, err
 			}
 		}
-
-		// Keep identity output lazy for login-only requests. 仅检查登录时保持延迟身份输出的约定。
-		if req.CheckDisable || len(req.Permissions) > 0 || len(req.Roles) > 0 {
-			result.LoginID = loginID
-		}
+		return nil, err
 	}
 
-	// Resolve identity for standalone disable checks. 独立封禁检查按需解析身份。
-	if req.CheckDisable {
-		if result.LoginID == "" {
-			loginID, err := mgr.GetLoginID(ctx, req.TokenValue)
-			if err != nil {
-				return nil, err
-			}
-			result.LoginID = loginID
-		}
-
-		// Preserve storage errors when checking disable state. 校验封禁状态时保留存储错误。
-		if err := mgr.CheckDisable(ctx, result.LoginID); err != nil {
-			return nil, err
-		}
+	// Preserve lazy identity output; login validation already checks account and device restrictions. 保留延迟身份输出，登录校验已包含账号与设备封禁检查。
+	if req.CheckDisable || (req.CheckLogin && (len(req.Permissions) > 0 || len(req.Roles) > 0)) {
+		result.LoginID = loginID
 	}
-
-	// Token checks retain device scope and operational errors. Token 校验保留设备维度和运行故障。
-	if len(req.Permissions) > 0 {
-		if err := checkPermissions(ctx, mgr, req); err != nil {
-			return nil, err
-		}
-	}
-	if len(req.Roles) > 0 {
-		if err := checkRoles(ctx, mgr, req); err != nil {
-			return nil, err
-		}
-	}
-
 	return result, nil
-}
-
-// checkPermissions checks the complete token subject and propagates failures. checkPermissions 校验完整 Token 主体并传递故障。
-func checkPermissions(
-	ctx context.Context,
-	mgr *manager.Manager,
-	req Request,
-) error {
-	if req.LogicType == LogicAnd {
-		return mgr.CheckPermissionAndByToken(ctx, req.TokenValue, req.Permissions)
-	}
-	return mgr.CheckPermissionOrByToken(ctx, req.TokenValue, req.Permissions)
-}
-
-// checkRoles checks the complete token subject and propagates failures. checkRoles 校验完整 Token 主体并传递故障。
-func checkRoles(
-	ctx context.Context,
-	mgr *manager.Manager,
-	req Request,
-) error {
-	if req.LogicType == LogicAnd {
-		return mgr.CheckRoleAndByToken(ctx, req.TokenValue, req.Roles)
-	}
-	return mgr.CheckRoleOrByToken(ctx, req.TokenValue, req.Roles)
 }

@@ -64,6 +64,8 @@ curl -X POST http://localhost:8080/logout \
 
 ## Key APIs
 
+The middleware fragments below belong in a setup function that returns `error`; propagate binding errors to the caller and stop startup if setup fails.
+
 Build an instance first and keep it open while the server handles requests. These fragments use the handlers and error callbacks from `main.go`.
 
 ```go
@@ -73,11 +75,16 @@ defer authInstance.Close()
 ```
 
 ```go
+authOption1, authErr := kratosdt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
 srv := khttp.NewServer(
 	khttp.Address(":8080"),
-	khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware(kratosdt.WithAuth(authInstance))),
+	khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware(authOption1)),
 )
 
+r := srv.Route("/")
 r.GET("/admin", wrapHandler(handleAdmin, kratosdt.AuthMiddleware(), kratosdt.RoleMiddleware([]string{"admin"})))
 r.GET("/articles", wrapHandler(handleArticles, kratosdt.AuthMiddleware(), kratosdt.PermissionMiddleware([]string{"article:read"})))
 ```

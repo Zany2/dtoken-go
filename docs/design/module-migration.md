@@ -4,6 +4,28 @@ English | [中文文档](module-migration_zh.md)
 
 This guide owns old-path and API migration, release ordering, and consumer verification. See [architecture](architecture.md) for system layers, [modular design](modular.md) for package and module boundaries, and [source layout](source-layout.md) for code locations.
 
+## Error-handling API migration
+
+Construction and required context reads now return errors for the caller to handle:
+
+| Previous call | Current call |
+| --- | --- |
+| `MustBuild()` | `auth, err := builder.Build()` |
+| `MustBuildInstance()` | `auth, err := builder.BuildInstance()` |
+| `WithAuth(auth)` used directly as an option | Obtain `option, err := WithAuth(auth)` before configuring middleware |
+| `Context(auth)` used directly as middleware | Obtain `middleware, err := Context(auth)` before registering it |
+| `RequestContext.MustGet(key)` | `value, err := requestContext.GetRequired(key)` |
+
+`WithAuth` and `Context` return `ErrManagerNotFound` for nil or closed instances. `GetRequired` returns an error matching `ErrKeyNotFound` through `errors.Is` when a key is absent. Keep using `Get(key) (any, bool)` when an existence check is sufficient, and update custom RequestContext implementations to the new method signature. GoFrame body-read panics are returned through `GetBody() ([]byte, error)` rather than rethrown.
+
+## Registry and configuration changes
+
+- Operation options no longer contain AuthType. Use dtoken.XXX for the default system and dtoken.AuthType(name).XXX for a named system.
+- BuildAndSetManager has been removed. Use Builder.AuthType(name).Build() for initialization, or BuildInstance() followed by SetAuth with error handling for explicit replacement.
+- SetAuth and SetManager now return error. Nil or closed instances return ErrManagerNotFound; a Manager without configuration returns ErrManagerInvalidType. Failed registration preserves the existing engine; registering the same open instance again returns nil.
+- Manager.GetConfig() and Auth.Config() return independent snapshots. Configure a new instance to change authentication settings; changing AuthType or KeyPrefix does not migrate stored data.
+- HTTP request paths borrow internal/engine configuration read-only, avoiding a copy on each check. integration_facade_architecture_test.go checks grouped facade destinations and arguments across all eight adapters.
+
 ## Current boundaries
 
 The root module publishes the instance facade, public contracts, authentication implementation, basic components, shared HTTP authentication, and independent capability packages. Capabilities are composed explicitly; they are not separate Go modules. The workspace contains 30 modules.
@@ -52,11 +74,13 @@ SetCustomPermissionListFunc, SetCustomRoleListFunc, and their Ext variants are n
 
 ## Independent capabilities
 
+Manager/Server constructors for Nonce, OAuth2, Ticket, and ShortKey, including default constructors, now return `(instance, error)`. Handle the error before calling `NewService`. A nil configuration in `WithConfig` selects defaults; explicit configurations must pass `Validate`, so start custom settings from `DefaultConfig()`. Invalid settings, missing components, and typed-nil storage/codecs return `errors.ErrInvalidParam`. The direct Nonce TTL must be positive, and OAuth2 refresh expiration must exceed access expiration. Per-operation timeout fallback rules are unchanged.
+
 The builder has no capability switches. Construct capability Managers and use NewService(manager, auth) for instance events. Share the intended AuthType, KeyPrefix, Storage, and Codec. Bind request services with httpauth/context.Capabilities and framework WithCapabilities. Missing services return ErrModuleNotEnabled. Middleware without an override preserves bindings for the same Manager; changing Manager creates a new scope.
 
 ## Facade method migration
 
-Frameworks retain NewBuilder and request helpers such as LoginByContext or LoginByCtx. Import Auth and operation options from the root. The global package has been removed: migrate default calls to dt.XXX and named calls to dt.AuthType(name).XXX, using typed options where required. Replace Default / NewByAuthType with AuthType("") / AuthType(name); operations report lookup errors, or call GetManager for an immediate check. Import components from their own packages.
+Frameworks retain NewBuilder and request helpers such as LoginByContext or LoginByCtx. Import Auth and operation options from the root. The global package has been removed: migrate default calls to dt.XXX and named calls to dt.AuthType(name).XXX, using typed options where required. Replace Default().XXX / NewByAuthType(name).XXX with dt.XXX / dt.AuthType(name).XXX; operations report lookup errors, or call GetManager for an immediate check. Import components from their own packages.
 
 Changing only the import prefix is insufficient: login, permission mutations, and disable operations require root typed options. This table documents upgrade mappings; APIs in the left column have been removed, and dt in the right column names the root:
 
@@ -66,18 +90,36 @@ Changing only the import prefix is insufficient: login, permission mutations, an
 | `global.Logout(ctx, token, "user")` | `dt.AuthType("user").LogoutByToken(ctx, token)` |
 | `global.AddPermissions(ctx, id, values, "user")` | `dt.AuthType("user").AddPermissions(ctx, dt.PermissionOptions{LoginID: id, Permissions: values})` |
 | `global.Disable(ctx, id, duration, reason, "user")` | `dt.AuthType("user").Disable(ctx, dt.DisableOptions{LoginID: id, Duration: duration, Reason: reason})` |
-| `global.Default()` / `global.NewByAuthType("user")` | Dynamic selectors `dt.AuthType("")` / `dt.AuthType("user")`; check immediately with `dt.GetManager(...)`, and use `dt.New(mgr)` for a fixed facade |
+| `global.Default().XXX(...)` / `global.NewByAuthType("user").XXX(...)` | `dt.XXX(...)` / `dt.AuthType("user").XXX(...)`; check immediately with `dt.GetManager(...)`, and use `dt.New(mgr)` for a fixed facade |
 
 Creating a selector does not report lookup errors; later operations resolve the registry. Code that relied on immediate constructor errors should call GetManager first. Registered and returned instances share an engine, so closing a fixed facade affects its other sharers. See the [root API reference](../api/dtoken.md) for further methods.
 
 The following table covers the 40 capability methods removed from the old `Auth` facade. Former package-level facade calls use the same service destinations; select a service composed for the intended authentication instance instead of passing an `authType` argument. Import `nonce`, `oauth2`, `ticket`, and `shortkey` from their current root-level package paths. After building `auth`, compose the service variables used in the table:
 
+Place the following fragment inside an initialization function that returns an error:
+
 ```go
 cfg := auth.Config()
-nonceService := nonce.NewService(nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage()), auth)
-oauth2Service := oauth2.NewService(oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
-ticketService := ticket.NewService(ticket.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
-shortKeyService := shortkey.NewService(shortkey.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
+nonceManager, err := nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage())
+if err != nil {
+	return err
+}
+nonceService := nonce.NewService(nonceManager, auth)
+oauth2Server, err := oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+if err != nil {
+	return err
+}
+oauth2Service := oauth2.NewService(oauth2Server, auth)
+ticketManager, err := ticket.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+if err != nil {
+	return err
+}
+ticketService := ticket.NewService(ticketManager, auth)
+shortKeyManager, err := shortkey.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+if err != nil {
+	return err
+}
+shortKeyService := shortkey.NewService(shortKeyManager, auth)
 ```
 
 | Previous method name | Current service method |

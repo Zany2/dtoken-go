@@ -27,6 +27,7 @@ dtoken:app:session:client-001
 package main
 
 import (
+	"log"
 	"context"
 
 	dt "github.com/Zany2/dtoken-go"
@@ -53,7 +54,8 @@ func main() {
 		UseManagerOption(sharedOwnership).
 		Build()
 	if err != nil {
-		panic(err)
+		log.Print(err)
+		return
 	}
 
 	adminAuth, err := dt.NewBuilder().
@@ -64,13 +66,17 @@ func main() {
 		UseManagerOption(sharedOwnership).
 		Build()
 	if err != nil {
-		panic(err)
+		log.Print(err)
+		return
 	}
 
 	userToken, _ := dt.AuthType("user").LoginID(ctx, "10001")
 	adminToken, _ := adminAuth.LoginID(ctx, "admin-1")
 	_, _ = userToken, adminToken
-	registerRoutes(ctx, gin.New(), userAuth, adminAuth)
+	if err := registerRoutes(ctx, gin.New(), userAuth, adminAuth); err != nil {
+		log.Print(err)
+		return
+	}
 }
 ```
 
@@ -101,20 +107,26 @@ roles, err := user.GetRoles(ctx, "10001")
 | `dt.AuthType("user").CheckLogin(ctx, token)` | 每次操作查找当前 user 引擎 |
 | `userAuth.CheckLogin(ctx, token)` | 使用构建返回的固定引擎 |
 
-选择不存在的体系时，CheckLogin 返回 `ErrManagerNotFound`，IsLogin 返回 false，不会回退默认体系。选择器可以缓存，并会跟随显式替换；构建返回的固定实例不会。业务选项中的 `AuthType` 字段不参与路由，体系由上述调用入口确定。
+选择不存在的体系时，CheckLogin 返回 `ErrManagerNotFound`，IsLogin 返回 false，不会回退默认体系。选择器可以缓存，并会跟随显式替换；构建返回的固定实例不会。业务选项不再包含 `AuthType` 字段，体系由上述调用入口确定。
 
 ## 独立实例与显式替换
 
-`BuildInstance()` / `MustBuildInstance()` 不访问注册表，适用于测试、依赖注入或需要同名独立引擎的场景；持有者单独调用 `auth.Close()`。同名未注册实例不会自动隔离共享后端中的数据，仍须正确配置 AuthType、KeyPrefix 或独立存储。
+`BuildInstance()` 返回 `(*Auth, error)`，不访问注册表，适用于测试、依赖注入或需要同名独立引擎的场景；持有者单独调用 `auth.Close()`。同名未注册实例不会自动隔离共享后端中的数据，仍须正确配置 AuthType、KeyPrefix 或独立存储。
 
 需要替换已注册体系时，在停止旧引擎的新请求并排空已有请求后执行：
 
 ```go
-replacement, err := dt.NewBuilder().AuthType("user").BuildInstance()
-if err != nil {
-    panic(err)
+func replaceUserAuth() error {
+    replacement, err := dt.NewBuilder().AuthType("user").BuildInstance()
+    if err != nil {
+        return err
+    }
+    if err := dt.SetAuth(replacement); err != nil {
+        replacement.Close()
+        return err
+    }
+    return nil
 }
-dt.SetAuth(replacement)
 ```
 
 SetAuth 注册新引擎并关闭旧引擎；已有固定 Auth 和 WithAuth 绑定仍引用旧引擎，不能继续使用。`dt.CloseAll()` 关闭全部当前注册实例，不包含未注册实例，也不禁止随后重新构建。完整约定见 [API 与生命周期](../../design/api-lifecycle_zh.md)。
@@ -125,13 +137,22 @@ SetAuth 注册新引擎并关闭旧引擎；已有固定 Auth 和 WithAuth 绑�
 
 <!-- dtoken-compile: multi-auth -->
 ```go
-func registerRoutes(ctx context.Context, r *gin.Engine, userAuth, adminAuth *dt.Auth) {
+func registerRoutes(ctx context.Context, r *gin.Engine, userAuth, adminAuth *dt.Auth) error {
 	userGroup := r.Group("/api")
-	userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuth(userAuth)))
+	authOption1, authErr := gindt.WithAuth(userAuth)
+	if authErr != nil {
+	    return authErr
+	}
+	userGroup.Use(gindt.AuthMiddleware(ctx, authOption1))
 
 	adminGroup := r.Group("/admin")
-	adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuth(adminAuth)))
-	adminGroup.Use(gindt.RoleMiddleware(ctx, []string{"admin"}, gindt.WithAuth(adminAuth)))
+	authOption2, authErr := gindt.WithAuth(adminAuth)
+	if authErr != nil {
+	    return authErr
+	}
+	adminGroup.Use(gindt.AuthMiddleware(ctx, authOption2))
+	adminGroup.Use(gindt.RoleMiddleware(ctx, []string{"admin"}, authOption2))
+	return nil
 }
 ```
 

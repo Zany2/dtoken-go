@@ -24,7 +24,7 @@ type DTokenContext struct {
 	managerResolver func(...string) (*manager.Manager, error)
 }
 
-// NewContext creates dtoken context NewContext 创建新的 DToken 上下文
+// NewContext borrows bindings; token extraction and cookie operations require a request adapter, while standalone capabilities may omit the manager. NewContext 借用绑定；Token 提取和 Cookie 操作需要请求适配器，独立能力可不绑定管理器。
 func NewContext(reqCtx adapter.RequestContext, mgr *manager.Manager) *DTokenContext {
 	return &DTokenContext{
 		reqCtx:  reqCtx,
@@ -34,7 +34,10 @@ func NewContext(reqCtx adapter.RequestContext, mgr *manager.Manager) *DTokenCont
 
 // GetTokenValue gets token from current request GetTokenValue 从当前请求读取 Token
 func (c *DTokenContext) GetTokenValue() string {
-	cfg := c.manager.GetConfig()
+	if c.requireRequest() != nil {
+		return ""
+	}
+	cfg := manager.RuntimeConfig(c.manager)
 
 	if cfg.IsReadHeader {
 		// Continue source lookup when the configured header contains no usable token. 配置请求头无法解析出 Token 时继续查找后续来源。
@@ -96,8 +99,22 @@ func (c *DTokenContext) GetManagerResolver() func(...string) (*manager.Manager, 
 	return c.managerResolver
 }
 
-// requireToken returns current token or not-login error requireToken 获取当前 Token，不存在时返回未登录错误
+// requireRequest validates authentication bindings before touching request data. requireRequest 在访问请求数据前校验认证绑定。
+func (c *DTokenContext) requireRequest() error {
+	if c == nil || c.manager.IsClosed() || manager.RuntimeConfig(c.manager) == nil {
+		return derror.ErrManagerNotFound
+	}
+	if isNilBinding(c.reqCtx) {
+		return derror.ErrInvalidParam
+	}
+	return nil
+}
+
+// requireToken validates bindings and returns the current token or a not-login error. requireToken 校验绑定后获取当前 Token，不存在时返回未登录错误。
 func (c *DTokenContext) requireToken() (string, error) {
+	if err := c.requireRequest(); err != nil {
+		return "", err
+	}
 	token := c.GetTokenValue()
 	if token == "" {
 		return "", derror.ErrNotLogin
@@ -129,7 +146,10 @@ func (c *DTokenContext) clearTokenCookie() {
 
 // setCookie writes token cookie with configured options setCookie 按配置写入 Token Cookie
 func (c *DTokenContext) setCookie(value string, maxAge int64) {
-	cfg := c.manager.GetConfig()
+	if c.requireRequest() != nil {
+		return
+	}
+	cfg := manager.RuntimeConfig(c.manager)
 	cookieCfg := cfg.CookieConfig
 	if cookieCfg == nil {
 		c.reqCtx.SetCookie(cfg.TokenName, value, int(maxAge), "/", "", false, true)
@@ -149,7 +169,10 @@ func (c *DTokenContext) setCookie(value string, maxAge int64) {
 
 // tokenCookieMaxAge returns configured cookie max age tokenCookieMaxAge 返回配置的 Cookie 最大有效期
 func (c *DTokenContext) tokenCookieMaxAge() int64 {
-	cfg := c.manager.GetConfig()
+	if c.requireRequest() != nil {
+		return 0
+	}
+	cfg := manager.RuntimeConfig(c.manager)
 	if cfg.CookieConfig == nil {
 		return 0
 	}

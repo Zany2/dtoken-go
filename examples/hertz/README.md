@@ -53,6 +53,8 @@ curl -X POST http://localhost:8080/logout \
 
 ## Key APIs
 
+The middleware fragments below belong in a setup function that returns `error`; propagate binding errors to the caller and stop startup if setup fails.
+
 Build an instance first and keep it open while the server handles requests. These fragments use the handlers and error callbacks from `main.go`.
 
 ```go
@@ -62,7 +64,11 @@ defer authInstance.Close()
 ```
 
 ```go
-h.Use(hertzdt.RegisterDTokenContextMiddleware(ctx, hertzdt.WithAuth(authInstance), hertzdt.WithFailFunc(writeAuthError)))
+authOption1, authErr := hertzdt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+h.Use(hertzdt.RegisterDTokenContextMiddleware(ctx, authOption1, hertzdt.WithFailFunc(writeAuthError)))
 auth.Use(hertzdt.AuthMiddleware(ctx, hertzdt.WithFailFunc(writeAuthError)))
 auth.GET("/admin", hertzdt.RoleMiddleware(ctx, []string{"admin"}, hertzdt.WithFailFunc(writeAuthError)), handleAdmin)
 auth.GET("/articles", hertzdt.PermissionMiddleware(ctx, []string{"article:read"}, hertzdt.WithFailFunc(writeAuthError)), handleArticles)

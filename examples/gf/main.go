@@ -3,6 +3,7 @@ package main
 
 import (
 	dterror "github.com/Zany2/dtoken-go/errors"
+	"log"
 
 	"context"
 	"encoding/json"
@@ -19,22 +20,34 @@ import (
 )
 
 func main() {
-	auth := initDToken()
+	auth, err := initDToken()
+	if err != nil {
+		log.Print(err)
+		return
+	}
 	defer auth.Close()
 
 	s := g.Server()
-	registerRoutes(s, auth)
+	if err := registerRoutes(s, auth); err != nil {
+		log.Print(err)
+		return
+	}
 	s.SetPort(8080)
 	if err := s.Start(); err != nil {
-		panic(err)
+		log.Print(err)
+		return
 	}
 	ghttp.Wait()
 }
 
 // registerRoutes shares the example's middleware and routes with regression tests. registerRoutes 与回归测试共用示例中间件和路由。
-func registerRoutes(s *ghttp.Server, authInstance *dtoken.Auth) {
+func registerRoutes(s *ghttp.Server, authInstance *dtoken.Auth) error {
+	authOption, err := gfdt.WithAuth(authInstance)
+	if err != nil {
+		return err
+	}
 	ctx := context.Background()
-	s.Use(gfdt.RegisterDTokenContextMiddleware(ctx, gfdt.WithAuth(authInstance), gfdt.WithFailFunc(handleAuthFail)))
+	s.Use(gfdt.RegisterDTokenContextMiddleware(ctx, authOption, gfdt.WithFailFunc(handleAuthFail)))
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.POST("/login", handleLogin)
 		group.POST("/refresh", handleRefresh)
@@ -59,22 +72,17 @@ func registerRoutes(s *ghttp.Server, authInstance *dtoken.Auth) {
 		group.GET("/articles", handleArticles)
 		group.GET("/admin", handleAdmin)
 	})
+	return nil
 }
 
 // initDToken builds the Auth instance owned by the application. initDToken 构建由应用管理生命周期的 Auth 实例。
-func initDToken() *dtoken.Auth {
-	auth, err := dtoken.NewBuilder().
+func initDToken() (*dtoken.Auth, error) {
+	return dtoken.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		RefreshTokenTimeout(int64((30 * 24 * time.Hour).Seconds())).
 		IsPrintBanner(false).
 		Build()
-
-	if err != nil {
-		panic(err)
-	}
-
-	return auth
 }
 
 // handleLogin logs in a demo user handleLogin 登录示例用户

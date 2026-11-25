@@ -13,6 +13,7 @@ The global package has been removed. Signatures below belong to the root; login,
 package main
 
 import (
+    "log"
     "context"
     "fmt"
 
@@ -21,15 +22,23 @@ import (
 
 func main() {
     defer dt.CloseAll()
-    dt.NewBuilder().IsPrintBanner(false).MustBuild()
-    dt.NewBuilder().AuthType("user").IsPrintBanner(false).MustBuild()
+    if _, err := dt.NewBuilder().IsPrintBanner(false).Build(); err != nil {
+        log.Print(err)
+        return
+    }
+    if _, err := dt.NewBuilder().AuthType("user").IsPrintBanner(false).Build(); err != nil {
+        log.Print(err)
+        return
+    }
     ctx := context.Background()
     token, err := dt.AuthType("user").Login(ctx, dt.LoginOptions{LoginID: "10001", Device: "web"})
     if err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
     if err := dt.AuthType("user").CheckLogin(ctx, token); err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
     fmt.Println(dt.AuthType("user").IsLogin(ctx, token))
 }
@@ -199,8 +208,7 @@ func GetDisableDeviceAndDeviceIDTTL(ctx context.Context, loginID, device, device
 | `NewBuilder().BuildInstance()` | Create an unregistered instance |
 | `GetManager(authType...)` | Look up the current Manager; omission selects the default |
 | `GetEventManager(authType...)` | Get the selected event manager |
-| `SetAuth(auth) / SetManager(mgr)` | Explicitly register or replace, closing the old engine |
-| `BuildAndSetManager(builder, authType...)` | Advanced build-and-register entry point with explicit replacement |
+| `SetAuth(auth) / SetManager(mgr)` | Return an error for invalid registration; successful replacement closes the old engine |
 | `Close() / AuthType(name).Close()` | Close the default or selected current system |
 | `CloseAll() / DeleteAllManager()` | Close all current registrations |
 | `DeleteManager(authType...)` | Remove and close the selected Manager, reporting lookup errors |

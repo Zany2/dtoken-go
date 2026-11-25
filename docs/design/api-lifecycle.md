@@ -24,9 +24,15 @@ Root LoginOptions and ManagerLoginOptions serve different API levels and are not
 
 ## Instances and engines
 
-Root and framework builders register and return Auth through Build; MustBuild panics on failure. BuildInstance and MustBuildInstance create unregistered instances. Auth.Manager() exposes the shared engine; New(existingManager) creates another facade over that engine, not an independent copy. Closing any wrapper makes every wrapper unavailable. IsClosed reports this state, auth operations return ErrManagerNotFound, and Config, Storage, Codec, and EventManager return nil.
+Root and framework builders register and return Auth through Build. BuildInstance creates unregistered instances. Both return (*Auth, error), leaving failure handling to the caller. Auth.Manager() exposes the shared engine and returns nil once shutdown begins; New(existingManager) creates another facade over that engine, not an independent copy. Starting shutdown through any wrapper makes every wrapper unavailable. IsClosed reports this state, auth operations return ErrManagerNotFound, and Config, Storage, Codec, and EventManager return nil.
 
-Obtain Manager from a built Auth. Its zero value is unsupported. Do not mutate runtime configuration or replace components after serving requests; build another instance instead.
+A fixed Auth keeps its Manager pointer unchanged after construction; an AuthType selector stores only the namespace and resolves the registry on each call. Manager owns shutdown state, with no separate close flag in Auth. Repeated Close calls, including calls through different fixed facades, wait for the same engine cleanup to finish.
+
+An advanced Manager retained before shutdown follows the same business-call contract: once shutdown starts, login, validation, authorization, Session, terminal, disable, and refresh-token methods return `ErrManagerNotFound`, or `false` for boolean checks. This check precedes argument validation and storage access. Internal maintenance accepted before shutdown still completes, including disable-state rechecks and renewal events, before resources are released. Synchronous requests remain application-managed and must be drained before closing; the entry check does not wait for in-flight calls. Configuration and strategy snapshots remain inspectable, but component getters do not extend resource lifetimes.
+
+Obtain Manager from a built Auth. Its zero value is unsupported. Manager.GetConfig() and Auth.Config() return independent snapshots; AuthType, KeyPrefix, and other configuration are fixed at construction. To change configuration, build a new instance and replace the old one according to the lifecycle contract.
+
+`Manager.GetStrategy()` also returns a snapshot. Changing it cannot replace live Session creation, permission matching, or role matching. Supply custom hooks through `WithStrategy` during construction. Captured closure state is not copied; its concurrency safety remains the caller's responsibility.
 
 ## Resource ownership
 
@@ -79,13 +85,15 @@ err = dtoken.AuthType("user").CheckLogin(ctx, token)
 
 - A builder without AuthType registers the default `auth:` namespace. Package functions such as `dtoken.Login` and `dtoken.IsLogin` always use that namespace and match the Auth method signatures.
 - `dtoken.AuthType("user")` is a selector that resolves the registry on every operation, including after explicit replacement. Missing names return ErrManagerNotFound or false for boolean checks; they never fall back to the default.
-- Root and Auth operations ignore the AuthType option field for routing. That field is retained for source compatibility; select the engine through AuthType(name) or a fixed Auth instance.
+- Operation options contain business parameters and have no AuthType field. Select the engine through root default calls, AuthType(name), or a fixed Auth instance.
 - Duplicate Build calls return `errors.ErrManagerAlreadyRegistered` and preserve the original instance. Only one concurrent build wins; a losing assembled candidate closes its owned resources. Mark shared components as caller-owned.
-- For explicit replacement, use BuildInstance followed by dtoken.SetAuth. SetAuth, SetManager and BuildAndSetManager perform explicit replacement and close the old engine. Setting the same instance again does not close it.
-- Instance Close immediately removes entries still pointing to its engine before closing it. Closing an old instance cannot remove its replacement.
+- For explicit replacement, use BuildInstance followed by dtoken.SetAuth. SetAuth and SetManager return an error for invalid registration; successful replacement closes the old engine. Setting the same instance again does not close it.
+- Instance Close marks its shared engine as closing and removes entries still pointing to it, then waits for resource cleanup. Closing an old instance cannot remove its replacement.
 - `dtoken.Close()` closes the default namespace; `dtoken.AuthType("user").Close()` closes the current user namespace; `dtoken.CloseAll()` closes all current registered instances. Repeated calls are safe. CloseAll excludes unregistered instances and does not prevent later builds.
 
-WithAuth binds a concrete engine and does not follow replacement. WithManagerResolver(dtoken.GetManager) selects through the registry per request. An established request scope retains its original engine. Coordinate routing and drain requests before closing the old engine.
+The registry retains a write mutex for registration, replacement, and removal; ordinary lookups do not acquire it. Replacement and removal mark old managers as closing and reject new async tasks before releasing the registry lock. Accepted tasks and listeners are drained and resources released outside that lock. There is no separate retiring set: each engine's shutdown state prevents its registration again.
+
+WithAuth binds a concrete engine and does not follow replacement. WithManagerResolver(dtoken.GetManager) selects through the registry per request. An established request scope retains its original engine. Coordinate routing and drain requests before replacing or closing the old engine; registry locking and shutdown flags do not wait for in-flight synchronous operations.
 
 Migration: remove redundant SetAuth after Build; change builds that require independent instances with the same namespace to BuildInstance. Obtain the advanced Manager with auth.Manager(). Closing instances and the registry follows shared ownership; individual Close calls do not require an additional CloseAll.
 
@@ -99,7 +107,11 @@ The bundled capability packages implement these interfaces with compile-time ass
 
 Capabilities accepts custom implementations. Missing and typed-nil bindings retain disabled-module errors or false for boolean checks. The request-context method `dCtx.WithCapabilities(nil)` preserves bindings; `dCtx.WithCapabilities(&requestcontext.Capabilities{})` clears them. Framework options instead take a value, for example `gindt.WithCapabilities(requestcontext.Capabilities{Nonce: service})`. Rebinding a request adapter preserves services, while switching authentication instances clears capability bindings.
 
-Standalone Service lifetimes are caller-managed. Supplying an Auth as the event emitter establishes event delivery only; callers must keep borrowed storage and codecs available. HTTP middleware additionally validates the bound engine lifecycle.
+Standalone Service lifetimes are caller-managed. Supplying an Auth as the event emitter establishes event delivery only; callers must keep borrowed storage and codecs available. When DTokenContext has a bound Manager, direct Nonce, OAuth2, Ticket, and ShortKey operations also return ErrManagerNotFound once shutdown starts, or false for boolean checks. A context without a Manager can still use explicitly bound standalone capability services. Capability operations requiring the current login identity still need valid authentication bindings.
+
+Operations that read the current request token or access cookies require an open Manager and a valid request adapter: a missing or closed Manager returns ErrManagerNotFound; a missing adapter, including a typed nil, returns ErrInvalidParam. Token extraction without an error result returns an empty string, boolean authentication checks return false, and direct cookie writes do nothing. Cookie login validates bindings before writing authentication state. Operations using explicit parameters, such as Auth.Login and Refresh, only require an open Manager; they do not require a request adapter.
+
+Ticket and ShortKey compare AuthType using the same identity as storage keys: `user` and `user:` are equivalent, and existing payloads need no migration. Creation results retain the caller's AuthType spelling. Comparison ignores only one trailing colon, preserving whitespace and other distinct names. When composing capabilities, prefer AuthType and KeyPrefix from Auth.Config().
 
 Contracts and bundled capabilities remain part of the root module release. This separates package dependencies and runtime composition without adding separate versions or a dynamic plugin mechanism.
 
@@ -110,6 +122,7 @@ Contracts and bundled capabilities remain part of the root module release. This 
 package main
 
 import (
+    "log"
 	"fmt"
 	"github.com/Zany2/dtoken-go"
 )
@@ -117,7 +130,8 @@ import (
 func main() {
 	auth, err := dtoken.NewBuilder().IsPrintBanner(false).Build()
 	if err != nil {
-		panic(err)
+		log.Print(err)
+		return
 	}
 	defer auth.Close()
 	shared := dtoken.New(auth.Manager())
@@ -135,6 +149,7 @@ This example drains HTTP handlers before deferred CloseAll runs. Applications wi
 package main
 
 import (
+    "log"
     "context"
     "errors"
     "net/http"
@@ -146,7 +161,10 @@ import (
 )
 
 func main() {
-    dtoken.NewBuilder().IsPrintBanner(false).MustBuild()
+    if _, err := dtoken.NewBuilder().IsPrintBanner(false).Build(); err != nil {
+        log.Print(err)
+        return
+    }
     defer dtoken.CloseAll()
 
     stopped, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -166,10 +184,12 @@ func main() {
     case <-stopped.Done():
     }
     if err := server.Shutdown(context.Background()); err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
     if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-        panic(serveErr)
+        log.Print(serveErr)
+        return
     }
 }
 ```

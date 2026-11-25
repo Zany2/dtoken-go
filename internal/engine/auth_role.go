@@ -11,6 +11,10 @@ import (
 
 // AddRoles adds roles to a user AddRoles 为用户添加角色。
 func (m *Manager) AddRoles(ctx context.Context, loginID string, roles []string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	return m.mutateAccessByLoginID(ctx, loginID, roles, accessChange{
 		apply:  sessionAddRoles,
 		event:  listener.EventRoleChange,
@@ -21,6 +25,10 @@ func (m *Manager) AddRoles(ctx context.Context, loginID string, roles []string) 
 
 // AddRolesByToken adds roles to a user by token AddRolesByToken 根据 Token 为用户添加角色。
 func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles []string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	return m.mutateAccessByToken(ctx, tokenValue, roles, accessChange{
 		apply:  sessionAddRoles,
 		event:  listener.EventRoleChange,
@@ -31,6 +39,10 @@ func (m *Manager) AddRolesByToken(ctx context.Context, tokenValue string, roles 
 
 // RemoveRoles removes roles from a user RemoveRoles 删除用户的指定角色。
 func (m *Manager) RemoveRoles(ctx context.Context, loginID string, roles []string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	return m.mutateAccessByLoginID(ctx, loginID, roles, accessChange{
 		apply:  sessionRemoveRoles,
 		event:  listener.EventRoleChange,
@@ -41,6 +53,10 @@ func (m *Manager) RemoveRoles(ctx context.Context, loginID string, roles []strin
 
 // RemoveRolesByToken removes roles from a user by token RemoveRolesByToken 根据 Token 删除用户的指定角色。
 func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, roles []string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	return m.mutateAccessByToken(ctx, tokenValue, roles, accessChange{
 		apply:  sessionRemoveRoles,
 		event:  listener.EventRoleChange,
@@ -51,6 +67,10 @@ func (m *Manager) RemoveRolesByToken(ctx context.Context, tokenValue string, rol
 
 // GetRoles retrieves the role list for a user GetRoles 获取用户的角色列表。
 func (m *Manager) GetRoles(ctx context.Context, loginID string) ([]string, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID
 	if loginID == "" {
 		return nil, derror.ErrIDIsEmpty
@@ -62,6 +82,10 @@ func (m *Manager) GetRoles(ctx context.Context, loginID string) ([]string, error
 
 // GetRolesByToken retrieves the role list by token GetRolesByToken 根据 Token 获取角色列表
 func (m *Manager) GetRolesByToken(ctx context.Context, tokenValue string) ([]string, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	// Validate token and load context 校验 Token 并加载上下文
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
@@ -79,6 +103,10 @@ func (m *Manager) GetRolesByToken(ctx context.Context, tokenValue string) ([]str
 
 // HasRole checks if a user has a specific role HasRole 检查用户是否拥有指定角色。
 func (m *Manager) HasRole(ctx context.Context, loginID string, role string) bool {
+	if m.IsClosed() {
+		return false
+	}
+
 	// Validate required parameters 校验必要参数
 	if loginID == "" || role == "" {
 		return false
@@ -105,6 +133,10 @@ func (m *Manager) HasRole(ctx context.Context, loginID string, role string) bool
 
 // HasRoleByToken checks if a user has a specific role by token HasRoleByToken 根据 Token 检查用户是否拥有指定角色。
 func (m *Manager) HasRoleByToken(ctx context.Context, tokenValue string, role string) bool {
+	if m.IsClosed() {
+		return false
+	}
+
 	// Validate role 校验角色
 	if role == "" {
 		return false
@@ -146,6 +178,10 @@ func (m *Manager) HasRoleByToken(ctx context.Context, tokenValue string, role st
 
 // HasRolesAnd checks if a user has all specified roles HasRolesAnd 检查用户是否拥有全部指定角色。
 func (m *Manager) HasRolesAnd(ctx context.Context, loginID string, roles []string) bool {
+	if m.IsClosed() {
+		return false
+	}
+
 	// Validate login ID 校验登录 ID
 	if loginID == "" {
 		return false
@@ -173,6 +209,10 @@ func (m *Manager) HasRolesAnd(ctx context.Context, loginID string, roles []strin
 
 // HasRolesAndByToken checks if a token user has all specified roles HasRolesAndByToken 根据 Token 检查全部角色。
 func (m *Manager) HasRolesAndByToken(ctx context.Context, tokenValue string, roles []string) bool {
+	if m.IsClosed() {
+		return false
+	}
+
 	// Validate token and load context 校验 Token 并加载上下文
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
@@ -210,6 +250,10 @@ func (m *Manager) HasRolesAndByToken(ctx context.Context, tokenValue string, rol
 
 // HasRolesOr checks if a user has any specified role HasRolesOr 检查用户是否拥有任一指定角色
 func (m *Manager) HasRolesOr(ctx context.Context, loginID string, roles []string) bool {
+	if m.IsClosed() {
+		return false
+	}
+
 	// Validate login ID 校验登录 ID
 	if loginID == "" {
 		return false
@@ -237,6 +281,10 @@ func (m *Manager) HasRolesOr(ctx context.Context, loginID string, roles []string
 
 // HasRolesOrByToken checks if a token user has any specified role HasRolesOrByToken 根据 Token 检查任一角色
 func (m *Manager) HasRolesOrByToken(ctx context.Context, tokenValue string, roles []string) bool {
+	if m.IsClosed() {
+		return false
+	}
+
 	// Validate token and load context 校验 Token 并加载上下文
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
@@ -274,6 +322,10 @@ func (m *Manager) HasRolesOrByToken(ctx context.Context, tokenValue string, role
 
 // CheckRole checks if a user has a specific role CheckRole 校验用户是否拥有指定角色
 func (m *Manager) CheckRole(ctx context.Context, loginID string, role string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -307,6 +359,10 @@ func (m *Manager) CheckRole(ctx context.Context, loginID string, role string) er
 
 // CheckRoleByToken checks if a token user has a specific role CheckRoleByToken 根据 Token 校验用户是否拥有指定角色
 func (m *Manager) CheckRoleByToken(ctx context.Context, tokenValue string, role string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate role is not empty 校验角色不为空。
 	if role == "" {
 		return derror.ErrInvalidParam
@@ -349,6 +405,10 @@ func (m *Manager) CheckRoleByToken(ctx context.Context, tokenValue string, role 
 
 // CheckRoleAnd checks if a user has all specified roles CheckRoleAnd 校验用户是否拥有全部角色
 func (m *Manager) CheckRoleAnd(ctx context.Context, loginID string, roles []string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -378,44 +438,30 @@ func (m *Manager) CheckRoleAnd(ctx context.Context, loginID string, roles []stri
 
 // CheckRoleAndByToken checks if a token user has all specified roles CheckRoleAndByToken 根据 Token 校验用户是否拥有全部角色
 func (m *Manager) CheckRoleAndByToken(ctx context.Context, tokenValue string, roles []string) error {
-	// Validate token and load context 校验 Token 并加载上下文
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
+	// Validate once and share access matching with combined checks. 单次校验，并与组合检查共用权限匹配逻辑。
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
 		return err
 	}
-
-	// Build access subject 构建访问主体
-	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
-
-	// Load roles by token 根据 Token 加载角色
-	roleList, err := m.loadRoles(ctx, sess.Roles, AccessSubject{
-		LoginID:  sess.LoginID,
-		Device:   device,
-		DeviceID: deviceID,
+	return m.checkRoleList(ctx, AccessSubject{
+		AuthType: m.config.AuthType,
+		LoginID:  tokenInfo.LoginID,
+		Device:   tokenInfo.Device,
+		DeviceID: tokenInfo.DeviceID,
 		Token:    tokenValue,
-	})
-	if err != nil {
-		return err
-	}
-
-	// Calculate AND result 计算 AND 结果
-	hasAll := m.hasAllRoles(roleList, roles)
-
-	// Trigger role check event 触发角色校验事件
-	m.triggerEvent(listener.EventRoleCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
-		listener.ExtraKeyRoles:  roles,
-		listener.ExtraKeyLogic:  listener.LogicAnd,
-		listener.ExtraKeyResult: hasAll,
-	})
-
-	if !hasAll {
-		return derror.ErrRoleDenied
-	}
-	return nil
+	}, sess.Roles, roles, true)
 }
 
 // CheckRoleOr checks if a user has any specified role CheckRoleOr 校验用户是否拥有任一角色
 func (m *Manager) CheckRoleOr(ctx context.Context, loginID string, roles []string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -445,45 +491,27 @@ func (m *Manager) CheckRoleOr(ctx context.Context, loginID string, roles []strin
 
 // CheckRoleOrByToken checks if a token user has any specified role CheckRoleOrByToken 根据 Token 校验用户是否拥有任一角色
 func (m *Manager) CheckRoleOrByToken(ctx context.Context, tokenValue string, roles []string) error {
-	// Validate token and load context 校验 Token 并加载上下文
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
+	// Validate once and share access matching with combined checks. 单次校验，并与组合检查共用权限匹配逻辑。
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
 		return err
 	}
-
-	// Build access subject 构建访问主体
-	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
-
-	// Load roles by token 根据 Token 加载角色
-	roleList, err := m.loadRoles(ctx, sess.Roles, AccessSubject{
-		LoginID:  sess.LoginID,
-		Device:   device,
-		DeviceID: deviceID,
+	return m.checkRoleList(ctx, AccessSubject{
+		AuthType: m.config.AuthType,
+		LoginID:  tokenInfo.LoginID,
+		Device:   tokenInfo.Device,
+		DeviceID: tokenInfo.DeviceID,
 		Token:    tokenValue,
-	})
-	if err != nil {
-		return err
-	}
-
-	// Calculate OR result 计算 OR 结果
-	hasAny := m.hasAnyRole(roleList, roles)
-
-	// Trigger role check event 触发角色校验事件
-	m.triggerEvent(listener.EventRoleCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
-		listener.ExtraKeyRoles:  roles,
-		listener.ExtraKeyLogic:  listener.LogicOr,
-		listener.ExtraKeyResult: hasAny,
-	})
-
-	if !hasAny {
-		return derror.ErrRoleDenied
-	}
-	return nil
+	}, sess.Roles, roles, false)
 }
 
 // hasRoleInList checks whether role exists hasRoleInList 检查角色是否存在。
 func (m *Manager) hasRoleInList(roles []string, role string) bool {
-	matcher := m.strategy.normalize().RoleMatcher
+	matcher := m.strategy.RoleMatcher
 
 	// Check each role 逐个检查角色。
 	for _, r := range roles {

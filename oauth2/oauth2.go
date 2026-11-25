@@ -92,43 +92,39 @@ type OAuth2Server struct {
 	storage           adapter.Storage // Storage adapter (Redis, Memory, etc.) 存储适配器（如 Redis、Memory）
 }
 
-// NewDefaultOAuth2Server creates OAuth2 server with default config NewDefaultOAuth2Server 使用默认配置创建 OAuth2 服务端
-func NewDefaultOAuth2Server(authType, prefix string, storage adapter.Storage, serializer adapter.Codec) *OAuth2Server {
+// NewDefaultOAuth2Server creates a validated OAuth2Server or returns a configuration/component error. NewDefaultOAuth2Server 创建已校验实例，配置或组件无效时返回错误。
+func NewDefaultOAuth2Server(authType, prefix string, storage adapter.Storage, serializer adapter.Codec) (*OAuth2Server, error) {
 	return NewOAuth2ServerWithConfig(authType, prefix, storage, serializer, DefaultConfig())
 }
 
-// NewOAuth2ServerWithConfig creates OAuth2 server with config NewOAuth2ServerWithConfig 使用配置创建 OAuth2 服务端
-func NewOAuth2ServerWithConfig(authType, prefix string, storage adapter.Storage, serializer adapter.Codec, cfg *Config) *OAuth2Server {
+// NewOAuth2ServerWithConfig validates config and components; nil config uses defaults. NewOAuth2ServerWithConfig 校验配置及组件，nil 配置使用默认值。
+func NewOAuth2ServerWithConfig(authType, prefix string, storage adapter.Storage, serializer adapter.Codec, cfg *Config) (*OAuth2Server, error) {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
-
-	codeExpiration := cfg.CodeExpiration
-	if codeExpiration <= 0 {
-		codeExpiration = DefaultCodeExpiration
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrInvalidParam, err)
 	}
-	tokenExpiration := cfg.TokenExpiration
-	if tokenExpiration <= 0 {
-		tokenExpiration = DefaultTokenExpiration
+	if utils.IsNil(storage) {
+		return nil, fmt.Errorf("%w: storage is required", derror.ErrInvalidParam)
 	}
-	refreshExpiration := cfg.RefreshExpiration
-	if refreshExpiration <= 0 {
-		refreshExpiration = DefaultRefreshTTL
+	if utils.IsNil(serializer) {
+		return nil, fmt.Errorf("%w: codec is required", derror.ErrInvalidParam)
 	}
 
 	return &OAuth2Server{
 		authType:          authType,
 		keyPrefix:         prefix,
-		codeExpiration:    codeExpiration,
-		tokenExpiration:   tokenExpiration,
-		refreshExpiration: refreshExpiration,
 		storage:           storage,
 		serializer:        serializer,
-	}
+		codeExpiration:    cfg.CodeExpiration,
+		tokenExpiration:   cfg.TokenExpiration,
+		refreshExpiration: cfg.RefreshExpiration,
+	}, nil
 }
 
-// NewOAuth2Server Creates a new OAuth2 server 创建新的OAuth2服务器
-func NewOAuth2Server(authType, prefix string, storage adapter.Storage, serializer adapter.Codec) *OAuth2Server {
+// NewOAuth2Server creates a validated OAuth2Server or returns a configuration/component error. NewOAuth2Server 创建已校验实例，配置或组件无效时返回错误。
+func NewOAuth2Server(authType, prefix string, storage adapter.Storage, serializer adapter.Codec) (*OAuth2Server, error) {
 	return NewDefaultOAuth2Server(authType, prefix, storage, serializer)
 }
 

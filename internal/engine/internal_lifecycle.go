@@ -19,13 +19,12 @@ type managerBackground struct {
 
 // managerRuntime holds shutdown ownership and per-instance background work. managerRuntime 持有关闭所有权及实例级后台任务。
 type managerRuntime struct {
-	asyncMu     sync.Mutex         // asyncMu serializes async task admission and shutdown. asyncMu 串行化异步任务接收与关闭。
-	asyncWG     sync.WaitGroup     // asyncWG waits for accepted async tasks. asyncWG 等待已接收的异步任务完成。
-	asyncClosed bool               // asyncClosed rejects new async tasks during shutdown. asyncClosed 在关闭期间拒绝新的异步任务。
-	closed      atomic.Bool        // closed reports whether manager shutdown has started. closed 标记 Manager 是否已开始关闭。
-	closeOnce   sync.Once          // closeOnce releases manager resources once. closeOnce 确保资源只释放一次。
-	ownership   ComponentOwnership // ownership records which runtime components are manager-owned. ownership 记录由 Manager 持有的运行时组件。
-	background  *managerBackground // background is guarded by asyncMu. background 由 asyncMu 保护。
+	asyncMu    sync.Mutex         // asyncMu serializes async task admission and shutdown. asyncMu 串行化异步任务接收与关闭。
+	asyncWG    sync.WaitGroup     // asyncWG waits for accepted async tasks. asyncWG 等待已接收的异步任务完成。
+	closed     atomic.Bool        // closed reports whether manager shutdown has started. closed 标记 Manager 是否已开始关闭。
+	closeOnce  sync.Once          // closeOnce releases manager resources once. closeOnce 确保资源只释放一次。
+	ownership  ComponentOwnership // ownership records which runtime components are manager-owned. ownership 记录由 Manager 持有的运行时组件。
+	background *managerBackground // background is guarded by asyncMu. background 由 asyncMu 保护。
 }
 
 // StartRenewPoolStatusLogger starts renew pool status logging. StartRenewPoolStatusLogger 启动续期池状态日志。
@@ -38,7 +37,7 @@ func (m *Manager) StartRenewPoolStatusLogger(interval time.Duration) {
 	// Serialize logger startup with manager shutdown. 将状态日志启动与 Manager 关闭流程串行化。
 	m.asyncMu.Lock()
 	defer m.asyncMu.Unlock()
-	if m.asyncClosed || m.pool == nil || m.logger == nil {
+	if m.closed.Load() || m.pool == nil || m.logger == nil {
 		return
 	}
 
@@ -109,19 +108,26 @@ func (m *Manager) stopBackgroundTasks() {
 	background.wg.Wait()
 }
 
-// CloseManager rejects new async work, waits for accepted tasks and releases owned resources; stop request producers first and call outside manager tasks and listeners to avoid self-deadlock. CloseManager 拒绝新异步任务，等待已接收任务并释放自有资源；须先停止请求生产方，并在 Manager 任务和监听器之外调用，避免等待自身。
+// BeginClose marks the engine unavailable and rejects new tasks without waiting; registry callers must finish cleanup with CloseManager outside their lock. BeginClose 标记引擎不可用并拒绝新任务，不等待任务结束；注册表调用方须在锁外调用 CloseManager 完成资源释放。
+func BeginClose(m *Manager) {
+	if m == nil {
+		return
+	}
+
+	// Serialize the shutdown boundary with task admission before any wait begins. 在开始等待前，将关闭边界与任务接收串行化。
+	m.asyncMu.Lock()
+	m.closed.Store(true)
+	m.asyncMu.Unlock()
+}
+
+// CloseManager rejects new business calls and async work, waits for accepted tasks and releases owned resources; drain requests first and call outside manager tasks and listeners to avoid self-deadlock. CloseManager 拒绝新业务调用和异步任务，等待已接收任务并释放自有资源；须先排空请求，并在 Manager 任务和监听器之外调用，避免等待自身。
 func (m *Manager) CloseManager() {
 	if m == nil {
 		return
 	}
-	m.closed.Store(true)
+	BeginClose(m)
 
 	m.closeOnce.Do(func() {
-		// Reject new async tasks before releasing runtime dependencies. 释放运行时依赖前拒绝新的异步任务。
-		m.asyncMu.Lock()
-		m.asyncClosed = true
-		m.asyncMu.Unlock()
-
 		m.stopBackgroundTasks()
 
 		// Wait for this manager's accepted tasks even when the pool is caller-owned. 即使协程池由调用方持有，也等待当前 Manager 已接收的任务。
@@ -152,7 +158,7 @@ func (m *Manager) CloseManager() {
 func (m *Manager) submitAsync(name string, task func()) bool {
 	// Register the task unless manager shutdown has started. Manager 开始关闭后不再接收新任务。
 	m.asyncMu.Lock()
-	if m.asyncClosed {
+	if m.closed.Load() {
 		m.asyncMu.Unlock()
 		return false
 	}

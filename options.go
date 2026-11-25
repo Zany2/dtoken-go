@@ -9,8 +9,6 @@ import (
 
 // LoginOptions describes a typed login request. LoginOptions 描述类型化登录请求。
 type LoginOptions struct {
-	// AuthType is retained for source compatibility and does not select an engine; use AuthType(name) or a fixed Auth instance. AuthType 为源码兼容保留，不选择引擎；请通过 AuthType(name) 或固定 Auth 实例选择体系。
-	AuthType string
 	// LoginID stores the subject id. LoginID 存储主体 ID。
 	LoginID string
 	// Device stores the device type. Device 存储设备类型。
@@ -49,8 +47,6 @@ type RefreshTokenOptions struct {
 
 // LogoutOptions describes a typed logout or terminal operation. LogoutOptions 描述类型化登出或终端操作。
 type LogoutOptions struct {
-	// AuthType is retained for source compatibility and does not select an engine; use AuthType(name) or a fixed Auth instance. AuthType 为源码兼容保留，不选择引擎；请通过 AuthType(name) 或固定 Auth 实例选择体系。
-	AuthType string
 	// LoginID stores the subject id. LoginID 存储主体 ID。
 	LoginID string
 	// Token stores the target token. Token 存储目标 Token。
@@ -66,8 +62,6 @@ type TerminateOptions = LogoutOptions
 
 // DisableOptions describes an account disable request. DisableOptions 描述账号封禁请求。
 type DisableOptions struct {
-	// AuthType is retained for source compatibility and does not select an engine; use AuthType(name) or a fixed Auth instance. AuthType 为源码兼容保留，不选择引擎；请通过 AuthType(name) 或固定 Auth 实例选择体系。
-	AuthType string
 	// LoginID stores the subject id. LoginID 存储主体 ID。
 	LoginID string
 	// Duration stores disable duration. Duration 存储封禁时长。
@@ -78,8 +72,6 @@ type DisableOptions struct {
 
 // ServiceDisableOptions describes a service-scoped disable request. ServiceDisableOptions 描述服务维度封禁请求。
 type ServiceDisableOptions struct {
-	// AuthType is retained for source compatibility and does not select an engine; use AuthType(name) or a fixed Auth instance. AuthType 为源码兼容保留，不选择引擎；请通过 AuthType(name) 或固定 Auth 实例选择体系。
-	AuthType string
 	// LoginID stores the subject id. LoginID 存储主体 ID。
 	LoginID string
 	// Service stores disabled service name. Service 存储被封禁服务名。
@@ -94,8 +86,6 @@ type ServiceDisableOptions struct {
 
 // DeviceDisableOptions describes a device-scoped disable request. DeviceDisableOptions 描述设备维度封禁请求。
 type DeviceDisableOptions struct {
-	// AuthType is retained for source compatibility and does not select an engine; use AuthType(name) or a fixed Auth instance. AuthType 为源码兼容保留，不选择引擎；请通过 AuthType(name) 或固定 Auth 实例选择体系。
-	AuthType string
 	// LoginID stores the subject id. LoginID 存储主体 ID。
 	LoginID string
 	// Device stores disabled device type. Device 存储被封禁设备类型。
@@ -110,8 +100,6 @@ type DeviceDisableOptions struct {
 
 // PermissionOptions describes permission mutations and checks. PermissionOptions 描述权限变更和校验。
 type PermissionOptions struct {
-	// AuthType is retained for source compatibility and does not select an engine; use AuthType(name) or a fixed Auth instance. AuthType 为源码兼容保留，不选择引擎；请通过 AuthType(name) 或固定 Auth 实例选择体系。
-	AuthType string
 	// LoginID stores the subject id. LoginID 存储主体 ID。
 	LoginID string
 	// Token stores the target token. Token 存储目标 Token。
@@ -124,8 +112,6 @@ type PermissionOptions struct {
 
 // RoleOptions describes role mutations and checks. RoleOptions 描述角色变更和校验。
 type RoleOptions struct {
-	// AuthType is retained for source compatibility and does not select an engine; use AuthType(name) or a fixed Auth instance. AuthType 为源码兼容保留，不选择引擎；请通过 AuthType(name) 或固定 Auth 实例选择体系。
-	AuthType string
 	// LoginID stores the subject id. LoginID 存储主体 ID。
 	LoginID string
 	// Token stores the target token. Token 存储目标 Token。

@@ -7,7 +7,6 @@ import (
 	"github.com/Zany2/dtoken-go"
 	adapter "github.com/Zany2/dtoken-go/contract"
 	derror "github.com/Zany2/dtoken-go/errors"
-	"github.com/Zany2/dtoken-go/internal/defaults"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"testing"
@@ -18,7 +17,9 @@ import (
 func TestProductionConfiguration(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	initDToken()
+	if _, err := initDToken(); err != nil {
+		t.Fatal(err)
+	}
 	mgr, err := dtoken.GetManager()
 	if err != nil {
 		t.Fatal(err)
@@ -70,17 +71,21 @@ func TestProductionRouteFailures(t *testing.T) {
 
 	dtoken.DeleteAllManager()
 	check(http.MethodGet, "/me", "", token, http.StatusInternalServerError)
-	base, err := defaults.NewBuilder().AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).Build()
+	baseAuth, err := dtoken.NewBuilder().AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	base := baseAuth.Manager()
 	t.Cleanup(base.CloseManager)
-	mgr, err := defaults.NewBuilder().Storage(&quickStartFailingStorage{Storage: base.GetStorage()}).
-		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).Build()
+	mgrAuth, err := dtoken.NewBuilder().Storage(&quickStartFailingStorage{Storage: base.GetStorage()}).
+		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
-	dtoken.SetManager(mgr)
+	mgr := mgrAuth.Manager()
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	router = gin.New()
 	registerTestRoutes(router)
 	check(http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "", http.StatusInternalServerError)

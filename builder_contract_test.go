@@ -1,5 +1,5 @@
 // @Author daixk 2026/08/31
-package builder
+package dtoken
 
 import (
 	"errors"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/Zany2/dtoken-go/config"
 	adapter "github.com/Zany2/dtoken-go/contract"
+	corebuilder "github.com/Zany2/dtoken-go/internal/builder"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
 )
 
@@ -54,6 +55,7 @@ func TestBuilderCloneCopiesMutableState(t *testing.T) {
 	clone := original.Clone()
 
 	clone.AuthType("clone").CookiePath("/clone")
+	clone.LoggerPrefix("clone").RenewPoolMaxSize(original.GetRenewPoolConfig().MaxSize + 1)
 	clone.UseManagerOption(func(_ *manager.Manager) {})
 
 	if original.GetConfig().AuthType != "original:" || original.GetConfig().CookieConfig.Path != "/original" {
@@ -64,6 +66,9 @@ func TestBuilderCloneCopiesMutableState(t *testing.T) {
 	}
 	if len(original.managerOptions) != 1 || len(clone.managerOptions) != 2 {
 		t.Fatalf("manager option lengths = %d %d, want 1 2", len(original.managerOptions), len(clone.managerOptions))
+	}
+	if original.GetLoggerConfig().Prefix == "clone" || original.GetRenewPoolConfig().MaxSize == clone.GetRenewPoolConfig().MaxSize {
+		t.Fatal("clone mutated the original component configuration")
 	}
 }
 
@@ -104,7 +109,7 @@ func TestBuildIsolatesFactoryConfigs(t *testing.T) {
 			return &testPool{}, nil
 		})
 
-	mgr, err := b.Build()
+	mgr, err := b.buildManager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -191,7 +196,7 @@ func TestNegativeDurationCannotBecomeNoLimit(t *testing.T) {
 				IsPrintBanner(false).
 				AutoRenew(false).
 				RefreshTokenTimeoutDuration(duration).
-				Build()
+				buildManager()
 			if err == nil {
 				t.Fatalf("Build() accepted negative duration %s as unlimited", duration)
 			}
@@ -205,51 +210,23 @@ func TestNegativeDurationCannotBecomeNoLimit(t *testing.T) {
 // TestBuildRejectsMissingComponentsByStage verifies required components fail at the correct stage. TestBuildRejectsMissingComponentsByStage 验证缺失组件会在对应阶段失败。
 func TestBuildRejectsMissingComponentsByStage(t *testing.T) {
 	tests := []struct {
-		name  string
-		build func() (*manager.Manager, error)
-		want  string
+		name       string
+		components Components
+		want       string
 	}{
-		{
-			name: "generator",
-			build: func() (*manager.Manager, error) {
-				return NewBuilder().IsPrintBanner(false).Build()
-			},
-			want: "token generator is missing",
-		},
-		{
-			name: "storage",
-			build: func() (*manager.Manager, error) {
-				return NewBuilder().IsPrintBanner(false).SetGenerator(&testGenerator{}).Build()
-			},
-			want: "storage adapter is missing",
-		},
-		{
-			name: "codec",
-			build: func() (*manager.Manager, error) {
-				return NewBuilder().IsPrintBanner(false).SetGenerator(&testGenerator{}).Storage(&testStorage{}).Build()
-			},
-			want: "codec adapter is missing",
-		},
-		{
-			name: "logger",
-			build: func() (*manager.Manager, error) {
-				return NewBuilder().IsPrintBanner(false).IsLog(true).SetGenerator(&testGenerator{}).Storage(&testStorage{}).SetCodec(&testCodec{}).Build()
-			},
-			want: "log adapter is missing",
-		},
+		{name: "generator", want: "token generator is missing"},
+		{name: "storage", components: Components{Generator: &testGenerator{}}, want: "storage adapter is missing"},
+		{name: "codec", components: Components{Generator: &testGenerator{}, Storage: &testStorage{}}, want: "codec adapter is missing"},
+		{name: "logger", components: Components{Generator: &testGenerator{}, Storage: &testStorage{}, Codec: &testCodec{}}, want: "log adapter is missing"},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mgr, err := tt.build()
-			if err == nil {
-				t.Fatal("Build() error = nil, want missing component error")
-			}
-			if mgr != nil {
-				t.Fatal("Build() returned manager on missing component")
-			}
-			if !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("Build() error = %q, want %q", err, tt.want)
+			cfg := config.DefaultConfig()
+			cfg.IsPrintBanner = false
+			cfg.IsLog = true
+			mgr, err := corebuilder.Build(cfg, tt.components, ComponentFactories{}, nil)
+			if mgr != nil || err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Build() = (%v, %v), want missing component error %q", mgr, err, tt.want)
 			}
 		})
 	}
@@ -270,7 +247,7 @@ func TestBuildPoolFactoryFollowsAutoRenew(t *testing.T) {
 		})
 
 	b.AutoRenew(false)
-	withoutRenew, err := b.Build()
+	withoutRenew, err := b.buildManager()
 	if err != nil {
 		t.Fatalf("Build() with AutoRenew(false) error = %v", err)
 	}
@@ -280,7 +257,7 @@ func TestBuildPoolFactoryFollowsAutoRenew(t *testing.T) {
 	withoutRenew.CloseManager()
 
 	b.AutoRenew(true)
-	withRenew, err := b.Build()
+	withRenew, err := b.buildManager()
 	if err != nil {
 		t.Fatalf("Build() with AutoRenew(true) error = %v", err)
 	}
@@ -304,7 +281,7 @@ func TestBuildClosesFactoryStorageOnLaterFailure(t *testing.T) {
 		SetCodecFactory(func(_ *config.Config) (adapter.Codec, error) {
 			return nil, sentinel
 		}).
-		Build()
+		buildManager()
 
 	if mgr != nil {
 		t.Fatal("Build() returned manager after codec factory failure")
@@ -337,7 +314,7 @@ func TestBuildClosesFactoryResourcesOnPoolFailure(t *testing.T) {
 		SetPoolFactory(func(_ *config.Config) (adapter.Pool, error) {
 			return nil, sentinel
 		}).
-		Build()
+		buildManager()
 
 	if mgr != nil {
 		t.Fatal("Build() returned manager after pool factory failure")

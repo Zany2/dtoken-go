@@ -3,6 +3,7 @@ package main
 
 import (
 	dterror "github.com/Zany2/dtoken-go/errors"
+	"log"
 
 	"context"
 	"errors"
@@ -35,18 +36,29 @@ type LoginRequest struct {
 }
 
 func main() {
-	auth := initDToken()
+	auth, err := initDToken()
+	if err != nil {
+		log.Print(err)
+		return
+	}
 	defer auth.Close()
 
 	h := server.Default(server.WithHostPorts(":8080"))
-	registerRoutes(h, auth)
+	if err := registerRoutes(h, auth); err != nil {
+		log.Print(err)
+		return
+	}
 	h.Spin()
 }
 
 // registerRoutes shares the example's middleware and routes with regression tests. registerRoutes 与回归测试共用示例中间件和路由。
-func registerRoutes(h *server.Hertz, authInstance *dtoken.Auth) {
+func registerRoutes(h *server.Hertz, authInstance *dtoken.Auth) error {
+	authOption, err := hertzdt.WithAuth(authInstance)
+	if err != nil {
+		return err
+	}
 	ctx := context.Background()
-	h.Use(hertzdt.RegisterDTokenContextMiddleware(ctx, hertzdt.WithAuth(authInstance), hertzdt.WithFailFunc(writeAuthError)))
+	h.Use(hertzdt.RegisterDTokenContextMiddleware(ctx, authOption, hertzdt.WithFailFunc(writeAuthError)))
 	h.POST("/login", handleLogin)
 
 	auth := h.Group("/")
@@ -55,21 +67,16 @@ func registerRoutes(h *server.Hertz, authInstance *dtoken.Auth) {
 	auth.GET("/admin", hertzdt.RoleMiddleware(ctx, []string{"admin"}, hertzdt.WithFailFunc(writeAuthError)), handleAdmin)
 	auth.GET("/articles", hertzdt.PermissionMiddleware(ctx, []string{"article:read"}, hertzdt.WithFailFunc(writeAuthError)), handleArticles)
 	auth.POST("/logout", handleLogout)
+	return nil
 }
 
 // initDToken builds the Auth instance owned by the application. initDToken 构建由应用管理生命周期的 Auth 实例。
-func initDToken() *dtoken.Auth {
-	auth, err := dtoken.NewBuilder().
+func initDToken() (*dtoken.Auth, error) {
+	return dtoken.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
-
-	if err != nil {
-		panic(err)
-	}
-
-	return auth
 }
 
 // handleLogin logs in a demo user handleLogin 登录示例用户

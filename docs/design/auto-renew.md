@@ -27,7 +27,9 @@ Inactivity checks use the later of the valid persisted activity timestamp and th
 
 `submitAsync` prefers the configured pool and falls back to a tracked goroutine when no pool is available or submission fails. A closing Manager rejects new tasks.
 
-Validation does not wait for background maintenance to finish. The worker may start before the caller receives its result; custom pools that execute inline or block submission can still delay the call. Task coalescing limits concurrent work for one lifecycle, but a later request can schedule another eligibility check after completion.
+Validation does not wait for background maintenance to finish; the worker may start before the caller receives its result. `contract.Pool.Submit` must be concurrency-safe and nonblocking: accept work for asynchronous execution exactly once, or return an error without executing it. Custom pools must not execute inline or wait for capacity. The bundled ants pool rejects `NonBlocking=false` during configuration validation. Task coalescing limits concurrent work for one lifecycle, but a later request can schedule another eligibility check after completion.
+
+A combined `httpauth.Check` reuses token identity and the same Session for permission and role checks. The normal valid path reads and decodes the token once. Login/disable-only checks skip Session; access rules read and decode it once. Disable checks and enabled inactivity checks remain synchronous, and inactive-timeout cleanup may require extra reads. Reuse ends with this check: subsequent calls read current state, and background maintenance revalidates independently.
 
 ## Workflow
 

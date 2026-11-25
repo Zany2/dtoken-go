@@ -27,7 +27,7 @@ func TestHTTPDependsOnContracts(t *testing.T) {
 		for _, forbidden := range []string{
 			"nonce", "oauth2", "ticket", "shortkey", "global", "sso",
 			"codec", "generator", "logging", "pool", "storage",
-			"internal/builder", "internal/defaults", "examples", "tests",
+			"internal/builder", "examples", "tests",
 			"contract/storagetest",
 		} {
 			if matchesPackage(path, module+"/"+forbidden) {
@@ -54,9 +54,8 @@ func TestDomainDependencies(t *testing.T) {
 		{"engine", []string{"internal/engine"}, []string{"contract", "config", "errors", "event", "internal/utils"}},
 		{"capabilities", []string{"nonce", "oauth2", "ticket", "shortkey"}, []string{"contract", "config", "errors", "event", "internal/utils"}},
 		{"http", []string{"httpauth"}, []string{"httpauth", "contract", "config", "errors", "event", "internal/engine"}},
-		{"builder", []string{"internal/builder"}, []string{"internal/builder", "internal/engine", "internal/banner", "contract", "config", "errors"}},
-		{"defaults", []string{"internal/defaults"}, []string{
-			"internal/defaults", "internal/builder", "contract", "config",
+		{"builder", []string{"internal/builder"}, []string{
+			"internal/builder", "internal/engine", "internal/banner", "internal/utils", "contract", "config", "errors",
 			"codec/json", "generator/dgenerator", "logging/dlog", "pool/ants", "storage/memory",
 		}},
 		{"codecs", []string{"codec"}, []string{"codec", "contract", "config", "errors", "internal/utils"}},

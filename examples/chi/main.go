@@ -36,23 +36,35 @@ type LoginRequest struct {
 }
 
 func main() {
-	auth := initDToken()
+	auth, err := initDToken()
+	if err != nil {
+		log.Print(err)
+		return
+	}
 	defer auth.Close()
 
 	r := chi.NewRouter()
-	registerRoutes(r, auth)
+	if err := registerRoutes(r, auth); err != nil {
+		log.Print(err)
+		return
+	}
 
 	if err := http.ListenAndServe(":8080", r); err != nil {
-		panic(err)
+		log.Print(err)
+		return
 	}
 }
 
 // registerRoutes shares production middleware and routes with regression tests. registerRoutes 与回归测试共用实际中间件和路由。
-func registerRoutes(r chi.Router, authInstance *dtoken.Auth) {
+func registerRoutes(r chi.Router, authInstance *dtoken.Auth) error {
+	authOption, err := chidt.WithAuth(authInstance)
+	if err != nil {
+		return err
+	}
 	fail := func(w http.ResponseWriter, _ *http.Request, err error) { writeAuthError(w, err) }
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(chidt.RegisterDTokenContextMiddleware(chidt.WithAuth(authInstance), chidt.WithFailFunc(fail)))
+	r.Use(chidt.RegisterDTokenContextMiddleware(authOption, chidt.WithFailFunc(fail)))
 	r.Post("/login", handleLogin)
 
 	r.Group(func(auth chi.Router) {
@@ -62,21 +74,16 @@ func registerRoutes(r chi.Router, authInstance *dtoken.Auth) {
 		auth.With(chidt.PermissionMiddleware([]string{"article:read"}, chidt.WithFailFunc(fail))).Get("/articles", handleArticles)
 		auth.Post("/logout", handleLogout)
 	})
+	return nil
 }
 
 // initDToken builds the Auth instance owned by the application. initDToken 构建由应用管理生命周期的 Auth 实例。
-func initDToken() *dtoken.Auth {
-	auth, err := dtoken.NewBuilder().
+func initDToken() (*dtoken.Auth, error) {
+	return dtoken.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
-
-	if err != nil {
-		panic(err)
-	}
-
-	return auth
 }
 
 // handleLogin logs in a demo user handleLogin 登录示例用户

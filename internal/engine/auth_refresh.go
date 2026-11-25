@@ -85,6 +85,10 @@ type refreshTokenRecord struct {
 
 // LoginWithRefreshToken returns access and refresh tokens, accepting optional device type followed by device ID. LoginWithRefreshToken 登录并返回访问令牌和刷新令牌，可依次提供设备类型和设备 ID。
 func (m *Manager) LoginWithRefreshToken(ctx context.Context, loginID string, deviceAndDeviceID ...string) (*RefreshTokenPair, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	// Preserve empty-account error precedence before validating device arguments. 校验设备参数前保留空账号错误的优先级。
 	if loginID == "" {
 		return nil, derror.ErrIDIsEmpty
@@ -105,6 +109,10 @@ func (m *Manager) LoginWithRefreshToken(ctx context.Context, loginID string, dev
 
 // LoginWithRefreshTokenOptions logs in with options and returns token pair. LoginWithRefreshTokenOptions 使用选项登录并返回令牌对。
 func (m *Manager) LoginWithRefreshTokenOptions(ctx context.Context, opts RefreshTokenOptions) (*RefreshTokenPair, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	pair, err := m.loginWithRefreshTokenOptions(ctx, opts)
 	if err != nil {
 		return nil, err
@@ -153,6 +161,10 @@ func (m *Manager) loginWithRefreshTokenOptionsInternal(ctx context.Context, opts
 
 // RefreshToken rotates a refresh token and returns a new token pair. RefreshToken 轮换刷新令牌并返回新的令牌对。
 func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*RefreshTokenPair, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	// Load refresh metadata once to resolve the account lock. 先加载刷新令牌元数据以确定账号锁。
 	info, err := m.getRefreshTokenInfo(ctx, refreshToken)
 	if err != nil {
@@ -267,6 +279,10 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 
 // RevokeRefreshToken revokes a refresh token and its related access token. RevokeRefreshToken 撤销刷新令牌及其关联访问令牌。
 func (m *Manager) RevokeRefreshToken(ctx context.Context, refreshToken string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Treat empty revoke requests as idempotent no-op. 空撤销请求按幂等空操作处理。
 	if refreshToken == "" {
 		return nil
@@ -329,6 +345,10 @@ func (m *Manager) RevokeRefreshToken(ctx context.Context, refreshToken string) e
 
 // GetRefreshTokenTTL returns refresh token remaining lifetime seconds. GetRefreshTokenTTL 返回刷新令牌剩余有效秒数。
 func (m *Manager) GetRefreshTokenTTL(ctx context.Context, refreshToken string) (int64, error) {
+	if m.IsClosed() {
+		return 0, derror.ErrManagerNotFound
+	}
+
 	if refreshToken == "" {
 		return 0, derror.ErrInvalidRefreshToken
 	}

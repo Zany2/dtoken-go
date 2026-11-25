@@ -80,7 +80,9 @@ func TestRootTerminalOperationFamilies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	SetManager(mgr)
+	if err := SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 
 	login := func(loginID, device, deviceID string) string {
 		token, loginErr := AuthType("global-terminal").Login(ctx, LoginOptions{LoginID: loginID, Device: device, DeviceID: deviceID})

@@ -4,7 +4,7 @@
 
 [English](../integration/component-ecosystem.md) | 中文文档
 
-DToken-Go 将核心认证逻辑和组件实现解耦。核心只依赖接口，应用通过根包 Builder 调用私有 `internal/defaults` 完成默认装配，也可以按业务需要替换存储、编解码、日志、Token 生成器和异步任务池。
+DToken-Go 将核心认证逻辑和组件实现解耦。核心只依赖接口，应用通过根包 Builder 选择内置默认组件并完成装配，也可以按业务需要替换存储、编解码、日志、Token 生成器和异步任务池。
 
 构建成功后，引擎默认负责关闭显式传入的存储、日志和池；构建失败时显式传入的组件仍由调用方清理。共享组件使用 WithComponentOwnership 声明完整策略，并由应用统一关闭。默认组件随根模块发布，Redis、MsgPack、JSON v2 和 GoFrame 日志是独立模块。
 
@@ -49,6 +49,10 @@ func main() {
 ```
 
 默认已经提供内存存储；使用 Redis 或其他后端时再显式设置存储。其他组件没有特殊诉求时，可以继续使用默认实现。
+
+组件选择顺序为：显式传入的实例 → 自定义工厂 → 内置默认工厂。`SetGeneratorFactory(nil)`、`SetStorageFactory(nil)`、`SetCodecFactory(nil)`、`SetLogFactory(nil)` 和 `SetPoolFactory(nil)` 均恢复默认工厂；不会清除已经注入的实例。要取消实例覆盖，传入对应的 `nil` 实例。工厂已经被调用但返回错误或缺失必需组件时，构建失败，不会再静默回退到默认实现。
+
+内置日志和池配置仅在实际创建对应默认组件时校验。关闭日志，或注入自定义日志/池时，未使用的内置实现配置不会影响构建。`RenewPoolPrintStatusInterval` 同样控制自定义池的状态报告，仍要求非负值。未显式注入池时，只有启用 `AutoRenew` 才创建池；自定义池工厂返回 `(nil, nil)` 仍表示不使用池。
 
 ## 替换具体组件
 

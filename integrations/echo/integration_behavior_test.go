@@ -85,7 +85,9 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	token, err := mgr.Login(ctx, "echo-annotation-user")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)

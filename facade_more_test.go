@@ -10,8 +10,8 @@ import (
 	derror "github.com/Zany2/dtoken-go/errors"
 )
 
-// TestRegistryHelpersAndBuildAndSetManager verifies auth type parsing and build registration. TestRegistryHelpersAndBuildAndSetManager 验证认证类型解析和构建注册。
-func TestRegistryHelpersAndBuildAndSetManager(t *testing.T) {
+// TestRegistryHelpersAndBuild verifies auth type parsing and build registration. TestRegistryHelpersAndBuild 验证认证类型解析和构建注册。
+func TestRegistryHelpersAndBuild(t *testing.T) {
 	DeleteAllManager()
 	t.Cleanup(DeleteAllManager)
 
@@ -22,10 +22,11 @@ func TestRegistryHelpersAndBuildAndSetManager(t *testing.T) {
 		t.Fatalf("getAutoType(empty) = %q, want %q", got, config.DefaultAuthType)
 	}
 
-	mgr, err := BuildAndSetManager(NewBuilder().IsPrintBanner(false).AutoRenew(false), "built")
+	auth, err := NewBuilder().IsPrintBanner(false).AutoRenew(false).AuthType("built").Build()
 	if err != nil {
-		t.Fatalf("BuildAndSetManager() error = %v", err)
+		t.Fatalf("Build() error = %v", err)
 	}
+	mgr := auth.Manager()
 	if mgr.GetConfig().AuthType != "built:" {
 		t.Fatalf("AuthType = %q, want built:", mgr.GetConfig().AuthType)
 	}
@@ -51,7 +52,9 @@ func TestRootTypedOptionFacades(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	SetManager(mgr)
+	if err := SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 
 	token, err := AuthType("typed").Login(ctx, LoginOptions{
 		LoginID:  "typed-user",

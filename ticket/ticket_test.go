@@ -40,7 +40,7 @@ func TestConfigValidateAndClone(t *testing.T) {
 // TestManagerCreateValidateConsume verifies the ticket create, validate, and consume lifecycle. TestManagerCreateValidateConsume 验证 Ticket 创建、校验与消费生命周期。
 func TestManagerCreateValidateConsume(t *testing.T) {
 	ctx := context.Background()
-	mgr := newTestTicketManager(time.Minute)
+	mgr := newTestTicketManager(t, time.Minute)
 
 	created, err := mgr.Create(ctx, CreateOptions{
 		LoginID:   "user-1",
@@ -94,7 +94,7 @@ func TestManagerCreateValidateConsume(t *testing.T) {
 // TestManagerBoundaries verifies ticket invalid-input and lifecycle boundaries. TestManagerBoundaries 验证 Ticket 非法输入与生命周期边界。
 func TestManagerBoundaries(t *testing.T) {
 	ctx := context.Background()
-	mgr := newTestTicketManager(time.Minute)
+	mgr := newTestTicketManager(t, time.Minute)
 
 	if _, err := mgr.Validate(ctx, ""); !errors.Is(err, ErrInvalidTicket) {
 		t.Fatalf("Validate(empty) error = %v, want ErrInvalidTicket", err)
@@ -152,7 +152,7 @@ func TestManagerBoundaries(t *testing.T) {
 // TestManagerRejectsMismatchedStoredIdentity verifies stored payloads cannot escape their credential namespace. TestManagerRejectsMismatchedStoredIdentity 验证存储载荷不能越过其凭证命名空间。
 func TestManagerRejectsMismatchedStoredIdentity(t *testing.T) {
 	ctx := context.Background()
-	mgr := newTestTicketManager(time.Minute)
+	mgr := newTestTicketManager(t, time.Minute)
 
 	for _, tt := range []struct {
 		name     string
@@ -188,7 +188,7 @@ func TestManagerRejectsMismatchedStoredIdentity(t *testing.T) {
 // TestConsumeConstraintMismatchDoesNotConsumeTicket verifies mismatched constraints preserve the ticket. TestConsumeConstraintMismatchDoesNotConsumeTicket 验证约束不匹配时不会消费 Ticket。
 func TestConsumeConstraintMismatchDoesNotConsumeTicket(t *testing.T) {
 	ctx := context.Background()
-	mgr := newTestTicketManager(time.Minute)
+	mgr := newTestTicketManager(t, time.Minute)
 
 	created, err := mgr.Create(ctx, CreateOptions{LoginID: "user-1", TargetApp: "admin"})
 	if err != nil {
@@ -219,7 +219,7 @@ func TestConsumeConstraintMismatchDoesNotConsumeTicket(t *testing.T) {
 // TestRevokeDoesNotOverwriteConsumedTicket verifies revoke keeps an existing consumed state. TestRevokeDoesNotOverwriteConsumedTicket 验证撤销操作不会覆盖已消费状态。
 func TestRevokeDoesNotOverwriteConsumedTicket(t *testing.T) {
 	ctx := context.Background()
-	mgr := newTestTicketManager(time.Minute)
+	mgr := newTestTicketManager(t, time.Minute)
 
 	created, err := mgr.Create(ctx, CreateOptions{LoginID: "user-1"})
 	if err != nil {
@@ -249,7 +249,7 @@ func TestTicketExpirationBoundaryAndDurationRounding(t *testing.T) {
 		t.Fatalf("durationSeconds(2s) = %d, want 2", got)
 	}
 
-	mgr := newTestTicketManager(time.Minute)
+	mgr := newTestTicketManager(t, time.Minute)
 	expired := &Ticket{
 		Ticket:     "expired-boundary",
 		AuthType:   mgr.authType,
@@ -276,7 +276,10 @@ func TestTicketExpirationBoundaryAndDurationRounding(t *testing.T) {
 // TestTicketConsumeReportsStateSaveFailure verifies consumption does not hide persistence errors. TestTicketConsumeReportsStateSaveFailure 验证消费不会隐藏状态持久化错误。
 func TestTicketConsumeReportsStateSaveFailure(t *testing.T) {
 	storage := &ticketConsumeSaveFailStorage{ticketTestStorage: newTicketTestStorage()}
-	mgr := NewManagerWithConfig("test", "dt:", storage, ticketTestCodec{}, &Config{TTL: time.Minute})
+	mgr, constructorErr := NewManagerWithConfig("test", "dt:", storage, ticketTestCodec{}, &Config{TTL: time.Minute})
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	created, err := mgr.Create(context.Background(), CreateOptions{LoginID: "user-1"})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -287,8 +290,13 @@ func TestTicketConsumeReportsStateSaveFailure(t *testing.T) {
 	}
 }
 
-func newTestTicketManager(ttl time.Duration) *Manager {
-	return NewManagerWithConfig("test", "dt:", newTicketTestStorage(), ticketTestCodec{}, &Config{TTL: ttl})
+func newTestTicketManager(t *testing.T, ttl time.Duration) *Manager {
+	t.Helper()
+	instance, err := NewManagerWithConfig("test", "dt:", newTicketTestStorage(), ticketTestCodec{}, &Config{TTL: ttl})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return instance
 }
 
 type ticketTestCodec struct{}

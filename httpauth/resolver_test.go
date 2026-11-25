@@ -15,7 +15,9 @@ func TestResolutionRequiresExplicitRegistry(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
 	mgr := newAuthcheckTestManager(t)
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	var typedNil *corecontext.DTokenContext
 	for _, cached := range []any{nil, typedNil} {
 		if got, err := ResolveManagerFromContext("", cached); got != nil || !errors.Is(err, derror.ErrManagerNotFound) {

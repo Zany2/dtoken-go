@@ -4,7 +4,7 @@ Import aliases for code fragments: dt = github.com/Zany2/dtoken-go, adapter = gi
 
 **[中文文档](../integration/component-ecosystem_zh.md)**
 
-DToken-Go decouples core authentication logic from component implementations. The core depends on interfaces, the root Builder delegates default wiring to private `internal/defaults`, and projects can replace storage, codec, logger, Token generator, and async task pool components as needed.
+DToken-Go decouples core authentication logic from component implementations. The core depends on interfaces, the root Builder selects and assembles bundled default components, and projects can replace storage, codec, logger, Token generator, and async task pool components as needed.
 
 After a successful build, the engine owns injected storage, logging, and pools by default. On build failure, explicitly supplied components remain caller-owned. Use WithComponentOwnership to set a complete policy for shared components and close them from the application. Basic components ship with the root module; Redis, MsgPack, JSON v2, and GoFrame logging are separate modules.
 
@@ -49,6 +49,10 @@ func main() {
 ```
 
 Memory storage is already provided by default. Set storage explicitly when using Redis or another backend; other default components can remain unchanged unless there is a specific requirement.
+
+Component selection follows: explicit instance → custom factory → bundled default factory. Passing `nil` to `SetGeneratorFactory`, `SetStorageFactory`, `SetCodecFactory`, `SetLogFactory`, or `SetPoolFactory` restores the default factory without clearing an injected instance. Pass a `nil` instance to the corresponding component setter to remove that override. Once invoked, a factory that returns an error or a missing required component fails the build; it does not silently fall back to a default.
+
+Bundled logger and pool settings are validated only when those default components are created. Disabled logging or custom logger/pool injection ignores unused bundled implementation settings. `RenewPoolPrintStatusInterval` also controls reporting for custom pools and must remain nonnegative. Without an explicitly injected pool, a pool is created only when `AutoRenew` is enabled; a custom pool factory may still return `(nil, nil)` to use no pool.
 
 ## Replace Components
 

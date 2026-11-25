@@ -28,10 +28,14 @@ func main() {
     }
     defer auth.Close()
     cfg := auth.Config()
-    manager := nonce.NewNonceManagerWithConfig(
+    manager, err := nonce.NewNonceManagerWithConfig(
         cfg.AuthType, cfg.KeyPrefix, auth.Storage(),
         &nonce.Config{TTL: 30 * time.Second},
     )
+    if err != nil {
+        fmt.Println(err)
+        return
+    }
     service := nonce.NewService(manager, auth)
     ctx := context.Background()
     value, err := service.GenerateNonce(ctx)

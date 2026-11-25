@@ -12,6 +12,10 @@ import (
 
 // SetSessionValue sets one session data value SetSessionValue 设置一个会话扩展数据
 func (m *Manager) SetSessionValue(ctx context.Context, loginID, key string, value any) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
@@ -37,6 +41,10 @@ func (m *Manager) SetSessionValue(ctx context.Context, loginID, key string, valu
 
 // GetSessionValue gets one session data value GetSessionValue 获取一个会话扩展数据
 func (m *Manager) GetSessionValue(ctx context.Context, loginID, key string) (any, bool, error) {
+	if m.IsClosed() {
+		return nil, false, derror.ErrManagerNotFound
+	}
+
 	if loginID == "" {
 		return nil, false, derror.ErrIDIsEmpty
 	}
@@ -59,6 +67,10 @@ func (m *Manager) GetSessionValue(ctx context.Context, loginID, key string) (any
 
 // DeleteSessionValue deletes one session data value DeleteSessionValue 删除一个会话扩展数据
 func (m *Manager) DeleteSessionValue(ctx context.Context, loginID, key string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
 	}
@@ -87,6 +99,10 @@ func (m *Manager) DeleteSessionValue(ctx context.Context, loginID, key string) e
 
 // SetSessionValueByToken sets session data after validating a token. SetSessionValueByToken 校验 Token 后设置会话扩展数据。
 func (m *Manager) SetSessionValueByToken(ctx context.Context, tokenValue, key string, value any) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate and normalize token data key. 校验并规范化 Token 与会话数据键。
 	if tokenValue == "" {
 		return derror.ErrInvalidToken
@@ -132,6 +148,10 @@ func (m *Manager) SetSessionValueByToken(ctx context.Context, tokenValue, key st
 
 // GetSessionValueByToken gets session data after validating a token. GetSessionValueByToken 校验 Token 后获取会话扩展数据。
 func (m *Manager) GetSessionValueByToken(ctx context.Context, tokenValue, key string) (any, bool, error) {
+	if m.IsClosed() {
+		return nil, false, derror.ErrManagerNotFound
+	}
+
 	// Validate and normalize token data key. 校验并规范化 Token 与会话数据键。
 	if tokenValue == "" {
 		return nil, false, derror.ErrInvalidToken
@@ -155,6 +175,10 @@ func (m *Manager) GetSessionValueByToken(ctx context.Context, tokenValue, key st
 
 // DeleteSessionValueByToken deletes session data after validating a token. DeleteSessionValueByToken 校验 Token 后删除会话扩展数据。
 func (m *Manager) DeleteSessionValueByToken(ctx context.Context, tokenValue, key string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate and normalize token data key. 校验并规范化 Token 与会话数据键。
 	if tokenValue == "" {
 		return derror.ErrInvalidToken

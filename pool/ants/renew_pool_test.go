@@ -16,7 +16,7 @@ func TestRenewPoolManagerSubmitAndStop(t *testing.T) {
 		ScaleDownRate: 0.2,
 		CheckInterval: 10 * time.Millisecond,
 		Expiry:        time.Second,
-		NonBlocking:   false,
+		NonBlocking:   true,
 	})
 	if err != nil {
 		t.Fatalf("NewRenewPoolManagerWithConfig() error = %v", err)

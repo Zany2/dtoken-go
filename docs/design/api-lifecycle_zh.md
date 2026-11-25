@@ -24,11 +24,17 @@
 
 ## 实例与引擎
 
-`NewBuilder().Build()` 自动注册并返回 `*Auth`，`MustBuild()` 失败时 panic。`BuildInstance()` / `MustBuildInstance()` 创建不注册的独立实例。框架 NewBuilder() 转发根包构建器，行为相同。
+`NewBuilder().Build()` 自动注册，`BuildInstance()` 创建不注册的独立实例。两者均返回 `(*Auth, error)`，失败处理由调用方决定。框架 NewBuilder() 转发根包构建器，行为相同。
 
-Auth.Manager() 返回共享的底层引擎。New(existingManager) 创建共享同一引擎的门面，不复制配置、存储或任务池。任何一个门面关闭引擎后，其他门面的 IsClosed() 也返回 true，认证操作返回 ErrManagerNotFound。已关闭 Auth 的 Config、Storage、Codec、EventManager 返回 nil。
+Auth.Manager() 返回共享的底层引擎，引擎开始关闭后返回 nil。New(existingManager) 创建共享同一引擎的门面，不复制配置、存储或任务池。任何一个门面开始关闭引擎后，其他门面的 IsClosed() 也返回 true，认证操作返回 ErrManagerNotFound。已关闭 Auth 的 Config、Storage、Codec、EventManager 返回 nil。
 
-从已构建的 Auth 获取 Manager，不直接创建 Manager 零值。开始处理请求后，不应修改 Manager.GetConfig() 返回的配置或替换组件；需要调整配置时构建新实例。
+固定 Auth 在构造后保持 Manager 指针不变；AuthType 选择器只保存体系名称，每次调用查找注册表。关闭状态统一由 Manager 维护，Auth 不维护单独的关闭标记。重复或通过不同固定门面调用 Close，都会等待该引擎的同一次资源释放完成。
+
+提前保存的高级 Manager 同样遵循业务调用的关闭约定：开始关闭后，登录、校验、授权、Session、终端、封禁和刷新令牌方法返回 `ErrManagerNotFound`，布尔方法返回 `false`，关闭检查先于参数校验和存储访问。关闭前已接收的内部维护任务仍会完成封禁复核、续期和事件通知，之后才释放资源。同步请求仍由应用负责排空，入口检查不会等待进行中的调用。配置和策略快照仍可查看，但组件获取方法不会延长资源的使用期限。
+
+从已构建的 Auth 获取 Manager，不直接创建 Manager 零值。Manager.GetConfig() 与 Auth.Config() 均返回独立快照；构建时固定 AuthType、KeyPrefix 及其他配置。需要调整配置时构建新实例，再按生命周期约定替换。
+
+`Manager.GetStrategy()` 同样返回快照。修改返回值不会改变正在运行的 Session 创建、权限或角色匹配逻辑；自定义策略通过构建期 `WithStrategy` 注入。函数闭包捕获的状态不会被复制，其并发安全仍由调用方负责。
 
 ## 资源所有权
 
@@ -82,13 +88,15 @@ err = dtoken.AuthType("user").CheckLogin(ctx, token)
 
 - 不设置 AuthType 的 Builder 注册默认体系 `auth:`。`dtoken.Login`、`dtoken.IsLogin` 等包级方法始终使用默认体系，签名与 Auth 方法一致。
 - `dtoken.AuthType("user")` 返回动态选择器，每次业务操作查注册表；缓存选择器也会跟随显式替换。缺失体系返回 `ErrManagerNotFound`，布尔校验返回 false，不回退到默认体系。
-- Auth 方法和根包方法不使用选项结构体中的 AuthType 字段路由；该字段为源码兼容保留，通过 AuthType(name) 或固定 Auth 实例选择引擎。
+- 业务选项只包含操作参数，不提供 AuthType 字段；通过根包默认调用、AuthType(name) 或固定 Auth 实例选择引擎。
 - `Build()` 同名注册返回 `errors.ErrManagerAlreadyRegistered`，保留原实例。并发构建仅一个成功；竞争失败时关闭已装配候选的自有资源。共享组件须显式声明为调用方所有。
-- 需要显式替换时，先 `BuildInstance()`，再 `dtoken.SetAuth(auth)`；`dtoken.SetAuth`、`SetManager`、`BuildAndSetManager` 执行显式替换，关闭旧引擎。同一实例重复 Set 不会关闭它。
-- 实例 `auth.Close()` 立即注销仍指向自身的注册项，再关闭共享引擎；旧实例关闭不会移除替换后的新实例。
+- 需要显式替换时，先 `BuildInstance()`，再 `dtoken.SetAuth(auth)`；`dtoken.SetAuth`、`SetManager` 显式替换成功后关闭旧引擎，注册失败返回 error。同一实例重复 Set 不会关闭它。
+- 实例 `auth.Close()` 将共享引擎标记为关闭中并注销仍指向自身的注册项，然后等待资源释放；旧实例关闭不会移除替换后的新实例。
 - `dtoken.Close()` 关闭默认体系，`dtoken.AuthType("user").Close()` 关闭当前 user 体系，`dtoken.CloseAll()` 关闭所有当前注册实例；重复调用安全。CloseAll 不关闭未注册的独立实例，也不禁止应用随后重新构建。
 
-`WithAuth(auth)` 绑定具体引擎，不跟随注册表替换。需要每次请求从注册表选择时，显式传入 `WithManagerResolver(dtoken.GetManager)`。已经建立的请求作用域保持原实例。应用应先协调路由切换并排空请求，再关闭旧引擎。
+注册表保留写入互斥锁来协调注册、替换和删除，普通查找不获取此锁。替换或删除时，在释放注册表锁前让旧 Manager 进入关闭状态并拒绝新异步任务；在锁外等待已接收任务和监听器结束并释放资源。注册表不再单独维护退役集合，正在关闭的引擎由自身状态阻止重新注册。
+
+`WithAuth(auth)` 绑定具体引擎，不跟随注册表替换。需要每次请求从注册表选择时，显式传入 `WithManagerResolver(dtoken.GetManager)`。已经建立的请求作用域保持原实例。应用应先协调路由切换并排空请求，再替换或关闭旧引擎；注册表锁和关闭标记不会等待正在执行的同步业务请求。
 
 迁移已有应用时：删除 Build 后冗余的 SetAuth；将依赖“同名但独立”行为的构建改为 BuildInstance；需要直接使用底层 Manager 时调用返回实例的 Manager()。关闭入口共享资源所有权，不需要逐个关闭后再额外 CloseAll。
 
@@ -102,7 +110,11 @@ nonce、oauth2、ticket、shortkey 提供内置实现，通过编译期断言验
 
 Capabilities 的字段接受服务接口，自定义服务可直接注入。未绑定服务或带类型的 nil 返回原有模块未启用结果；布尔检查返回 false。请求上下文方法 `dCtx.WithCapabilities(nil)` 保留已有绑定，`dCtx.WithCapabilities(&requestcontext.Capabilities{})` 显式清空绑定。框架选项则接收值，例如 `gindt.WithCapabilities(requestcontext.Capabilities{Nonce: service})`。请求适配器更换时保留绑定，认证实例更换时清空能力绑定。
 
-独立 Service 的生命周期由调用方管理。向 NewService 传入 Auth 作为事件发布器，只建立事件联系；直接调用 Service 时仍须保证其借用的存储和编解码器可用。HTTP 请求则由绑定引擎的可用性检查控制。
+独立 Service 的生命周期由调用方管理。向 NewService 传入 Auth 作为事件发布器，只建立事件联系；直接调用 Service 时仍须保证其借用的存储和编解码器可用。DTokenContext 绑定了 Manager 时，直接调用其 Nonce、OAuth2、Ticket、ShortKey 分组也会在引擎开始关闭后返回 ErrManagerNotFound，布尔检查返回 false；未绑定 Manager 的上下文仍可调用显式绑定的独立能力服务。需要当前登录身份的能力操作仍要求有效认证绑定。
+
+读取当前请求 Token 或操作 Cookie 的方法要求未关闭的 Manager 和有效请求适配器：Manager 缺失或关闭时返回 ErrManagerNotFound，请求适配器缺失（包括带类型的 nil）时返回 ErrInvalidParam。无错误返回值的 Token 提取返回空字符串，布尔认证检查返回 false，直接 Cookie 写入不执行操作。Cookie 登录在写入认证状态之前检查绑定。Auth.Login、Refresh 等使用显式参数的操作只要求未关闭的 Manager，不要求请求适配器。
+
+Ticket 和 ShortKey 的 AuthType 身份比较与存储键一致：`user` 与 `user:` 等价，已有载荷无需迁移；创建结果保留调用方传入的 AuthType 形式。比较只忽略一个末尾冒号，不合并空白或其他不同名称。组合能力时建议使用 Auth.Config() 中的 AuthType 和 KeyPrefix。
 
 契约包和能力实现仍随根模块一起发布；拆分的是包依赖与运行时装配，没有增加独立版本或动态插件机制。
 
@@ -113,6 +125,7 @@ Capabilities 的字段接受服务接口，自定义服务可直接注入。未�
 package main
 
 import (
+    "log"
 	"fmt"
 	"github.com/Zany2/dtoken-go"
 )
@@ -120,7 +133,8 @@ import (
 func main() {
 	auth, err := dtoken.NewBuilder().IsPrintBanner(false).Build()
 	if err != nil {
-		panic(err)
+		log.Print(err)
+		return
 	}
 	defer auth.Close()
 	shared := dtoken.New(auth.Manager())
@@ -138,6 +152,7 @@ func main() {
 package main
 
 import (
+    "log"
     "context"
     "errors"
     "net/http"
@@ -149,7 +164,10 @@ import (
 )
 
 func main() {
-    dtoken.NewBuilder().IsPrintBanner(false).MustBuild()
+    if _, err := dtoken.NewBuilder().IsPrintBanner(false).Build(); err != nil {
+        log.Print(err)
+        return
+    }
     defer dtoken.CloseAll()
 
     stopped, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -169,10 +187,12 @@ func main() {
     case <-stopped.Done():
     }
     if err := server.Shutdown(context.Background()); err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
     if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-        panic(serveErr)
+        log.Print(serveErr)
+        return
     }
 }
 ```

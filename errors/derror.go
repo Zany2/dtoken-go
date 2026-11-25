@@ -93,7 +93,7 @@ func NewDTokenError(code int, message string, err error) *DTokenError {
 var (
 	// ErrStorageUnavailable indicates storage unavailable ErrStorageUnavailable 表示存储后端不可用。
 	ErrStorageUnavailable = errors.New("storage unavailable: unable to connect to storage backend")
-	// ErrKeyNotFound indicates storage key is missing or expired ErrKeyNotFound 表示存储键不存在或已过期。
+	// ErrKeyNotFound indicates a missing context key or a missing/expired storage key. ErrKeyNotFound 表示上下文键不存在，或存储键不存在、已过期。
 	ErrKeyNotFound = errors.New("key not found")
 	// ErrSerializeFailed indicates serialize failed ErrSerializeFailed 表示序列化失败。
 	ErrSerializeFailed = errors.New("serialize failed: unable to encode data")

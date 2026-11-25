@@ -8,7 +8,9 @@ import (
 func TestInitDTokenConfiguration(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	initDToken()
+	if _, err := initDToken(); err != nil {
+		t.Fatal(err)
+	}
 
 	mgr, err := dtoken.GetManager()
 	if err != nil {

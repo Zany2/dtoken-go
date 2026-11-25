@@ -1,12 +1,14 @@
 package echo
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
 	echo4 "github.com/labstack/echo/v4"
 )
 
@@ -72,8 +74,8 @@ func TestEchoContextAdapterRequestAndResponse(t *testing.T) {
 	if got := ctx.GetString("name"); got != "dtoken" {
 		t.Fatalf("GetString() = %q, want dtoken", got)
 	}
-	if got := ctx.MustGet("name"); got != "dtoken" {
-		t.Fatalf("MustGet() = %v, want dtoken", got)
+	if got, err := ctx.GetRequired("name"); err != nil || got != "dtoken" {
+		t.Fatalf("GetRequired() = %v, want dtoken", got)
 	}
 	if got, ok := ctx.Get("name"); !ok || got != "dtoken" {
 		t.Fatalf("Get() = %v, %v, want dtoken,true", got, ok)
@@ -104,15 +106,12 @@ func TestEchoContextAdapterRequestAndResponse(t *testing.T) {
 	}
 }
 
-// TestEchoContextMustGetPanicsWhenMissing verifies missing values trigger a panic. TestEchoContextMustGetPanicsWhenMissing 验证缺失值会触发 panic。
-func TestEchoContextMustGetPanicsWhenMissing(t *testing.T) {
+// TestEchoContextGetRequiredReturnsErrorWhenMissing verifies missing values return an error. TestEchoContextGetRequiredReturnsErrorWhenMissing 验证缺失值返回错误。
+func TestEchoContextGetRequiredReturnsErrorWhenMissing(t *testing.T) {
 	engine := echo4.New()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	ctx := NewEchoContext(engine.NewContext(req, httptest.NewRecorder()))
-	defer func() {
-		if recover() == nil {
-			t.Fatal("MustGet(missing) should panic")
-		}
-	}()
-	ctx.MustGet("missing")
+	if value, err := ctx.GetRequired("missing"); value != nil || !errors.Is(err, derror.ErrKeyNotFound) {
+		t.Fatalf("GetRequired(missing) = (%v, %v), want ErrKeyNotFound", value, err)
+	}
 }

@@ -15,6 +15,10 @@ import (
 
 // Login authenticates a user and returns a token, accepting optional device type followed by device ID. Login 执行用户登录并返回 Token，可依次提供设备类型和设备 ID。
 func (m *Manager) Login(ctx context.Context, loginID string, deviceAndDeviceID ...string) (string, error) {
+	if m.IsClosed() {
+		return "", derror.ErrManagerNotFound
+	}
+
 	// Preserve empty-account error precedence before validating device arguments. 校验设备参数前保留空账号错误的优先级。
 	if loginID == "" {
 		return "", derror.ErrIDIsEmpty
@@ -35,6 +39,10 @@ func (m *Manager) Login(ctx context.Context, loginID string, deviceAndDeviceID .
 
 // LoginWithTimeout logs in with a custom token timeout, using global settings for non-positive values and accepting optional device type followed by device ID. LoginWithTimeout 使用指定有效期登录并返回 Token，非正有效期沿用全局配置，可依次提供设备类型和设备 ID。
 func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, deviceAndDeviceID ...string) (string, error) {
+	if m.IsClosed() {
+		return "", derror.ErrManagerNotFound
+	}
+
 	// Preserve empty-account error precedence before validating device arguments. 校验设备参数前保留空账号错误的优先级。
 	if loginID == "" {
 		return "", derror.ErrIDIsEmpty
@@ -55,6 +63,10 @@ func (m *Manager) LoginWithTimeout(ctx context.Context, loginID string, timeout 
 
 // LoginWithOptions performs user login with per-call options. LoginWithOptions 使用单次登录选项执行登录。
 func (m *Manager) LoginWithOptions(ctx context.Context, opts LoginOptions) (string, error) {
+	if m.IsClosed() {
+		return "", derror.ErrManagerNotFound
+	}
+
 	return m.loginWithOptionsInternal(ctx, opts, loginInternalOptions{})
 }
 
@@ -245,7 +257,7 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 	createdSession := sess == nil || destroyedSession
 	if createdSession {
 		// Initialize new session 初始化新会话。
-		sess = m.strategy.normalize().CreateSession(m.config.AuthType, opts.LoginID, createTime)
+		sess = m.strategy.CreateSession(m.config.AuthType, opts.LoginID, createTime)
 		if sess == nil {
 			return "", fmt.Errorf("%w: session strategy returned nil", derror.ErrInvalidParam)
 		}
@@ -418,6 +430,10 @@ func (m *Manager) rollbackPersistedLoginToken(ctx context.Context, token string)
 
 // LoginByToken validates an existing token and schedules asynchronous renewal. LoginByToken 校验已有 Token 并调度异步续期。
 func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate token value 校验 Token 值。
 	if tokenValue == "" {
 		return derror.ErrInvalidToken
@@ -481,18 +497,30 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 
 // IsLogin checks if a user is logged in. IsLogin 检查用户是否登录。
 func (m *Manager) IsLogin(ctx context.Context, tokenValue string) bool {
+	if m.IsClosed() {
+		return false
+	}
+
 	// Check login state 检查登录状态。
 	return m.checkLoginInternal(ctx, tokenValue) == nil
 }
 
 // CheckLogin checks if a user is logged in and returns an error if not. CheckLogin 检查用户是否登录，如果未登录则返回错误。
 func (m *Manager) CheckLogin(ctx context.Context, tokenValue string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Check login state 检查登录状态。
 	return m.checkLoginInternal(ctx, tokenValue)
 }
 
 // GetLoginID retrieves the login ID from a token. GetLoginID 根据 Token 获取登录 ID。
 func (m *Manager) GetLoginID(ctx context.Context, tokenValue string) (string, error) {
+	if m.IsClosed() {
+		return "", derror.ErrManagerNotFound
+	}
+
 	// Validate token state before returning identity. 返回身份前校验 Token 状态。
 	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
@@ -505,12 +533,20 @@ func (m *Manager) GetLoginID(ctx context.Context, tokenValue string) (string, er
 
 // GetTokenInfo reads stored metadata without validating disable state, active timeout or sessions; use CheckLogin or IntrospectToken to validate login state. GetTokenInfo 读取已存元数据，不校验封禁、活跃超时或 Session；验证登录态请使用 CheckLogin 或 IntrospectToken。
 func (m *Manager) GetTokenInfo(ctx context.Context, tokenValue string) (*TokenInfo, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	// Load token info 加载 Token 信息。
 	return m.getTokenInfo(ctx, tokenValue)
 }
 
 // GetDevice retrieves the device type for a token. GetDevice 获取 Token 的设备类型。
 func (m *Manager) GetDevice(ctx context.Context, tokenValue string) (string, error) {
+	if m.IsClosed() {
+		return "", derror.ErrManagerNotFound
+	}
+
 	// Validate token state before returning identity. 返回身份前校验 Token 状态。
 	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
@@ -523,6 +559,10 @@ func (m *Manager) GetDevice(ctx context.Context, tokenValue string) (string, err
 
 // GetDeviceID retrieves the device ID for a token. GetDeviceID 获取 Token 的设备 ID。
 func (m *Manager) GetDeviceID(ctx context.Context, tokenValue string) (string, error) {
+	if m.IsClosed() {
+		return "", derror.ErrManagerNotFound
+	}
+
 	// Validate token state before returning identity. 返回身份前校验 Token 状态。
 	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
@@ -535,6 +575,10 @@ func (m *Manager) GetDeviceID(ctx context.Context, tokenValue string) (string, e
 
 // GetDeviceAndDeviceID retrieves the device type and device ID for a token. GetDeviceAndDeviceID 获取 Token 的设备类型和设备 ID。
 func (m *Manager) GetDeviceAndDeviceID(ctx context.Context, tokenValue string) (string, string, error) {
+	if m.IsClosed() {
+		return "", "", derror.ErrManagerNotFound
+	}
+
 	// Validate once so both device fields come from the same checked token. 单次校验，确保设备字段来自同一个已校验 Token。
 	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
@@ -547,6 +591,10 @@ func (m *Manager) GetDeviceAndDeviceID(ctx context.Context, tokenValue string) (
 
 // GetTokenCreateTime retrieves the creation time for a token. GetTokenCreateTime 获取 Token 的创建时间戳。
 func (m *Manager) GetTokenCreateTime(ctx context.Context, tokenValue string) (int64, error) {
+	if m.IsClosed() {
+		return 0, derror.ErrManagerNotFound
+	}
+
 	// Validate token state before returning metadata. 返回元数据前校验 Token 状态。
 	tokenInfo, err := m.checkLoginAndGetTokenInfo(ctx, tokenValue)
 	if err != nil {
@@ -559,6 +607,10 @@ func (m *Manager) GetTokenCreateTime(ctx context.Context, tokenValue string) (in
 
 // GetTokenTTL retrieves the remaining time-to-live for a token in seconds. GetTokenTTL 获取 Token 的剩余有效时间（秒）。
 func (m *Manager) GetTokenTTL(ctx context.Context, tokenValue string) (int64, error) {
+	if m.IsClosed() {
+		return 0, derror.ErrManagerNotFound
+	}
+
 	// Validate token value 校验 Token 值。
 	if tokenValue == "" {
 		return 0, derror.ErrInvalidToken
@@ -599,6 +651,10 @@ func normalizeTTLSeconds(ttl time.Duration) int64 {
 
 // RenewTimeout manually renews the timeout of a token. RenewTimeout 手动续期指定 Token 的过期时间。
 func (m *Manager) RenewTimeout(ctx context.Context, tokenValue string, timeout time.Duration) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate token value 校验 Token 值。
 	if tokenValue == "" {
 		return derror.ErrInvalidToken

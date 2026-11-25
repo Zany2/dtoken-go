@@ -8,7 +8,6 @@ import (
 	"github.com/Zany2/dtoken-go"
 	adapter "github.com/Zany2/dtoken-go/contract"
 	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
-	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
 	"github.com/Zany2/dtoken-go/storage/memory"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -82,17 +81,18 @@ func newKratosReviewContext(kind transport.Kind, tokenName, token string) (conte
 // newKratosReviewManager creates an isolated manager without asynchronous work. newKratosReviewManager 创建无异步任务的独立 Manager。
 func newKratosReviewManager(t *testing.T, authType string, storage adapter.Storage) *manager.Manager {
 	t.Helper()
-	b := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
+	b := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
 	if authType != "" {
 		b.AuthType(authType)
 	}
 	if storage != nil {
 		b.Storage(storage)
 	}
-	mgr, err := b.Build()
+	mgrAuth, err := b.BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	return mgr
 }
@@ -209,8 +209,12 @@ func TestKratosReviewManagerSelection(t *testing.T) {
 	global := newKratosReviewManager(t, "", nil)
 	local := newKratosReviewManager(t, "kratos-local", nil)
 	selected := newKratosReviewManager(t, "kratos-selected", nil)
-	dtoken.SetManager(global)
-	dtoken.SetManager(selected)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
+	if err := dtoken.SetManager(selected); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, mgr := range []*manager.Manager{global, local} {
 		if _, err := mgr.LoginWithOptions(context.Background(), manager.LoginOptions{LoginID: "reader", Token: "same-token"}); err != nil {
 			t.Fatal(err)
@@ -389,11 +393,12 @@ func TestKratosReviewFailureAndAnnotations(t *testing.T) {
 
 // TestKratosReviewMultipart verifies multipart and body-only token sources. TestKratosReviewMultipart 验证 multipart 与仅请求体 Token 来源。
 func TestKratosReviewMultipart(t *testing.T) {
-	mgr, err := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
-		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).Build()
+	mgrAuth, err := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	key := mgr.GetConfig().TokenName
 	var body bytes.Buffer

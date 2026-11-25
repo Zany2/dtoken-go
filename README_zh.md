@@ -79,6 +79,7 @@ go get github.com/Zany2/dtoken-go/integrations/gin
 package main
 
 import (
+    "log"
     "context"
     "fmt"
 
@@ -93,21 +94,25 @@ func main() {
         IsPrintBanner(false).
         Build()
     if err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
     defer auth.Close()
 
     ctx := context.Background()
     token, err := auth.LoginID(ctx, "user-1001")
     if err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
     if err := auth.AddRoles(ctx, dtoken.RoleOptions{LoginID: "user-1001", Roles: []string{"admin"}}); err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
     fmt.Println(auth.IsLogin(ctx, token))
     if err := auth.LogoutByToken(ctx, token); err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
 }
 ```
@@ -116,13 +121,14 @@ Build 自动注册并返回 Auth；BuildInstance 创建不注册的独立实例�
 
 ### AuthType 构建与调用
 
-构建时通过 `AuthType` 区分用户、管理员等认证体系。`Build()` 自动注册并返回 `*Auth`，无需再调用 `SetAuth`；`MustBuild()` 行为相同，失败时 panic。下面是独立示例，用户 Token 有效期为 1 天，管理员 Token 有效期为 30 分钟，`Timeout` 的单位为秒：
+构建时通过 `AuthType` 区分用户、管理员等认证体系。`Build()` 自动注册并返回 `*Auth`，无需再调用 `SetAuth`，构建错误由调用方处理。下面是独立示例，用户 Token 有效期为 1 天，管理员 Token 有效期为 30 分钟，`Timeout` 的单位为秒：
 
 <!-- dtoken-compile: multi-auth -->
 ```go
 package main
 
 import (
+    "log"
     "context"
     "fmt"
 
@@ -131,12 +137,19 @@ import (
 
 func main() {
     defer dtoken.CloseAll()
-    userAuth := dtoken.NewBuilder().
-        AuthType("user").TokenName("user-token").Timeout(86400).
-        IsPrintBanner(false).MustBuild()
-    dtoken.NewBuilder().
-        AuthType("admin").TokenName("admin-token").Timeout(1800).
-        IsPrintBanner(false).MustBuild()
+    userAuth, err := dtoken.NewBuilder().
+        AuthType("user").TokenName("user-token").Timeout(86400).RenewMaxRefresh(3600).
+        IsPrintBanner(false).Build()
+    if err != nil {
+        fmt.Println(err)
+        return
+    }
+    if _, err := dtoken.NewBuilder().
+        AuthType("admin").TokenName("admin-token").Timeout(1800).RenewMaxRefresh(300).
+        IsPrintBanner(false).Build(); err != nil {
+        fmt.Println(err)
+        return
+    }
 
     ctx := context.Background()
     token, err := dtoken.AuthType("user").Login(ctx, dtoken.LoginOptions{
@@ -144,10 +157,12 @@ func main() {
         Device: "web",
     })
     if err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
     if err := userAuth.CheckLogin(ctx, token); err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
     fmt.Println(dtoken.AuthType("user").IsLogin(ctx, token))  // true
     fmt.Println(dtoken.AuthType("admin").IsLogin(ctx, token)) // false
@@ -160,7 +175,7 @@ func main() {
 | `dtoken.AuthType("user").CheckLogin(ctx, token)` | 当前注册的 user 体系 |
 | `userAuth.CheckLogin(ctx, token)` | 构建返回的固定实例，与该体系的注册项共享引擎 |
 
-上例只注册 user 和 admin，不包含默认体系。未注册的体系不会回退到默认体系，`CheckLogin` 返回 `ErrManagerNotFound`，`IsLogin` 返回 false。同名 `Build` 返回 `ErrManagerAlreadyRegistered`；需要不注册的独立实例时使用 `BuildInstance()`。根包业务函数与实例方法签名一致，通过调用入口选择体系，`LoginOptions.AuthType` 不改变这些入口的体系选择。
+上例只注册 user 和 admin，不包含默认体系。未注册的体系不会回退到默认体系，`CheckLogin` 返回 `ErrManagerNotFound`，`IsLogin` 返回 false。同名 `Build` 返回 `ErrManagerAlreadyRegistered`；需要不注册的独立实例时使用 `BuildInstance()`。根包业务函数与实例方法签名一致，通过调用入口选择体系，业务选项只包含业务参数。
 
 应用退出时先停止接收并排空请求，再调用 `dtoken.CloseAll()` 关闭当前注册实例；未注册实例单独调用 `auth.Close()`。更多用法见[多认证体系](docs/guide/core/multi-auth_zh.md)和 [API 与生命周期](docs/design/api-lifecycle_zh.md)。
 
@@ -175,6 +190,7 @@ func main() {
 package main
 
 import (
+    "log"
     "net/http"
 
     "github.com/Zany2/dtoken-go"
@@ -185,12 +201,18 @@ import (
 func main() {
     auth, err := dtoken.NewBuilder().TokenName("Authorization").Build()
     if err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
     defer auth.Close()
 
     router := gin.Default()
-    router.Use(gindt.Context(auth))
+    authMiddleware1, authErr := gindt.Context(auth)
+    if authErr != nil {
+        log.Print(authErr)
+        return
+    }
+    router.Use(authMiddleware1)
     router.POST("/login", func(c *gin.Context) {
         token, err := auth.LoginID(c.Request.Context(), "user-1001")
         if err != nil {
@@ -210,7 +232,8 @@ func main() {
         c.JSON(http.StatusOK, gin.H{"loginId": loginID})
     })
     if err := router.Run(":8080"); err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
 }
 ```
@@ -221,7 +244,7 @@ func main() {
 
 Nonce、OAuth2、Ticket 和 ShortKey 通过各自包的构造器创建；`NewService` 可接收 Auth 作为事件发布器。能力服务复用实例的命名空间、存储及所需编解码器，Builder 不提供能力开关。HTTP 通过 `contract` 下的服务接口绑定能力，也支持自定义实现。
 
-在上面的 Gin 示例中，补充以下导入，并用后面的绑定片段替换 `router.Use(gindt.Context(auth))`，放在所有路由注册之前：
+在上面的 Gin 示例中，补充以下导入，并用后面的绑定片段替换实例绑定代码，放在所有路由注册之前：
 
 ```go
 import (
@@ -234,12 +257,19 @@ import (
 
 ```go
 cfg := auth.Config()
-service := nonce.NewService(
-    nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage()),
-    auth,
-)
+nonceManager, err := nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage())
+if err != nil {
+    log.Print(err)
+    return
+}
+service := nonce.NewService(nonceManager, auth)
+authOption1, authErr := gindt.WithAuth(auth)
+if authErr != nil {
+    log.Print(authErr)
+    return
+}
 options := []gindt.AuthOption{
-    gindt.WithAuth(auth),
+    authOption1,
     gindt.WithCapabilities(requestcontext.Capabilities{Nonce: service}),
 }
 router.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), options...))
@@ -256,7 +286,7 @@ router.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), options..
 | 根包 `dtoken` | 实例/默认 API、AuthType 选择器、共享注册表、Builder 与高级扩展类型 |
 | `contract`、`config`、`errors`、`event` | 公共契约与共享模型、核心配置、错误、事件发布与监听分发 |
 | `internal/engine` | 内部认证引擎，应用不直接导入 |
-| `internal/builder`、`internal/defaults` | 通用组件装配与内置默认组件工厂 |
+| `internal/builder` | 通用组件装配与内置默认组件工厂 |
 | `nonce`、`oauth2`、`ticket`、`shortkey` | 独立组合的能力与服务 |
 | `httpauth`、`httpauth/context` | 共享 HTTP 鉴权与请求上下文 |
 | `codec`、`generator`、`logging`、`pool`、`storage` | 可插拔组件实现 |

@@ -18,7 +18,7 @@ func TestProductionRouteFailures(t *testing.T) {
 	setupEchoManager(t)
 	ctx := context.Background()
 	router := echo4.New()
-	registerTestRoutes(router)
+	registerTestRoutes(t, router)
 	check := func(method, path, body, token string, wantStatus, wantCode int) {
 		t.Helper()
 		rec := requestEcho(t, router, method, path, body, token)
@@ -64,7 +64,9 @@ func TestProductionRouteFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, path := range []string{"/me", "/admin", "/articles", "/logout"} {
 		method := http.MethodGet
 		if path == "/logout" {

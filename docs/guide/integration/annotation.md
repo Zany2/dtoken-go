@@ -42,7 +42,11 @@ if err != nil { panic(err) }
 defer auth.Close()
 
 r := gin.Default()
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(auth)))
+authOption1, authErr := gindt.WithAuth(auth)
+if authErr != nil {
+    return authErr
+}
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, authOption1))
 ```
 
 Here dt names the root package github.com/Zany2/dtoken-go. Annotations reuse the bound request instance. Switching AuthType requires an explicit ManagerResolver, such as WithManagerResolver(dt.GetManager) on registration middleware. Missing bindings or resolvers return ErrManagerNotFound.

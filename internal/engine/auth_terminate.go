@@ -10,6 +10,10 @@ import (
 
 // Terminate applies one terminal operation by options Terminate 根据选项执行一次终端下线操作。
 func (m *Manager) Terminate(ctx context.Context, opts TerminateOptions) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Remember explicit filters so whitespace cannot widen a destructive operation. 记录显式筛选字段，避免空白值扩大下线范围。
 	explicitToken, explicitDevice, explicitDeviceID := opts.Token != "", opts.Device != "", opts.DeviceID != ""
 

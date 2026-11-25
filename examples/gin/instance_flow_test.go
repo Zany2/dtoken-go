@@ -32,10 +32,14 @@ func TestInjectedInstanceOwnsLoginAndRefresh(t *testing.T) {
 					t.Fatal(err)
 				}
 				t.Cleanup(global.Close)
-				dtoken.SetManager(global.Manager())
+				if err := dtoken.SetManager(global.Manager()); err != nil {
+					t.Fatalf("register authentication: %v", err)
+				}
 			}
 			router := gin.New()
-			registerRoutes(router, auth)
+			if err := registerRoutes(router, auth); err != nil {
+				t.Fatal(err)
+			}
 			request := func(method, path, body, token string) *httptest.ResponseRecorder {
 				req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
 				req.Header.Set("Content-Type", "application/json")

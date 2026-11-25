@@ -36,25 +36,38 @@ type LoginRequest struct {
 }
 
 func main() {
-	auth := initDToken()
+	auth, err := initDToken()
+	if err != nil {
+		log.Print(err)
+		return
+	}
 	defer auth.Close()
 
-	srv := newKratosExampleServer(auth)
+	srv, err := newKratosExampleServer(auth)
+	if err != nil {
+		log.Print(err)
+		return
+	}
 	app := kratos.New(
 		kratos.Name("dtoken-kratos-example"),
 		kratos.Server(srv),
 	)
 
 	if err := app.Run(); err != nil {
-		panic(err)
+		log.Print(err)
+		return
 	}
 }
 
 // newKratosExampleServer shares server configuration and routes with regression tests. newKratosExampleServer 与回归测试共用服务器配置及路由。
-func newKratosExampleServer(auth *dtoken.Auth) *khttp.Server {
+func newKratosExampleServer(auth *dtoken.Auth) (*khttp.Server, error) {
+	authOption, err := kratosdt.WithAuth(auth)
+	if err != nil {
+		return nil, err
+	}
 	srv := khttp.NewServer(
 		khttp.Address(":8080"),
-		khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware(kratosdt.WithAuth(auth))),
+		khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware(authOption)),
 	)
 
 	r := srv.Route("/")
@@ -64,22 +77,16 @@ func newKratosExampleServer(auth *dtoken.Auth) *khttp.Server {
 	r.GET("/articles", wrapHandler(handleArticles, kratosdt.AuthMiddleware(), kratosdt.PermissionMiddleware([]string{"article:read"})))
 	r.POST("/logout", wrapHandler(handleLogout, kratosdt.AuthMiddleware()))
 
-	return srv
+	return srv, nil
 }
 
 // initDToken builds the Auth instance owned by the application. initDToken 构建由应用管理生命周期的 Auth 实例。
-func initDToken() *dtoken.Auth {
-	auth, err := dtoken.NewBuilder().
+func initDToken() (*dtoken.Auth, error) {
+	return dtoken.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
-
-	if err != nil {
-		panic(err)
-	}
-
-	return auth
 }
 
 // wrapHandler applies Kratos middleware to a plain handler wrapHandler 为普通处理函数应用 Kratos 中间件

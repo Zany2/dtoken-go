@@ -89,8 +89,16 @@ func TestConsumerInstanceRegistryAndCapabilities(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	nonceService := nonce.NewService(nonce.NewDefaultNonceManager(auth.Config().AuthType, auth.Config().KeyPrefix, auth.Storage()), auth)
-	router.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(auth), gindt.WithCapabilities(requestcontext.Capabilities{Nonce: nonceService})))
+	nonceManager, err := nonce.NewDefaultNonceManager(auth.Config().AuthType, auth.Config().KeyPrefix, auth.Storage())
+	if err != nil {
+		t.Fatal(err)
+	}
+	nonceService := nonce.NewService(nonceManager, auth)
+	authOption, err := gindt.WithAuth(auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	router.Use(gindt.RegisterDTokenContextMiddleware(ctx, authOption, gindt.WithCapabilities(requestcontext.Capabilities{Nonce: nonceService})))
 	router.Use(gindt.AuthMiddleware(ctx))
 	router.GET("/me", func(c *gin.Context) {
 		value, err := gindt.GenerateNonceByContext(c)

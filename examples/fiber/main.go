@@ -35,22 +35,34 @@ type LoginRequest struct {
 }
 
 func main() {
-	auth := initDToken()
+	auth, err := initDToken()
+	if err != nil {
+		log.Print(err)
+		return
+	}
 	defer auth.Close()
 
 	app := gofiber.New()
-	registerRoutes(app, auth)
+	if err := registerRoutes(app, auth); err != nil {
+		log.Print(err)
+		return
+	}
 
 	if err := app.Listen(":8080"); err != nil {
-		panic(err)
+		log.Print(err)
+		return
 	}
 }
 
 // registerRoutes shares production middleware and routes with regression tests. registerRoutes 与回归测试共用实际中间件和路由。
-func registerRoutes(app *gofiber.App, authInstance *dtoken.Auth) {
+func registerRoutes(app *gofiber.App, authInstance *dtoken.Auth) error {
+	authOption, err := fiberdt.WithAuth(authInstance)
+	if err != nil {
+		return err
+	}
 	ctx := context.Background()
 	fail := func(c *gofiber.Ctx, err error) { _ = writeAuthError(c, err) }
-	app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx, fiberdt.WithAuth(authInstance), fiberdt.WithFailFunc(fail)))
+	app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx, authOption, fiberdt.WithFailFunc(fail)))
 	app.Post("/login", handleLogin)
 
 	auth := app.Group("")
@@ -59,21 +71,16 @@ func registerRoutes(app *gofiber.App, authInstance *dtoken.Auth) {
 	auth.Get("/admin", fiberdt.RoleMiddleware(ctx, []string{"admin"}, fiberdt.WithFailFunc(fail)), handleAdmin)
 	auth.Get("/articles", fiberdt.PermissionMiddleware(ctx, []string{"article:read"}, fiberdt.WithFailFunc(fail)), handleArticles)
 	auth.Post("/logout", handleLogout)
+	return nil
 }
 
 // initDToken builds the Auth instance owned by the application. initDToken 构建由应用管理生命周期的 Auth 实例。
-func initDToken() *dtoken.Auth {
-	auth, err := dtoken.NewBuilder().
+func initDToken() (*dtoken.Auth, error) {
+	return dtoken.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
-
-	if err != nil {
-		panic(err)
-	}
-
-	return auth
 }
 
 // handleLogin logs in a demo user handleLogin 登录示例用户

@@ -9,7 +9,6 @@ import (
 	adapter "github.com/Zany2/dtoken-go/contract"
 	derror "github.com/Zany2/dtoken-go/errors"
 	"github.com/Zany2/dtoken-go/internal/builder"
-	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
 	"github.com/Zany2/dtoken-go/logging/dlog"
 	"github.com/Zany2/dtoken-go/pool/ants"
@@ -17,13 +16,13 @@ import (
 
 // Builder constructs an Auth instance with explicit component ownership. Builder 按显式组件所有权构建 Auth 实例。
 type Builder struct {
-	inner *builder.Builder // inner stores core builder inner 存储底层构建器
+	cfg            *config.Config     // cfg stores mutable authentication settings. cfg 保存可修改的认证配置。
+	components     Components         // components stores explicitly injected adapters. components 保存显式注入的适配器。
+	factories      ComponentFactories // factories stores user factories; nil selects bundled defaults. factories 保存用户工厂，nil 使用内置默认实现。
+	accessProvider AccessProvider     // accessProvider supplies permissions and roles. accessProvider 提供权限与角色。
 
 	renewPoolConfig *ants.RenewPoolConfig // renewPoolConfig stores renew pool config renewPoolConfig 存储续期池配置
 	loggerConfig    *dlog.LoggerConfig    // loggerConfig stores logger config loggerConfig 存储日志配置
-
-	customLogFactory  bool // customLogFactory marks user logger factory customLogFactory 标记用户自定义日志工厂
-	customPoolFactory bool // customPoolFactory marks user pool factory customPoolFactory 标记用户自定义续期池工厂
 
 	managerOptions []manager.Option // managerOptions stores delayed user options managerOptions 存储延迟执行的用户装配选项
 }
@@ -31,7 +30,7 @@ type Builder struct {
 // NewBuilder creates a high-level builder with bundled default configs NewBuilder 创建高层默认配置构建器
 func NewBuilder() *Builder {
 	return &Builder{
-		inner:           defaults.NewBuilder(),
+		cfg:             config.DefaultConfig(),
 		renewPoolConfig: ants.DefaultRenewPoolConfig(),
 		loggerConfig:    dlog.DefaultLoggerConfig(),
 	}
@@ -39,245 +38,260 @@ func NewBuilder() *Builder {
 
 // Config replaces core config Config 替换核心配置
 func (b *Builder) Config(cfg *config.Config) *Builder {
-	b.ensureBuilder()
-	b.inner.Config(cfg)
+	// Reset to default config when input is nil 输入为 nil 时重置为默认配置
+	if cfg == nil {
+		b.cfg = config.DefaultConfig()
+		return b
+	}
+
+	// Store a cloned config to avoid external mutation 保存副本以避免外部修改影响 Builder
+	b.cfg = cfg.Clone()
 	return b
 }
 
 // GetConfig returns mutable core config GetConfig 返回可变核心配置
 func (b *Builder) GetConfig() *config.Config {
 	b.ensureBuilder()
-	return b.inner.GetConfig()
+	return b.cfg
 }
 
 // AuthType sets auth type AuthType 设置认证体系类型
 func (b *Builder) AuthType(authType string) *Builder {
 	b.ensureBuilder()
-	b.inner.AuthType(authType)
+	b.cfg.SetAuthType(authType)
 	return b
 }
 
 // KeyPrefix sets key prefix KeyPrefix 设置存储键前缀
 func (b *Builder) KeyPrefix(keyPrefix string) *Builder {
 	b.ensureBuilder()
-	b.inner.KeyPrefix(keyPrefix)
+	b.cfg.SetKeyPrefix(keyPrefix)
 	return b
 }
 
 // TokenName sets token name TokenName 设置 Token 名称
 func (b *Builder) TokenName(name string) *Builder {
 	b.ensureBuilder()
-	b.inner.TokenName(name)
+	b.cfg.TokenName = name
 	return b
 }
 
 // Timeout sets token timeout seconds Timeout 设置 Token 超时时间秒数
 func (b *Builder) Timeout(seconds int64) *Builder {
 	b.ensureBuilder()
-	b.inner.Timeout(seconds)
+	b.cfg.Timeout = seconds
 	return b
 }
 
 // RefreshTokenTimeout sets refresh token timeout seconds RefreshTokenTimeout 设置刷新令牌超时时间秒数
 func (b *Builder) RefreshTokenTimeout(seconds int64) *Builder {
 	b.ensureBuilder()
-	b.inner.RefreshTokenTimeout(seconds)
+	b.cfg.RefreshTokenTimeout = seconds
 	return b
 }
 
 // TimeoutDuration sets token timeout by duration TimeoutDuration 使用时长设置 Token 超时时间
 func (b *Builder) TimeoutDuration(d time.Duration) *Builder {
 	b.ensureBuilder()
-	b.inner.TimeoutDuration(d)
+	b.cfg.Timeout = durationToSeconds(d)
 	return b
 }
 
 // RefreshTokenTimeoutDuration sets refresh token timeout by duration RefreshTokenTimeoutDuration 使用时长设置刷新令牌超时时间
 func (b *Builder) RefreshTokenTimeoutDuration(d time.Duration) *Builder {
 	b.ensureBuilder()
-	b.inner.RefreshTokenTimeoutDuration(d)
+	b.cfg.RefreshTokenTimeout = durationToSeconds(d)
 	return b
 }
 
 // AutoRenew sets auto renew switch AutoRenew 设置自动续期开关
 func (b *Builder) AutoRenew(autoRenew bool) *Builder {
 	b.ensureBuilder()
-	b.inner.AutoRenew(autoRenew)
+	b.cfg.AutoRenew = autoRenew
 	return b
 }
 
 // RenewMaxRefresh sets renew trigger threshold RenewMaxRefresh 设置续期触发阈值秒数
 func (b *Builder) RenewMaxRefresh(seconds int64) *Builder {
 	b.ensureBuilder()
-	b.inner.RenewMaxRefresh(seconds)
+	b.cfg.RenewMaxRefresh = seconds
 	return b
 }
 
 // RenewInterval sets minimum renew interval RenewInterval 设置最小续期间隔秒数
 func (b *Builder) RenewInterval(seconds int64) *Builder {
 	b.ensureBuilder()
-	b.inner.RenewInterval(seconds)
+	b.cfg.RenewInterval = seconds
 	return b
 }
 
 // ActiveTimeout sets max inactive duration ActiveTimeout 设置最大不活跃时长秒数
 func (b *Builder) ActiveTimeout(seconds int64) *Builder {
 	b.ensureBuilder()
-	b.inner.ActiveTimeout(seconds)
+	b.cfg.ActiveTimeout = seconds
 	return b
 }
 
 // ConcurrencyScope sets concurrency scope ConcurrencyScope 设置并发控制作用域
 func (b *Builder) ConcurrencyScope(concurrencyScope config.ConcurrencyScope) *Builder {
 	b.ensureBuilder()
-	b.inner.ConcurrencyScope(concurrencyScope)
+	b.cfg.ConcurrencyScope = concurrencyScope
 	return b
 }
 
 // IsConcurrent sets concurrent login switch IsConcurrent 设置是否允许并发登录
 func (b *Builder) IsConcurrent(concurrent bool) *Builder {
 	b.ensureBuilder()
-	b.inner.IsConcurrent(concurrent)
+	b.cfg.IsConcurrent = concurrent
 	return b
 }
 
 // IsShare sets shared token switch IsShare 设置是否共享 Token
 func (b *Builder) IsShare(share bool) *Builder {
 	b.ensureBuilder()
-	b.inner.IsShare(share)
+	b.cfg.IsShare = share
 	return b
 }
 
 // MaxLoginCount sets max login count MaxLoginCount 设置最大登录数量
 func (b *Builder) MaxLoginCount(count int64) *Builder {
 	b.ensureBuilder()
-	b.inner.MaxLoginCount(count)
+	b.cfg.MaxLoginCount = count
 	return b
 }
 
 // ReplacedLoginExitMode sets replaced login strategy ReplacedLoginExitMode 设置非并发登录处理策略
 func (b *Builder) ReplacedLoginExitMode(mode config.ReplacedLoginExitMode) *Builder {
 	b.ensureBuilder()
-	b.inner.ReplacedLoginExitMode(mode)
+	b.cfg.ReplacedLoginExitMode = mode
 	return b
 }
 
 // OverflowLogoutMode sets overflow logout mode OverflowLogoutMode 设置超限登录下线模式
 func (b *Builder) OverflowLogoutMode(mode config.LogoutMode) *Builder {
 	b.ensureBuilder()
-	b.inner.OverflowLogoutMode(mode)
+	b.cfg.OverflowLogoutMode = mode
 	return b
 }
 
 // IsReadBody sets body read switch IsReadBody 设置是否从请求体读取 Token
 func (b *Builder) IsReadBody(isRead bool) *Builder {
 	b.ensureBuilder()
-	b.inner.IsReadBody(isRead)
+	b.cfg.IsReadBody = isRead
 	return b
 }
 
 // IsReadQuery sets query read switch IsReadQuery 设置是否从 Query 读取 Token
 func (b *Builder) IsReadQuery(isRead bool) *Builder {
 	b.ensureBuilder()
-	b.inner.IsReadQuery(isRead)
+	b.cfg.IsReadQuery = isRead
 	return b
 }
 
 // IsReadHeader sets header read switch IsReadHeader 设置是否从 Header 读取 Token
 func (b *Builder) IsReadHeader(isRead bool) *Builder {
 	b.ensureBuilder()
-	b.inner.IsReadHeader(isRead)
+	b.cfg.IsReadHeader = isRead
 	return b
 }
 
 // IsReadCookie sets cookie read switch IsReadCookie 设置是否从 Cookie 读取 Token
 func (b *Builder) IsReadCookie(isRead bool) *Builder {
 	b.ensureBuilder()
-	b.inner.IsReadCookie(isRead)
+	b.cfg.IsReadCookie = isRead
 	return b
 }
 
 // TokenStyle sets token style TokenStyle 设置 Token 生成风格
 func (b *Builder) TokenStyle(style adapter.TokenStyle) *Builder {
 	b.ensureBuilder()
-	b.inner.TokenStyle(style)
+	b.cfg.TokenStyle = style
 	return b
 }
 
 // JwtSecretKey sets JWT secret key JwtSecretKey 设置 JWT 密钥
 func (b *Builder) JwtSecretKey(key string) *Builder {
 	b.ensureBuilder()
-	b.inner.JwtSecretKey(key)
+	b.cfg.JwtSecretKey = key
 	return b
 }
 
 // IsLog sets log switch IsLog 设置是否开启日志
 func (b *Builder) IsLog(isLog bool) *Builder {
 	b.ensureBuilder()
-	b.inner.IsLog(isLog)
+	b.cfg.IsLog = isLog
 	return b
 }
 
 // IsPrintBanner sets banner print switch IsPrintBanner 设置是否打印 Banner
 func (b *Builder) IsPrintBanner(isPrint bool) *Builder {
 	b.ensureBuilder()
-	b.inner.IsPrintBanner(isPrint)
+	b.cfg.IsPrintBanner = isPrint
 	return b
 }
 
 // AsyncEvent sets async event switch AsyncEvent 设置是否异步触发事件
 func (b *Builder) AsyncEvent(asyncEvent bool) *Builder {
 	b.ensureBuilder()
-	b.inner.AsyncEvent(asyncEvent)
+	b.cfg.AsyncEvent = asyncEvent
 	return b
 }
 
 // CookieDomain sets cookie domain CookieDomain 设置 Cookie 作用域
 func (b *Builder) CookieDomain(domain string) *Builder {
-	b.ensureBuilder()
-	b.inner.CookieDomain(domain)
+	cc := b.ensureCookieConfig()
+	cc.Domain = domain
 	return b
 }
 
 // CookiePath sets cookie path CookiePath 设置 Cookie 路径
 func (b *Builder) CookiePath(path string) *Builder {
-	b.ensureBuilder()
-	b.inner.CookiePath(path)
+	cc := b.ensureCookieConfig()
+	cc.Path = path
 	return b
 }
 
 // CookieSecure sets cookie secure switch CookieSecure 设置 Cookie HTTPS 限制
 func (b *Builder) CookieSecure(secure bool) *Builder {
-	b.ensureBuilder()
-	b.inner.CookieSecure(secure)
+	cc := b.ensureCookieConfig()
+	cc.Secure = secure
 	return b
 }
 
 // CookieHttpOnly sets cookie httpOnly switch CookieHttpOnly 设置 Cookie HttpOnly
 func (b *Builder) CookieHttpOnly(httpOnly bool) *Builder {
-	b.ensureBuilder()
-	b.inner.CookieHttpOnly(httpOnly)
+	cc := b.ensureCookieConfig()
+	cc.HttpOnly = httpOnly
 	return b
 }
 
 // CookieSameSite sets cookie sameSite mode CookieSameSite 设置 Cookie SameSite 模式
 func (b *Builder) CookieSameSite(sameSite config.SameSiteMode) *Builder {
-	b.ensureBuilder()
-	b.inner.CookieSameSite(sameSite)
+	cc := b.ensureCookieConfig()
+	cc.SameSite = sameSite
 	return b
 }
 
 // CookieMaxAge sets cookie max age seconds CookieMaxAge 设置 Cookie 最大存活秒数
 func (b *Builder) CookieMaxAge(maxAge int64) *Builder {
-	b.ensureBuilder()
-	b.inner.CookieMaxAge(maxAge)
+	cc := b.ensureCookieConfig()
+	cc.MaxAge = maxAge
 	return b
 }
 
 // CookieConfig sets full cookie config CookieConfig 设置完整 Cookie 配置
 func (b *Builder) CookieConfig(cfg *config.CookieConfig) *Builder {
 	b.ensureBuilder()
-	b.inner.CookieConfig(cfg)
+
+	// Preserve explicit nil for validation 保留显式 nil 以交给配置校验处理
+	if cfg == nil {
+		b.cfg.CookieConfig = nil
+		return b
+	}
+
+	// Store a copied cookie config 保存 Cookie 配置副本
+	copyCfg := *cfg
+	b.cfg.CookieConfig = &copyCfg
 	return b
 }
 
@@ -354,7 +368,7 @@ func (b *Builder) RenewPoolPreAlloc(preAlloc bool) *Builder {
 	return b
 }
 
-// RenewPoolNonBlocking sets renew pool non-blocking mode RenewPoolNonBlocking 设置续期池非阻塞模式
+// RenewPoolNonBlocking sets submission mode; false fails validation for the bundled pool. RenewPoolNonBlocking 设置提交模式，内置池配置为 false 时校验失败。
 func (b *Builder) RenewPoolNonBlocking(nonBlocking bool) *Builder {
 	b.ensureBuilder()
 	b.renewPoolConfig.NonBlocking = nonBlocking
@@ -467,36 +481,31 @@ func (b *Builder) LoggerLocalTime(enable bool) *Builder {
 
 // SetGenerator sets token generator SetGenerator 设置 Token 生成器
 func (b *Builder) SetGenerator(generator adapter.Generator) *Builder {
-	b.ensureBuilder()
-	b.inner.SetGenerator(generator)
+	b.components.Generator = generator
 	return b
 }
 
 // SetStorage sets a manager-owned storage adapter by default. SetStorage 设置默认由 Manager 持有的存储适配器。
 func (b *Builder) Storage(storage adapter.Storage) *Builder {
-	b.ensureBuilder()
-	b.inner.Storage(storage)
+	b.components.Storage = storage
 	return b
 }
 
 // SetCodec sets codec adapter SetCodec 设置编解码器
 func (b *Builder) SetCodec(codec adapter.Codec) *Builder {
-	b.ensureBuilder()
-	b.inner.SetCodec(codec)
+	b.components.Codec = codec
 	return b
 }
 
 // SetLog sets a manager-owned log adapter by default. SetLog 设置默认由 Manager 持有的日志适配器。
 func (b *Builder) SetLog(log adapter.Log) *Builder {
-	b.ensureBuilder()
-	b.inner.SetLog(log)
+	b.components.Log = log
 	return b
 }
 
 // SetPool sets a manager-owned async task pool by default. SetPool 设置默认由 Manager 持有的异步任务池。
 func (b *Builder) SetPool(pool adapter.Pool) *Builder {
-	b.ensureBuilder()
-	b.inner.SetPool(pool)
+	b.components.Pool = pool
 	return b
 }
 
@@ -509,62 +518,55 @@ func (b *Builder) UseManagerOption(option ManagerOption) *Builder {
 	return b
 }
 
-// SetGeneratorFactory sets default generator factory SetGeneratorFactory 设置默认生成器工厂
+// SetGeneratorFactory sets a custom factory; nil restores the bundled default. SetGeneratorFactory 设置自定义工厂，nil 恢复内置默认实现。
 func (b *Builder) SetGeneratorFactory(factory GeneratorFactory) *Builder {
-	b.ensureBuilder()
-	b.inner.SetGeneratorFactory(factory)
+	b.factories.Generator = factory
 	return b
 }
 
-// SetStorageFactory sets a factory for storage adapters owned by Manager by default. SetStorageFactory 设置创建默认由 Manager 持有的存储适配器的工厂。
+// SetStorageFactory sets a custom factory; nil restores the bundled default. SetStorageFactory 设置自定义工厂，nil 恢复内置默认实现。
 func (b *Builder) SetStorageFactory(factory StorageFactory) *Builder {
-	b.ensureBuilder()
-	b.inner.SetStorageFactory(factory)
+	b.factories.Storage = factory
 	return b
 }
 
-// SetCodecFactory sets default codec factory SetCodecFactory 设置默认编解码器工厂
+// SetCodecFactory sets a custom factory; nil restores the bundled default. SetCodecFactory 设置自定义工厂，nil 恢复内置默认实现。
 func (b *Builder) SetCodecFactory(factory CodecFactory) *Builder {
-	b.ensureBuilder()
-	b.inner.SetCodecFactory(factory)
+	b.factories.Codec = factory
 	return b
 }
 
-// SetLogFactory sets a factory for log adapters owned by Manager by default. SetLogFactory 设置创建默认由 Manager 持有的日志适配器的工厂。
+// SetLogFactory sets a custom factory; nil restores the bundled default. SetLogFactory 设置自定义工厂，nil 恢复内置默认实现。
 func (b *Builder) SetLogFactory(factory LogFactory) *Builder {
-	b.ensureBuilder()
-	b.customLogFactory = factory != nil
-	b.inner.SetLogFactory(factory)
+	b.factories.Log = factory
 	return b
 }
 
-// SetPoolFactory sets a factory for task pools owned by Manager by default. SetPoolFactory 设置创建默认由 Manager 持有的任务池的工厂。
+// SetPoolFactory sets a custom factory; nil restores the bundled default. SetPoolFactory 设置自定义工厂，nil 恢复内置默认实现。
 func (b *Builder) SetPoolFactory(factory PoolFactory) *Builder {
-	b.ensureBuilder()
-	b.customPoolFactory = factory != nil
-	b.inner.SetPoolFactory(factory)
+	b.factories.Pool = factory
 	return b
 }
 
 // SetAccessProvider sets permission and role provider SetAccessProvider 设置权限与角色提供器
 func (b *Builder) SetAccessProvider(provider AccessProvider) *Builder {
-	b.ensureBuilder()
-	b.inner.SetAccessProvider(provider)
+	b.accessProvider = provider
 	return b
 }
 
 // JwtSecret enables JWT style and sets secret JwtSecret 启用 JWT 风格并设置密钥
 func (b *Builder) JwtSecret(secret string) *Builder {
 	b.ensureBuilder()
-	b.inner.JwtSecret(secret)
+	b.cfg.TokenStyle = adapter.TokenStyleJWT
+	b.cfg.JwtSecretKey = secret
 	return b
 }
 
-// Clone clones builder with module configs Clone 克隆构建器和模块配置
+// Clone copies configs and options while sharing injected components and callbacks; use factories for independent resources. Clone 复制配置和选项，共享注入组件和回调；独立资源应使用工厂。
 func (b *Builder) Clone() *Builder {
 	b.ensureBuilder()
 	clone := *b
-	clone.inner = b.inner.Clone()
+	clone.cfg = b.cfg.Clone()
 	clone.renewPoolConfig = b.renewPoolConfig.Clone()
 	clone.loggerConfig = b.loggerConfig.Clone()
 
@@ -574,42 +576,47 @@ func (b *Builder) Clone() *Builder {
 	return &clone
 }
 
-// buildManager validates component configs and assembles the engine. buildManager 校验组件配置并装配引擎。
+// buildManager selects defaults and delegates component assembly. buildManager 选择默认组件并调用装配函数。
 func (b *Builder) buildManager() (*manager.Manager, error) {
 	b.ensureBuilder()
 
-	// Clone configs so validation and assembly preserve reusable builder state. 克隆配置，避免校验和装配修改可复用的构建器状态。
-	coreConfig := b.inner.GetConfig().Clone()
-	renewPoolConfig := b.renewPoolConfig.Clone()
+	// Keep each build independent of later builder changes. 每次构建使用独立的组件配置快照。
 	loggerConfig := b.loggerConfig.Clone()
-
-	// Validate every config before wiring components. 在装配组件前校验全部配置。
-	if err := coreConfig.Validate(); err != nil {
-		return nil, fmt.Errorf("build manager failed: invalid core config: %w", err)
+	renewPoolConfig := b.renewPoolConfig.Clone()
+	factories := b.factories
+	if factories.Generator == nil {
+		factories.Generator = builder.DefaultGeneratorFactory
 	}
-	if err := renewPoolConfig.Validate(); err != nil {
-		return nil, fmt.Errorf("build manager failed: invalid renew pool config: %w", err)
+	if factories.Storage == nil {
+		factories.Storage = builder.DefaultStorageFactory
 	}
-	if err := loggerConfig.Validate(); err != nil {
-		return nil, fmt.Errorf("build manager failed: invalid logger config: %w", err)
+	if factories.Codec == nil {
+		factories.Codec = builder.DefaultCodecFactory
+	}
+	if factories.Log == nil {
+		factories.Log = func(_ *config.Config) (adapter.Log, error) {
+			return builder.DefaultLogFactory(loggerConfig)
+		}
+	}
+	if factories.Pool == nil {
+		factories.Pool = func(_ *config.Config) (adapter.Pool, error) {
+			return builder.DefaultPoolFactory(renewPoolConfig)
+		}
 	}
 
-	// Wire authentication defaults before applying user overrides. 先装配认证默认组件，再应用用户覆盖项。
-	coreBuilder := b.inner.Clone().Config(coreConfig)
-	b.applyDefaultFactories(coreBuilder, renewPoolConfig, loggerConfig)
-
-	b.applyUserManagerOptions(coreBuilder)
-
-	mgr, err := coreBuilder.Build()
+	// Reporting applies to custom pools too, independently of their capacity settings. 状态报告也适用于自定义池，与池容量配置无关。
+	if renewPoolConfig.PrintStatusInterval < 0 {
+		return nil, fmt.Errorf("build manager failed: RenewPoolConfig.PrintStatusInterval must not be negative")
+	}
+	mgr, err := builder.Build(b.cfg, b.components, factories, b.accessProvider, b.managerOptions...)
 	if err != nil {
 		return nil, err
 	}
 
-	// Start status reporting only after successful assembly; Manager owns its shutdown. 仅在装配成功后启动状态报告，由 Manager 管理其关闭。
-	if coreConfig.IsLog && renewPoolConfig.PrintStatusInterval > 0 {
+	// Manager owns status reporting and stops it during shutdown. Manager 管理状态报告并在关闭时停止。
+	if mgr.GetConfig().IsLog && renewPoolConfig.PrintStatusInterval > 0 {
 		mgr.StartRenewPoolStatusLogger(renewPoolConfig.PrintStatusInterval)
 	}
-
 	return mgr, nil
 }
 
@@ -636,15 +643,6 @@ func (b *Builder) Build() (*Auth, error) {
 	return auth, nil
 }
 
-// MustBuild creates and registers an Auth, panicking on failure. MustBuild 创建并注册 Auth，失败时 panic。
-func (b *Builder) MustBuild() *Auth {
-	auth, err := b.Build()
-	if err != nil {
-		panic(err)
-	}
-	return auth
-}
-
 // BuildInstance creates an isolated Auth without registry access. BuildInstance 创建独立 Auth，不访问注册表。
 func (b *Builder) BuildInstance() (*Auth, error) {
 	mgr, err := b.buildManager()
@@ -654,40 +652,10 @@ func (b *Builder) BuildInstance() (*Auth, error) {
 	return New(mgr), nil
 }
 
-// MustBuildInstance creates an isolated Auth and panics on failure. MustBuildInstance 创建独立 Auth，失败时 panic。
-func (b *Builder) MustBuildInstance() *Auth {
-	auth, err := b.BuildInstance()
-	if err != nil {
-		panic(err)
-	}
-	return auth
-}
-
-// applyDefaultFactories wires config-aware default factories applyDefaultFactories 装配读取配置的默认工厂
-func (b *Builder) applyDefaultFactories(coreBuilder *builder.Builder, renewPoolConfig *ants.RenewPoolConfig, loggerConfig *dlog.LoggerConfig) {
-	if !b.customLogFactory {
-		coreBuilder.SetLogFactory(func(_ *config.Config) (adapter.Log, error) {
-			return dlog.NewLoggerWithConfig(loggerConfig.Clone())
-		})
-	}
-	if !b.customPoolFactory {
-		coreBuilder.SetPoolFactory(func(_ *config.Config) (adapter.Pool, error) {
-			return ants.NewRenewPoolManagerWithConfig(renewPoolConfig.Clone())
-		})
-	}
-}
-
-// applyUserManagerOptions appends user assembly options. applyUserManagerOptions 追加用户装配选项。
-func (b *Builder) applyUserManagerOptions(coreBuilder *builder.Builder) {
-	for _, option := range b.managerOptions {
-		coreBuilder.UseManagerOption(option)
-	}
-}
-
 // ensureBuilder initializes missing internals ensureBuilder 初始化缺失的内部配置
 func (b *Builder) ensureBuilder() {
-	if b.inner == nil {
-		b.inner = defaults.NewBuilder()
+	if b.cfg == nil {
+		b.cfg = config.DefaultConfig()
 	}
 	if b.renewPoolConfig == nil {
 		b.renewPoolConfig = ants.DefaultRenewPoolConfig()
@@ -695,4 +663,46 @@ func (b *Builder) ensureBuilder() {
 	if b.loggerConfig == nil {
 		b.loggerConfig = dlog.DefaultLoggerConfig()
 	}
+}
+
+// ensureCookieConfig initializes cookie config when needed ensureCookieConfig 在需要时初始化 Cookie 配置
+func (b *Builder) ensureCookieConfig() *config.CookieConfig {
+	// Ensure parent config first 先确保父级配置存在
+	b.ensureBuilder()
+
+	// Restore default cookie config when missing 缺失 Cookie 配置时恢复默认配置
+	if b.cfg.CookieConfig == nil {
+		b.cfg.CookieConfig = config.DefaultCookieConfig()
+	}
+
+	return b.cfg.CookieConfig
+}
+
+// durationToSeconds rounds positive durations up and keeps negative durations invalid. durationToSeconds 将正时长向上取整，并保持负时长无效。
+func durationToSeconds(d time.Duration) int64 {
+	// Keep zero invalid and map negative durations below NoLimit so validation cannot mistake them for unlimited. 保留零值无效，并将负时长映射到 NoLimit 以下，避免被误认为无限制。
+	if d <= 0 {
+		if d == 0 {
+			return 0
+		}
+
+		seconds := int64(d / time.Second)
+		if d%time.Second != 0 {
+			seconds--
+		}
+		if seconds >= config.NoLimit {
+			return config.NoLimit - 1
+		}
+		return seconds
+	}
+
+	// Convert whole seconds first 先转换整秒部分
+	seconds := int64(d / time.Second)
+
+	// Round up when sub-second remainder exists 存在亚秒余数时向上取整
+	if d%time.Second != 0 {
+		seconds++
+	}
+
+	return seconds
 }

@@ -12,6 +12,10 @@ import (
 
 // GetSession retrieves session information for a login ID. GetSession 获取指定登录 ID 的会话信息。
 func (m *Manager) GetSession(ctx context.Context, loginID string) (*Session, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return nil, derror.ErrIDIsEmpty
@@ -23,6 +27,10 @@ func (m *Manager) GetSession(ctx context.Context, loginID string) (*Session, err
 
 // GetSessionByToken retrieves session information by token. GetSessionByToken 通过 Token 值获取会话信息。
 func (m *Manager) GetSessionByToken(ctx context.Context, tokenValue string) (*Session, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	// Validate token value 校验 Token 值。
 	if tokenValue == "" {
 		return nil, derror.ErrInvalidToken
@@ -40,6 +48,10 @@ func (m *Manager) GetSessionByToken(ctx context.Context, tokenValue string) (*Se
 
 // GetTokenValueListByLoginID retrieves all tokens for a login ID. GetTokenValueListByLoginID 获取指定登录 ID 的所有 Token。
 func (m *Manager) GetTokenValueListByLoginID(ctx context.Context, loginID string, checkAlive ...bool) ([]string, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return nil, derror.ErrIDIsEmpty
@@ -71,6 +83,10 @@ func (m *Manager) GetTokenValueListByLoginID(ctx context.Context, loginID string
 
 // GetTokenValueListByDevice retrieves all tokens for a specific device type. GetTokenValueListByDevice 获取指定设备类型的所有 Token。
 func (m *Manager) GetTokenValueListByDevice(ctx context.Context, loginID, device string, checkAlive ...bool) ([]string, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return []string{}, derror.ErrIDIsEmpty
@@ -111,6 +127,10 @@ func (m *Manager) GetTokenValueListByDevice(ctx context.Context, loginID, device
 
 // GetTokenValueListByDeviceAndDeviceID retrieves all tokens for a specific device type and device ID. GetTokenValueListByDeviceAndDeviceID 获取指定设备类型和设备 ID 的所有 Token。
 func (m *Manager) GetTokenValueListByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string, checkAlive ...bool) ([]string, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return []string{}, derror.ErrIDIsEmpty
@@ -152,6 +172,10 @@ func (m *Manager) GetTokenValueListByDeviceAndDeviceID(ctx context.Context, logi
 
 // GetOnlineTerminalCount retrieves the count of online terminals for a user. GetOnlineTerminalCount 获取用户的在线终端数量。
 func (m *Manager) GetOnlineTerminalCount(ctx context.Context, loginID string) (int, error) {
+	if m.IsClosed() {
+		return 0, derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return 0, derror.ErrIDIsEmpty
@@ -178,6 +202,10 @@ func (m *Manager) GetOnlineTerminalCount(ctx context.Context, loginID string) (i
 
 // GetOnlineTerminalCountByDevice retrieves the count of online terminals for a specific device type. GetOnlineTerminalCountByDevice 获取用户在指定设备类型的在线终端数量。
 func (m *Manager) GetOnlineTerminalCountByDevice(ctx context.Context, loginID, device string) (int, error) {
+	if m.IsClosed() {
+		return 0, derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return 0, derror.ErrIDIsEmpty
@@ -212,6 +240,10 @@ func (m *Manager) GetOnlineTerminalCountByDevice(ctx context.Context, loginID, d
 
 // GetOnlineTerminalCountByDeviceAndDeviceID retrieves the count of online terminals for a specific device type and device ID. GetOnlineTerminalCountByDeviceAndDeviceID 获取用户在指定设备类型和设备ID的在线终端数量。
 func (m *Manager) GetOnlineTerminalCountByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) (int, error) {
+	if m.IsClosed() {
+		return 0, derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return 0, derror.ErrIDIsEmpty
@@ -247,6 +279,10 @@ func (m *Manager) GetOnlineTerminalCountByDeviceAndDeviceID(ctx context.Context,
 
 // GetTerminalListByLoginID retrieves all terminal info for a login ID, optionally filtered by device. GetTerminalListByLoginID 获取指定登录 ID 的所有终端信息列表，可选按设备类型过滤。
 func (m *Manager) GetTerminalListByLoginID(ctx context.Context, loginID string, device ...string) ([]TerminalInfo, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return nil, derror.ErrIDIsEmpty
@@ -292,6 +328,10 @@ func (m *Manager) GetTerminalListByLoginID(ctx context.Context, loginID string, 
 
 // GetTerminalInfoByToken retrieves terminal info for a specific token. GetTerminalInfoByToken 根据 Token 获取终端详情。
 func (m *Manager) GetTerminalInfoByToken(ctx context.Context, tokenValue string) (*TerminalInfo, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	// Validate token value 校验 Token 值。
 	if tokenValue == "" {
 		return nil, derror.ErrInvalidToken
@@ -321,6 +361,10 @@ func (m *Manager) GetTerminalInfoByToken(ctx context.Context, tokenValue string)
 
 // GetTokenValueByLoginID retrieves the latest token for a login ID, optionally filtered by device. GetTokenValueByLoginID 获取指定登录 ID 的最新 Token，可选按设备类型过滤。
 func (m *Manager) GetTokenValueByLoginID(ctx context.Context, loginID string, device ...string) (string, error) {
+	if m.IsClosed() {
+		return "", derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return "", derror.ErrIDIsEmpty
@@ -371,6 +415,10 @@ func (m *Manager) GetTokenValueByLoginID(ctx context.Context, loginID string, de
 
 // SearchTokenValue searches token values by keyword with pagination. SearchTokenValue 按关键词分页搜索 Token 值，size 为 -1 时返回全部。
 func (m *Manager) SearchTokenValue(ctx context.Context, keyword string, start, size int) ([]string, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	// Treat both the namespace and keyword as literals in the scan pattern. 扫描模式中的命名空间和关键词均按字面量处理。
 	prefix := m.storageNamespace() + config.TokenKeyPrefix
 	pattern := escapeSearchKeyword(prefix) + "*" + escapeSearchKeyword(keyword) + "*"
@@ -379,6 +427,10 @@ func (m *Manager) SearchTokenValue(ctx context.Context, keyword string, start, s
 
 // SearchSessionId searches session IDs by keyword with pagination. SearchSessionId 按关键词分页搜索 Session ID，size 为 -1 时返回全部。
 func (m *Manager) SearchSessionId(ctx context.Context, keyword string, start, size int) ([]string, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	// Treat both the namespace and keyword as literals in the scan pattern. 扫描模式中的命名空间和关键词均按字面量处理。
 	prefix := m.storageNamespace() + SessionKeyPrefix
 	pattern := escapeSearchKeyword(prefix) + "*" + escapeSearchKeyword(keyword) + "*"
@@ -402,6 +454,10 @@ type TerminalVisitor func(terminal TerminalInfo) bool
 
 // ForEachTerminal iterates over all terminals for a login ID and calls the visitor function. ForEachTerminal 遍历指定登录 ID 的所有终端，对每个终端调用回调函数。
 func (m *Manager) ForEachTerminal(ctx context.Context, loginID string, visitor TerminalVisitor) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -433,6 +489,10 @@ func (m *Manager) ForEachTerminal(ctx context.Context, loginID string, visitor T
 
 // ForEachTerminalByDevice iterates over terminals filtered by device type. ForEachTerminalByDevice 遍历指定设备类型的终端。
 func (m *Manager) ForEachTerminalByDevice(ctx context.Context, loginID, device string, visitor TerminalVisitor) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty

@@ -24,9 +24,21 @@ if err != nil {
 }
 defer auth.Close()
 cfg := auth.Config()
-nonceService := nonce.NewService(nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage()), auth)
-ticketService := ticket.NewService(ticket.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
-shortKeyService := shortkey.NewService(shortkey.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
+nonceManager, err := nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage())
+if err != nil {
+	return err
+}
+nonceService := nonce.NewService(nonceManager, auth)
+ticketManager, err := ticket.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+if err != nil {
+	return err
+}
+ticketService := ticket.NewService(ticketManager, auth)
+shortKeyManager, err := shortkey.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+if err != nil {
+	return err
+}
+shortKeyService := shortkey.NewService(shortKeyManager, auth)
 ```
 
 Service interfaces live in contract/nonce, contract/ticket, and contract/shortkey. HTTP binds these interfaces through WithCapabilities and supports custom implementations. Services borrow Auth components and do not close them; stop using those components when Auth closes.

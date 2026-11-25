@@ -32,11 +32,7 @@ func TestManagerEmitHonorsShutdown(t *testing.T) {
 			}
 			done := make(chan struct{})
 			go func() { mgr.CloseManager(); close(done) }()
-			waitForManagerTest(t, time.Second, func() bool {
-				mgr.asyncMu.Lock()
-				defer mgr.asyncMu.Unlock()
-				return mgr.asyncClosed
-			})
+			waitForManagerTest(t, time.Second, mgr.IsClosed)
 			mgr.Emit(listener.EventLogin, "emit-close", "", "", "during-close", nil)
 			pool.runAll()
 			select {

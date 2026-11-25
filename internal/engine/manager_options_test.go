@@ -1011,3 +1011,35 @@ func (l *managerLifecycleTestLogger) closeCount() int {
 	defer l.mu.Unlock()
 	return l.close
 }
+
+// TestManagerStrategySnapshotPreservesHooks verifies getter mutations cannot replace live login or access policy. TestManagerStrategySnapshotPreservesHooks 验证修改查询结果不能替换运行中的登录或访问策略。
+func TestManagerStrategySnapshotPreservesHooks(t *testing.T) {
+	mgr := newTestManagerWithStrategy(t, &Strategy{
+		PermissionMatcher: strings.EqualFold,
+		RoleMatcher:       strings.EqualFold,
+		CreateSession: func(authType, loginID string, createTime int64) *Session {
+			sess := defaultCreateSession(authType, loginID, createTime)
+			sess.Permissions = []string{"READ"}
+			sess.Roles = []string{"ADMIN"}
+			return sess
+		},
+	})
+	snapshot := mgr.GetStrategy()
+	snapshot.PermissionMatcher = func(string, string) bool { return false }
+	snapshot.RoleMatcher = func(string, string) bool { return false }
+	snapshot.CreateSession = nil
+	ctx := context.Background()
+	token, err := mgr.Login(ctx, "snapshot-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mgr.CheckPermissionAndByToken(ctx, token, []string{"read"}); err != nil {
+		t.Fatalf("permission hook changed through snapshot: %v", err)
+	}
+	if err := mgr.CheckRoleAndByToken(ctx, token, []string{"admin"}); err != nil {
+		t.Fatalf("role hook changed through snapshot: %v", err)
+	}
+	if (*Manager)(nil).GetStrategy() != nil {
+		t.Fatal("nil manager strategy must be nil")
+	}
+}

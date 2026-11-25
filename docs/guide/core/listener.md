@@ -216,7 +216,7 @@ The existing constructor name includes `Renew`, but its implementation accepts g
 - A rejected submission falls back to a goroutine. This preserves delivery but does **not** impose a strict concurrency limit.
 - `SetAsyncPool(nil)` restores goroutines for subsequent submissions; already accepted tasks stay with their original pool and remain tracked by `Wait`.
 
-The injected pool must provide concurrency-safe, nonblocking submission: accept a task for asynchronous execution exactly once, or return an error without executing it. Do not use blocking submission, silently discard accepted tasks, or run tasks inline. Nested dispatch can submit more work from a pool worker, so waiting for capacity can deadlock. Existing ants pools must use `NonBlocking: true`.
+The injected pool must provide concurrency-safe, nonblocking submission: accept a task for asynchronous execution exactly once, or return an error without executing it. Do not use blocking submission, silently discard accepted tasks, or run tasks inline. Nested dispatch can submit more work from a pool worker, so waiting for capacity can deadlock. The bundled ants pool requires `NonBlocking: true`; setting it to false returns a configuration error during construction.
 
 The application owns the event pool; the event manager never calls its `Stop`. At shutdown, stop and drain request/event producers, call `auth.Close()` outside callbacks, then call `eventPool.Stop()`. For a standalone event manager, use `eventMgr.Wait()` before stopping the pool. Keep old pools alive until their accepted tasks drain when replacing a pool.
 

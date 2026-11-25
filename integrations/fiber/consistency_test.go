@@ -15,7 +15,9 @@ func TestFiberRepeatedRegistration(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newFiberReviewManager(t, "", nil)
 	local := newFiberReviewManager(t, "fiber-registration", nil)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, tc := range []struct {
 		name string
 		opts []AuthOption

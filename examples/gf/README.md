@@ -64,6 +64,8 @@ After logout, both the new access token and its associated refresh token are inv
 
 ## Key APIs
 
+The middleware fragments below belong in a setup function that returns `error`; propagate binding errors to the caller and stop startup if setup fails.
+
 Build an instance first and keep it open while the server handles requests. These fragments use the handlers and error callbacks from `main.go`.
 
 ```go
@@ -73,7 +75,11 @@ defer authInstance.Close()
 ```
 
 ```go
-s.Use(gfdt.RegisterDTokenContextMiddleware(ctx, gfdt.WithAuth(authInstance), gfdt.WithFailFunc(handleAuthFail)))
+authOption1, authErr := gfdt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+s.Use(gfdt.RegisterDTokenContextMiddleware(ctx, authOption1, gfdt.WithFailFunc(handleAuthFail)))
 
 group.Middleware(gfdt.AuthMiddleware(ctx, gfdt.WithFailFunc(handleAuthFail)))
 group.GET("/admin", gfdt.CheckRoleMiddleware(ctx, []string{"admin"}, handleAdmin, handleAuthFail))

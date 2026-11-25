@@ -61,7 +61,11 @@ func main() {
 	}
 	defer auth.Close()
 	cfg := auth.Config()
-	server := oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+	server, err := oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 	service := oauth2.NewService(server, auth)
 	err = service.RegisterOAuth2Client(&oauth2.Client{
 		ClientID:     "server-app",

@@ -14,7 +14,7 @@ import (
 
 // TestShortKeyPreciseExpiration verifies sub-second deadlines survive serialization and retain legacy compatibility. TestShortKeyPreciseExpiration 验证亚秒截止时间在序列化后保留，并兼容旧版载荷。
 func TestShortKeyPreciseExpiration(t *testing.T) {
-	mgr := newTestShortKeyManager(time.Minute)
+	mgr := newTestShortKeyManager(t, time.Minute)
 	createdAt := time.Unix(100, 900000000)
 	for _, status := range []Status{StatusPending, StatusConfirmed} {
 		for _, timeout := range []time.Duration{time.Second, 500 * time.Millisecond} {
@@ -52,7 +52,10 @@ func TestShortKeyStateWritesPreserveDeadline(t *testing.T) {
 		t.Run(action, func(t *testing.T) {
 			ctx := context.Background()
 			storage := &shortKeyTTLRecordingStorage{shortKeyTestStorage: newShortKeyTestStorage()}
-			mgr := NewDefaultManager("test", "dt:", storage, shortKeyTestCodec{})
+			mgr, constructorErr := NewDefaultManager("test", "dt:", storage, shortKeyTestCodec{})
+			if constructorErr != nil {
+				t.Fatal(constructorErr)
+			}
 			opts := CreateOptions{}
 			if action == "consume" {
 				opts.LoginID = "user"
@@ -92,7 +95,10 @@ func TestShortKeyStateWritesPreserveDeadline(t *testing.T) {
 func TestShortKeyPlainStorageLifecycle(t *testing.T) {
 	ctx := context.Background()
 	storage := struct{ adapter.Storage }{newShortKeyTestStorage()}
-	mgr := NewDefaultManager("test", "dt:", storage, shortKeyTestCodec{})
+	mgr, constructorErr := NewDefaultManager("test", "dt:", storage, shortKeyTestCodec{})
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	created, err := mgr.Create(ctx, CreateOptions{Scene: "login"})
 	if err != nil {
 		t.Fatal(err)
@@ -129,7 +135,10 @@ func TestShortKeyConcurrentTransitions(t *testing.T) {
 			if mode == "plain" {
 				storage = struct{ adapter.Storage }{storage}
 			}
-			mgr := NewDefaultManager("test", "dt:", storage, shortKeyTestCodec{})
+			mgr, constructorErr := NewDefaultManager("test", "dt:", storage, shortKeyTestCodec{})
+			if constructorErr != nil {
+				t.Fatal(constructorErr)
+			}
 			created, err := mgr.Create(context.Background(), CreateOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -185,7 +194,10 @@ func TestShortKeyCreationCollisions(t *testing.T) {
 			if mode == "plain" {
 				storage = struct{ adapter.Storage }{storage}
 			}
-			mgr := NewManagerWithConfig("test", "dt:", storage, shortKeyTestCodec{}, &Config{TTL: time.Minute, Length: 1, MaxGenerateRetries: 3})
+			mgr, constructorErr := NewManagerWithConfig("test", "dt:", storage, shortKeyTestCodec{}, &Config{TTL: time.Minute, Length: 1, MaxGenerateRetries: 3})
+			if constructorErr != nil {
+				t.Fatal(constructorErr)
+			}
 			for _, char := range alphabet {
 				if err := storage.Set(ctx, mgr.getKey(string(char)), "occupied", time.Minute); err != nil {
 					t.Fatal(err)
@@ -211,7 +223,10 @@ func TestShortKeyExpiredWrites(t *testing.T) {
 			if mode == "plain" {
 				storage = struct{ adapter.Storage }{storage}
 			}
-			mgr := NewDefaultManager("test", "dt:", storage, shortKeyTestCodec{})
+			mgr, constructorErr := NewDefaultManager("test", "dt:", storage, shortKeyTestCodec{})
+			if constructorErr != nil {
+				t.Fatal(constructorErr)
+			}
 			value := &ShortKey{Key: "expired", Status: StatusPending, ExpiresAt: time.Now().Add(-time.Second)}
 			ctx := context.Background()
 			if err := mgr.save(ctx, value, time.Minute); !errors.Is(err, ErrShortKeyExpired) {
@@ -241,7 +256,10 @@ func TestShortKeyConsumptionStorageErrors(t *testing.T) {
 			case "plain save failure":
 				storage = struct{ adapter.Storage }{saveFailure}
 			}
-			mgr := NewDefaultManager("test", "dt:", storage, shortKeyTestCodec{})
+			mgr, constructorErr := NewDefaultManager("test", "dt:", storage, shortKeyTestCodec{})
+			if constructorErr != nil {
+				t.Fatal(constructorErr)
+			}
 			created, err := mgr.Create(ctx, CreateOptions{LoginID: "user"})
 			if err != nil {
 				t.Fatal(err)

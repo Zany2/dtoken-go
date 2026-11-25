@@ -10,6 +10,8 @@ Frameworks provide HTTP adapters, middleware, and request helpers. Their NewBuil
 
 Selection order: explicit WithAuth/WithManager, the bound request instance, then an explicitly configured ManagerResolver. WithAuthType selects a namespace through that resolver; without one, it must match the bound instance. A request without either a binding or a resolver returns ErrManagerNotFound. Checks without an override preserve instance and capability bindings; switching instances clears capability bindings.
 
+`BeforeAuthHandler` observes the `AuthHandleRequest` metadata and controls flow: `req.Next()` skips the current DToken checks and continues downstream; `req.Exit()` ends the current DToken flow after custom handling. Returning without handling or aborting the request continues the original middleware checks. Changing `AuthType`, `CheckLogin`, `CheckDisable`, `Permissions`, `Roles`, or `LogicType` on this request does not change those rules. For dynamic rules, use `AccessMiddleware` with `WithRouteAccessHandler` and modify its `RouteAccessRequest`. This distinction applies to all eight framework integrations.
+
 ## Installation
 
 ```bash
@@ -29,6 +31,8 @@ go get github.com/Zany2/dtoken-go/integrations/kratos
 go get github.com/Zany2/dtoken-go/integrations/beego
 ```
 
+WithAuth returns (AuthOption, error); Context returns (middleware, error). Check binding errors before starting the server. The setup fragments below belong in functions returning error.
+
 ## Minimal Framework Examples
 
 The following examples bind an Auth instance explicitly. Full runnable examples live under examples/.
@@ -44,7 +48,11 @@ if err != nil {
 defer authInstance.Close()
 
 s := g.Server()
-s.Use(gfdt.RegisterDTokenContextMiddleware(ctx, gfdt.WithAuth(authInstance)))
+authOption1, authErr := gfdt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+s.Use(gfdt.RegisterDTokenContextMiddleware(ctx, authOption1))
 s.Group("/", func(group *ghttp.RouterGroup) {
     group.POST("/login", func(r *ghttp.Request) {
         token, _ := authInstance.LoginID(r.Context(), "1000")
@@ -82,7 +90,11 @@ if err != nil {
 defer authInstance.Close()
 
 r := gin.Default()
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(authInstance)))
+authOption1, authErr := gindt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, authOption1))
 r.POST("/login", func(c *gin.Context) {
     token, _ := authInstance.LoginID(c.Request.Context(), "1000")
     c.JSON(http.StatusOK, gin.H{"token": token})
@@ -108,7 +120,11 @@ if err != nil {
 defer authInstance.Close()
 
 e := echo4.New()
-e.Use(echodt.RegisterDTokenContextMiddleware(ctx, echodt.WithAuth(authInstance)))
+authOption1, authErr := echodt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+e.Use(echodt.RegisterDTokenContextMiddleware(ctx, authOption1))
 e.POST("/login", func(c echo4.Context) error {
     token, _ := authInstance.LoginID(c.Request().Context(), "1000")
     return c.JSON(http.StatusOK, echo4.Map{"token": token})
@@ -134,7 +150,11 @@ if err != nil {
 defer authInstance.Close()
 
 app := gofiber.New()
-app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx, fiberdt.WithAuth(authInstance)))
+authOption1, authErr := fiberdt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx, authOption1))
 app.Post("/login", func(c *gofiber.Ctx) error {
     token, _ := authInstance.LoginID(c.UserContext(), "1000")
     return c.JSON(gofiber.Map{"token": token})
@@ -155,6 +175,7 @@ auth.Get("/me", func(c *gofiber.Ctx) error {
 package main
 
 import (
+    "log"
     "net/http"
 
     dt "github.com/Zany2/dtoken-go"
@@ -170,7 +191,12 @@ func main() {
     defer auth.Close()
 
     router := gin.Default()
-    router.Use(gindt.Context(auth))
+    authMiddleware1, authErr := gindt.Context(auth)
+    if authErr != nil {
+        log.Print(authErr)
+        return
+    }
+    router.Use(authMiddleware1)
     router.POST("/login", func(c *gin.Context) {
         token, err := auth.LoginID(c.Request.Context(), "user-1001")
         if err != nil {
@@ -217,7 +243,11 @@ err = authInstance.LogoutByToken(ctx, token)
 Integration packages expose framework middleware:
 
 ```go
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(authInstance)))
+authOption1, authErr := gindt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, authOption1))
 r.Use(gindt.AuthMiddleware(ctx))
 r.Use(gindt.PermissionMiddleware(ctx, []string{"user:read"}))
 r.Use(gindt.RoleMiddleware(ctx, []string{"admin"}))
@@ -382,7 +412,7 @@ Recommended aliases:
 
 ## Framework-Independent Applications And Extensions
 
-Use the root `dtoken` package for framework-agnostic applications and libraries. Extend it through public `Manager`, `ManagerOption`, and `Strategy` types, implement interfaces from `contract`, and import components from their own packages. `internal/builder`, `internal/defaults`, and `internal/engine` are private implementation packages. Import integrations where framework-specific request handling is needed.
+Use the root `dtoken` package for framework-agnostic applications and libraries. Extend it through public `Manager`, `ManagerOption`, and `Strategy` types, implement interfaces from `contract`, and import components from their own packages. `internal/builder` and `internal/engine` are private implementation packages. Import integrations where framework-specific request handling is needed.
 
 ## Related Documents
 

@@ -8,7 +8,6 @@ import (
 	"github.com/Zany2/dtoken-go"
 	adapter "github.com/Zany2/dtoken-go/contract"
 	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
-	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
 	"github.com/Zany2/dtoken-go/storage/memory"
 	gofiber "github.com/gofiber/fiber/v2"
@@ -67,17 +66,18 @@ func newFiberReviewContext(t *testing.T) *gofiber.Ctx {
 // newFiberReviewManager creates an isolated manager without background maintenance. newFiberReviewManager 创建不执行后台维护的独立 Manager。
 func newFiberReviewManager(t *testing.T, authType string, storage adapter.Storage) *manager.Manager {
 	t.Helper()
-	b := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
+	b := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
 	if authType != "" {
 		b.AuthType(authType)
 	}
 	if storage != nil {
 		b.Storage(storage)
 	}
-	mgr, err := b.Build()
+	mgrAuth, err := b.BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	return mgr
 }
@@ -188,7 +188,9 @@ func TestFiberReviewManagerSelection(t *testing.T) {
 	local := newFiberReviewManager(t, "fiber-local", nil)
 	closed := newFiberReviewManager(t, "fiber-closed", nil)
 	closed.CloseManager()
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	const token = "same-token"
 	fiberReviewLogin(t, global, token)
 	fiberReviewLogin(t, local, token)
@@ -247,7 +249,9 @@ func TestFiberReviewRenewalUsesRequestManager(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newFiberReviewManager(t, "", nil)
 	local := newFiberReviewManager(t, "fiber-renew", nil)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	const token = "renew-token"
 	fiberReviewLogin(t, global, token)
 	fiberReviewLogin(t, local, token)
@@ -273,7 +277,9 @@ func TestFiberReviewCachedContextValidation(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newFiberReviewManager(t, "", nil)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	c := newFiberReviewContext(t)
 	var typedNil *corecontext.DTokenContext
 	c.Locals(DTokenCtxKey, typedNil)
@@ -374,11 +380,12 @@ func TestFiberReviewHookControlFlow(t *testing.T) {
 
 // TestFiberReviewBodyTokenIsolation keeps query values out of body-only authentication. TestFiberReviewBodyTokenIsolation 验证仅允许请求体 Token 时不会混入查询参数。
 func TestFiberReviewBodyTokenIsolation(t *testing.T) {
-	mgr, err := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
-		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).Build()
+	mgrAuth, err := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	const token = "body-token"
 	fiberReviewLogin(t, mgr, token)

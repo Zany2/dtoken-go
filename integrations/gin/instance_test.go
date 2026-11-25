@@ -25,13 +25,17 @@ func TestInstanceAndExplicitRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	authOption, err := gindt.WithAuth(auth)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		name    string
 		options []gindt.AuthOption
 		want    int
 	}{
 		{"unbound", nil, http.StatusNotFound},
-		{"instance", []gindt.AuthOption{gindt.WithAuth(auth)}, http.StatusNoContent},
+		{"instance", []gindt.AuthOption{authOption}, http.StatusNoContent},
 		{"registry", []gindt.AuthOption{gindt.WithManagerResolver(dtoken.GetManager)}, http.StatusNoContent},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -56,8 +60,14 @@ func TestNamedRegistryResolverFollowsReplacement(t *testing.T) {
 	t.Cleanup(dtoken.CloseAll)
 	ctx := context.Background()
 	builder := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false)
-	defaultAuth := builder.Clone().MustBuild()
-	userAuth := builder.Clone().AuthType("user").MustBuild()
+	defaultAuth, err := builder.Clone().Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	userAuth, err := builder.Clone().AuthType("user").Build()
+	if err != nil {
+		t.Fatal(err)
+	}
 	tokenName := userAuth.Config().TokenName
 	login := func(auth *dtoken.Auth) string {
 		t.Helper()
@@ -85,9 +95,17 @@ func TestNamedRegistryResolverFollowsReplacement(t *testing.T) {
 	check(oldToken, http.StatusNoContent)
 	check(defaultToken, http.StatusUnauthorized)
 
-	replacement := builder.Clone().AuthType("user").MustBuildInstance()
+	replacement, err := builder.Clone().AuthType("user").BuildInstance()
+
+	if err != nil {
+
+		t.Fatal(err)
+
+	}
 	t.Cleanup(replacement.Close)
-	dtoken.SetAuth(replacement)
+	if err := dtoken.SetAuth(replacement); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	check(login(replacement), http.StatusNoContent)
 	check(oldToken, http.StatusUnauthorized)
 	dtoken.AuthType("user").Close()

@@ -78,12 +78,18 @@ Build 自动注册并返回 *dtoken.Auth，同名构建报错。Timeout、Active
 
 ## 接入 Gin
 
+下面的中间件片段放在返回 `error` 的初始化函数中；调用方检查错误，失败时停止启动。
+
 以下片段放在 Gin 路由注册之前，假设 auth 是上面构建的实例，router 是 gin.Engine。Context 绑定请求实例，RequireLogin 对受保护路由校验登录。
 
 ```go
 import gindt "github.com/Zany2/dtoken-go/integrations/gin"
 
-router.Use(gindt.Context(auth))
+authMiddleware1, authErr := gindt.Context(auth)
+if authErr != nil {
+    return authErr
+}
+router.Use(authMiddleware1)
 users := router.Group("/user")
 users.Use(gindt.RequireLogin())
 ```

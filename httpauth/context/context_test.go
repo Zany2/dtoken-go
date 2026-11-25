@@ -303,17 +303,14 @@ func TestGetTokenValueReadSwitches(t *testing.T) {
 // TestContextCookieOptionsAndLoginVariants verifies cookie options and login shortcuts. TestContextCookieOptionsAndLoginVariants 验证 Cookie 配置和登录快捷方法。
 func TestContextCookieOptionsAndLoginVariants(t *testing.T) {
 	ctx := stdctx.Background()
-	dctx, req, mgr := newTestDTokenContext(t)
+	dctx, req, mgr := newTestDTokenContext(t, func(cfg *config.Config) {
+		cfg.TokenName = "CtxCookie"
+		cfg.CookieConfig = &config.CookieConfig{
+			Domain: "example.com", Path: "/api", Secure: true,
+			HttpOnly: false, SameSite: config.SameSiteNone, MaxAge: 3600,
+		}
+	})
 	cfg := mgr.GetConfig()
-	cfg.TokenName = "CtxCookie"
-	cfg.CookieConfig = &config.CookieConfig{
-		Domain:   "example.com",
-		Path:     "/api",
-		Secure:   true,
-		HttpOnly: false,
-		SameSite: config.SameSiteNone,
-		MaxAge:   3600,
-	}
 
 	dctx.Cookie().SetToken("manual-token")
 	assertContextCookie(t, req.cookie, "CtxCookie", "manual-token", 3600, "/api", "example.com", true, false, string(config.SameSiteNone))
@@ -1017,11 +1014,17 @@ func (c *testRequestContext) GetString(key string) string {
 	value, _ := c.values[key].(string)
 	return value
 }
-func (c *testRequestContext) MustGet(key string) any { return c.values[key] }
-func (c *testRequestContext) Abort()                 {}
-func (c *testRequestContext) IsAborted() bool        { return false }
+func (c *testRequestContext) GetRequired(key string) (any, error) {
+	value, ok := c.Get(key)
+	if !ok {
+		return nil, derror.ErrKeyNotFound
+	}
+	return value, nil
+}
+func (c *testRequestContext) Abort()          {}
+func (c *testRequestContext) IsAborted() bool { return false }
 
-func newTestDTokenContext(t *testing.T) (*DTokenContext, *testRequestContext, *manager.Manager) {
+func newTestDTokenContext(t *testing.T, configure ...func(*config.Config)) (*DTokenContext, *testRequestContext, *manager.Manager) {
 	t.Helper()
 
 	cfg := config.DefaultConfig()
@@ -1035,6 +1038,9 @@ func newTestDTokenContext(t *testing.T) (*DTokenContext, *testRequestContext, *m
 	cfg.IsReadHeader = true
 	cfg.IsReadCookie = true
 	cfg.CookieConfig = config.DefaultCookieConfig()
+	for _, apply := range configure {
+		apply(cfg)
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("test config invalid: %v", err)
 	}

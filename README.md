@@ -79,6 +79,7 @@ The default builder uses process-local memory storage and bundled basic componen
 package main
 
 import (
+    "log"
     "context"
     "fmt"
 
@@ -93,21 +94,25 @@ func main() {
         IsPrintBanner(false).
         Build()
     if err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
     defer auth.Close()
 
     ctx := context.Background()
     token, err := auth.LoginID(ctx, "user-1001")
     if err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
     if err := auth.AddRoles(ctx, dtoken.RoleOptions{LoginID: "user-1001", Roles: []string{"admin"}}); err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
     fmt.Println(auth.IsLogin(ctx, token))
     if err := auth.LogoutByToken(ctx, token); err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
 }
 ```
@@ -116,13 +121,14 @@ Build automatically registers and returns an Auth. BuildInstance creates an unre
 
 ### Building And Calling With AuthType
 
-Set `AuthType` when building separate user, administrator, or other authentication systems. `Build()` automatically registers and returns `*Auth`, with no additional `SetAuth` call. `MustBuild()` does the same and panics on failure. This standalone example gives user tokens a one-day lifetime and administrator tokens a 30-minute lifetime; `Timeout` is measured in seconds:
+Set `AuthType` when building separate user, administrator, or other authentication systems. `Build()` automatically registers and returns `*Auth`, with no additional `SetAuth` call. Construction errors are returned to the caller. This standalone example gives user tokens a one-day lifetime and administrator tokens a 30-minute lifetime; `Timeout` is measured in seconds:
 
 <!-- dtoken-compile: multi-auth -->
 ```go
 package main
 
 import (
+    "log"
     "context"
     "fmt"
 
@@ -131,12 +137,19 @@ import (
 
 func main() {
     defer dtoken.CloseAll()
-    userAuth := dtoken.NewBuilder().
-        AuthType("user").TokenName("user-token").Timeout(86400).
-        IsPrintBanner(false).MustBuild()
-    dtoken.NewBuilder().
-        AuthType("admin").TokenName("admin-token").Timeout(1800).
-        IsPrintBanner(false).MustBuild()
+    userAuth, err := dtoken.NewBuilder().
+        AuthType("user").TokenName("user-token").Timeout(86400).RenewMaxRefresh(3600).
+        IsPrintBanner(false).Build()
+    if err != nil {
+        fmt.Println(err)
+        return
+    }
+    if _, err := dtoken.NewBuilder().
+        AuthType("admin").TokenName("admin-token").Timeout(1800).RenewMaxRefresh(300).
+        IsPrintBanner(false).Build(); err != nil {
+        fmt.Println(err)
+        return
+    }
 
     ctx := context.Background()
     token, err := dtoken.AuthType("user").Login(ctx, dtoken.LoginOptions{
@@ -144,10 +157,12 @@ func main() {
         Device: "web",
     })
     if err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
     if err := userAuth.CheckLogin(ctx, token); err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
     fmt.Println(dtoken.AuthType("user").IsLogin(ctx, token))  // true
     fmt.Println(dtoken.AuthType("admin").IsLogin(ctx, token)) // false
@@ -160,7 +175,7 @@ func main() {
 | `dtoken.AuthType("user").CheckLogin(ctx, token)` | Currently registered user system |
 | `userAuth.CheckLogin(ctx, token)` | Fixed instance returned by the builder, sharing its engine with that registration |
 
-This example registers only user and admin, with no default system. Missing systems do not fall back to the default: `CheckLogin` returns `ErrManagerNotFound`, and `IsLogin` returns false. Duplicate `Build` calls return `ErrManagerAlreadyRegistered`; use `BuildInstance()` for unregistered instances. Root business functions and instance methods have matching signatures. Select the system through the calling entry point; `LoginOptions.AuthType` does not change routing for these APIs.
+This example registers only user and admin, with no default system. Missing systems do not fall back to the default: `CheckLogin` returns `ErrManagerNotFound`, and `IsLogin` returns false. Duplicate `Build` calls return `ErrManagerAlreadyRegistered`; use `BuildInstance()` for unregistered instances. Root business functions and instance methods have matching signatures. Select the system through the calling entry point; operation options contain only business parameters.
 
 On application shutdown, stop accepting requests and drain active handlers before calling `dtoken.CloseAll()` to close current registrations. Close unregistered instances separately with `auth.Close()`. See [multi-auth](docs/guide/core/multi-auth.md) and [API and lifecycle](docs/design/api-lifecycle.md) for more details.
 
@@ -175,6 +190,7 @@ The example `/login` endpoint uses a fixed demo account to illustrate token issu
 package main
 
 import (
+    "log"
     "net/http"
 
     "github.com/Zany2/dtoken-go"
@@ -185,12 +201,18 @@ import (
 func main() {
     auth, err := dtoken.NewBuilder().TokenName("Authorization").Build()
     if err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
     defer auth.Close()
 
     router := gin.Default()
-    router.Use(gindt.Context(auth))
+    authMiddleware1, authErr := gindt.Context(auth)
+    if authErr != nil {
+        log.Print(authErr)
+        return
+    }
+    router.Use(authMiddleware1)
     router.POST("/login", func(c *gin.Context) {
         token, err := auth.LoginID(c.Request.Context(), "user-1001")
         if err != nil {
@@ -210,7 +232,8 @@ func main() {
         c.JSON(http.StatusOK, gin.H{"loginId": loginID})
     })
     if err := router.Run(":8080"); err != nil {
-        panic(err)
+        log.Print(err)
+        return
     }
 }
 ```
@@ -221,7 +244,7 @@ When requesting `/user/me`, put the token returned by login in the `Authorizatio
 
 Create Nonce, OAuth2, Ticket, and ShortKey through their package constructors. `NewService` accepts Auth as an optional event emitter. Services reuse the instance's namespace, storage, and codec where needed; the builder has no capability switches. HTTP binds capabilities through service interfaces under `contract`, allowing custom implementations.
 
-In the Gin example above, add these imports and replace `router.Use(gindt.Context(auth))` with the binding fragment that follows, before registering any routes:
+In the Gin example above, add these imports and replace the instance-binding block with the binding fragment that follows, before registering any routes:
 
 ```go
 import (
@@ -234,12 +257,19 @@ import (
 
 ```go
 cfg := auth.Config()
-service := nonce.NewService(
-    nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage()),
-    auth,
-)
+nonceManager, err := nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage())
+if err != nil {
+    log.Print(err)
+    return
+}
+service := nonce.NewService(nonceManager, auth)
+authOption1, authErr := gindt.WithAuth(auth)
+if authErr != nil {
+    log.Print(authErr)
+    return
+}
 options := []gindt.AuthOption{
-    gindt.WithAuth(auth),
+    authOption1,
     gindt.WithCapabilities(requestcontext.Capabilities{Nonce: service}),
 }
 router.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), options...))
@@ -256,7 +286,7 @@ Instance calls follow `application → Auth → authentication engine → compon
 | Root `dtoken` package | Instance/default APIs, AuthType selectors, shared registry, builder, and advanced extension types |
 | `contract`, `config`, `errors`, `event` | Public contracts and shared models, core configuration, errors, event publishing and listener dispatch |
 | `internal/engine` | Internal authentication engine; applications do not import it |
-| `internal/builder`, `internal/defaults` | Generic component assembly and bundled default component factories |
+| `internal/builder` | Generic component assembly and bundled default component factories |
 | `nonce`, `oauth2`, `ticket`, `shortkey` | Independently composed capabilities and services |
 | `httpauth`, `httpauth/context` | Shared HTTP authentication and request contexts |
 | `codec`, `generator`, `logging`, `pool`, `storage` | Pluggable component implementations |

@@ -29,7 +29,9 @@ func TestContextFacadeUsesRegisteredManager(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 
 	token, err := mgr.Login(ctx, "gin-user", "web", "browser")
 	if err != nil {
@@ -100,8 +102,14 @@ func TestContextFacadeMissingManagerAndToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
-	RegisterDTokenContextMiddleware(context.Background(), WithAuth(builtAuth2))(c)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
+	authOption1, authErr := WithAuth(builtAuth2)
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	RegisterDTokenContextMiddleware(context.Background(), authOption1)(c)
 	if _, err = GetTokenValueByContext(c); !errors.Is(err, ErrNotLogin) {
 		t.Fatalf("GetTokenValueByContext without token error = %v, want ErrNotLogin", err)
 	}
@@ -124,7 +132,9 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 
 	token, err := mgr.Login(ctx, "ann-user")
 	if err != nil {

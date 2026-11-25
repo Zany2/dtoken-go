@@ -34,9 +34,9 @@ func TestBuilderConfiguresZapLogging(t *testing.T) {
 	}
 }
 
-// TestBuilderRejectsInvalidZapLogging verifies invalid native rotation settings fail before assembly. TestBuilderRejectsInvalidZapLogging 验证非法原生轮转配置在装配前被拒绝。
+// TestBuilderRejectsInvalidZapLogging verifies enabled default logging rejects invalid rotation settings. TestBuilderRejectsInvalidZapLogging 验证启用默认日志时拒绝非法轮转配置。
 func TestBuilderRejectsInvalidZapLogging(t *testing.T) {
-	if _, err := NewBuilder().LoggerMaxSize(-1).BuildInstance(); err == nil {
+	if _, err := NewBuilder().IsLog(true).LoggerMaxSize(-1).BuildInstance(); err == nil {
 		t.Fatal("invalid logging configuration was accepted")
 	}
 }

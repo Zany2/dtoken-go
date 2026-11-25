@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"sync"
 	"time"
 
@@ -103,37 +104,35 @@ type Manager struct {
 	mu                 sync.Mutex // Serializes creation writes and state transitions within this manager. 在当前管理器内串行化创建写入与状态流转。
 }
 
-// NewDefaultManager creates short key manager with default config. NewDefaultManager 使用默认配置创建短 Key 管理器。
-func NewDefaultManager(authType, prefix string, storage adapter.Storage, serializer adapter.Codec) *Manager {
+// NewDefaultManager creates a validated Manager or returns a configuration/component error. NewDefaultManager 创建已校验实例，配置或组件无效时返回错误。
+func NewDefaultManager(authType, prefix string, storage adapter.Storage, serializer adapter.Codec) (*Manager, error) {
 	return NewManagerWithConfig(authType, prefix, storage, serializer, DefaultConfig())
 }
 
-// NewManagerWithConfig creates short key manager with config. NewManagerWithConfig 使用配置创建短 Key 管理器。
-func NewManagerWithConfig(authType, prefix string, storage adapter.Storage, serializer adapter.Codec, cfg *Config) *Manager {
+// NewManagerWithConfig validates config and components; nil config uses defaults. NewManagerWithConfig 校验配置及组件，nil 配置使用默认值。
+func NewManagerWithConfig(authType, prefix string, storage adapter.Storage, serializer adapter.Codec, cfg *Config) (*Manager, error) {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
-	ttl := cfg.TTL
-	if ttl <= 0 {
-		ttl = DefaultTTL
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrInvalidParam, err)
 	}
-	length := cfg.Length
-	if length <= 0 {
-		length = DefaultLength
+	if utils.IsNil(storage) {
+		return nil, fmt.Errorf("%w: storage is required", derror.ErrInvalidParam)
 	}
-	retries := cfg.MaxGenerateRetries
-	if retries <= 0 {
-		retries = 8
+	if utils.IsNil(serializer) {
+		return nil, fmt.Errorf("%w: codec is required", derror.ErrInvalidParam)
 	}
+
 	return &Manager{
 		authType:           authType,
 		keyPrefix:          prefix,
-		ttl:                ttl,
-		length:             length,
-		maxGenerateRetries: retries,
 		storage:            storage,
 		serializer:         serializer,
-	}
+		ttl:                cfg.TTL,
+		length:             cfg.Length,
+		maxGenerateRetries: cfg.MaxGenerateRetries,
+	}, nil
 }
 
 // Create creates a pending short key. Create 创建待确认短 Key。
@@ -471,7 +470,8 @@ func (m *Manager) decode(value any, key string) (*ShortKey, error) {
 	if err = m.serializer.Decode(rawData, &shortKey); err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
-	if shortKey.Key != key || shortKey.AuthType != m.authType {
+	// Match the same optional trailing separator as storage keys, including existing payloads. 与存储键保持相同的可选末尾分隔符语义，并兼容已有载荷。
+	if shortKey.Key != key || strings.TrimSuffix(shortKey.AuthType, ":") != strings.TrimSuffix(m.authType, ":") {
 		return nil, ErrInvalidShortKey
 	}
 	return &shortKey, nil

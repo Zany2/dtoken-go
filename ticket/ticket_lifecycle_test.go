@@ -14,7 +14,7 @@ import (
 // TestTicketPreciseExpiration verifies validity across whole-second boundaries and codec round trips. TestTicketPreciseExpiration 验证跨整秒边界及编解码后的精确有效期。
 func TestTicketPreciseExpiration(t *testing.T) {
 	createdAt := time.Unix(100, 900000000)
-	mgr := newTestTicketManager(time.Minute)
+	mgr := newTestTicketManager(t, time.Minute)
 	for _, timeout := range []time.Duration{time.Second, 500 * time.Millisecond} {
 		t.Run(timeout.String(), func(t *testing.T) {
 			value := &Ticket{
@@ -55,7 +55,7 @@ func TestTicketPreciseExpiration(t *testing.T) {
 
 // TestCreateTicketPreciseDeadline verifies creation preserves sub-second duration precision. TestCreateTicketPreciseDeadline 验证创建票据时保留亚秒有效期精度。
 func TestCreateTicketPreciseDeadline(t *testing.T) {
-	mgr := newTestTicketManager(time.Minute)
+	mgr := newTestTicketManager(t, time.Minute)
 	for _, timeout := range []time.Duration{time.Second, 500 * time.Millisecond} {
 		before := time.Now()
 		created, err := mgr.CreateWithTimeout(context.Background(), CreateOptions{}, timeout)
@@ -78,7 +78,10 @@ func TestTicketStateWritesPreserveDeadline(t *testing.T) {
 		t.Run(action, func(t *testing.T) {
 			ctx := context.Background()
 			storage := &ticketTTLRecordingStorage{ticketTestStorage: newTicketTestStorage()}
-			mgr := NewDefaultManager("test", "dt:", storage, ticketTestCodec{})
+			mgr, constructorErr := NewDefaultManager("test", "dt:", storage, ticketTestCodec{})
+			if constructorErr != nil {
+				t.Fatal(constructorErr)
+			}
 			created, err := mgr.CreateWithTimeout(ctx, CreateOptions{}, time.Minute+500*time.Millisecond)
 			if err != nil {
 				t.Fatal(err)
@@ -112,7 +115,7 @@ func TestTicketStateWritesPreserveDeadline(t *testing.T) {
 // TestSaveExpiredTicketDoesNotCreatePersistentKey verifies expired writes never use a non-positive storage TTL. TestSaveExpiredTicketDoesNotCreatePersistentKey 验证过期写入不会通过非正 TTL 创建永久键。
 func TestSaveExpiredTicketDoesNotCreatePersistentKey(t *testing.T) {
 	ctx := context.Background()
-	mgr := newTestTicketManager(time.Minute)
+	mgr := newTestTicketManager(t, time.Minute)
 	value := &Ticket{Ticket: "expired", Status: StatusValid, ExpiresAt: time.Now().Add(-time.Second)}
 	if err := mgr.save(ctx, value, time.Minute); !errors.Is(err, ErrTicketExpired) {
 		t.Fatalf("save(expired) = %v, want ErrTicketExpired", err)
@@ -126,7 +129,10 @@ func TestSaveExpiredTicketDoesNotCreatePersistentKey(t *testing.T) {
 func TestTicketPlainStorageLifecycle(t *testing.T) {
 	ctx := context.Background()
 	storage := struct{ adapter.Storage }{newTicketTestStorage()}
-	mgr := NewDefaultManager("test", "dt:", storage, ticketTestCodec{})
+	mgr, constructorErr := NewDefaultManager("test", "dt:", storage, ticketTestCodec{})
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	created, err := mgr.Create(ctx, CreateOptions{TargetApp: "admin"})
 	if err != nil {
 		t.Fatal(err)
@@ -170,7 +176,10 @@ func TestTicketConcurrentConsumption(t *testing.T) {
 			if mode == "plain" {
 				storage = struct{ adapter.Storage }{storage}
 			}
-			mgr := NewDefaultManager("test", "dt:", storage, ticketTestCodec{})
+			mgr, constructorErr := NewDefaultManager("test", "dt:", storage, ticketTestCodec{})
+			if constructorErr != nil {
+				t.Fatal(constructorErr)
+			}
 			created, err := mgr.Create(context.Background(), CreateOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -220,7 +229,10 @@ func TestTicketConsumptionStorageErrors(t *testing.T) {
 			case "plain save failure":
 				storage = struct{ adapter.Storage }{saveFailure}
 			}
-			mgr := NewDefaultManager("test", "dt:", storage, ticketTestCodec{})
+			mgr, constructorErr := NewDefaultManager("test", "dt:", storage, ticketTestCodec{})
+			if constructorErr != nil {
+				t.Fatal(constructorErr)
+			}
 			created, err := mgr.Create(ctx, CreateOptions{})
 			if err != nil {
 				t.Fatal(err)

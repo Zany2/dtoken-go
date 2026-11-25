@@ -1,5 +1,5 @@
 // @Author daixk 2025/12/22 15:56:00
-package builder
+package dtoken
 
 import (
 	"context"
@@ -20,7 +20,7 @@ func TestBuildReturnsErrorForInvalidConfig(t *testing.T) {
 	}()
 
 	// Use invalid token name to trigger config validation 使用无效 Token 名称触发配置校验
-	mgr, err := NewBuilder().TokenName("").Build()
+	mgr, err := NewBuilder().TokenName("").buildManager()
 	if err == nil {
 		t.Fatal("Build should return config error")
 	}
@@ -47,13 +47,13 @@ func TestBuildResolvesFactoryComponentsPerBuild(t *testing.T) {
 			return &testLogger{}, nil
 		})
 
-	first, err := b.Timeout(10).RenewMaxRefresh(10).IsLog(false).Build()
+	first, err := b.Timeout(10).RenewMaxRefresh(10).IsLog(false).buildManager()
 	if err != nil {
 		t.Fatalf("first Build() error = %v", err)
 	}
 	first.CloseManager()
 
-	second, err := b.Timeout(20).RenewMaxRefresh(20).IsLog(true).Build()
+	second, err := b.Timeout(20).RenewMaxRefresh(20).IsLog(true).buildManager()
 	if err != nil {
 		t.Fatalf("second Build() error = %v", err)
 	}
@@ -90,7 +90,7 @@ func TestBuildUsesInjectedAccessProvider(t *testing.T) {
 		Storage(&testStorage{}).
 		SetCodec(&testCodec{}).
 		SetAccessProvider(provider).
-		Build()
+		buildManager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -111,7 +111,7 @@ func TestBuildUsesInjectedPool(t *testing.T) {
 		Storage(&testStorage{}).
 		SetCodec(&testCodec{}).
 		SetPool(pool).
-		Build()
+		buildManager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -131,13 +131,13 @@ func TestBuildRejectsInvalidNamespaceSetters(t *testing.T) {
 		{
 			name: "empty auth type",
 			build: func() (*manager.Manager, error) {
-				return NewBuilder().AuthType("").Build()
+				return NewBuilder().AuthType("").buildManager()
 			},
 		},
 		{
 			name: "empty key prefix",
 			build: func() (*manager.Manager, error) {
-				return NewBuilder().KeyPrefix("").Build()
+				return NewBuilder().KeyPrefix("").buildManager()
 			},
 		},
 	}
@@ -160,7 +160,7 @@ func TestBuildPreservesNilCookieConfig(t *testing.T) {
 	mgr, err := NewBuilder().
 		CookieConfig(nil).
 		IsReadCookie(true).
-		Build()
+		buildManager()
 	if err == nil {
 		t.Fatal("Build() error = nil, want nil cookie config error")
 	}
@@ -176,7 +176,7 @@ func TestBuildAllowsCoreStorageWithoutAtomicCapability(t *testing.T) {
 		SetGenerator(&testGenerator{}).
 		Storage(&testBasicStorage{}).
 		SetCodec(&testCodec{}).
-		Build()
+		buildManager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

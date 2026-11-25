@@ -41,7 +41,10 @@ func TestInitDTokenConfiguration(t *testing.T) {
 // TestLoginRejectsMalformedBodies covers decoder errors without creating a login. TestLoginRejectsMalformedBodies 覆盖解码错误，确保非法请求无法登录。
 func TestLoginRejectsMalformedBodies(t *testing.T) {
 	setupKratosManager(t)
-	srv := newKratosExampleServer(registeredAuth())
+	srv, err := newKratosExampleServer(registeredAuth())
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, body := range []string{
 		"", " \n\t ", "null", "[]", `{"username":"alice",`,
 		`{"username":123,"password":"123456"}`,
@@ -73,7 +76,10 @@ func TestAccountAndDeviceRestrictions(t *testing.T) {
 	if err := dtoken.Disable(ctx, dtoken.DisableOptions{LoginID: "blocked", Duration: time.Hour, Reason: ""}); err != nil {
 		t.Fatal(err)
 	}
-	srv := newKratosExampleServer(registeredAuth())
+	srv, err := newKratosExampleServer(registeredAuth())
+	if err != nil {
+		t.Fatal(err)
+	}
 	assertKratosResponse(t, requestKratos(t, srv, http.MethodPost, "/login", `{"username":"blocked","password":"123456"}`, ""), http.StatusForbidden, dterror.CodeAccountDisabled)
 	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "alice", Device: "web"})
 	if err != nil {
@@ -101,16 +107,25 @@ func TestStorageErrorsUseUnifiedResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, withAuth := range []bool{false, true} {
 		t.Run(fmt.Sprintf("withAuth=%t", withAuth), func(t *testing.T) {
 			handlerCalls := 0
 			var srv *khttp.Server
 			if withAuth {
-				srv = newKratosExampleServer(registeredAuth())
+				srv, err = newKratosExampleServer(registeredAuth())
+				if err != nil {
+					t.Fatal(err)
+				}
 			} else {
 				// Skip authentication middleware to reach each handler's own error branch. 跳过认证中间件以到达各处理器自身的错误分支。
-				srv = khttp.NewServer(khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware(kratosdt.WithAuth(builtAuth1))))
+				authOption1, authErr := kratosdt.WithAuth(builtAuth1)
+				if authErr != nil {
+					t.Fatal(authErr)
+				}
+				srv = khttp.NewServer(khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware(authOption1)))
 				r := srv.Route("/")
 				counted := func(handler func(context.Context, khttp.Context) error) func(context.Context, khttp.Context) error {
 					return func(ctx context.Context, c khttp.Context) error {
@@ -147,14 +162,9 @@ func TestStorageErrorsUseUnifiedResponse(t *testing.T) {
 
 // TestMissingAuthRejectedAtSetup verifies missing instances fail before accepting requests. TestMissingAuthRejectedAtSetup 验证缺失实例在接收请求前被拒绝。
 func TestMissingAuthRejectedAtSetup(t *testing.T) {
-	defer func() {
-		recovered := recover()
-		err, ok := recovered.(error)
-		if !ok || !errors.Is(err, dterror.ErrManagerNotFound) {
-			t.Fatalf("panic = %v, want ErrManagerNotFound", recovered)
-		}
-	}()
-	newKratosExampleServer(nil)
+	if _, err := newKratosExampleServer(nil); !errors.Is(err, dterror.ErrManagerNotFound) {
+		t.Fatalf("setup error = %v, want ErrManagerNotFound", err)
+	}
 }
 
 type failingKratosStorage struct {

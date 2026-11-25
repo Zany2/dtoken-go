@@ -3,6 +3,7 @@ package main
 
 import (
 	dterror "github.com/Zany2/dtoken-go/errors"
+	"log"
 
 	"context"
 	"encoding/json"
@@ -36,21 +37,33 @@ type LoginRequest struct {
 }
 
 func main() {
-	auth := initDToken()
+	auth, err := initDToken()
+	if err != nil {
+		log.Print(err)
+		return
+	}
 	defer auth.Close()
 
 	e := echo4.New()
-	registerRoutes(e, auth)
+	if err := registerRoutes(e, auth); err != nil {
+		log.Print(err)
+		return
+	}
 
 	if err := e.Start(":8080"); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		panic(err)
+		log.Print(err)
+		return
 	}
 }
 
 // registerRoutes shares production middleware and routes with regression tests. registerRoutes 与回归测试共用实际中间件和路由。
-func registerRoutes(e *echo4.Echo, authInstance *dtoken.Auth) {
+func registerRoutes(e *echo4.Echo, authInstance *dtoken.Auth) error {
+	authOption, err := echodt.WithAuth(authInstance)
+	if err != nil {
+		return err
+	}
 	ctx := context.Background()
-	e.Use(echodt.RegisterDTokenContextMiddleware(ctx, echodt.WithAuth(authInstance), echodt.WithFailFunc(writeAuthError)))
+	e.Use(echodt.RegisterDTokenContextMiddleware(ctx, authOption, echodt.WithFailFunc(writeAuthError)))
 	e.POST("/login", handleLogin)
 
 	auth := e.Group("")
@@ -59,21 +72,16 @@ func registerRoutes(e *echo4.Echo, authInstance *dtoken.Auth) {
 	auth.GET("/admin", handleAdmin, echodt.RoleMiddleware(ctx, []string{"admin"}, echodt.WithFailFunc(writeAuthError)))
 	auth.GET("/articles", handleArticles, echodt.PermissionMiddleware(ctx, []string{"article:read"}, echodt.WithFailFunc(writeAuthError)))
 	auth.POST("/logout", handleLogout)
+	return nil
 }
 
 // initDToken builds the Auth instance owned by the application. initDToken 构建由应用管理生命周期的 Auth 实例。
-func initDToken() *dtoken.Auth {
-	auth, err := dtoken.NewBuilder().
+func initDToken() (*dtoken.Auth, error) {
+	return dtoken.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
-
-	if err != nil {
-		panic(err)
-	}
-
-	return auth
 }
 
 // handleLogin logs in a demo user handleLogin 登录示例用户

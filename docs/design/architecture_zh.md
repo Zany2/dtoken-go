@@ -11,7 +11,7 @@ DToken-Go 以有状态认证引擎为核心，通过公共契约替换组件，�
 | 应用入口 | 根包 dtoken | Auth 实例 API、应用 Builder、公开选项与类型 |
 | 注册表访问 | 根 registry.go 与 default_*.go | 自动注册、AuthType 选择及默认调用 |
 | 核心认证 | internal/engine | 认证状态、Session、终端和核心生命周期 |
-| 装配 | internal/builder、internal/defaults | 通用组件装配与内置默认工厂 |
+| 装配 | internal/builder | 通用组件装配与内置默认工厂 |
 | 公共基础 | contract、config、errors、event | 契约、共享模型、配置、错误和事件服务 |
 | 独立能力 | nonce、oauth2、ticket、shortkey | 显式组合的能力实现与服务封装 |
 | HTTP 接入 | httpauth、httpauth/context、integrations | 公共请求鉴权、请求作用域与框架适配 |
@@ -50,12 +50,12 @@ flowchart TD
 ## 装配路径
 
 1. 应用使用根 NewBuilder 配置认证实例，选择组件、组件工厂和引擎选项。
-2. internal/defaults 提供内置默认工厂；internal/builder 校验配置、解析组件并构建 Manager。
+2. 根 Builder 保存唯一一份可修改的配置和组件选择；未指定工厂时使用 internal/builder/defaults.go 中的函数，再调用 internal/builder.Build 校验配置快照、解析组件并构建 Manager。
 3. Build 注册并返回 Auth；BuildInstance 返回未注册的 Auth。应用可调用实例、AuthType 选择器或默认包级函数，自定义集成按需访问 Manager。
 4. 应用单独创建所需能力的 Manager 或 Server，再创建 Service。内置服务可使用 Auth 的配置快照、Storage、Codec 和事件发布入口。
 5. HTTP 应用通过 WithAuth 或 WithManager 注入引擎，通过 WithCapabilities 绑定能力服务。注册表查找须显式注入 WithManagerResolver。
 
-三处构建代码分别承担应用配置入口、通用装配和默认接线，独立能力不作为 Builder 开关重新装回核心。
+只有根包定义链式 Builder。internal/builder 集中提供无状态装配函数和 defaults.go 中的默认组件工厂，不维护另一套 Builder。核心配置在装配时校验一次，各工厂仍接收独立配置副本，防止用户工厂修改其他组件或运行中的引擎配置。独立能力不作为 Builder 开关重新装回核心。
 
 ## 请求与能力调用
 

@@ -93,12 +93,14 @@ func setupBeegoManager(t *testing.T) {
 	t.Helper()
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	initDToken()
+	if _, err := initDToken(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func newBeegoExampleRouter() *web.ControllerRegister {
 	router := web.NewControllerRegister()
-	registerTestRoutes(router)
+	registerTestRoutes(t, router)
 	return router
 }
 
@@ -134,16 +136,26 @@ func registeredAuth() *dtoken.Auth {
 }
 
 // registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
-func registerTestRoutes(r *web.ControllerRegister) { registerRoutes(r, registeredAuth()) }
+func registerTestRoutes(t *testing.T, r *web.ControllerRegister) {
+	t.Helper()
+	if err := registerRoutes(r, registeredAuth()); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // TestInjectedLoginUsesBuiltInstance verifies routes and the registry share the built engine. TestInjectedLoginUsesBuiltInstance 验证路由与注册表共用构建返回的引擎。
 func TestInjectedLoginUsesBuiltInstance(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	auth := initDToken()
+	auth, err := initDToken()
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(auth.Close)
 	router := web.NewControllerRegister()
-	registerRoutes(router, auth)
+	if err := registerRoutes(router, auth); err != nil {
+		t.Fatal(err)
+	}
 	response := requestBeego(router, http.MethodPost, "/login", "username=alice&password=123456", "")
 	if response.Code != http.StatusOK {
 		t.Fatalf("login status = %d", response.Code)

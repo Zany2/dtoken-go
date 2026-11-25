@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -45,7 +46,11 @@ type application struct {
 }
 
 func main() {
-	auth := initDToken()
+	auth, err := initDToken()
+	if err != nil {
+		log.Print(err)
+		return
+	}
 	defer dtoken.CloseAll()
 
 	r := gin.Default()
@@ -66,10 +71,12 @@ func main() {
 
 	// Keep authentication resources available until all HTTP handlers finish. HTTP 处理器全部结束后才释放认证资源。
 	if err := server.Shutdown(context.Background()); err != nil {
-		panic(err)
+		log.Print(err)
+		return
 	}
 	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-		panic(serveErr)
+		log.Print(serveErr)
+		return
 	}
 }
 
@@ -87,19 +94,13 @@ func registerRoutes(r *gin.Engine, instance *dtoken.Auth) {
 }
 
 // initDToken initializes DToken with bundled memory storage initDToken 使用内置内存存储初始化 DToken
-func initDToken() *dtoken.Auth {
-	auth, err := dtoken.NewBuilder().
+func initDToken() (*dtoken.Auth, error) {
+	return dtoken.NewBuilder().
 		TokenName(tokenHeader).
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
-
-	if err != nil {
-		panic(err)
-	}
-
-	return auth
 }
 
 // handleLogin logs in a demo user handleLogin 登录示例用户

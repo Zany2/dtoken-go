@@ -15,7 +15,10 @@ import (
 // TestLoginValidationAndAuthorizationSeed verifies login validation and demo authorization data. TestLoginValidationAndAuthorizationSeed 验证登录校验与示例授权数据初始化。
 func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	setupKratosManager(t)
-	server := newKratosExampleServer(registeredAuth())
+	server, err := newKratosExampleServer(registeredAuth())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	missing := requestKratos(t, server, http.MethodPost, "/login", `{"username":"alice"}`, "")
 	if missing.Code != http.StatusBadRequest {
@@ -68,7 +71,10 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 		t.Fatalf("AddPermissions() error = %v", err)
 	}
 
-	server := newKratosExampleServer(registeredAuth())
+	server, err := newKratosExampleServer(registeredAuth())
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, route := range []string{"/me", "/admin", "/articles"} {
 		for _, header := range []string{"dtoken", "Authorization"} {
 			for _, value := range []string{token, "Bearer " + token} {
@@ -113,7 +119,9 @@ func setupKratosManager(t *testing.T) {
 	t.Helper()
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	initDToken()
+	if _, err := initDToken(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func requestKratos(t *testing.T, server *khttp.Server, method, path, body, token string) *httptest.ResponseRecorder {
@@ -145,9 +153,15 @@ func registeredAuth() *dtoken.Auth {
 func TestInjectedLoginUsesBuiltInstance(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	auth := initDToken()
+	auth, err := initDToken()
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(auth.Close)
-	srv := newKratosExampleServer(auth)
+	srv, err := newKratosExampleServer(auth)
+	if err != nil {
+		t.Fatal(err)
+	}
 	response := requestKratos(t, srv, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
 	if response.Code != http.StatusOK {
 		t.Fatalf("login status = %d", response.Code)

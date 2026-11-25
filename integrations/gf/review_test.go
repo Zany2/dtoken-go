@@ -8,7 +8,6 @@ import (
 	"github.com/Zany2/dtoken-go"
 	adapter "github.com/Zany2/dtoken-go/contract"
 	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
-	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
 	"github.com/Zany2/dtoken-go/storage/memory"
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -77,17 +76,18 @@ func newGFReviewServer(t *testing.T, handler ghttp.HandlerFunc, middleware ...gh
 // newGFReviewManager creates an isolated manager without asynchronous maintenance. newGFReviewManager 创建不执行异步维护的独立 Manager。
 func newGFReviewManager(t *testing.T, authType string, storage adapter.Storage) *manager.Manager {
 	t.Helper()
-	b := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
+	b := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
 	if authType != "" {
 		b.AuthType(authType)
 	}
 	if storage != nil {
 		b.Storage(storage)
 	}
-	mgr, err := b.Build()
+	mgrAuth, err := b.BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	return mgr
 }
@@ -190,8 +190,12 @@ func TestGFReviewManagerSelection(t *testing.T) {
 	global := newGFReviewManager(t, "", nil)
 	selected := newGFReviewManager(t, "gf-selected", nil)
 	local := newGFReviewManager(t, "gf-local", nil)
-	dtoken.SetManager(global)
-	dtoken.SetManager(selected)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
+	if err := dtoken.SetManager(selected); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	r := &ghttp.Request{Request: httptest.NewRequest(http.MethodGet, "/", nil)}
 	getDContext(r, local)
 	for _, tc := range []struct {
@@ -220,7 +224,9 @@ func TestGFReviewRenewalAndInvalidCache(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newGFReviewManager(t, "", nil)
 	local := newGFReviewManager(t, "gf-renew", nil)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	const token = "shared-token"
 	gfReviewLogin(t, global, token)
 	gfReviewLogin(t, local, token)
@@ -478,11 +484,12 @@ func TestGFReviewBodyAndClientIP(t *testing.T) {
 
 // TestGFReviewBodyTokenSources preserves GoFrame body formats without allowing query fallback. TestGFReviewBodyTokenSources 保留 GoFrame 请求体格式支持，并防止回退至查询参数。
 func TestGFReviewBodyTokenSources(t *testing.T) {
-	mgr, err := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
-		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).Build()
+	mgrAuth, err := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	key := mgr.GetConfig().TokenName
 	var multipartBody bytes.Buffer

@@ -3,11 +3,13 @@ package beego
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 
 	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
 	beegocontext "github.com/beego/beego/v2/server/web/context"
 )
 
@@ -165,13 +167,13 @@ func (b *BeegoContext) GetString(key string) string {
 	return value
 }
 
-// MustGet implements adapter.RequestContext MustGet 实现 adapter.RequestContext 接口
-func (b *BeegoContext) MustGet(key string) any {
-	value := b.c.Input.GetData(key)
-	if value == nil {
-		panic("key not found: " + key)
+// GetRequired returns a context value or ErrKeyNotFound when missing. GetRequired 返回上下文值，不存在时返回 ErrKeyNotFound。
+func (b *BeegoContext) GetRequired(key string) (any, error) {
+	value, ok := b.Get(key)
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", derror.ErrKeyNotFound, key)
 	}
-	return value
+	return value, nil
 }
 
 // Abort implements adapter.RequestContext Abort 实现 adapter.RequestContext 接口

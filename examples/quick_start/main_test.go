@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/Zany2/dtoken-go"
-	"github.com/Zany2/dtoken-go/internal/defaults"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
@@ -201,17 +200,20 @@ func setupQuickStartManager(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
 
-	mgr, err := defaults.NewBuilder().
+	mgrAuth, err := dtoken.NewBuilder().
 		TokenName(tokenHeader).
 		AutoRenew(false).
 		AsyncEvent(false).
 		IsLog(false).
 		IsPrintBanner(false).
-		Build()
+		BuildInstance()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	mgr := mgrAuth.Manager()
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 }
 
 func requestQuickStart(t *testing.T, router *gin.Engine, method, path, body, token string) *httptest.ResponseRecorder {
@@ -242,7 +244,10 @@ func registerTestRoutes(r *gin.Engine) { registerRoutes(r, registeredAuth()) }
 func TestInjectedLoginUsesBuiltInstance(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	auth := initDToken()
+	auth, err := initDToken()
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(auth.Close)
 	router := gin.New()
 	registerRoutes(router, auth)

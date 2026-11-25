@@ -14,6 +14,10 @@ import (
 
 // Logout logs out a user by token. Logout 根据 Token 登出用户。
 func (m *Manager) Logout(ctx context.Context, tokenValue string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate token value 校验 Token 值。
 	if tokenValue == "" {
 		return derror.ErrInvalidToken
@@ -52,6 +56,10 @@ func (m *Manager) Logout(ctx context.Context, tokenValue string) error {
 
 // LogoutByDevice logs out all terminals of a specific device type. LogoutByDevice 根据设备类型登出所有该设备的终端。
 func (m *Manager) LogoutByDevice(ctx context.Context, loginID string, device string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -73,6 +81,10 @@ func (m *Manager) LogoutByDevice(ctx context.Context, loginID string, device str
 
 // LogoutByDeviceAndDeviceID logs out a user and requires exactly two device arguments: device type and device ID. LogoutByDeviceAndDeviceID 按设备登出用户，必须依次提供设备类型和设备 ID 两个参数。
 func (m *Manager) LogoutByDeviceAndDeviceID(ctx context.Context, loginID string, deviceAndDeviceID ...string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -99,6 +111,10 @@ func (m *Manager) LogoutByDeviceAndDeviceID(ctx context.Context, loginID string,
 
 // LogoutByLoginID logs out all terminals for the specified loginID. LogoutByLoginID 登出指定 loginID 的所有终端。
 func (m *Manager) LogoutByLoginID(ctx context.Context, loginID string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -112,6 +128,10 @@ func (m *Manager) LogoutByLoginID(ctx context.Context, loginID string) error {
 
 // Kickout kicks out a user by token. Kickout 根据 Token 踢人下线。
 func (m *Manager) Kickout(ctx context.Context, tokenValue string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate token value 校验 Token 值。
 	if tokenValue == "" {
 		return derror.ErrInvalidToken
@@ -148,6 +168,10 @@ func (m *Manager) Kickout(ctx context.Context, tokenValue string) error {
 
 // KickoutByDevice kicks out all terminals of a specific device type. KickoutByDevice 根据设备类型踢人下线（踢掉该设备类型的所有终端）。
 func (m *Manager) KickoutByDevice(ctx context.Context, loginID string, device string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -169,6 +193,10 @@ func (m *Manager) KickoutByDevice(ctx context.Context, loginID string, device st
 
 // KickoutByDeviceAndDeviceID kicks out a user and requires exactly two device arguments: device type and device ID. KickoutByDeviceAndDeviceID 按设备将用户踢下线，必须依次提供设备类型和设备 ID 两个参数。
 func (m *Manager) KickoutByDeviceAndDeviceID(ctx context.Context, loginID string, deviceAndDeviceID ...string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -195,6 +223,10 @@ func (m *Manager) KickoutByDeviceAndDeviceID(ctx context.Context, loginID string
 
 // KickoutByLoginID kicks out all terminals for the specified loginID. KickoutByLoginID 踢出指定 loginID 的所有终端。
 func (m *Manager) KickoutByLoginID(ctx context.Context, loginID string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -208,6 +240,10 @@ func (m *Manager) KickoutByLoginID(ctx context.Context, loginID string) error {
 
 // Replace replaces a user session by token. Replace 根据 Token 顶人下线。
 func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate token value 校验 Token 值。
 	if tokenValue == "" {
 		return derror.ErrInvalidToken
@@ -244,6 +280,10 @@ func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
 
 // ReplaceByDevice replaces all terminals of a specific device type. ReplaceByDevice 根据设备类型顶人下线（顶掉该设备类型的所有终端）。
 func (m *Manager) ReplaceByDevice(ctx context.Context, loginID string, device string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -265,6 +305,10 @@ func (m *Manager) ReplaceByDevice(ctx context.Context, loginID string, device st
 
 // ReplaceByDeviceAndDeviceID replaces a user session and requires exactly two device arguments: device type and device ID. ReplaceByDeviceAndDeviceID 按设备将用户顶下线，必须依次提供设备类型和设备 ID 两个参数。
 func (m *Manager) ReplaceByDeviceAndDeviceID(ctx context.Context, loginID string, deviceAndDeviceID ...string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -291,6 +335,10 @@ func (m *Manager) ReplaceByDeviceAndDeviceID(ctx context.Context, loginID string
 
 // ReplaceByLoginID replaces all terminals for the specified loginID. ReplaceByLoginID 顶替指定 loginID 的所有终端。
 func (m *Manager) ReplaceByLoginID(ctx context.Context, loginID string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty

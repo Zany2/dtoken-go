@@ -28,10 +28,18 @@ func TestExplicitCapabilitiesSurviveLoginMiddleware(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := auth.Config()
-	service := nonce.NewService(nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage()), auth)
+	nonceManager, err := nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage())
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := nonce.NewService(nonceManager, auth)
 	bindings := requestcontext.Capabilities{Nonce: service}
 	router := gin.New()
-	router.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(auth), gindt.WithCapabilities(bindings)))
+	authOption1, authErr := gindt.WithAuth(auth)
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	router.Use(gindt.RegisterDTokenContextMiddleware(ctx, authOption1, gindt.WithCapabilities(bindings)))
 	router.Use(gindt.AuthMiddleware(ctx))
 	router.GET("/nonce", func(c *gin.Context) {
 		value, err := gindt.GenerateNonceByContext(c)
@@ -69,10 +77,22 @@ func TestManagerSwitchClearsCapabilities(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := first.Config()
-	service := nonce.NewService(nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, first.Storage()), first)
+	nonceManager, err := nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, first.Storage())
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := nonce.NewService(nonceManager, first)
 	router := gin.New()
-	router.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(first), gindt.WithCapabilities(requestcontext.Capabilities{Nonce: service})))
-	router.Use(gindt.AuthMiddleware(ctx, gindt.WithAuth(second)))
+	authOption2, authErr := gindt.WithAuth(first)
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	router.Use(gindt.RegisterDTokenContextMiddleware(ctx, authOption2, gindt.WithCapabilities(requestcontext.Capabilities{Nonce: service})))
+	authOption3, authErr := gindt.WithAuth(second)
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	router.Use(gindt.AuthMiddleware(ctx, authOption3))
 	router.GET("/nonce", func(c *gin.Context) {
 		_, err := gindt.GenerateNonceByContext(c)
 		if !errors.Is(err, derror.ErrModuleNotEnabled) {

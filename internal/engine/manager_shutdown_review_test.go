@@ -112,7 +112,7 @@ func TestManagerCloseDrainsRenewalEvents(t *testing.T) {
 	pool := &managerQueuedMaintenancePool{}
 	mgr.pool = pool
 	t.Cleanup(pool.runAll)
-	token, err := mgr.Login(ctx, "closing-renewal", "web")
+	token, err := mgr.Login(ctx, "closing-renewal", "web", "browser-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,11 +129,7 @@ func TestManagerCloseDrainsRenewalEvents(t *testing.T) {
 	}
 	closed := make(chan struct{})
 	go func() { mgr.CloseManager(); close(closed) }()
-	waitForManagerTest(t, time.Second, func() bool {
-		mgr.asyncMu.Lock()
-		defer mgr.asyncMu.Unlock()
-		return mgr.asyncClosed
-	})
+	waitForManagerTest(t, time.Second, mgr.IsClosed)
 	pool.runAll()
 	select {
 	case <-closed:
@@ -166,11 +162,7 @@ func TestManagerCloseKeepsPoolAliveForListeners(t *testing.T) {
 		t.Fatal("listener did not start")
 	}
 	go func() { mgr.CloseManager(); close(done) }()
-	waitForManagerTest(t, time.Second, func() bool {
-		mgr.asyncMu.Lock()
-		defer mgr.asyncMu.Unlock()
-		return mgr.asyncClosed
-	})
+	waitForManagerTest(t, time.Second, mgr.IsClosed)
 	select {
 	case <-pool.stopped:
 		t.Fatal("pool stopped while its listener was still running")

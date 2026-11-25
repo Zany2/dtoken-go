@@ -253,7 +253,11 @@ auth, err := dt.NewBuilder().Build()
 if err != nil { panic(err) }
 defer auth.Close()
 
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(auth)))
+authOption1, authErr := gindt.WithAuth(auth)
+if authErr != nil {
+    return authErr
+}
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, authOption1))
 
 r.GET("/users",
     gindt.CheckPermissionMiddleware(ctx, []string{"user:read"}, nil, nil),

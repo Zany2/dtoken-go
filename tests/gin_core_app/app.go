@@ -247,8 +247,18 @@ func NewApp(cfg Config) (*App, error) {
 
 	// Compose capabilities with the primary auth instance before serving requests. 在接收请求前组合主认证实例的独立能力。
 	authConfig := app.auth.Config()
-	app.nonceService = nonce.NewService(nonce.NewDefaultNonceManager(authConfig.AuthType, authConfig.KeyPrefix, app.auth.Storage()), app.auth)
-	app.oauth2Service = oauth2.NewService(oauth2.NewDefaultOAuth2Server(authConfig.AuthType, authConfig.KeyPrefix, app.auth.Storage(), app.auth.Codec()), app.auth)
+	nonceManager, err := nonce.NewDefaultNonceManager(authConfig.AuthType, authConfig.KeyPrefix, app.auth.Storage())
+	if err != nil {
+		app.Close()
+		return nil, err
+	}
+	app.nonceService = nonce.NewService(nonceManager, app.auth)
+	oauth2Server, err := oauth2.NewDefaultOAuth2Server(authConfig.AuthType, authConfig.KeyPrefix, app.auth.Storage(), app.auth.Codec())
+	if err != nil {
+		app.Close()
+		return nil, err
+	}
+	app.oauth2Service = oauth2.NewService(oauth2Server, app.auth)
 	if err = app.registerDemoOAuth2Client(); err != nil {
 		flowMgr.CloseManager()
 		userMgr.CloseManager()

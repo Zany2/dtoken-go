@@ -62,8 +62,23 @@ func TestRenewPoolConfigValidateInvalid(t *testing.T) {
 
 	for _, tt := range tests {
 		cfg := tt
+		cfg.NonBlocking = true
 		if err := cfg.Validate(); err == nil {
 			t.Fatalf("Validate(%+v) should fail", cfg)
 		}
+	}
+}
+
+// TestRenewPoolRejectsBlockingSubmission keeps both construction and config validation aligned with the pool contract. TestRenewPoolRejectsBlockingSubmission 保证构造和配置校验均遵循非阻塞池契约。
+func TestRenewPoolRejectsBlockingSubmission(t *testing.T) {
+	cfg := DefaultRenewPoolConfig().SetNonBlocking(false)
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("blocking configuration must fail validation")
+	}
+	if mgr, err := NewRenewPoolManagerWithConfig(cfg); err == nil || mgr != nil {
+		if mgr != nil {
+			mgr.Stop()
+		}
+		t.Fatalf("blocking constructor = %v, %v", mgr, err)
 	}
 }

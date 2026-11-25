@@ -8,6 +8,36 @@ import (
 	"github.com/Zany2/dtoken-go/config"
 )
 
+// TestBeginCloseStopsAdmissionBeforeCleanup verifies shutdown becomes visible without releasing dependencies or starting new background work. TestBeginCloseStopsAdmissionBeforeCleanup 验证关闭标记立即生效，但不释放依赖或启动新的后台任务。
+func TestBeginCloseStopsAdmissionBeforeCleanup(t *testing.T) {
+	pool := &managerLifecycleTestPool{}
+	logger := &managerLifecycleTestLogger{}
+	mgr := newTestManagerWithRuntime(t, pool, logger)
+	t.Cleanup(mgr.CloseManager)
+
+	BeginClose(mgr)
+	BeginClose(mgr)
+	if !mgr.IsClosed() {
+		t.Fatal("manager remains available after BeginClose")
+	}
+	if mgr.submitAsync("after shutdown begins", func() {}) {
+		t.Fatal("manager accepted a task after BeginClose")
+	}
+	mgr.StartRenewPoolStatusLogger(time.Second)
+	if mgr.background != nil {
+		t.Fatal("manager started background work after BeginClose")
+	}
+	if pool.stopCount() != 0 || logger.closeCount() != 0 {
+		t.Fatal("BeginClose released dependencies before cleanup")
+	}
+
+	mgr.CloseManager()
+	mgr.CloseManager()
+	if pool.stopCount() != 1 || logger.closeCount() != 1 {
+		t.Fatal("CloseManager did not release dependencies exactly once")
+	}
+}
+
 // TestCloseManagerWaitsForTasksWithCallerOwnedPool verifies mixed ownership keeps dependencies alive until accepted tasks finish. TestCloseManagerWaitsForTasksWithCallerOwnedPool 验证混合所有权下依赖会保持可用，直至已接收任务完成。
 func TestCloseManagerWaitsForTasksWithCallerOwnedPool(t *testing.T) {
 	storage := &managerAsyncCloseTestStorage{managerTestStorage: newManagerTestStorage()}
@@ -54,11 +84,7 @@ func TestCloseManagerWaitsForTasksWithCallerOwnedPool(t *testing.T) {
 		mgr.CloseManager()
 		close(closeDone)
 	}()
-	waitForManagerTest(t, time.Second, func() bool {
-		mgr.asyncMu.Lock()
-		defer mgr.asyncMu.Unlock()
-		return mgr.asyncClosed
-	})
+	waitForManagerTest(t, time.Second, mgr.IsClosed)
 
 	if storage.closes() != 0 || logger.closeCount() != 0 {
 		t.Fatalf("dependencies closed before task completion: storage=%d logger=%d", storage.closes(), logger.closeCount())

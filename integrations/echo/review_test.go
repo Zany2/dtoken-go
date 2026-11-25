@@ -7,7 +7,6 @@ import (
 	"github.com/Zany2/dtoken-go"
 	adapter "github.com/Zany2/dtoken-go/contract"
 	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
-	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
 	"github.com/Zany2/dtoken-go/storage/memory"
 	echo4 "github.com/labstack/echo/v4"
@@ -50,17 +49,18 @@ var echoReviewChecks = []struct {
 // newEchoReviewManager creates an isolated manager with synchronous events. newEchoReviewManager 创建事件同步执行的独立 Manager。
 func newEchoReviewManager(t *testing.T, authType string, storage adapter.Storage) *manager.Manager {
 	t.Helper()
-	b := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
+	b := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
 	if authType != "" {
 		b.AuthType(authType)
 	}
 	if storage != nil {
 		b.Storage(storage)
 	}
-	mgr, err := b.Build()
+	mgrAuth, err := b.BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	return mgr
 }
@@ -164,7 +164,9 @@ func TestEchoReviewManagerSelection(t *testing.T) {
 	local := newEchoReviewManager(t, "echo-local", nil)
 	closed := newEchoReviewManager(t, "echo-closed", nil)
 	closed.CloseManager()
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	const token = "same-token"
 	echoReviewLogin(t, global, token)
 	echoReviewLogin(t, local, token)
@@ -226,7 +228,9 @@ func TestEchoReviewRenewalUsesRequestManager(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newEchoReviewManager(t, "", nil)
 	local := newEchoReviewManager(t, "echo-renew", nil)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	const token = "renew-token"
 	echoReviewLogin(t, global, token)
 	echoReviewLogin(t, local, token)
@@ -253,7 +257,9 @@ func TestEchoReviewCachedContextValidation(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newEchoReviewManager(t, "", nil)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	c := echo4.New().NewContext(httptest.NewRequest(http.MethodGet, "/", nil), httptest.NewRecorder())
 	var typedNil *corecontext.DTokenContext
 	c.Set(DTokenCtxKey, typedNil)
@@ -348,11 +354,12 @@ func TestEchoReviewHookControlFlow(t *testing.T) {
 
 // TestEchoReviewBodyTokenIsolation rejects query-only tokens when query reading is disabled. TestEchoReviewBodyTokenIsolation 验证关闭查询参数读取后拒绝仅来自查询的 Token。
 func TestEchoReviewBodyTokenIsolation(t *testing.T) {
-	mgr, err := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
-		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).Build()
+	mgrAuth, err := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	const token = "body-token"
 	echoReviewLogin(t, mgr, token)
@@ -406,11 +413,12 @@ func TestEchoReviewBodyTokenIsolation(t *testing.T) {
 
 // TestEchoReviewReplacedQuery ignores Echo's stale query cache after request replacement. TestEchoReviewReplacedQuery 验证替换请求后不会继续读取 Echo 的旧查询缓存。
 func TestEchoReviewReplacedQuery(t *testing.T) {
-	mgr, err := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
-		IsReadHeader(false).IsReadCookie(false).IsReadQuery(true).IsReadBody(false).Build()
+	mgrAuth, err := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+		IsReadHeader(false).IsReadCookie(false).IsReadQuery(true).IsReadBody(false).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	const token = "query-token"
 	echoReviewLogin(t, mgr, token)

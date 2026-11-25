@@ -155,7 +155,7 @@ func TestProtectedRoutesIntrospectionAndLogout(t *testing.T) {
 	}
 
 	r := gin.New()
-	registerTestRoutes(r)
+	registerTestRoutes(t, r)
 
 	for _, route := range []string{"/me", "/introspect", "/admin", "/articles"} {
 		response := requestGin(t, r, http.MethodGet, route, "", pair.AccessToken)
@@ -267,11 +267,17 @@ func TestHandlersReportStorageFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 
 	// Register only request context to exercise each handler's own failure path. 仅注册请求上下文，以覆盖各处理器自身的错误分支。
 	r := gin.New()
-	r.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), gindt.WithAuth(builtAuth1)))
+	authOption1, authErr := gindt.WithAuth(builtAuth1)
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	r.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), authOption1))
 	r.POST("/login", handleLogin)
 	r.POST("/refresh", handleRefresh)
 	r.GET("/me", handleMe)
@@ -315,7 +321,9 @@ func setupGinManager(t *testing.T) {
 	t.Helper()
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	initDToken()
+	if _, err := initDToken(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func requestGin(t *testing.T, router *gin.Engine, method, path, body, token string) *httptest.ResponseRecorder {
@@ -344,4 +352,9 @@ func registeredAuth() *dtoken.Auth {
 }
 
 // registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
-func registerTestRoutes(r *gin.Engine) { registerRoutes(r, registeredAuth()) }
+func registerTestRoutes(t *testing.T, r *gin.Engine) {
+	t.Helper()
+	if err := registerRoutes(r, registeredAuth()); err != nil {
+		t.Fatal(err)
+	}
+}

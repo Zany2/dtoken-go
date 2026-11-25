@@ -16,7 +16,9 @@ func TestEchoRepeatedRegistration(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newEchoReviewManager(t, "", nil)
 	local := newEchoReviewManager(t, "echo-registration", nil)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, tc := range []struct {
 		name string
 		opts []AuthOption

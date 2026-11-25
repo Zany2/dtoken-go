@@ -15,7 +15,7 @@ import (
 // TestPKCERejectsIncompleteAndMalformedInput verifies proof-key validation never silently downgrades. TestPKCERejectsIncompleteAndMalformedInput 验证错误的证明密钥参数不会静默降级。
 func TestPKCERejectsIncompleteAndMalformedInput(t *testing.T) {
 	ctx := context.Background()
-	s := newOAuth2TestServer()
+	s := newOAuth2TestServer(t)
 	client := oauth2TestClient()
 	if err := s.RegisterClient(client); err != nil {
 		t.Fatal(err)
@@ -76,7 +76,7 @@ func TestPKCERejectsIncompleteAndMalformedInput(t *testing.T) {
 // TestAuthorizationCodePreciseDeadline verifies exact deadlines take precedence over rounded legacy fields. TestAuthorizationCodePreciseDeadline 验证精确截止时间优先于旧秒级字段。
 func TestAuthorizationCodePreciseDeadline(t *testing.T) {
 	ctx := context.Background()
-	s := newOAuth2TestServer()
+	s := newOAuth2TestServer(t)
 	client := oauth2TestClient()
 	if err := s.RegisterClient(client); err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func TestAuthorizationCodePreciseDeadline(t *testing.T) {
 func TestAuthorizationCodeExpiryDuringEncoding(t *testing.T) {
 	for _, used := range []bool{false, true} {
 		ctx := context.Background()
-		s := newOAuth2TestServer()
+		s := newOAuth2TestServer(t)
 		client := oauth2TestClient()
 		if err := s.RegisterClient(client); err != nil {
 			t.Fatal(err)
@@ -174,7 +174,7 @@ func (c oauth2ExpiryCodec) Encode(value any) ([]byte, error) {
 // TestRefreshScopeNarrowing verifies refresh scope restrictions and their persistence. TestRefreshScopeNarrowing 验证刷新权限缩减及持久化。
 func TestRefreshScopeNarrowing(t *testing.T) {
 	ctx := context.Background()
-	s := newOAuth2TestServer()
+	s := newOAuth2TestServer(t)
 	client := oauth2TestClient()
 	if err := s.RegisterClient(client); err != nil {
 		t.Fatal(err)
@@ -225,8 +225,14 @@ func TestRefreshScopeNarrowing(t *testing.T) {
 func TestAtomicRefreshRejectsStaleRead(t *testing.T) {
 	ctx := context.Background()
 	storage := &oauth2ClaimStorage{oauth2TestStorage: newOAuth2TestStorage()}
-	first := NewOAuth2Server("auth:", "dt:", storage, oauth2TestCodec{})
-	second := NewOAuth2Server("auth:", "dt:", storage, oauth2TestCodec{})
+	first, constructorErr := NewOAuth2Server("auth:", "dt:", storage, oauth2TestCodec{})
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
+	second, constructorErr := NewOAuth2Server("auth:", "dt:", storage, oauth2TestCodec{})
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	client := oauth2TestClient()
 	if err := first.RegisterClient(client); err != nil {
 		t.Fatal(err)
@@ -263,7 +269,7 @@ func TestAtomicRefreshRejectsStaleRead(t *testing.T) {
 // TestIssuanceRechecksClientPolicy verifies updated scopes and redirect lists apply before consuming credentials. TestIssuanceRechecksClientPolicy 验证消费凭证前重新检查更新后的权限及回调名单。
 func TestIssuanceRechecksClientPolicy(t *testing.T) {
 	ctx := context.Background()
-	s := newOAuth2TestServer()
+	s := newOAuth2TestServer(t)
 	client := oauth2TestClient()
 	if err := s.RegisterClient(client); err != nil {
 		t.Fatal(err)

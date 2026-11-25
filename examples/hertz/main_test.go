@@ -38,7 +38,7 @@ func TestInitDTokenConfiguration(t *testing.T) {
 func TestHandleLoginValidation(t *testing.T) {
 	setupHertzManager(t)
 	h := server.Default()
-	registerTestRoutes(h)
+	registerTestRoutes(t, h)
 
 	for _, body := range []string{
 		"", " \n\t ", "null", "[]", `{"username":"alice"}`,
@@ -61,7 +61,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 	setupHertzManager(t)
 	ctx := context.Background()
 	h := server.Default()
-	registerTestRoutes(h)
+	registerTestRoutes(t, h)
 	login := requestHertz(h, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`+"\n", "")
 	data := assertHertzResponse(t, login, http.StatusOK, dterror.CodeSuccess)
 	var result struct {
@@ -128,7 +128,7 @@ func TestDisabledAccountLogin(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := server.Default()
-	registerTestRoutes(h)
+	registerTestRoutes(t, h)
 	assertHertzResponse(t, requestHertz(h, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, ""), http.StatusForbidden, dterror.CodeAccountDisabled)
 }
 
@@ -143,15 +143,21 @@ func TestStorageFailuresStayServerErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, withAuth := range []bool{false, true} {
 		t.Run(fmt.Sprintf("withAuth=%t", withAuth), func(t *testing.T) {
 			h := server.Default()
 			if withAuth {
-				registerTestRoutes(h)
+				registerTestRoutes(t, h)
 			} else {
 				// Register only the context so handler failures reach the handler's own error branch. 仅注册上下文，使处理器自身的错误分支可被验证。
-				h.Use(hertzdt.RegisterDTokenContextMiddleware(context.Background(), hertzdt.WithAuth(builtAuth1)))
+				authOption1, authErr := hertzdt.WithAuth(builtAuth1)
+				if authErr != nil {
+					t.Fatal(authErr)
+				}
+				h.Use(hertzdt.RegisterDTokenContextMiddleware(context.Background(), authOption1))
 				h.POST("/login", handleLogin)
 				h.GET("/me", handleMe)
 				h.POST("/logout", handleLogout)
@@ -183,7 +189,9 @@ func setupHertzManager(t *testing.T) {
 	t.Helper()
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	initDToken()
+	if _, err := initDToken(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func hertzRequestWithBody(body string) *hertzapp.RequestContext {
@@ -234,16 +242,26 @@ func registeredAuth() *dtoken.Auth {
 }
 
 // registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
-func registerTestRoutes(h *server.Hertz) { registerRoutes(h, registeredAuth()) }
+func registerTestRoutes(t *testing.T, h *server.Hertz) {
+	t.Helper()
+	if err := registerRoutes(h, registeredAuth()); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // TestInjectedLoginUsesBuiltInstance verifies routes and the registry share the built engine. TestInjectedLoginUsesBuiltInstance 验证路由与注册表共用构建返回的引擎。
 func TestInjectedLoginUsesBuiltInstance(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	auth := initDToken()
+	auth, err := initDToken()
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(auth.Close)
 	h := server.Default()
-	registerRoutes(h, auth)
+	if err := registerRoutes(h, auth); err != nil {
+		t.Fatal(err)
+	}
 	response := requestHertz(h, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
 	if response.Response.StatusCode() != http.StatusOK {
 		t.Fatalf("login status = %d", response.Response.StatusCode())

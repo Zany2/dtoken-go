@@ -18,7 +18,7 @@ The root module contains core, facade, default wiring, basic components, and sha
 | Directory / 目录 | Responsibility / 职责 |
 | --- | --- |
 | Root package / 根包 | Instance/default APIs, AuthType selectors, registry, builder, and extension types / 实例与默认 API、AuthType 选择器、注册表、构建器和扩展类型 |
-| internal/engine, internal/builder, internal/defaults | Authentication and default wiring / 认证实现与默认装配 |
+| internal/engine, internal/builder | Authentication and default wiring / 认证实现与默认装配 |
 | contract, config, errors, event | Public contracts, configuration, events / 公共契约、配置与事件 |
 | nonce, oauth2, ticket, shortkey | Explicit capability services / 显式组合的能力服务 |
 | httpauth, httpauth/context | Shared checks and service bindings / 共享鉴权与服务绑定 |

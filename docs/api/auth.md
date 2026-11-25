@@ -14,7 +14,7 @@ The root package `github.com/Zany2/dtoken-go` is the preferred application entry
 
 Root business functions match Auth method signatures, for example `dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "10001"})`. Omitting Builder.AuthType registers the default namespace. Missing explicit namespaces return ErrManagerNotFound, or false for boolean checks, without falling back. Selectors resolve each operation; fixed instances do not follow replacement.
 
-Build / MustBuild register automatically. Duplicate Build returns errors.ErrManagerAlreadyRegistered; MustBuild panics on failure. BuildInstance / MustBuildInstance do not register and allow independent instances with the same namespace. For explicit replacement, use BuildInstance then dtoken.SetAuth; replacement closes the original engine. Ordinary Build needs no SetAuth.
+Build registers automatically; duplicate names return errors.ErrManagerAlreadyRegistered. BuildInstance does not register and allows independent instances with the same namespace. Both return (*Auth, error) for caller-controlled error handling. For explicit replacement, use BuildInstance then dtoken.SetAuth and check its error; successful replacement closes the original engine. Ordinary Build needs no SetAuth.
 
 ## Entry Points And Options
 
@@ -34,7 +34,7 @@ Build / MustBuild register automatically. Duplicate Build returns errors.ErrMana
 | Query and persist session data | `auth.GetSession` / `auth.SetSessionValue` / `auth.GetSessionValue` |
 | Refresh tokens | `auth.LoginWithRefreshToken` / `auth.LoginWithRefreshTokenOptions` / `auth.RefreshToken` |
 
-Instance methods use their own authentication namespace; an option's `AuthType` does not switch the instance to another engine. Use another Auth or dtoken.AuthType(name) for another namespace. That option field is retained for source compatibility and does not control routing.
+Instance methods use their own authentication namespace. Operation options no longer contain AuthType; use another Auth or dtoken.AuthType(name) to select another namespace.
 
 ## Login And Permission Example
 
@@ -69,11 +69,14 @@ HTTP uses WithAuth(auth) or an explicit WithManagerResolver(dt.GetManager). Grou
 
 ## Lifecycle And Extensions
 
-- `auth.Config()` returns a configuration snapshot; editing it does not change the engine.
+- `auth.Config()` and `auth.Manager().GetConfig()` return independent configuration snapshots; editing them does not change the engine.
 - `auth.Storage()` and `auth.Codec()` lend components for independent services; keep Auth open while using them.
-- `auth.Manager()` exposes the supported advanced API. Name its types through the root package, never internal imports.
+- `auth.Manager()` exposes the supported advanced API. Name its types through the root package, never internal imports. It returns nil once the shared engine starts closing, including closure through another facade, the registry, or Manager directly.
 - `dtoken.New(auth.Manager())` wraps the same engine. Closing either facade affects every sharer.
 - `auth.Close()` unregisters entries still pointing to its engine and releases owned resources. dtoken.Close closes the default, dtoken.AuthType(name).Close closes the selected namespace, and dtoken.CloseAll closes all current registrations. Close unregistered instances separately and drain HTTP requests first.
+- Repeated Close calls on a fixed instance wait for the same engine cleanup to finish. AuthType selectors and root close functions target registrations present at the time of the call; they do not wait for cleanup of entries already removed by another call. Use the fixed Auth returned by the builder to wait for a removed engine.
 - Call Nonce, OAuth2, Ticket, and ShortKey through their Service implementations and bind them with `WithCapabilities` for HTTP; they are not Auth methods.
 
 See [API and lifecycle](../design/api-lifecycle.md), [independent capabilities](../guide/security/advanced-features.md), and [framework integration](../guide/integration/framework-integration.md).
+
+`WithAuth(auth)` and `Context(auth)` return their result and an `error`. Nil or closed instances return `ErrManagerNotFound`; check the error before registering middleware.

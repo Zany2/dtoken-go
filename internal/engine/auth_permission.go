@@ -11,6 +11,10 @@ import (
 
 // AddPermissions adds permissions to a user. AddPermissions 为用户添加权限。
 func (m *Manager) AddPermissions(ctx context.Context, loginID string, permissions []string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	return m.mutateAccessByLoginID(ctx, loginID, permissions, accessChange{
 		apply:  sessionAddPermissions,
 		event:  listener.EventPermissionChange,
@@ -21,6 +25,10 @@ func (m *Manager) AddPermissions(ctx context.Context, loginID string, permission
 
 // AddPermissionsByToken adds permissions to a user by token. AddPermissionsByToken 根据 Token 为用户添加权限。
 func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, permissions []string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	return m.mutateAccessByToken(ctx, tokenValue, permissions, accessChange{
 		apply:  sessionAddPermissions,
 		event:  listener.EventPermissionChange,
@@ -31,6 +39,10 @@ func (m *Manager) AddPermissionsByToken(ctx context.Context, tokenValue string, 
 
 // RemovePermissions removes permissions from a user. RemovePermissions 删除用户的指定权限。
 func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permissions []string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	return m.mutateAccessByLoginID(ctx, loginID, permissions, accessChange{
 		apply:  sessionRemovePermissions,
 		event:  listener.EventPermissionChange,
@@ -41,6 +53,10 @@ func (m *Manager) RemovePermissions(ctx context.Context, loginID string, permiss
 
 // RemovePermissionsByToken removes permissions from a user by token. RemovePermissionsByToken 根据 Token 删除用户的指定权限。
 func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue string, permissions []string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	return m.mutateAccessByToken(ctx, tokenValue, permissions, accessChange{
 		apply:  sessionRemovePermissions,
 		event:  listener.EventPermissionChange,
@@ -51,6 +67,10 @@ func (m *Manager) RemovePermissionsByToken(ctx context.Context, tokenValue strin
 
 // GetPermissions retrieves the permission list for a user. GetPermissions 获取用户的权限列表。
 func (m *Manager) GetPermissions(ctx context.Context, loginID string) ([]string, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return nil, derror.ErrIDIsEmpty
@@ -62,6 +82,10 @@ func (m *Manager) GetPermissions(ctx context.Context, loginID string) ([]string,
 
 // GetPermissionsByToken retrieves the permission list by token. GetPermissionsByToken 根据 Token 获取权限列表。
 func (m *Manager) GetPermissionsByToken(ctx context.Context, tokenValue string) ([]string, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	// Validate token and load context 校验 Token 并加载上下文。
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
@@ -79,6 +103,10 @@ func (m *Manager) GetPermissionsByToken(ctx context.Context, tokenValue string) 
 
 // HasPermission checks if a user has a specific permission. HasPermission 检查用户是否拥有指定权限。
 func (m *Manager) HasPermission(ctx context.Context, loginID string, permission string) bool {
+	if m.IsClosed() {
+		return false
+	}
+
 	// Validate required parameters 校验必要参数。
 	if loginID == "" || permission == "" {
 		return false
@@ -105,6 +133,10 @@ func (m *Manager) HasPermission(ctx context.Context, loginID string, permission 
 
 // HasPermissionByToken checks if a user has a specific permission by token. HasPermissionByToken 根据 Token 检查用户是否拥有指定权限。
 func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, permission string) bool {
+	if m.IsClosed() {
+		return false
+	}
+
 	// Validate permission 校验权限。
 	if permission == "" {
 		return false
@@ -146,6 +178,10 @@ func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, p
 
 // HasPermissionsAnd checks if a user has all specified permissions. HasPermissionsAnd 检查用户是否拥有全部指定权限。
 func (m *Manager) HasPermissionsAnd(ctx context.Context, loginID string, permissions []string) bool {
+	if m.IsClosed() {
+		return false
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return false
@@ -173,6 +209,10 @@ func (m *Manager) HasPermissionsAnd(ctx context.Context, loginID string, permiss
 
 // HasPermissionsAndByToken checks if a token user has all specified permissions. HasPermissionsAndByToken 根据 Token 检查全部权限。
 func (m *Manager) HasPermissionsAndByToken(ctx context.Context, tokenValue string, permissions []string) bool {
+	if m.IsClosed() {
+		return false
+	}
+
 	// Validate token and load context 校验 Token 并加载上下文。
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
@@ -210,6 +250,10 @@ func (m *Manager) HasPermissionsAndByToken(ctx context.Context, tokenValue strin
 
 // HasPermissionsOr checks if a user has any specified permission. HasPermissionsOr 检查用户是否拥有任一指定权限。
 func (m *Manager) HasPermissionsOr(ctx context.Context, loginID string, permissions []string) bool {
+	if m.IsClosed() {
+		return false
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return false
@@ -237,6 +281,10 @@ func (m *Manager) HasPermissionsOr(ctx context.Context, loginID string, permissi
 
 // HasPermissionsOrByToken checks if a token user has any specified permission. HasPermissionsOrByToken 根据 Token 检查任一权限。
 func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string, permissions []string) bool {
+	if m.IsClosed() {
+		return false
+	}
+
 	// Validate token and load context 校验 Token 并加载上下文。
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
@@ -274,6 +322,10 @@ func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string
 
 // CheckPermission checks if a user has a specific permission. CheckPermission 校验用户是否拥有指定权限。
 func (m *Manager) CheckPermission(ctx context.Context, loginID string, permission string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -307,6 +359,10 @@ func (m *Manager) CheckPermission(ctx context.Context, loginID string, permissio
 
 // CheckPermissionByToken checks if a token user has a specific permission. CheckPermissionByToken 根据 Token 校验用户是否拥有指定权限。
 func (m *Manager) CheckPermissionByToken(ctx context.Context, tokenValue string, permission string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate permission is not empty 校验权限不为空。
 	if permission == "" {
 		return derror.ErrInvalidParam
@@ -349,6 +405,10 @@ func (m *Manager) CheckPermissionByToken(ctx context.Context, tokenValue string,
 
 // CheckPermissionAnd checks if a user has all specified permissions. CheckPermissionAnd 校验用户是否拥有全部权限。
 func (m *Manager) CheckPermissionAnd(ctx context.Context, loginID string, permissions []string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -378,44 +438,30 @@ func (m *Manager) CheckPermissionAnd(ctx context.Context, loginID string, permis
 
 // CheckPermissionAndByToken checks if a token user has all specified permissions. CheckPermissionAndByToken 根据 Token 校验用户是否拥有全部权限。
 func (m *Manager) CheckPermissionAndByToken(ctx context.Context, tokenValue string, permissions []string) error {
-	// Validate token and load context 校验 Token 并加载上下文。
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
+	// Validate once and share access matching with combined checks. 单次校验，并与组合检查共用权限匹配逻辑。
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
 		return err
 	}
-
-	// Build access subject 构建访问主体。
-	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
-
-	// Load permissions by token 根据 Token 加载权限。
-	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
-		LoginID:  sess.LoginID,
-		Device:   device,
-		DeviceID: deviceID,
+	return m.checkPermissionList(ctx, AccessSubject{
+		AuthType: m.config.AuthType,
+		LoginID:  tokenInfo.LoginID,
+		Device:   tokenInfo.Device,
+		DeviceID: tokenInfo.DeviceID,
 		Token:    tokenValue,
-	})
-	if err != nil {
-		return err
-	}
-
-	// Calculate AND result 计算 AND 结果。
-	hasAll := m.hasAllPermissions(permList, permissions)
-
-	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
-		listener.ExtraKeyPermissions: permissions,
-		listener.ExtraKeyLogic:       listener.LogicAnd,
-		listener.ExtraKeyResult:      hasAll,
-	})
-
-	if !hasAll {
-		return derror.ErrPermissionDenied
-	}
-	return nil
+	}, sess.Permissions, permissions, true)
 }
 
 // CheckPermissionOr checks if a user has any specified permission. CheckPermissionOr 校验用户是否拥有任一权限。
 func (m *Manager) CheckPermissionOr(ctx context.Context, loginID string, permissions []string) error {
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
 	// Validate login ID 校验登录 ID。
 	if loginID == "" {
 		return derror.ErrIDIsEmpty
@@ -445,45 +491,27 @@ func (m *Manager) CheckPermissionOr(ctx context.Context, loginID string, permiss
 
 // CheckPermissionOrByToken checks if a token user has any specified permission. CheckPermissionOrByToken 根据 Token 校验用户是否拥有任一权限。
 func (m *Manager) CheckPermissionOrByToken(ctx context.Context, tokenValue string, permissions []string) error {
-	// Validate token and load context 校验 Token 并加载上下文。
+	if m.IsClosed() {
+		return derror.ErrManagerNotFound
+	}
+
+	// Validate once and share access matching with combined checks. 单次校验，并与组合检查共用权限匹配逻辑。
 	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
 	if err != nil {
 		return err
 	}
-
-	// Build access subject 构建访问主体。
-	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
-
-	// Load permissions by token 根据 Token 加载权限。
-	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
-		LoginID:  sess.LoginID,
-		Device:   device,
-		DeviceID: deviceID,
+	return m.checkPermissionList(ctx, AccessSubject{
+		AuthType: m.config.AuthType,
+		LoginID:  tokenInfo.LoginID,
+		Device:   tokenInfo.Device,
+		DeviceID: tokenInfo.DeviceID,
 		Token:    tokenValue,
-	})
-	if err != nil {
-		return err
-	}
-
-	// Calculate OR result 计算 OR 结果。
-	hasAny := m.hasAnyPermission(permList, permissions)
-
-	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
-		listener.ExtraKeyPermissions: permissions,
-		listener.ExtraKeyLogic:       listener.LogicOr,
-		listener.ExtraKeyResult:      hasAny,
-	})
-
-	if !hasAny {
-		return derror.ErrPermissionDenied
-	}
-	return nil
+	}, sess.Permissions, permissions, false)
 }
 
 // hasPermissionInList checks if permission exists in permission list. hasPermissionInList 判断权限是否存在。
 func (m *Manager) hasPermissionInList(perms []string, permission string) bool {
-	matcher := m.strategy.normalize().PermissionMatcher
+	matcher := m.strategy.PermissionMatcher
 
 	// Check each permission 逐个检查权限。
 	for _, p := range perms {

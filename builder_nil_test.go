@@ -1,4 +1,4 @@
-package builder
+package dtoken
 
 import (
 	"strings"
@@ -31,7 +31,7 @@ func TestBuildRejectsTypedNilInjection(t *testing.T) {
 				SetGenerator(&testGenerator{}).Storage(storage).SetCodec(&testCodec{}).SetLog(logger)
 			tt.inject(b)
 
-			mgr, err := b.Build()
+			mgr, err := b.buildManager()
 			if mgr != nil || err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("Build() = (%v, %v), want nil Manager and %q error", mgr, err, tt.want)
 			}
@@ -77,7 +77,7 @@ func TestBuildRejectsTypedNilFactoryResults(t *testing.T) {
 					return (*testPool)(nil), nil
 				})
 
-			mgr, err := b.Build()
+			mgr, err := b.buildManager()
 			wantError := map[string]string{
 				"generator": "token generator", "storage": "storage adapter", "codec": "codec adapter",
 				"logger": "log adapter", "pool": "task pool",
@@ -112,7 +112,7 @@ func TestBuildPreservesNilAndValueComponentSemantics(t *testing.T) {
 		SetPoolFactory(func(*config.Config) (adapter.Pool, error) {
 			poolFactoryCalled = true
 			return nil, nil
-		}).Build()
+		}).buildManager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

@@ -51,6 +51,9 @@ func NewManager(
 ) *Manager {
 	if cfg == nil {
 		cfg = config.DefaultConfig()
+	} else {
+		// Own the configuration, including nested cookie settings. 持有独立配置，包括嵌套 Cookie 设置。
+		cfg = cfg.Clone()
 	}
 	if logger == nil {
 		logger = adapter.NewNopLogger()

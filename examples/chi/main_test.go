@@ -39,7 +39,11 @@ func TestInitDTokenConfiguration(t *testing.T) {
 func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	setupChiManager(t)
 	router := chi.NewRouter()
-	router.Use(chidt.RegisterDTokenContextMiddleware(chidt.WithAuth(registeredAuth())))
+	authOption1, authErr := chidt.WithAuth(registeredAuth())
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	router.Use(chidt.RegisterDTokenContextMiddleware(authOption1))
 	router.Post("/login", handleLogin)
 
 	missing := requestChi(t, router, http.MethodPost, "/login", `{"username":"alice"}`, "")
@@ -94,7 +98,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 	}
 
 	router := chi.NewRouter()
-	registerTestRoutes(router)
+	registerTestRoutes(t, router)
 
 	for _, route := range []string{"/me", "/admin", "/articles"} {
 		for _, header := range []string{token, "Bearer " + token} {
@@ -142,7 +146,11 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 func TestLoginRejectsInvalidJSON(t *testing.T) {
 	setupChiManager(t)
 	router := chi.NewRouter()
-	router.Use(chidt.RegisterDTokenContextMiddleware(chidt.WithAuth(registeredAuth())))
+	authOption2, authErr := chidt.WithAuth(registeredAuth())
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	router.Use(chidt.RegisterDTokenContextMiddleware(authOption2))
 	router.Post("/login", handleLogin)
 	valid := `{"username":"alice","password":"123456"}`
 	for _, tc := range []struct {
@@ -181,7 +189,11 @@ func TestLoginRejectsDisabledAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := chi.NewRouter()
-	router.Use(chidt.RegisterDTokenContextMiddleware(chidt.WithAuth(registeredAuth())))
+	authOption3, authErr := chidt.WithAuth(registeredAuth())
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	router.Use(chidt.RegisterDTokenContextMiddleware(authOption3))
 	router.Post("/login", handleLogin)
 	rec := requestChi(t, router, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
 	var response Response
@@ -206,11 +218,17 @@ func TestHandlersReportStorageFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 
 	// Register only request context to exercise each handler's own failure path. 仅注册请求上下文，以覆盖各处理器自身的错误分支。
 	router := chi.NewRouter()
-	router.Use(chidt.RegisterDTokenContextMiddleware(chidt.WithAuth(builtAuth1)))
+	authOption4, authErr := chidt.WithAuth(builtAuth1)
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	router.Use(chidt.RegisterDTokenContextMiddleware(authOption4))
 	router.Post("/login", handleLogin)
 	router.Get("/me", handleMe)
 	router.Post("/logout", handleLogout)
@@ -250,7 +268,9 @@ func setupChiManager(t *testing.T) {
 	t.Helper()
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	initDToken()
+	if _, err := initDToken(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func requestChi(t *testing.T, router http.Handler, method, path, body, token string) *httptest.ResponseRecorder {
@@ -275,16 +295,26 @@ func registeredAuth() *dtoken.Auth {
 }
 
 // registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
-func registerTestRoutes(r chi.Router) { registerRoutes(r, registeredAuth()) }
+func registerTestRoutes(t *testing.T, r chi.Router) {
+	t.Helper()
+	if err := registerRoutes(r, registeredAuth()); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // TestInjectedLoginUsesBuiltInstance verifies routes and the registry share the built engine. TestInjectedLoginUsesBuiltInstance 验证路由与注册表共用构建返回的引擎。
 func TestInjectedLoginUsesBuiltInstance(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	auth := initDToken()
+	auth, err := initDToken()
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(auth.Close)
 	router := chi.NewRouter()
-	registerRoutes(router, auth)
+	if err := registerRoutes(router, auth); err != nil {
+		t.Fatal(err)
+	}
 	response := requestChi(t, router, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
 	if response.Code != http.StatusOK {
 		t.Fatalf("login status = %d", response.Code)

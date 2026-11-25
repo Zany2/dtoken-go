@@ -53,6 +53,8 @@ Handlers and authentication middleware share the same error response callback. R
 
 ## Key APIs
 
+The middleware fragments below belong in a setup function that returns `error`; propagate binding errors to the caller and stop startup if setup fails.
+
 Build an instance first and keep it open while the server handles requests. These fragments use the handlers and error callbacks from `main.go`.
 
 ```go
@@ -63,7 +65,11 @@ defer authInstance.Close()
 
 ```go
 fail := func(c *gofiber.Ctx, err error) { _ = writeAuthError(c, err) }
-app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx, fiberdt.WithAuth(authInstance), fiberdt.WithFailFunc(fail)))
+authOption1, authErr := fiberdt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx, authOption1, fiberdt.WithFailFunc(fail)))
 auth.Use(fiberdt.AuthMiddleware(ctx, fiberdt.WithFailFunc(fail)))
 auth.Get("/admin", fiberdt.RoleMiddleware(ctx, []string{"admin"}, fiberdt.WithFailFunc(fail)), handleAdmin)
 auth.Get("/articles", fiberdt.PermissionMiddleware(ctx, []string{"article:read"}, fiberdt.WithFailFunc(fail)), handleArticles)

@@ -40,6 +40,10 @@ type TokenIntrospection struct {
 
 // IntrospectToken inspects token validity without renewal side effects. IntrospectToken 无续期副作用地检查令牌状态。
 func (m *Manager) IntrospectToken(ctx context.Context, tokenValue string) (*TokenIntrospection, error) {
+	if m.IsClosed() {
+		return nil, derror.ErrManagerNotFound
+	}
+
 	result := &TokenIntrospection{Active: false}
 	if tokenValue == "" {
 		result.Error = "invalid_token"

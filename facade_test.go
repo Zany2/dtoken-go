@@ -22,7 +22,9 @@ func TestRegistryNormalizesAuthType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	SetManager(mgr)
+	if err := SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 
 	withoutSuffix, err := GetManager("registry")
 	if err != nil {
@@ -58,7 +60,9 @@ func TestRootFacadeLoginAndAccessFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	SetManager(mgr)
+	if err := SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 
 	token, err := AuthType("facade").Login(ctx, LoginOptions{LoginID: "user-1", Device: "web", DeviceID: "browser-1"})
 	if err != nil {

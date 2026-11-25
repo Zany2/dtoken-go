@@ -42,7 +42,11 @@ if err != nil { panic(err) }
 defer auth.Close()
 
 r := gin.Default()
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(auth)))
+authOption1, authErr := gindt.WithAuth(auth)
+if authErr != nil {
+    return authErr
+}
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, authOption1))
 ```
 
 这里 dt 表示根包 github.com/Zany2/dtoken-go。注解复用请求绑定的实例。切换 AuthType 需要显式配置 ManagerResolver，例如注册中间件的 WithManagerResolver(dt.GetManager)；缺少绑定或解析器时返回 ErrManagerNotFound。

@@ -20,7 +20,9 @@ func TestRootRefreshAndIntrospectionFacades(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	SetManager(mgr)
+	if err := SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 
 	pair, err := AuthType("refresh-facade").LoginWithRefreshTokenOptions(ctx, RefreshTokenOptions{LoginOptions: LoginOptions{LoginID: "refresh-user", Device: "web", DeviceID: "browser"}})
 	if err != nil {

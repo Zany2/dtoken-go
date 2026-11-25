@@ -16,7 +16,9 @@ func TestChiRepeatedRegistration(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newChiReviewManager(t, "")
 	local := newChiReviewManager(t, "chi-registration")
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, tc := range []struct {
 		name string
 		opts []AuthOption
@@ -50,7 +52,11 @@ func TestChiRepeatedRegistration(t *testing.T) {
 // TestChiRequestRebindingPreservesCapabilities keeps service bindings across adapter replacement. TestChiRequestRebindingPreservesCapabilities 在请求适配器替换后保留服务绑定。
 func TestChiRequestRebindingPreservesCapabilities(t *testing.T) {
 	mgr := newChiReviewManager(t, "chi-services")
-	service := nonce.NewService(nonce.NewDefaultNonceManager(mgr.GetConfig().AuthType, mgr.GetConfig().KeyPrefix, mgr.GetStorage()), nil)
+	nonceManager, err := nonce.NewDefaultNonceManager(mgr.GetConfig().AuthType, mgr.GetConfig().KeyPrefix, mgr.GetStorage())
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := nonce.NewService(nonceManager, nil)
 	token, err := mgr.Login(context.Background(), "user")
 	if err != nil {
 		t.Fatal(err)

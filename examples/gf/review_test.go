@@ -27,7 +27,7 @@ import (
 // TestRouteAccessUsesMatchedRoute verifies normalization and route overrides retain the target's checks. TestRouteAccessUsesMatchedRoute 验证规范化和路由覆盖后仍执行目标路由的鉴权规则。
 func TestRouteAccessUsesMatchedRoute(t *testing.T) {
 	mgr := setupGFManager(t)
-	s := newGFServer(t, registerTestRoutes)
+	s := newGFServer(t, func(s *ghttp.Server) { registerTestRoutes(t, s) })
 	ctx := context.Background()
 	token, err := mgr.Login(ctx, "reader")
 	if err != nil {
@@ -74,7 +74,7 @@ func TestRouteAccessUsesMatchedRoute(t *testing.T) {
 // TestLoginRefreshLogout verifies the JSON envelope and the complete token-pair lifecycle. TestLoginRefreshLogout 验证 JSON 响应及令牌对的完整生命周期。
 func TestLoginRefreshLogout(t *testing.T) {
 	setupGFManager(t)
-	s := newGFServer(t, registerTestRoutes)
+	s := newGFServer(t, func(s *ghttp.Server) { registerTestRoutes(t, s) })
 	pair := decodeGFPair(t, requestGF(s, http.MethodPost, "/login", "username=alice&password=123456", ""))
 	if pair.LoginID != "alice" || pair.Device != "web" || pair.DeviceID != "gf-example" {
 		t.Fatalf("unexpected login identity: %+v", pair)
@@ -121,7 +121,7 @@ func TestLoginRefreshLogout(t *testing.T) {
 // TestCredentialBodyValidation covers malformed input and prevents query fallback. TestCredentialBodyValidation 覆盖损坏输入并防止回退到 Query 参数。
 func TestCredentialBodyValidation(t *testing.T) {
 	setupGFManager(t)
-	s := newGFServer(t, registerTestRoutes)
+	s := newGFServer(t, func(s *ghttp.Server) { registerTestRoutes(t, s) })
 	for _, tc := range []struct {
 		path, body, contentType string
 	}{
@@ -184,7 +184,7 @@ func TestCredentialBodyValidation(t *testing.T) {
 // TestAccountAndDeviceRestrictions verifies 403 responses and retry after device unblocking. TestAccountAndDeviceRestrictions 验证封禁返回 403，设备解封后可重试刷新。
 func TestAccountAndDeviceRestrictions(t *testing.T) {
 	mgr := setupGFManager(t)
-	s := newGFServer(t, registerTestRoutes)
+	s := newGFServer(t, func(s *ghttp.Server) { registerTestRoutes(t, s) })
 	ctx := context.Background()
 	if err := mgr.Disable(ctx, "blocked", time.Hour); err != nil {
 		t.Fatal(err)
@@ -213,14 +213,20 @@ func TestStorageFailuresStayServerErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, withAuth := range []bool{false, true} {
 		t.Run(map[bool]string{false: "handlers", true: "middleware"}[withAuth], func(t *testing.T) {
-			register := registerTestRoutes
+			register := func(s *ghttp.Server) { registerTestRoutes(t, s) }
 			if !withAuth {
 				// Reach each handler directly to verify its own error mapping. 直接到达各处理器，验证其自身的错误分类。
 				register = func(s *ghttp.Server) {
-					s.Use(gfdt.RegisterDTokenContextMiddleware(context.Background(), gfdt.WithAuth(builtAuth1)))
+					authOption1, authErr := gfdt.WithAuth(builtAuth1)
+					if authErr != nil {
+						t.Fatal(authErr)
+					}
+					s.Use(gfdt.RegisterDTokenContextMiddleware(context.Background(), authOption1))
 					s.BindHandler("POST:/login", handleLogin)
 					s.BindHandler("POST:/refresh", handleRefresh)
 					s.BindHandler("GET:/me", handleMe)
@@ -266,7 +272,9 @@ func setupGFManager(t *testing.T) *dt1.Manager {
 	t.Helper()
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	initDToken()
+	if _, err := initDToken(); err != nil {
+		t.Fatal(err)
+	}
 	mgr, err := dtoken.GetManager()
 	if err != nil {
 		t.Fatal(err)
@@ -345,15 +353,27 @@ func registeredAuth() *dtoken.Auth {
 }
 
 // registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
-func registerTestRoutes(s *ghttp.Server) { registerRoutes(s, registeredAuth()) }
+func registerTestRoutes(t *testing.T, s *ghttp.Server) {
+	t.Helper()
+	if err := registerRoutes(s, registeredAuth()); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // TestInjectedLoginUsesBuiltInstance verifies routes and the registry share the built engine. TestInjectedLoginUsesBuiltInstance 验证路由与注册表共用构建返回的引擎。
 func TestInjectedLoginUsesBuiltInstance(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	auth := initDToken()
+	auth, err := initDToken()
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(auth.Close)
-	s := newGFServer(t, func(s *ghttp.Server) { registerRoutes(s, auth) })
+	s := newGFServer(t, func(s *ghttp.Server) {
+		if err := registerRoutes(s, auth); err != nil {
+			t.Fatal(err)
+		}
+	})
 	response := requestGF(s, http.MethodPost, "/login", "username=alice&password=123456", "")
 	if response.Code != http.StatusOK {
 		t.Fatalf("login status = %d", response.Code)

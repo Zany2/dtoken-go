@@ -248,7 +248,9 @@ func TestKratosContextLookupHandlesNilAndTypedNil(t *testing.T) {
 	}
 
 	mgr := newKratosBehaviorManager(t)
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	t.Cleanup(dtoken.DeleteAllManager)
 	if _, err := GetLoginIDByCtx(nil); !errors.Is(err, derror.ErrNotLogin) {
 		t.Fatalf("GetLoginIDByCtx(nil) error = %v, want ErrNotLogin", err)
@@ -317,11 +319,13 @@ func (c *kratosBehaviorRequestContext) GetUserAgent() string             { retur
 func (c *kratosBehaviorRequestContext) SetCookieWithOptions(*adapter.CookieOptions) {
 }
 func (c *kratosBehaviorRequestContext) GetString(string) string { return "" }
-func (c *kratosBehaviorRequestContext) MustGet(string) any      { return nil }
-func (c *kratosBehaviorRequestContext) Abort()                  {}
-func (c *kratosBehaviorRequestContext) IsAborted() bool         { return false }
-func (c *kratosBehaviorRequestContext) IsTLS() bool             { return false }
-func (c *kratosBehaviorRequestContext) SetStatusCode(int)       {}
+func (c *kratosBehaviorRequestContext) GetRequired(string) (any, error) {
+	return nil, derror.ErrKeyNotFound
+}
+func (c *kratosBehaviorRequestContext) Abort()            {}
+func (c *kratosBehaviorRequestContext) IsAborted() bool   { return false }
+func (c *kratosBehaviorRequestContext) IsTLS() bool       { return false }
+func (c *kratosBehaviorRequestContext) SetStatusCode(int) {}
 func (c *kratosBehaviorRequestContext) Write(data []byte) (int, error) {
 	return len(data), nil
 }

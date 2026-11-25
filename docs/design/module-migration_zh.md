@@ -4,6 +4,28 @@
 
 本文维护旧路径与 API 的升级步骤、发布顺序和消费者验证方式。当前系统分层见[架构设计](architecture_zh.md)，包与模块边界见[模块化设计](modular_zh.md)，代码位置见[源码目录](source-layout_zh.md)。
 
+## 错误处理接口迁移
+
+框架不再提供主动 panic 的构建和上下文读取接口，调用方负责处理返回错误：
+
+| 原调用 | 当前调用 |
+| --- | --- |
+| `MustBuild()` | `auth, err := builder.Build()` |
+| `MustBuildInstance()` | `auth, err := builder.BuildInstance()` |
+| `WithAuth(auth)` 直接作为选项使用 | 先取得 `option, err := WithAuth(auth)`，成功后传入中间件 |
+| `Context(auth)` 直接作为中间件使用 | 先取得 `middleware, err := Context(auth)`，成功后注册 |
+| `RequestContext.MustGet(key)` | `value, err := requestContext.GetRequired(key)` |
+
+`WithAuth` 和 `Context` 对空实例、已关闭实例返回 `ErrManagerNotFound`。`GetRequired` 在键不存在时返回可由 `errors.Is` 判断的 `ErrKeyNotFound`；只需要判断是否存在时，继续使用 `Get(key) (any, bool)`。自定义 RequestContext 实现也需要同步方法签名。GoFrame 的请求体读取异常通过 `GetBody() ([]byte, error)` 返回，不重新抛出。
+
+## 注册与配置收敛
+
+- 业务选项中的 AuthType 字段已删除；默认调用使用 dtoken.XXX，指定体系使用 dtoken.AuthType(name).XXX。
+- BuildAndSetManager 已删除。普通初始化使用 Builder.AuthType(name).Build()；显式替换使用 BuildInstance() 后调用 SetAuth，并检查错误。
+- SetAuth、SetManager 现在返回 error。空实例、已关闭实例返回 ErrManagerNotFound，无配置的 Manager 返回 ErrManagerInvalidType；失败不会替换原注册实例。同一有效实例重复注册返回 nil。
+- Manager.GetConfig() 与 Auth.Config() 都返回独立配置快照，构建后的认证配置不再通过指针修改。需要更改配置时创建新实例；AuthType 或 KeyPrefix 变更不会迁移旧存储数据。
+- HTTP 请求路径借用 internal/engine 的只读配置，避免每次校验复制配置。八个适配器的分组快捷方法由 integration_facade_architecture_test.go 检查转发目标和参数一致性。
+
 ## 当前边界
 
 根模块发布实例门面、公共契约、内部认证实现、基础组件、共享 HTTP 鉴权，以及 Nonce、OAuth2、Ticket、ShortKey 独立能力包。能力包显式组合，不是单独的 Go 模块。工作区共 30 个模块。
@@ -52,11 +74,13 @@ Build() 自动注册并返回 *dtoken.Auth；auth.Manager() 提供底层管理�
 
 ## 独立能力
 
+Nonce、OAuth2、Ticket、ShortKey 的 Manager/Server 构造器（包括默认构造器）现在统一返回 `(实例, error)`，先检查错误，再调用 `NewService`。`WithConfig` 的 `nil` 配置使用默认值；显式配置必须通过 `Validate`，建议从 `DefaultConfig()` 开始修改。无效配置、缺失或带类型的 nil 存储/编解码器返回 `errors.ErrInvalidParam`。Nonce 的直接 TTL 参数必须为正，OAuth2 的刷新有效期必须大于访问有效期。单次业务操作的超时回退规则保持原样。
+
 Builder 不提供能力开关。通过各自的构造器创建能力 Manager，再通过 NewService(manager, auth) 接入实例事件。使用所属认证实例的 AuthType、KeyPrefix、Storage 和 Codec。httpauth/context.Capabilities 和框架 WithCapabilities 将服务绑定到请求。未绑定的能力返回 ErrModuleNotEnabled。同一 Manager 的后续中间件未指定覆盖配置时保留请求绑定；切换 Manager 时创建新作用域。
 
 ## 门面方法迁移
 
-框架包保留 `NewBuilder` 及请求快捷方法。Auth、业务选项、默认和指定体系调用统一从根包导入。原 global 包已移除；默认调用改为 dt.XXX，指定体系改为 dt.AuthType(name).XXX，并按根包签名使用类型化选项。原 Default / NewByAuthType 改为 AuthType("") / AuthType(name)，后续操作返回查找错误；需要立即检查时调用 GetManager。组件构造器从所属组件包导入。
+框架包保留 `NewBuilder` 及请求快捷方法。Auth、业务选项、默认和指定体系调用统一从根包导入。原 global 包已移除；默认调用改为 dt.XXX，指定体系改为 dt.AuthType(name).XXX，并按根包签名使用类型化选项。原 Default().XXX / NewByAuthType(name).XXX 改为 dt.XXX / dt.AuthType(name).XXX，后续操作返回查找错误；需要立即检查时调用 GetManager。组件构造器从所属组件包导入。
 
 旧调用不能只替换包名前缀，登录、权限变更和封禁等方法需要改为根包的类型化选项。下表仅用来说明升级前后的对应关系，左列 API 已删除，右列 dt 表示根包：
 
@@ -66,18 +90,36 @@ Builder 不提供能力开关。通过各自的构造器创建能力 Manager，�
 | `global.Logout(ctx, token, "user")` | `dt.AuthType("user").LogoutByToken(ctx, token)` |
 | `global.AddPermissions(ctx, id, values, "user")` | `dt.AuthType("user").AddPermissions(ctx, dt.PermissionOptions{LoginID: id, Permissions: values})` |
 | `global.Disable(ctx, id, duration, reason, "user")` | `dt.AuthType("user").Disable(ctx, dt.DisableOptions{LoginID: id, Duration: duration, Reason: reason})` |
-| `global.Default()` / `global.NewByAuthType("user")` | 动态选择器 `dt.AuthType("")` / `dt.AuthType("user")`；立即校验使用 `dt.GetManager(...)`，需要固定门面时包装为 `dt.New(mgr)` |
+| `global.Default().XXX(...)` / `global.NewByAuthType("user").XXX(...)` | `dt.XXX(...)` / `dt.AuthType("user").XXX(...)`；立即校验使用 `dt.GetManager(...)`，需要固定门面时包装为 `dt.New(mgr)` |
 
 选择器的创建不返回查找错误，后续业务操作才解析注册表。原来依赖构造时立即报错的代码，应先调用 GetManager。已注册和返回实例共享引擎，关闭任一固定门面会影响其他共享者。更多方法见[根包 API 参考](../api/dtoken_zh.md)。
 
 下表覆盖旧 `Auth` 门面移出的 40 个能力方法。原包级能力调用也迁移到相同服务入口；根据目标认证实例选择已组合的服务，不再通过末尾的 `authType` 参数选择实例。从当前根路径下的 `nonce`、`oauth2`、`ticket`、`shortkey` 包导入能力类型。构建 `auth` 后，表中的服务变量按以下方式组合：
 
+以下片段放在可返回 `error` 的初始化函数中：
+
 ```go
 cfg := auth.Config()
-nonceService := nonce.NewService(nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage()), auth)
-oauth2Service := oauth2.NewService(oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
-ticketService := ticket.NewService(ticket.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
-shortKeyService := shortkey.NewService(shortkey.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
+nonceManager, err := nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage())
+if err != nil {
+	return err
+}
+nonceService := nonce.NewService(nonceManager, auth)
+oauth2Server, err := oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+if err != nil {
+	return err
+}
+oauth2Service := oauth2.NewService(oauth2Server, auth)
+ticketManager, err := ticket.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+if err != nil {
+	return err
+}
+ticketService := ticket.NewService(ticketManager, auth)
+shortKeyManager, err := shortkey.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+if err != nil {
+	return err
+}
+shortKeyService := shortkey.NewService(shortKeyManager, auth)
 ```
 
 | 旧方法名 | 当前服务方法 |

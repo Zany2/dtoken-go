@@ -38,10 +38,26 @@ func TestCapabilitiesUseComposedServices(t *testing.T) {
 	t.Cleanup(auth.Close)
 	ctx := context.Background()
 	cfg := auth.Config()
-	nonceService := nonce.NewService(nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage()), auth)
-	ticketService := ticket.NewService(ticket.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
-	shortKeyService := shortkey.NewService(shortkey.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
-	oauth2Service := oauth2.NewService(oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec()), auth)
+	nonceManager, err := nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage())
+	if err != nil {
+		t.Fatal(err)
+	}
+	nonceService := nonce.NewService(nonceManager, auth)
+	ticketManager, err := ticket.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticketService := ticket.NewService(ticketManager, auth)
+	shortKeyManager, err := shortkey.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	shortKeyService := shortkey.NewService(shortKeyManager, auth)
+	oauth2Server, err := oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	oauth2Service := oauth2.NewService(oauth2Server, auth)
 	bindings := Capabilities{Nonce: nonceService, Ticket: ticketService, ShortKey: shortKeyService, OAuth2: oauth2Service}
 	dCtx := NewContext(&testRequestContext{}, auth.Manager()).WithCapabilities(&bindings)
 	bindings = Capabilities{}

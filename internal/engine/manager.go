@@ -7,7 +7,7 @@ import (
 	listener "github.com/Zany2/dtoken-go/event"
 )
 
-// Manager is the core auth facade. Manager 是鉴权核心门面。
+// Manager is the core auth facade; business methods return ErrManagerNotFound or false once shutdown starts. Manager 是鉴权核心门面；开始关闭后业务方法返回 ErrManagerNotFound 或 false。
 type Manager struct {
 	config             *config.Config    // config stores runtime configuration. config 存储运行时配置。
 	generator          adapter.Generator // generator creates token values. generator 负责生成 Token 值。
@@ -23,8 +23,19 @@ type Manager struct {
 	strategy           *Strategy         // strategy stores replaceable algorithms. strategy 存储可替换算法。
 }
 
-// GetConfig retrieves the manager configuration. GetConfig 获取管理器配置。
+// GetConfig returns an isolated configuration snapshot; changes never affect the running engine. GetConfig 返回独立配置快照，修改不会影响运行中的引擎。
 func (m *Manager) GetConfig() *config.Config {
+	if m == nil || m.config == nil {
+		return nil
+	}
+	return m.config.Clone()
+}
+
+// RuntimeConfig borrows immutable configuration for internal request paths; callers must never modify it. RuntimeConfig 供内部请求路径借用不可变配置，调用方不得修改。
+func RuntimeConfig(m *Manager) *config.Config {
+	if m == nil {
+		return nil
+	}
 	return m.config
 }
 
@@ -63,9 +74,13 @@ func (m *Manager) GetAccessProvider() AccessProvider {
 	return m.accessProvider
 }
 
-// GetStrategy retrieves the manager strategy. GetStrategy 获取管理器策略。
+// GetStrategy returns a strategy snapshot; callback closures remain caller-managed. GetStrategy 返回策略快照，回调闭包内部状态仍由调用方管理。
 func (m *Manager) GetStrategy() *Strategy {
-	return m.strategy.normalize()
+	if m == nil || m.strategy == nil {
+		return nil
+	}
+	snapshot := *m.strategy
+	return &snapshot
 }
 
 // GetEventManager retrieves the event manager. GetEventManager 获取事件监听管理器。

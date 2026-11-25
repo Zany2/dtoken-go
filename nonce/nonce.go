@@ -52,32 +52,34 @@ type NonceManager struct {
 	storage   adapter.Storage // storage stores storage adapter storage 存储存储适配器
 }
 
-// NewDefaultNonceManager creates nonce manager with default config NewDefaultNonceManager 使用默认配置创建 Nonce 管理器
-func NewDefaultNonceManager(authType, prefix string, storage adapter.Storage) *NonceManager {
+// NewDefaultNonceManager creates a validated NonceManager or returns a configuration/component error. NewDefaultNonceManager 创建已校验实例，配置或组件无效时返回错误。
+func NewDefaultNonceManager(authType, prefix string, storage adapter.Storage) (*NonceManager, error) {
 	return NewNonceManagerWithConfig(authType, prefix, storage, DefaultConfig())
 }
 
-// NewNonceManagerWithConfig creates nonce manager with config NewNonceManagerWithConfig 使用配置创建 Nonce 管理器
-func NewNonceManagerWithConfig(authType, prefix string, storage adapter.Storage, cfg *Config) *NonceManager {
+// NewNonceManagerWithConfig validates config and components; nil config uses defaults. NewNonceManagerWithConfig 校验配置及组件，nil 配置使用默认值。
+func NewNonceManagerWithConfig(authType, prefix string, storage adapter.Storage, cfg *Config) (*NonceManager, error) {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
-	return NewNonceManager(authType, prefix, storage, cfg.TTL)
-}
-
-// NewNonceManager creates nonce manager NewNonceManager 创建新的 Nonce 管理器
-func NewNonceManager(authType, prefix string, storage adapter.Storage, ttl time.Duration) *NonceManager {
-	if ttl <= 0 {
-		// Use default ttl 使用默认有效期
-		ttl = DefaultNonceTTL
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrInvalidParam, err)
+	}
+	if utils.IsNil(storage) {
+		return nil, fmt.Errorf("%w: storage is required", derror.ErrInvalidParam)
 	}
 
 	return &NonceManager{
 		authType:  authType,
 		keyPrefix: prefix,
 		storage:   storage,
-		ttl:       ttl,
-	}
+		ttl:       cfg.TTL,
+	}, nil
+}
+
+// NewNonceManager creates a validated NonceManager or returns a configuration/component error. NewNonceManager 创建已校验实例，配置或组件无效时返回错误。
+func NewNonceManager(authType, prefix string, storage adapter.Storage, ttl time.Duration) (*NonceManager, error) {
+	return NewNonceManagerWithConfig(authType, prefix, storage, &Config{TTL: ttl})
 }
 
 // TTL returns the effective default nonce ttl. TTL 返回实际生效的默认 Nonce 有效期。

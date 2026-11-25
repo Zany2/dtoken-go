@@ -39,7 +39,11 @@ func TestInitDTokenConfiguration(t *testing.T) {
 func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	setupFiberManager(t)
 	app := gofiber.New()
-	app.Use(fiberdt.RegisterDTokenContextMiddleware(context.Background(), fiberdt.WithAuth(registeredAuth())))
+	authOption1, authErr := fiberdt.WithAuth(registeredAuth())
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	app.Use(fiberdt.RegisterDTokenContextMiddleware(context.Background(), authOption1))
 	app.Post("/login", handleLogin)
 
 	missing := requestFiber(t, app, http.MethodPost, "/login", `{"username":"alice"}`, "")
@@ -93,7 +97,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 	}
 
 	app := gofiber.New()
-	registerTestRoutes(app)
+	registerTestRoutes(t, app)
 
 	for _, route := range []string{"/me", "/admin", "/articles"} {
 		for _, header := range []string{token, "Bearer " + token} {
@@ -158,7 +162,11 @@ func TestLoginPayloads(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			setupFiberManager(t)
 			app := gofiber.New()
-			app.Use(fiberdt.RegisterDTokenContextMiddleware(context.Background(), fiberdt.WithAuth(registeredAuth())))
+			authOption2, authErr := fiberdt.WithAuth(registeredAuth())
+			if authErr != nil {
+				t.Fatal(authErr)
+			}
+			app.Use(fiberdt.RegisterDTokenContextMiddleware(context.Background(), authOption2))
 			app.Post("/login", handleLogin)
 			req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBufferString(tc.body))
 			req.Header.Set("Content-Type", tc.contentType)
@@ -200,14 +208,20 @@ func TestFormLoginOwnsUsername(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	var eventLoginID string
 	mgr.GetEventManager().RegisterFuncWithConfig(dt2.EventLogin, func(data *dt2.EventData) {
 		eventLoginID = data.LoginID
 	}, dt2.ListenerConfig{Async: false})
 
 	app := gofiber.New()
-	app.Use(fiberdt.RegisterDTokenContextMiddleware(context.Background(), fiberdt.WithAuth(registeredAuth())))
+	authOption3, authErr := fiberdt.WithAuth(registeredAuth())
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	app.Use(fiberdt.RegisterDTokenContextMiddleware(context.Background(), authOption3))
 	mutated := 0
 	app.Post("/login", func(c *gofiber.Ctx) error {
 		err := handleLogin(c)
@@ -235,7 +249,11 @@ func TestLoginRejectsDisabledAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := gofiber.New()
-	app.Use(fiberdt.RegisterDTokenContextMiddleware(context.Background(), fiberdt.WithAuth(registeredAuth())))
+	authOption4, authErr := fiberdt.WithAuth(registeredAuth())
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	app.Use(fiberdt.RegisterDTokenContextMiddleware(context.Background(), authOption4))
 	app.Post("/login", handleLogin)
 	response := requestFiber(t, app, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
 	var envelope Response
@@ -260,11 +278,17 @@ func TestHandlersReportStorageFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 
 	// Register only request context to exercise each handler's own failure path. 仅注册请求上下文，以覆盖各处理器自身的错误分支。
 	app := gofiber.New()
-	app.Use(fiberdt.RegisterDTokenContextMiddleware(context.Background(), fiberdt.WithAuth(builtAuth2)))
+	authOption5, authErr := fiberdt.WithAuth(builtAuth2)
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	app.Use(fiberdt.RegisterDTokenContextMiddleware(context.Background(), authOption5))
 	app.Post("/login", handleLogin)
 	app.Get("/me", handleMe)
 	app.Post("/logout", handleLogout)
@@ -304,7 +328,9 @@ func setupFiberManager(t *testing.T) {
 	t.Helper()
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	initDToken()
+	if _, err := initDToken(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func requestFiber(t *testing.T, app *gofiber.App, method, path, body, token string) *http.Response {
@@ -332,16 +358,26 @@ func registeredAuth() *dtoken.Auth {
 }
 
 // registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
-func registerTestRoutes(app *gofiber.App) { registerRoutes(app, registeredAuth()) }
+func registerTestRoutes(t *testing.T, app *gofiber.App) {
+	t.Helper()
+	if err := registerRoutes(app, registeredAuth()); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // TestInjectedLoginUsesBuiltInstance verifies routes and the registry share the built engine. TestInjectedLoginUsesBuiltInstance 验证路由与注册表共用构建返回的引擎。
 func TestInjectedLoginUsesBuiltInstance(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	auth := initDToken()
+	auth, err := initDToken()
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(auth.Close)
 	app := gofiber.New()
-	registerRoutes(app, auth)
+	if err := registerRoutes(app, auth); err != nil {
+		t.Fatal(err)
+	}
 	response := requestFiber(t, app, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {

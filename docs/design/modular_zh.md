@@ -9,7 +9,7 @@
 | 应用入口 | 根实例/默认门面、AuthType 选择器与共享注册表 |
 | 公共契约与配置 | contract、config、errors |
 | 事件服务 | event：发布契约及监听分发实现 |
-| 内部实现与装配 | internal/engine、internal/builder、internal/defaults |
+| 内部实现与装配 | internal/engine、internal/builder |
 | 独立能力 | nonce、oauth2、ticket、shortkey |
 | HTTP 公共层 | httpauth、httpauth/context |
 | 框架适配 | integrations/<framework> |
@@ -22,11 +22,11 @@
 - 能力实现依赖公共契约及基础工具，通过构造器接收组件和可选事件发布器，不反向依赖根门面或核心引擎。
 - contract 保持共享接口和数据类型，不导入能力实现、框架或默认装配。event 自身包含运行时实现。
 - config 可依赖 contract 和 errors；contract 不反向依赖 config。errors 与内部基础工具不依赖上层运行时，event 不依赖引擎或装配层。
-- 根包通过内部构建器和默认工厂装配基础组件，Build 自动注册，BuildInstance 不注册。根包持有共享注册表。
-- internal/builder 依赖引擎和组件契约，不直接选择组件实现。internal/defaults 明确选择内置 JSON、生成器、日志、池和内存存储；更换内置默认组件时同步更新装配依赖白名单。
+- 根包通过无状态装配函数和默认工厂装配基础组件，Build 自动注册，BuildInstance 不注册。根包持有共享注册表。
+- internal/builder 提供无状态装配函数，并在 defaults.go 中选择内置 JSON、生成器、日志、池和内存存储。具体默认实现的依赖集中在装配包，引擎仍依赖契约；更换内置默认组件时同步更新装配依赖白名单。
 - HTTP 公共层调用引擎和能力服务契约，不导入能力实现。注册表查找通过显式 ManagerResolver 注入。
 - 框架适配器调用 HTTP 公共层，处理原生请求、响应和处理链。框架 Builder 转发根构建器并返回 Auth，不转导出全局 API 或可选组件构造器。
-- 框架适配器可以引用自身目录下的辅助子包，不直接导入具体组件、内部构建器、其他框架适配器、SSO 或示例与测试应用。根 Builder 的默认组件依赖属于有意的间接装配关系。
+- 框架适配器可以引用自身目录下的辅助子包，不直接导入具体组件、内部装配包、其他框架适配器、SSO 或示例与测试应用。根 Builder 的默认组件依赖属于有意的间接装配关系。
 - 组件实现可依赖自身组件目录、公共契约、配置、错误和内部基础工具，不反向依赖引擎、HTTP 或装配层。contract/storagetest 仅用于测试，不作为运行时依赖。
 - 新组件通过组件包接入。Gin 标准源和生成器统一维护 export.go、error_export.go；其余适配代码按框架维护。
 
@@ -54,7 +54,7 @@
 
 ## 现有结构检查
 
-- 根目录 architecture_test.go 通过仓库内直接导入白名单约束契约、配置、错误、事件、内部工具、引擎、能力、HTTP 公共层、组件及两层内部装配代码；HTTP 与框架另有禁止依赖规则。
+- 根目录 architecture_test.go 通过仓库内直接导入白名单约束契约、配置、错误、事件、内部工具、引擎、能力、HTTP 公共层、组件及 internal/builder 装配代码；HTTP 与框架另有禁止依赖规则。
 - 检查扫描非 _test.go 的 Go 文件，源码仓库中存在的独立组件和框架子模块也参与扫描。发布后的根模块没有 integrations 目录时跳过框架扫描；组件父目录仍检查其保留的内置实现。
 - architecture_integrations_test.go 检查各框架请求操作名称的覆盖范围，不替代签名或行为验证。
 - Gin 导出生成器的检查模式检查两个共享导出文件的一致性。

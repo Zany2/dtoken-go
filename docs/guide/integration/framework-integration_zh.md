@@ -10,6 +10,11 @@
 
 实例选择顺序：显式 WithAuth/WithManager；已有请求实例；显式配置的 ManagerResolver。WithAuthType 通过配置的解析器切换认证类型，未配置解析器时只能匹配当前请求的认证类型。请求未绑定实例且未配置解析器时返回 ErrManagerNotFound。未指定覆盖的中间件保留请求实例与能力绑定；切换实例时清空能力绑定。
 
+`BeforeAuthHandler` 用于查看 `AuthHandleRequest` 元数据并控制流程：`req.Next()` 跳过当前 DToken 校验并继续下游处理；`req.Exit()` 在自定义处理后结束当前 DToken 流程。正常返回且未处理或中止请求时，继续按原中间件规则校验。修改该请求的 `AuthType`、`CheckLogin`、`CheckDisable`、`Permissions`、`Roles` 或 `LogicType` 不会改变校验规则。需要动态规则时，使用 `AccessMiddleware` 配合 `WithRouteAccessHandler`，修改其中的 `RouteAccessRequest`。八个框架适配器均遵循这一约定。
+
+WithAuth 返回 (AuthOption, error)，Context 返回 (中间件, error)。启动服务前应检查绑定错误；下文初始化片段放在返回 error 的函数中使用。
+
+
 ## 安装
 
 ```bash
@@ -46,7 +51,11 @@ if err != nil {
 defer authInstance.Close()
 
 s := g.Server()
-s.Use(gfdt.RegisterDTokenContextMiddleware(ctx, gfdt.WithAuth(authInstance)))
+authOption1, authErr := gfdt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+s.Use(gfdt.RegisterDTokenContextMiddleware(ctx, authOption1))
 s.Group("/", func(group *ghttp.RouterGroup) {
     group.POST("/login", func(r *ghttp.Request) {
         token, _ := authInstance.LoginID(r.Context(), "1000")
@@ -84,7 +93,11 @@ if err != nil {
 defer authInstance.Close()
 
 r := gin.Default()
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(authInstance)))
+authOption1, authErr := gindt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, authOption1))
 r.POST("/login", func(c *gin.Context) {
     token, _ := authInstance.LoginID(c.Request.Context(), "1000")
     c.JSON(http.StatusOK, gin.H{"token": token})
@@ -110,7 +123,11 @@ if err != nil {
 defer authInstance.Close()
 
 e := echo4.New()
-e.Use(echodt.RegisterDTokenContextMiddleware(ctx, echodt.WithAuth(authInstance)))
+authOption1, authErr := echodt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+e.Use(echodt.RegisterDTokenContextMiddleware(ctx, authOption1))
 e.POST("/login", func(c echo4.Context) error {
     token, _ := authInstance.LoginID(c.Request().Context(), "1000")
     return c.JSON(http.StatusOK, echo4.Map{"token": token})
@@ -136,7 +153,11 @@ if err != nil {
 defer authInstance.Close()
 
 app := gofiber.New()
-app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx, fiberdt.WithAuth(authInstance)))
+authOption1, authErr := fiberdt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx, authOption1))
 app.Post("/login", func(c *gofiber.Ctx) error {
     token, _ := authInstance.LoginID(c.UserContext(), "1000")
     return c.JSON(gofiber.Map{"token": token})
@@ -157,6 +178,7 @@ auth.Get("/me", func(c *gofiber.Ctx) error {
 package main
 
 import (
+    "log"
     "net/http"
 
     dt "github.com/Zany2/dtoken-go"
@@ -172,7 +194,12 @@ func main() {
     defer auth.Close()
 
     router := gin.Default()
-    router.Use(gindt.Context(auth))
+    authMiddleware1, authErr := gindt.Context(auth)
+    if authErr != nil {
+        log.Print(authErr)
+        return
+    }
+    router.Use(authMiddleware1)
     router.POST("/login", func(c *gin.Context) {
         token, err := auth.LoginID(c.Request.Context(), "user-1001")
         if err != nil {
@@ -219,7 +246,11 @@ err = authInstance.LogoutByToken(ctx, token)
 框架集成包提供中间件：
 
 ```go
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithAuth(authInstance)))
+authOption1, authErr := gindt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, authOption1))
 r.Use(gindt.AuthMiddleware(ctx))
 r.Use(gindt.PermissionMiddleware(ctx, []string{"user:read"}))
 r.Use(gindt.RoleMiddleware(ctx, []string{"admin"}))
@@ -382,7 +413,7 @@ Query Token 仅读取 URL 查询参数，Body Token 仅读取 URL 编码或 mult
 
 ## 框架无关的应用与扩展
 
-与框架无关的应用和共享库使用根包 `dtoken`，通过公开的 `Manager`、`ManagerOption`、`Strategy` 扩展，实现 `contract` 中的接口，并从各自组件包导入实现。`internal/builder`、`internal/defaults`、`internal/engine` 属于私有实现，不作为外部导入入口。需要框架请求处理时再导入对应集成包。
+与框架无关的应用和共享库使用根包 `dtoken`，通过公开的 `Manager`、`ManagerOption`、`Strategy` 扩展，实现 `contract` 中的接口，并从各自组件包导入实现。`internal/builder`、`internal/engine` 属于私有实现，不作为外部导入入口。需要框架请求处理时再导入对应集成包。
 
 ## 相关文档
 

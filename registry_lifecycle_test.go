@@ -23,8 +23,12 @@ func TestSetManagerClosesReplacedManager(t *testing.T) {
 	oldManager := newRegistryTestManager("replace", oldPool)
 	newManager := newRegistryTestManager("replace", newPool)
 
-	SetManager(oldManager)
-	SetManager(newManager)
+	if err := SetManager(oldManager); err != nil {
+		t.Errorf("register authentication: %v", err)
+	}
+	if err := SetManager(newManager); err != nil {
+		t.Errorf("register authentication: %v", err)
+	}
 
 	if oldPool.stops() != 1 {
 		t.Fatalf("old pool stop count = %d, want 1", oldPool.stops())
@@ -44,8 +48,12 @@ func TestSetManagerKeepsSameInstanceOpen(t *testing.T) {
 
 	pool := &registryTestPool{}
 	mgr := newRegistryTestManager("same-instance", pool)
-	SetManager(mgr)
-	SetManager(mgr)
+	if err := SetManager(mgr); err != nil {
+		t.Errorf("register authentication: %v", err)
+	}
+	if err := SetManager(mgr); err != nil {
+		t.Errorf("register authentication: %v", err)
+	}
 
 	if mgr.IsClosed() {
 		t.Fatal("manager is closed after duplicate registration")
@@ -55,21 +63,23 @@ func TestSetManagerKeepsSameInstanceOpen(t *testing.T) {
 	}
 }
 
-// TestSetManagerMovesInstanceToCurrentAuthType verifies one manager cannot remain registered under a stale auth type. TestSetManagerMovesInstanceToCurrentAuthType 验证同一 Manager 不会残留在旧认证类型下。
-func TestSetManagerMovesInstanceToCurrentAuthType(t *testing.T) {
+// TestSetManagerKeepsBuiltNamespace verifies configuration snapshots cannot rename a registered engine. TestSetManagerKeepsBuiltNamespace 验证修改配置快照不能重命名已注册引擎。
+func TestSetManagerKeepsBuiltNamespace(t *testing.T) {
 	DeleteAllManager()
 	t.Cleanup(DeleteAllManager)
-
 	mgr := newRegistryTestManager("original-registration", &registryTestPool{})
-	SetManager(mgr)
-	mgr.GetConfig().SetAuthType("moved-registration")
-	SetManager(mgr)
-
-	if _, err := GetManager("original-registration"); !errors.Is(err, derror.ErrManagerNotFound) {
-		t.Fatalf("GetManager(original-registration) error = %v, want ErrManagerNotFound", err)
+	if err := SetManager(mgr); err != nil {
+		t.Errorf("register authentication: %v", err)
 	}
-	if got, err := GetManager("moved-registration"); err != nil || got != mgr {
-		t.Fatalf("GetManager(moved-registration) = %v, %v, want moved manager", got, err)
+	mgr.GetConfig().SetAuthType("moved-registration")
+	if err := SetManager(mgr); err != nil {
+		t.Errorf("register authentication: %v", err)
+	}
+	if got, err := GetManager("original-registration"); err != nil || got != mgr {
+		t.Fatalf("original registration = %v, %v", got, err)
+	}
+	if _, err := GetManager("moved-registration"); !errors.Is(err, derror.ErrManagerNotFound) {
+		t.Fatalf("snapshot changed registration: %v", err)
 	}
 }
 
@@ -93,11 +103,16 @@ func TestSetManagerRejectsRetiringInstance(t *testing.T) {
 		release: stopRelease,
 	})
 	newManager := newRegistryTestManager("retiring", &registryTestPool{})
-	SetManager(oldManager)
+	if err := SetManager(oldManager); err != nil {
+		t.Errorf("register authentication: %v", err)
+	}
+	oldAuth, alias := New(oldManager), New(oldManager)
 
 	replaceDone := make(chan struct{})
 	go func() {
-		SetManager(newManager)
+		if err := SetManager(newManager); err != nil {
+			t.Errorf("register authentication: %v", err)
+		}
 		close(replaceDone)
 	}()
 
@@ -107,7 +122,13 @@ func TestSetManagerRejectsRetiringInstance(t *testing.T) {
 		t.Fatal("replacement did not start closing the old manager")
 	}
 
-	SetManager(oldManager)
+	if !oldAuth.IsClosed() || oldAuth.Manager() != nil || alias.Manager() != nil {
+		t.Fatal("fixed facades exposed the old engine during replacement cleanup")
+	}
+
+	if err := SetManager(oldManager); !errors.Is(err, derror.ErrManagerNotFound) {
+		t.Fatalf("SetManager(retired) = %v", err)
+	}
 	if got, err := GetManager("retiring"); err != nil || got != newManager {
 		t.Fatalf("GetManager(retiring) during cleanup = %v, %v, want new manager", got, err)
 	}
@@ -119,9 +140,62 @@ func TestSetManagerRejectsRetiringInstance(t *testing.T) {
 		t.Fatal("replacement did not finish")
 	}
 
-	SetManager(oldManager)
+	if err := SetManager(oldManager); !errors.Is(err, derror.ErrManagerNotFound) {
+		t.Fatalf("SetManager(retired) = %v", err)
+	}
 	if got, err := GetManager("retiring"); err != nil || got != newManager {
 		t.Fatalf("GetManager(retiring) after cleanup = %v, %v, want new manager", got, err)
+	}
+}
+
+// TestDeleteAllMarksEnginesBeforeCleanup verifies every removed engine is unavailable while the first resource cleanup is blocked. TestDeleteAllMarksEnginesBeforeCleanup 验证首个资源清理阻塞期间，全部被移除引擎均已不可用。
+func TestDeleteAllMarksEnginesBeforeCleanup(t *testing.T) {
+	DeleteAllManager()
+	t.Cleanup(DeleteAllManager)
+
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseCleanup := func() { releaseOnce.Do(func() { close(release) }) }
+	defer releaseCleanup()
+	firstStarted, secondStarted := make(chan struct{}), make(chan struct{})
+	first := newRegistryTestManager("bulk-first", &registryTestBlockingPool{started: firstStarted, release: release})
+	second := newRegistryTestManager("bulk-second", &registryTestBlockingPool{started: secondStarted, release: release})
+	if err := SetManager(first); err != nil {
+		t.Errorf("register authentication: %v", err)
+	}
+	if err := SetManager(second); err != nil {
+		t.Errorf("register authentication: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		DeleteAllManager()
+		close(done)
+	}()
+	select {
+	case <-firstStarted:
+	case <-secondStarted:
+	case <-time.After(time.Second):
+		t.Fatal("bulk cleanup did not start")
+	}
+
+	for _, mgr := range []*manager.Manager{first, second} {
+		if !mgr.IsClosed() {
+			t.Fatal("removed engine remains available while another engine is closing")
+		}
+		if err := SetManager(mgr); !errors.Is(err, derror.ErrManagerNotFound) {
+			t.Fatalf("SetManager(removed) = %v, want ErrManagerNotFound", err)
+		}
+		if _, err := GetManager(mgr.GetConfig().AuthType); !errors.Is(err, derror.ErrManagerNotFound) {
+			t.Fatalf("removed engine was registered again: %v", err)
+		}
+	}
+
+	releaseCleanup()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("bulk cleanup did not finish")
 	}
 }
 
@@ -155,7 +229,9 @@ func TestRegistryRemovalHappensBeforeClose(t *testing.T) {
 				release: stopRelease,
 			})
 			newManager := newRegistryTestManager("concurrent-delete", &registryTestPool{})
-			SetManager(oldManager)
+			if err := SetManager(oldManager); err != nil {
+				t.Errorf("register authentication: %v", err)
+			}
 
 			deleteDone := make(chan error, 1)
 			go func() {
@@ -171,7 +247,9 @@ func TestRegistryRemovalHappensBeforeClose(t *testing.T) {
 				t.Fatalf("GetManager during close error = %v, want ErrManagerNotFound", err)
 			}
 
-			SetManager(newManager)
+			if err := SetManager(newManager); err != nil {
+				t.Errorf("register authentication: %v", err)
+			}
 			close(stopRelease)
 
 			select {
@@ -212,7 +290,9 @@ func TestInjectedComponentsRemainCallerOwned(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Build(%s) error = %v", authType, err)
 		}
-		SetManager(mgr)
+		if err := SetManager(mgr); err != nil {
+			t.Errorf("register authentication: %v", err)
+		}
 	}
 
 	if err := DeleteManager("shared-user"); err != nil {
@@ -263,7 +343,9 @@ func TestAuthCloseUnregistersManager(t *testing.T) {
 
 	pool := &registryTestPool{}
 	mgr := newRegistryTestManager("auth-close", pool)
-	SetManager(mgr)
+	if err := SetManager(mgr); err != nil {
+		t.Errorf("register authentication: %v", err)
+	}
 
 	selected, err := GetManager("auth-close")
 	if err != nil {
@@ -328,13 +410,70 @@ func TestAuthCloseConcurrentAccess(t *testing.T) {
 	}
 }
 
-// TestAuthCloseUsesManagerIdentity verifies unregistering does not depend on mutable auth type configuration. TestAuthCloseUsesManagerIdentity 验证注销不依赖可变的认证类型配置。
+// TestFixedAuthCloseWaitsForSharedCleanup verifies repeated and alias closure wait for the engine's ongoing cleanup. TestFixedAuthCloseWaitsForSharedCleanup 验证固定门面的重复关闭与别名关闭均等待引擎正在进行的清理。
+func TestFixedAuthCloseWaitsForSharedCleanup(t *testing.T) {
+	for _, shared := range []bool{false, true} {
+		name := "same-auth"
+		if shared {
+			name = "shared-engine"
+		}
+		t.Run(name, func(t *testing.T) {
+			started, release := make(chan struct{}), make(chan struct{})
+			var releaseOnce sync.Once
+			releaseCleanup := func() { releaseOnce.Do(func() { close(release) }) }
+			defer releaseCleanup()
+			mgr := newRegistryTestManager("fixed-close-wait", &registryTestBlockingPool{started: started, release: release})
+			auth := New(mgr)
+			other := auth
+			if shared {
+				other = New(mgr)
+			}
+
+			firstDone := make(chan struct{})
+			go func() { auth.Close(); close(firstDone) }()
+			select {
+			case <-started:
+			case <-time.After(time.Second):
+				t.Fatal("first Close did not start resource cleanup")
+			}
+			if auth.Manager() != nil || other.Manager() != nil {
+				t.Fatal("closing engine remains available through a fixed facade")
+			}
+
+			secondStarted, secondDone := make(chan struct{}), make(chan struct{})
+			go func() {
+				close(secondStarted)
+				other.Close()
+				close(secondDone)
+			}()
+			<-secondStarted
+			select {
+			case <-secondDone:
+				t.Fatal("second Close returned before resource cleanup finished")
+			case <-time.After(20 * time.Millisecond):
+			}
+
+			releaseCleanup()
+			for _, done := range []chan struct{}{firstDone, secondDone} {
+				select {
+				case <-done:
+				case <-time.After(time.Second):
+					t.Fatal("Close did not return after resource cleanup finished")
+				}
+			}
+		})
+	}
+}
+
+// TestAuthCloseUsesManagerIdentity verifies changing a configuration snapshot cannot prevent unregistering. TestAuthCloseUsesManagerIdentity 验证修改配置快照不影响注销。
 func TestAuthCloseUsesManagerIdentity(t *testing.T) {
 	DeleteAllManager()
 	t.Cleanup(DeleteAllManager)
 
 	mgr := newRegistryTestManager("stable-registration", &registryTestPool{})
-	SetManager(mgr)
+	if err := SetManager(mgr); err != nil {
+		t.Errorf("register authentication: %v", err)
+	}
 	auth := New(mgr)
 	mgr.GetConfig().SetAuthType("renamed-after-registration")
 
@@ -351,9 +490,13 @@ func TestAuthClosePreservesReplacement(t *testing.T) {
 
 	oldManager := newRegistryTestManager("auth-replacement", &registryTestPool{})
 	newManager := newRegistryTestManager("auth-replacement", &registryTestPool{})
-	SetManager(oldManager)
+	if err := SetManager(oldManager); err != nil {
+		t.Errorf("register authentication: %v", err)
+	}
 	oldAuth := New(oldManager)
-	SetManager(newManager)
+	if err := SetManager(newManager); err != nil {
+		t.Errorf("register authentication: %v", err)
+	}
 
 	oldAuth.Close()
 	if got, err := GetManager("auth-replacement"); err != nil || got != newManager {
@@ -361,76 +504,43 @@ func TestAuthClosePreservesReplacement(t *testing.T) {
 	}
 }
 
-// TestRegistryRejectsInvalidBuilderResults verifies invalid inputs do not panic or register unusable managers. TestRegistryRejectsInvalidBuilderResults 验证非法输入不会 panic 或注册不可用 Manager。
-func TestRegistryRejectsInvalidBuilderResults(t *testing.T) {
+// TestRegistryRejectsInvalidInstances verifies failed registration reports errors and preserves the active engine. TestRegistryRejectsInvalidInstances 验证注册失败返回错误且保留当前引擎。
+func TestRegistryRejectsInvalidInstances(t *testing.T) {
 	DeleteAllManager()
 	t.Cleanup(DeleteAllManager)
-
-	SetManager(nil)
-	SetManager(&manager.Manager{})
-	if _, err := GetManager(); !errors.Is(err, derror.ErrManagerNotFound) {
-		t.Fatalf("GetManager() after invalid SetManager calls error = %v, want ErrManagerNotFound", err)
+	current := newRegistryTestManager("invalid-registration", nil)
+	if err := SetManager(current); err != nil {
+		t.Errorf("register authentication: %v", err)
 	}
-
-	invalidBuilder := &registryTestBuilder{}
-	if _, err := BuildAndSetManager(invalidBuilder); !errors.Is(err, derror.ErrManagerInvalidType) {
-		t.Fatalf("BuildAndSetManager(nil result) error = %v, want ErrManagerInvalidType", err)
+	closed := newRegistryTestManager("invalid-registration", nil)
+	closed.CloseManager()
+	for _, tc := range []struct {
+		name     string
+		register func() error
+		want     error
+	}{
+		{"nil manager", func() error { return SetManager(nil) }, derror.ErrManagerNotFound},
+		{"zero manager", func() error { return SetManager(&manager.Manager{}) }, derror.ErrManagerInvalidType},
+		{"closed manager", func() error { return SetManager(closed) }, derror.ErrManagerNotFound},
+		{"nil auth", func() error { return SetAuth(nil) }, derror.ErrManagerNotFound},
+		{"zero auth", func() error { return SetAuth(&Auth{}) }, derror.ErrManagerNotFound},
+		{"closed auth", func() error { return SetAuth(New(closed)) }, derror.ErrManagerNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.register(); !errors.Is(err, tc.want) {
+				t.Fatalf("register = %v, want %v", err, tc.want)
+			}
+			if got, err := GetManager("invalid-registration"); err != nil || got != current || current.IsClosed() {
+				t.Fatalf("failed registration changed current engine: %v, %v", got, err)
+			}
+		})
 	}
-	var nilCustomBuilder *registryTestBuilder
-	if _, err := BuildAndSetManager(nilCustomBuilder); !errors.Is(err, derror.ErrManagerNotFound) {
-		t.Fatalf("BuildAndSetManager(typed nil) error = %v, want ErrManagerNotFound", err)
-	}
-	buildFailure := errors.New("registry builder failure")
-	if got, err := BuildAndSetManager(&registryTestBuilder{err: buildFailure}); got != nil || !errors.Is(err, buildFailure) {
-		t.Fatalf("BuildAndSetManager(build error) = %v, %v, want original build error", got, err)
-	}
-
-	closedManager := newRegistryTestManager("closed-builder", nil)
-	closedManager.CloseManager()
-	SetManager(closedManager)
-	if _, err := GetManager("closed-builder"); !errors.Is(err, derror.ErrManagerNotFound) {
-		t.Fatalf("GetManager(closed SetManager) error = %v, want ErrManagerNotFound", err)
-	}
-	closedBuilder := &registryTestBuilder{manager: closedManager}
-	if _, err := BuildAndSetManager(closedBuilder); !errors.Is(err, derror.ErrManagerInvalidType) {
-		t.Fatalf("BuildAndSetManager(closed result) error = %v, want ErrManagerInvalidType", err)
-	}
-
-	validManager := newRegistryTestManager("custom-builder", nil)
-	validBuilder := &registryTestBuilder{manager: validManager}
-	if got, err := BuildAndSetManager(validBuilder); err != nil || got != validManager {
-		t.Fatalf("BuildAndSetManager(custom builder) = %v, %v, want custom manager", got, err)
-	}
-	if validBuilder.builds != 1 {
-		t.Fatalf("valid custom builder build count = %d, want 1", validBuilder.builds)
-	}
-
-	customManager := newRegistryTestManager("custom-override", nil)
-	customBuilder := &registryTestBuilder{manager: customManager}
-	if _, err := BuildAndSetManager(customBuilder, "override"); !errors.Is(err, derror.ErrInvalidParam) {
-		t.Fatalf("BuildAndSetManager(custom override) error = %v, want ErrInvalidParam", err)
-	}
-	if customBuilder.builds != 0 {
-		t.Fatalf("custom builder build count = %d, want 0", customBuilder.builds)
-	}
-	customManager.CloseManager()
 }
 
 func newRegistryTestManager(authType string, pool adapter.Pool) *manager.Manager {
 	cfg := config.DefaultConfig()
 	cfg.SetAuthType(authType)
 	return manager.NewManager(cfg, nil, nil, nil, adapter.NewNopLogger(), pool, nil)
-}
-
-type registryTestBuilder struct {
-	manager *manager.Manager
-	err     error
-	builds  int
-}
-
-func (b *registryTestBuilder) Build() (*manager.Manager, error) {
-	b.builds++
-	return b.manager, b.err
 }
 
 type registryTestPool struct {

@@ -172,16 +172,22 @@ func TestStorageErrorsUseUnifiedResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, withAuth := range []bool{false, true} {
 		t.Run(fmt.Sprintf("withAuth=%t", withAuth), func(t *testing.T) {
 			handlerCalls := 0
 			router := web.NewControllerRegister()
 			if withAuth {
-				registerTestRoutes(router)
+				registerTestRoutes(t, router)
 			} else {
 				// Reach handler errors independently of the authentication filter. 独立覆盖处理器中的错误分支，避免被认证过滤器提前拦截。
-				if err := router.InsertFilter("/*", web.BeforeRouter, beegodt.RegisterDTokenContextMiddleware(context.Background(), beegodt.WithAuth(builtAuth1), beegodt.WithFailFunc(writeAuthError))); err != nil {
+				authOption1, authErr := beegodt.WithAuth(builtAuth1)
+				if authErr != nil {
+					t.Fatal(authErr)
+				}
+				if err := router.InsertFilter("/*", web.BeforeRouter, beegodt.RegisterDTokenContextMiddleware(context.Background(), authOption1, beegodt.WithFailFunc(writeAuthError))); err != nil {
 					t.Fatal(err)
 				}
 				counted := func(handler func(*beegocontext.Context)) func(*beegocontext.Context) {
@@ -219,14 +225,9 @@ func TestStorageErrorsUseUnifiedResponse(t *testing.T) {
 
 // TestMissingAuthRejectedAtSetup verifies missing instances fail before accepting requests. TestMissingAuthRejectedAtSetup 验证缺失实例在接收请求前被拒绝。
 func TestMissingAuthRejectedAtSetup(t *testing.T) {
-	defer func() {
-		recovered := recover()
-		err, ok := recovered.(error)
-		if !ok || !errors.Is(err, dterror.ErrManagerNotFound) {
-			t.Fatalf("panic = %v, want ErrManagerNotFound", recovered)
-		}
-	}()
-	registerRoutes(web.NewControllerRegister(), nil)
+	if err := registerRoutes(web.NewControllerRegister(), nil); !errors.Is(err, dterror.ErrManagerNotFound) {
+		t.Fatalf("setup error = %v, want ErrManagerNotFound", err)
+	}
 }
 
 type failingBeegoStorage struct {

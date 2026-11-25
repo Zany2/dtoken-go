@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Zany2/dtoken-go/config"
 	derror "github.com/Zany2/dtoken-go/errors"
 )
 
@@ -13,25 +14,25 @@ func TestMalformedHeaderFallsBackToEnabledSources(t *testing.T) {
 	for _, malformed := range []string{"Bearer", "Bearer   ", "Bearer abc def", "Basic abc", "raw token"} {
 		for _, source := range []string{"bearer", "cookie", "query", "body", "disabled", "configured authorization"} {
 			t.Run(malformed+"/"+source, func(t *testing.T) {
-				dctx, req, mgr := newTestDTokenContext(t)
+				dctx, req, mgr := newTestDTokenContext(t, func(cfg *config.Config) {
+					cfg.IsReadCookie = source == "cookie" || source == "configured authorization"
+					cfg.IsReadQuery = source == "query"
+					cfg.IsReadBody = source == "body"
+					if source == "configured authorization" {
+						cfg.TokenName = "Authorization"
+					}
+				})
 				cfg := mgr.GetConfig()
-				cfg.IsReadCookie = false
-				if source == "configured authorization" {
-					cfg.TokenName = "Authorization"
-				}
 				req.headers[cfg.TokenName] = malformed
 				want := "next-token"
 				switch source {
 				case "bearer":
 					req.headers[authHeader] = "Bearer " + want
 				case "cookie", "configured authorization":
-					cfg.IsReadCookie = true
 					req.cookies[cfg.TokenName] = want
 				case "query":
-					cfg.IsReadQuery = true
 					req.queries[cfg.TokenName] = want
 				case "body":
-					cfg.IsReadBody = true
 					req.forms[cfg.TokenName] = want
 				case "disabled":
 					req.cookies[cfg.TokenName] = want

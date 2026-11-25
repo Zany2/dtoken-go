@@ -9,11 +9,8 @@ import (
 	"github.com/Zany2/dtoken-go/config"
 	"github.com/Zany2/dtoken-go/contract"
 	derror "github.com/Zany2/dtoken-go/errors"
-	corebuilder "github.com/Zany2/dtoken-go/internal/builder"
 	"github.com/Zany2/dtoken-go/storage/memory"
 )
-
-var _ managerBuilder = (*corebuilder.Builder)(nil) // Keep the core builder compatible with registry assembly. 保证核心构建器兼容注册表装配接口。
 
 // registryBuilder avoids background work in registry lifecycle checks. registryBuilder 在注册表生命周期检查中禁用后台任务。
 func registryBuilder() *Builder {
@@ -25,13 +22,19 @@ func TestBuildRegistersBothFacadeStyles(t *testing.T) {
 	CloseAll()
 	t.Cleanup(CloseAll)
 	ctx := context.Background()
-	defaultAuth := registryBuilder().MustBuild()
-	userAuth := registryBuilder().AuthType("user").MustBuild()
+	defaultAuth, err := registryBuilder().Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	userAuth, err := registryBuilder().AuthType("user").Build()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if AuthType("").Manager() != defaultAuth.Manager() || AuthType(" user: ").Manager() != userAuth.Manager() {
 		t.Fatal("selectors do not resolve the built instances")
 	}
-	defaultToken, err := Login(ctx, LoginOptions{LoginID: "default-user", AuthType: "user"})
+	defaultToken, err := Login(ctx, LoginOptions{LoginID: "default-user"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +68,10 @@ func TestBuildRegistersBothFacadeStyles(t *testing.T) {
 func TestBuildDuplicatePreservesExistingInstance(t *testing.T) {
 	CloseAll()
 	t.Cleanup(CloseAll)
-	first := registryBuilder().AuthType("duplicate").MustBuild()
+	first, err := registryBuilder().AuthType("duplicate").Build()
+	if err != nil {
+		t.Fatal(err)
+	}
 	var factories atomic.Int32
 	b := registryBuilder().AuthType(" duplicate: ").SetStorageFactory(func(*config.Config) (contract.Storage, error) {
 		factories.Add(1)
@@ -77,13 +83,7 @@ func TestBuildDuplicatePreservesExistingInstance(t *testing.T) {
 	if factories.Load() != 0 || first.IsClosed() || AuthType("duplicate").Manager() != first.Manager() {
 		t.Fatal("duplicate build allocated resources or replaced the original")
 	}
-	defer func() {
-		err, ok := recover().(error)
-		if !ok || !errors.Is(err, derror.ErrManagerAlreadyRegistered) {
-			t.Fatalf("MustBuild panic = %v", err)
-		}
-	}()
-	b.MustBuild()
+
 }
 
 // TestFailedBuildAllowsRetry verifies failed assembly leaves no registration and a corrected builder can be reused. TestFailedBuildAllowsRetry 验证装配失败不遗留注册项，修正后的构建器可以重试。
@@ -117,11 +117,19 @@ func TestSelectorFollowsReplacement(t *testing.T) {
 	CloseAll()
 	t.Cleanup(CloseAll)
 	selected := AuthType("replace")
-	first := registryBuilder().AuthType("replace").MustBuild()
+	first, err := registryBuilder().AuthType("replace").Build()
+	if err != nil {
+		t.Fatal(err)
+	}
 	old := New(first.Manager())
-	second := registryBuilder().AuthType("replace").MustBuildInstance()
+	second, err := registryBuilder().AuthType("replace").BuildInstance()
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(second.Close)
-	SetAuth(second)
+	if err := SetAuth(second); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	if !first.IsClosed() || selected.Manager() != second.Manager() {
 		t.Fatal("selector did not follow explicit replacement")
 	}
@@ -135,7 +143,10 @@ func TestSelectorFollowsReplacement(t *testing.T) {
 	if !second.IsClosed() {
 		t.Fatal("selected Close did not close the current instance")
 	}
-	third := registryBuilder().AuthType("replace").MustBuild()
+	third, err := registryBuilder().AuthType("replace").Build()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if selected.Manager() != third.Manager() {
 		t.Fatal("selector failed to resolve a newly registered instance")
 	}
@@ -145,22 +156,32 @@ func TestSelectorFollowsReplacement(t *testing.T) {
 func TestBuildInstanceAndImmediateUnregister(t *testing.T) {
 	CloseAll()
 	t.Cleanup(CloseAll)
-	registered := registryBuilder().MustBuild()
-	isolated := registryBuilder().MustBuildInstance()
+	registered, err := registryBuilder().Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	isolated, err := registryBuilder().BuildInstance()
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(isolated.Close)
-	if AuthType("").Manager() != registered.Manager() {
+	if current, err := GetManager(); err != nil || current != registered.Manager() {
 		t.Fatal("isolated build changed the registry")
 	}
 	CloseAll()
 	if isolated.IsClosed() {
 		t.Fatal("CloseAll closed an unregistered instance")
 	}
-	SetAuth(isolated)
+	if err := SetAuth(isolated); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	isolated.Close()
 	if _, exists := globalManagerMap.Load(config.DefaultAuthType); exists {
 		t.Fatal("Auth.Close left an entry until the next lookup")
 	}
-	SetAuth(isolated)
+	if err := SetAuth(isolated); !errors.Is(err, derror.ErrManagerNotFound) {
+		t.Fatalf("SetAuth(closed) = %v", err)
+	}
 	if _, err := GetManager(); !errors.Is(err, derror.ErrManagerNotFound) {
 		t.Fatalf("closed Auth was registered: %v", err)
 	}
@@ -171,7 +192,7 @@ func TestRegistryInvalidValue(t *testing.T) {
 	CloseAll()
 	t.Cleanup(CloseAll)
 	globalManagerMap.Store(config.DefaultAuthType, struct{}{})
-	if err := AuthType("").CheckLogin(context.Background(), "token"); !errors.Is(err, derror.ErrManagerInvalidType) {
+	if err := CheckLogin(context.Background(), "token"); !errors.Is(err, derror.ErrManagerInvalidType) {
 		t.Fatalf("selector error = %v", err)
 	}
 	if _, err := registryBuilder().Build(); !errors.Is(err, derror.ErrManagerInvalidType) {

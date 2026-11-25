@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -83,27 +84,33 @@ type Manager struct {
 	stateMu sync.Mutex
 }
 
-// NewDefaultManager creates ticket manager with default config. NewDefaultManager 使用默认配置创建 Ticket 管理器。
-func NewDefaultManager(authType, prefix string, storage adapter.Storage, serializer adapter.Codec) *Manager {
+// NewDefaultManager creates a validated Manager or returns a configuration/component error. NewDefaultManager 创建已校验实例，配置或组件无效时返回错误。
+func NewDefaultManager(authType, prefix string, storage adapter.Storage, serializer adapter.Codec) (*Manager, error) {
 	return NewManagerWithConfig(authType, prefix, storage, serializer, DefaultConfig())
 }
 
-// NewManagerWithConfig creates ticket manager with config. NewManagerWithConfig 使用配置创建 Ticket 管理器。
-func NewManagerWithConfig(authType, prefix string, storage adapter.Storage, serializer adapter.Codec, cfg *Config) *Manager {
+// NewManagerWithConfig validates config and components; nil config uses defaults. NewManagerWithConfig 校验配置及组件，nil 配置使用默认值。
+func NewManagerWithConfig(authType, prefix string, storage adapter.Storage, serializer adapter.Codec, cfg *Config) (*Manager, error) {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
-	ttl := cfg.TTL
-	if ttl <= 0 {
-		ttl = DefaultTicketTTL
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %v", derror.ErrInvalidParam, err)
 	}
+	if utils.IsNil(storage) {
+		return nil, fmt.Errorf("%w: storage is required", derror.ErrInvalidParam)
+	}
+	if utils.IsNil(serializer) {
+		return nil, fmt.Errorf("%w: codec is required", derror.ErrInvalidParam)
+	}
+
 	return &Manager{
 		authType:   authType,
 		keyPrefix:  prefix,
-		ttl:        ttl,
 		storage:    storage,
 		serializer: serializer,
-	}
+		ttl:        cfg.TTL,
+	}, nil
 }
 
 // Create creates a ticket with the default TTL. Create 使用默认有效期创建 Ticket。
@@ -348,7 +355,8 @@ func (m *Manager) decode(value any, ticketValue string) (*Ticket, error) {
 	if err = m.serializer.Decode(rawData, &ticket); err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
-	if ticket.Ticket != ticketValue || ticket.AuthType != m.authType {
+	// Match the same optional trailing separator as storage keys, including existing payloads. 与存储键保持相同的可选末尾分隔符语义，并兼容已有载荷。
+	if ticket.Ticket != ticketValue || strings.TrimSuffix(ticket.AuthType, ":") != strings.TrimSuffix(m.authType, ":") {
 		return nil, ErrInvalidTicket
 	}
 	return &ticket, nil

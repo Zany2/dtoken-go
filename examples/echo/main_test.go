@@ -39,7 +39,11 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	setupEchoManager(t)
 
 	e := echo4.New()
-	e.Use(echodt.RegisterDTokenContextMiddleware(context.Background(), echodt.WithAuth(registeredAuth())))
+	authOption1, authErr := echodt.WithAuth(registeredAuth())
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	e.Use(echodt.RegisterDTokenContextMiddleware(context.Background(), authOption1))
 	e.POST("/login", handleLogin)
 
 	missing := requestEcho(t, e, http.MethodPost, "/login", `{"username":"alice"}`, "")
@@ -97,7 +101,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 	}
 
 	e := echo4.New()
-	registerTestRoutes(e)
+	registerTestRoutes(t, e)
 
 	for _, route := range []string{"/me", "/admin", "/articles"} {
 		for _, header := range []string{token, "Bearer " + token} {
@@ -145,7 +149,11 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 func TestLoginRejectsInvalidJSON(t *testing.T) {
 	setupEchoManager(t)
 	e := echo4.New()
-	e.Use(echodt.RegisterDTokenContextMiddleware(context.Background(), echodt.WithAuth(registeredAuth())))
+	authOption2, authErr := echodt.WithAuth(registeredAuth())
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	e.Use(echodt.RegisterDTokenContextMiddleware(context.Background(), authOption2))
 	e.POST("/login", handleLogin)
 	valid := `{"username":"alice","password":"123456"}`
 	for _, tc := range []struct {
@@ -181,7 +189,11 @@ func TestLoginRejectsInvalidJSON(t *testing.T) {
 func TestLoginBindingCompatibility(t *testing.T) {
 	setupEchoManager(t)
 	e := echo4.New()
-	e.Use(echodt.RegisterDTokenContextMiddleware(context.Background(), echodt.WithAuth(registeredAuth())))
+	authOption3, authErr := echodt.WithAuth(registeredAuth())
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	e.Use(echodt.RegisterDTokenContextMiddleware(context.Background(), authOption3))
 	e.POST("/login", handleLogin)
 	for _, tc := range []struct {
 		contentType string
@@ -218,7 +230,11 @@ func TestLoginRejectsDisabledAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := echo4.New()
-	e.Use(echodt.RegisterDTokenContextMiddleware(context.Background(), echodt.WithAuth(registeredAuth())))
+	authOption4, authErr := echodt.WithAuth(registeredAuth())
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	e.Use(echodt.RegisterDTokenContextMiddleware(context.Background(), authOption4))
 	e.POST("/login", handleLogin)
 	rec := requestEcho(t, e, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
 	var response Response
@@ -243,11 +259,17 @@ func TestHandlersReportStorageFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 
 	// Register only request context to exercise each handler's own failure path. 仅注册请求上下文，以覆盖各处理器自身的错误分支。
 	e := echo4.New()
-	e.Use(echodt.RegisterDTokenContextMiddleware(context.Background(), echodt.WithAuth(builtAuth1)))
+	authOption5, authErr := echodt.WithAuth(builtAuth1)
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	e.Use(echodt.RegisterDTokenContextMiddleware(context.Background(), authOption5))
 	e.POST("/login", handleLogin)
 	e.GET("/me", handleMe)
 	e.POST("/logout", handleLogout)
@@ -287,7 +309,9 @@ func setupEchoManager(t *testing.T) {
 	t.Helper()
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	initDToken()
+	if _, err := initDToken(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func requestEcho(t *testing.T, e *echo4.Echo, method, path, body, token string) *httptest.ResponseRecorder {
@@ -312,16 +336,26 @@ func registeredAuth() *dtoken.Auth {
 }
 
 // registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
-func registerTestRoutes(e *echo4.Echo) { registerRoutes(e, registeredAuth()) }
+func registerTestRoutes(t *testing.T, e *echo4.Echo) {
+	t.Helper()
+	if err := registerRoutes(e, registeredAuth()); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // TestInjectedLoginUsesBuiltInstance verifies routes and the registry share the built engine. TestInjectedLoginUsesBuiltInstance 验证路由与注册表共用构建返回的引擎。
 func TestInjectedLoginUsesBuiltInstance(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	auth := initDToken()
+	auth, err := initDToken()
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(auth.Close)
 	e := echo4.New()
-	registerRoutes(e, auth)
+	if err := registerRoutes(e, auth); err != nil {
+		t.Fatal(err)
+	}
 	response := requestEcho(t, e, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
 	if response.Code != http.StatusOK {
 		t.Fatalf("login status = %d", response.Code)

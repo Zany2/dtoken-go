@@ -20,8 +20,7 @@ dtoken-go/
 ├── default_*.go          Default namespace forwarding
 ├── internal/
 │   ├── engine/           Core authentication implementation
-│   ├── builder/          Configuration and component assembly
-│   ├── defaults/         Bundled component factories
+│   ├── builder/          Component assembly and bundled default factories
 │   ├── utils/            Shared internal primitives
 │   └── banner/           Startup display
 ├── contract/             Component, domain, and request contracts
@@ -57,14 +56,14 @@ dtoken-go/
 | Location | Responsibility | Placement boundary |
 | --- | --- | --- |
 | Root `Auth` and `auth_*.go` | Translate application calls into engine operations and expose instance lifecycle | Authentication rules and persistence belong in the engine |
-| Root `builder.go` | Application configuration, bundled logger/pool options, and construction of `Auth` | Delegate assembly to the internal builder and default factories |
+| Root `builder.go` | Application configuration, bundled logger/pool options, and construction of `Auth` | Own configuration, components, and factories directly; call stateless assembly |
 | `options.go`, `types.go`, `config.go` | Public options, shared model aliases, and configuration entry points | Keep one declaration source for shared models |
 | `engine_api.go` | Supported advanced engine types and assembly options | Aliases remain public APIs even when their implementation lives under internal |
 | Root `registry.go` and `default_*.go` | Shared registry, default calls and AuthType selectors | Engine and shared HTTP code must not depend on the registry |
-| `internal/builder` | Validate configuration, resolve components/factories, and build the engine | Accept contracts rather than selecting storage, logger, or pool implementations |
-| `internal/defaults` | Supply bundled component factories | Keep default implementation selection here; applications may override components |
+| `internal/builder/builder.go` | Stateless Build function: validate configuration, resolve components/factories, and build the engine | Resolve supplied contracts and factories |
+| `internal/builder/defaults.go` | Supply bundled component factories in the same assembly package | Keep concrete default selection here; applications may override components |
 
-The three builder locations serve application ergonomics, generic assembly, and default wiring respectively. Add component implementations in their component packages; extend the root Builder only when an application configuration entry is needed.
+Only the root package has a fluent Builder; internal/builder groups assembly and default factory functions without duplicate setters or Builder state. Add component implementations in their component packages; extend the root Builder only when an application configuration entry is needed.
 
 ## Public foundations and capabilities
 

@@ -11,7 +11,7 @@ DToken-Go centers on a stateful authentication engine. Public contracts support 
 | Application entry | Root dtoken package | Auth instance APIs, application Builder, public options and types |
 | Registry access | Root registry.go and default_*.go | Automatic registration, AuthType selection and default calls |
 | Core authentication | internal/engine | Authentication state, Session, terminals, and core lifecycle |
-| Assembly | internal/builder, internal/defaults | Generic component assembly and bundled default factories |
+| Assembly | internal/builder | Generic component assembly and bundled default factories |
 | Public foundations | contract, config, errors, event | Contracts, shared models, configuration, errors, and event services |
 | Independent capabilities | nonce, oauth2, ticket, shortkey | Explicitly composed implementations and service wrappers |
 | HTTP integration | httpauth, httpauth/context, integrations | Common checks, request scope, and framework adapters |
@@ -50,12 +50,12 @@ See [modular design](modular.md) for complete dependency rules and Go module rel
 ## Assembly path
 
 1. Applications configure instances through the root NewBuilder, choosing components, factories, and engine options.
-2. internal/defaults supplies bundled factories; internal/builder validates configuration, resolves components, and builds Manager.
+2. The root Builder owns mutable configuration and component selections. Missing factories use functions from internal/builder/defaults.go; internal/builder.Build validates a configuration snapshot, resolves components, and constructs Manager.
 3. Build registers and returns Auth; BuildInstance returns an unregistered Auth. Applications use instance operations, AuthType selectors, or default package functions; custom integrations may access Manager.
 4. Applications separately create capability Managers or Servers and their Services. Bundled services can use an Auth configuration snapshot, Storage, Codec, and event emitter.
 5. HTTP applications inject engines through WithAuth or WithManager and bind services through WithCapabilities. Registry lookup requires an explicit WithManagerResolver.
 
-The three construction locations serve application configuration, generic assembly, and default wiring. Independent capabilities are not reintroduced into the core as Builder switches.
+Only the root package defines a fluent Builder. internal/builder contains the stateless assembly function and bundled factories in defaults.go, without maintaining another Builder. Core configuration is validated once during assembly. Each factory still receives its own configuration copy so user callbacks cannot mutate sibling components or the running engine. Independent capabilities are not reintroduced into the core as Builder switches.
 
 ## Request and capability calls
 

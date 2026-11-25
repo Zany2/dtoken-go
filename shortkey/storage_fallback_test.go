@@ -13,7 +13,10 @@ import (
 // TestCreateFallbackPreservesReadErrors verifies failed collision checks cannot write a credential. TestCreateFallbackPreservesReadErrors 验证碰撞检查失败时不会写入凭证。
 func TestCreateFallbackPreservesReadErrors(t *testing.T) {
 	storage := &shortKeyReadFailStorage{Storage: newShortKeyTestStorage()}
-	mgr := NewDefaultManager("test", "dt:", storage, shortKeyTestCodec{})
+	mgr, constructorErr := NewDefaultManager("test", "dt:", storage, shortKeyTestCodec{})
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	created, err := mgr.Create(context.Background(), CreateOptions{})
 	if !errors.Is(err, derror.ErrStorageUnavailable) || created != nil || storage.writes != 0 {
 		t.Fatalf("Create() = %v, %v, writes = %d; want storage error and no write", created, err, storage.writes)
@@ -24,7 +27,10 @@ func TestCreateFallbackPreservesReadErrors(t *testing.T) {
 func TestCreateFallbackPreservesExistingKey(t *testing.T) {
 	ctx := context.Background()
 	storage := struct{ adapter.Storage }{newShortKeyTestStorage()}
-	mgr := NewDefaultManager("test", "dt:", storage, shortKeyTestCodec{})
+	mgr, constructorErr := NewDefaultManager("test", "dt:", storage, shortKeyTestCodec{})
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	first := &ShortKey{Key: "same", AuthType: "test", LoginID: "original", Status: StatusConfirmed}
 	if saved, err := mgr.saveIfAbsent(ctx, first, time.Minute); err != nil || !saved {
 		t.Fatalf("first save = %v, %v", saved, err)

@@ -33,8 +33,14 @@ func TestRemainingAuthCodeDurationPreservesDeadline(t *testing.T) {
 func TestAuthorizationCodeClaimRejectsStaleExchange(t *testing.T) {
 	ctx := context.Background()
 	storage := &oauth2ClaimStorage{oauth2TestStorage: newOAuth2TestStorage()}
-	first := NewOAuth2Server("auth:", "dt:", storage, oauth2TestCodec{})
-	second := NewOAuth2Server("auth:", "dt:", storage, oauth2TestCodec{})
+	first, constructorErr := NewOAuth2Server("auth:", "dt:", storage, oauth2TestCodec{})
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
+	second, constructorErr := NewOAuth2Server("auth:", "dt:", storage, oauth2TestCodec{})
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	client := oauth2TestClient()
 	if err := first.RegisterClient(client); err != nil {
 		t.Fatal(err)
@@ -77,7 +83,10 @@ func TestAuthorizationCodeClaimRejectsStaleExchange(t *testing.T) {
 func TestAuthorizationCodeChecksBeforeClaim(t *testing.T) {
 	ctx := context.Background()
 	storage := &oauth2ClaimStorage{oauth2TestStorage: newOAuth2TestStorage()}
-	server := NewOAuth2Server("auth:", "dt:", storage, oauth2TestCodec{})
+	server, constructorErr := NewOAuth2Server("auth:", "dt:", storage, oauth2TestCodec{})
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	client := oauth2TestClient()
 	if err := server.RegisterClient(client); err != nil {
 		t.Fatal(err)
@@ -114,7 +123,10 @@ func TestAuthorizationCodeClaimFailureDoesNotIssueToken(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
 			storage := &oauth2ClaimStorage{oauth2TestStorage: newOAuth2TestStorage()}
-			server := NewOAuth2Server("auth:", "dt:", storage, oauth2TestCodec{})
+			server, constructorErr := NewOAuth2Server("auth:", "dt:", storage, oauth2TestCodec{})
+			if constructorErr != nil {
+				t.Fatal(constructorErr)
+			}
 			client := oauth2TestClient()
 			if err := server.RegisterClient(client); err != nil {
 				t.Fatal(err)

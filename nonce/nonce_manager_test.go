@@ -16,7 +16,10 @@ import (
 func TestNonceManagerConstructorsAndStorageKey(t *testing.T) {
 	ctx := context.Background()
 	storage := newNonceTestStorage()
-	manager := NewDefaultNonceManager("auth", "prefix:", storage)
+	manager, constructorErr := NewDefaultNonceManager("auth", "prefix:", storage)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	if manager.TTL() != DefaultNonceTTL {
 		t.Fatalf("NewDefaultNonceManager().TTL() = %s, want %s", manager.TTL(), DefaultNonceTTL)
 	}
@@ -45,7 +48,10 @@ func TestNonceManagerConstructorsAndStorageKey(t *testing.T) {
 	}
 
 	customConfig := &Config{TTL: 7 * time.Second}
-	custom := NewNonceManagerWithConfig("auth", "prefix:", storage, customConfig)
+	custom, constructorErr := NewNonceManagerWithConfig("auth", "prefix:", storage, customConfig)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	if custom.TTL() != customConfig.TTL {
 		t.Fatalf("NewNonceManagerWithConfig().TTL() = %s, want %s", custom.TTL(), customConfig.TTL)
 	}
@@ -54,16 +60,11 @@ func TestNonceManagerConstructorsAndStorageKey(t *testing.T) {
 		t.Fatalf("constructor should copy config ttl, got %s", custom.TTL())
 	}
 
-	for name, cfg := range map[string]*Config{
-		"nil":     nil,
-		"invalid": {TTL: -time.Second},
-	} {
-		t.Run(name, func(t *testing.T) {
-			got := NewNonceManagerWithConfig("auth", "prefix:", storage, cfg).TTL()
-			if got != DefaultNonceTTL {
-				t.Fatalf("NewNonceManagerWithConfig(%s).TTL() = %s, want %s", name, got, DefaultNonceTTL)
-			}
-		})
+	if got, err := NewNonceManagerWithConfig("auth", "prefix:", storage, nil); err != nil || got.TTL() != DefaultNonceTTL {
+		t.Fatalf("nil configuration = %v, %v", got, err)
+	}
+	if got, err := NewNonceManagerWithConfig("auth", "prefix:", storage, &Config{TTL: -time.Second}); got != nil || !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("invalid configuration = %v, %v", got, err)
 	}
 }
 
@@ -71,7 +72,10 @@ func TestNonceManagerConstructorsAndStorageKey(t *testing.T) {
 func TestNonceManagerGenerateVerifyAndConsume(t *testing.T) {
 	ctx := context.Background()
 	storage := newNonceTestStorage()
-	manager := NewNonceManager("auth:", "dtoken:", storage, time.Minute)
+	manager, constructorErr := NewNonceManager("auth:", "dtoken:", storage, time.Minute)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 
 	value, err := manager.Generate(ctx)
 	if err != nil {
@@ -100,7 +104,10 @@ func TestNonceManagerGenerateVerifyAndConsume(t *testing.T) {
 // TestNonceManagerTTL verifies TTL sentinel mapping. TestNonceManagerTTL 验证 TTL 哨兵值映射。
 func TestNonceManagerTTL(t *testing.T) {
 	ctx := context.Background()
-	manager := NewNonceManager("auth:", "dtoken:", newNonceTestStorage(), time.Minute)
+	manager, constructorErr := NewNonceManager("auth:", "dtoken:", newNonceTestStorage(), time.Minute)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 
 	if ttl, err := manager.GetTTL(ctx, ""); err != nil || ttl != -2 {
 		t.Fatalf("GetTTL(empty) = %d, %v; want -2, nil", ttl, err)
@@ -121,13 +128,15 @@ func TestNonceManagerTTL(t *testing.T) {
 
 // TestNonceManagerTimeoutFallback verifies non-positive timeout fallback. TestNonceManagerTimeoutFallback 验证非正有效期会回退默认值。
 func TestNonceManagerTimeoutFallback(t *testing.T) {
-	manager := NewNonceManager("auth:", "dtoken:", newNonceTestStorage(), -time.Second)
-	if manager.TTL() != DefaultNonceTTL {
-		t.Fatalf("NewNonceManager() ttl = %s, want %s", manager.TTL(), DefaultNonceTTL)
+	if manager, err := NewNonceManager("auth:", "dtoken:", newNonceTestStorage(), -time.Second); manager != nil || !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("invalid constructor ttl = %v, %v", manager, err)
 	}
 
 	storage := newNonceTestStorage()
-	manager = NewNonceManager("auth:", "dtoken:", storage, time.Minute)
+	manager, constructorErr := NewNonceManager("auth:", "dtoken:", storage, time.Minute)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	for _, timeout := range []time.Duration{0, -time.Second} {
 		value, err := manager.GenerateWithTimeout(context.Background(), timeout)
 		if err != nil {
@@ -142,7 +151,10 @@ func TestNonceManagerTimeoutFallback(t *testing.T) {
 // TestNonceManagerGenerateStorageError verifies generate maps storage failures. TestNonceManagerGenerateStorageError 验证生成时正确映射存储错误。
 func TestNonceManagerGenerateStorageError(t *testing.T) {
 	storage := &nonceFailingSetStorage{nonceBasicStorage: newNonceTestStorage().nonceBasicStorage, err: errors.New("set failed")}
-	manager := NewNonceManager("auth", "prefix:", storage, time.Minute)
+	manager, constructorErr := NewNonceManager("auth", "prefix:", storage, time.Minute)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 
 	value, err := manager.Generate(context.Background())
 	if value != "" {
@@ -160,7 +172,10 @@ func TestNonceManagerGenerateStorageError(t *testing.T) {
 func TestNonceManagerExpiredNonce(t *testing.T) {
 	ctx := context.Background()
 	storage := newNonceTestStorage()
-	manager := NewNonceManager("auth:", "dtoken:", storage, time.Minute)
+	manager, constructorErr := NewNonceManager("auth:", "dtoken:", storage, time.Minute)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 
 	value, err := manager.Generate(ctx)
 	if err != nil {
@@ -201,7 +216,10 @@ func TestNonceManagerGetTTLSentinels(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			storage := &nonceTTLStorage{nonceBasicStorage: newNonceTestStorage().nonceBasicStorage, ttl: tt.raw}
-			manager := NewNonceManager("auth", "prefix:", storage, time.Minute)
+			manager, constructorErr := NewNonceManager("auth", "prefix:", storage, time.Minute)
+			if constructorErr != nil {
+				t.Fatal(constructorErr)
+			}
 			got, err := manager.GetTTL(ctx, "nonce")
 			if err != nil || got != tt.want {
 				t.Fatalf("GetTTL() = %d, %v; want %d, nil", got, err, tt.want)
@@ -210,10 +228,13 @@ func TestNonceManagerGetTTLSentinels(t *testing.T) {
 	}
 
 	storageErr := errors.New("ttl failed")
-	manager := NewNonceManager("auth", "prefix:", &nonceTTLStorage{
+	manager, constructorErr := NewNonceManager("auth", "prefix:", &nonceTTLStorage{
 		nonceBasicStorage: newNonceTestStorage().nonceBasicStorage,
 		err:               storageErr,
 	}, time.Minute)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	if got, err := manager.GetTTL(ctx, "nonce"); got != 0 || !errors.Is(err, derror.ErrStorageUnavailable) {
 		t.Fatalf("GetTTL(storage error) = %d, %v; want 0 and ErrStorageUnavailable", got, err)
 	}
@@ -226,7 +247,10 @@ func TestNonceManagerGetTTLSentinels(t *testing.T) {
 func TestNonceManagerRequiresAtomicStorage(t *testing.T) {
 	ctx := context.Background()
 	storage := &nonceBasicStorage{values: map[string]any{}}
-	manager := NewNonceManager("auth:", "dtoken:", storage, time.Minute)
+	manager, constructorErr := NewNonceManager("auth:", "dtoken:", storage, time.Minute)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 
 	value, err := manager.Generate(ctx)
 	if err != nil {
@@ -246,7 +270,10 @@ func TestNonceManagerRequiresAtomicStorage(t *testing.T) {
 // TestNonceManagerVerifyStorageError verifies storage errors are preserved. TestNonceManagerVerifyStorageError 验证存储错误会保留。
 func TestNonceManagerVerifyStorageError(t *testing.T) {
 	ctx := context.Background()
-	manager := NewNonceManager("auth:", "dtoken:", &nonceFailingAtomicStorage{}, time.Minute)
+	manager, constructorErr := NewNonceManager("auth:", "dtoken:", &nonceFailingAtomicStorage{}, time.Minute)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 
 	if manager.Verify(ctx, "nonce") {
 		t.Fatal("Verify() = true on storage error, want false")
@@ -258,7 +285,10 @@ func TestNonceManagerVerifyStorageError(t *testing.T) {
 
 // TestNonceManagerInvalidInputs verifies empty nonce handling for consuming and TTL lookup. TestNonceManagerInvalidInputs 验证消费与 TTL 查询的空 nonce 处理。
 func TestNonceManagerInvalidInputs(t *testing.T) {
-	manager := NewNonceManager("auth", "prefix:", newNonceTestStorage(), time.Minute)
+	manager, constructorErr := NewNonceManager("auth", "prefix:", newNonceTestStorage(), time.Minute)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	if err := manager.VerifyAndConsume(context.Background(), ""); !errors.Is(err, derror.ErrInvalidNonce) {
 		t.Fatalf("VerifyAndConsume(empty) error = %v, want ErrInvalidNonce", err)
 	}
@@ -273,7 +303,10 @@ func TestNonceManagerInvalidInputs(t *testing.T) {
 // TestNonceManagerConcurrentVerifyConsumesOnce verifies one-time consumption under concurrent callers. TestNonceManagerConcurrentVerifyConsumesOnce 验证并发调用下 nonce 只会成功消费一次。
 func TestNonceManagerConcurrentVerifyConsumesOnce(t *testing.T) {
 	ctx := context.Background()
-	manager := NewNonceManager("auth", "prefix:", newNonceTestStorage(), time.Minute)
+	manager, constructorErr := NewNonceManager("auth", "prefix:", newNonceTestStorage(), time.Minute)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	value, err := manager.Generate(ctx)
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
@@ -310,8 +343,14 @@ func TestNonceManagerConcurrentVerifyConsumesOnce(t *testing.T) {
 func TestNonceManagerSharedStorageConsumesOnce(t *testing.T) {
 	ctx := context.Background()
 	storage := newNonceTestStorage()
-	first := NewDefaultNonceManager("auth:", "dtoken:", storage)
-	second := NewDefaultNonceManager("auth:", "dtoken:", storage)
+	first, constructorErr := NewDefaultNonceManager("auth:", "dtoken:", storage)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
+	second, constructorErr := NewDefaultNonceManager("auth:", "dtoken:", storage)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	value, err := first.Generate(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -356,15 +395,19 @@ func TestNonceManagerSharedStorageConsumesOnce(t *testing.T) {
 func TestNonceManagerNamespaceIsolation(t *testing.T) {
 	ctx := context.Background()
 	storage := newNonceTestStorage()
-	owner := NewDefaultNonceManager("user:", "dtoken:", storage)
+	owner, constructorErr := NewDefaultNonceManager("user:", "dtoken:", storage)
+	if constructorErr != nil {
+		t.Fatal(constructorErr)
+	}
 	value, err := owner.Generate(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, other := range []*NonceManager{
-		NewDefaultNonceManager("admin:", "dtoken:", storage),
-		NewDefaultNonceManager("user:", "other:", storage),
-	} {
+	for _, namespace := range []struct{ authType, prefix string }{{"admin:", "dtoken:"}, {"user:", "other:"}} {
+		other, constructorErr := NewDefaultNonceManager(namespace.authType, namespace.prefix, storage)
+		if constructorErr != nil {
+			t.Fatal(constructorErr)
+		}
 		if other.IsValid(ctx, value) {
 			t.Fatal("nonce is valid in another namespace")
 		}

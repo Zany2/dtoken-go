@@ -11,7 +11,6 @@ import (
 	adapter "github.com/Zany2/dtoken-go/contract"
 	derror "github.com/Zany2/dtoken-go/errors"
 	"github.com/Zany2/dtoken-go/generator/dgenerator"
-	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
 
 	"github.com/Zany2/dtoken-go/storage/memory"
@@ -76,16 +75,17 @@ func TestBuilderCustomFactoriesReceiveConfig(t *testing.T) {
 	}
 }
 
-// TestRegistryDefaultAndBuildAndSetCoreBuilder verifies default lookup and core-builder registration. TestRegistryDefaultAndBuildAndSetCoreBuilder 验证默认查找和 core Builder 注册。
-func TestRegistryDefaultAndBuildAndSetCoreBuilder(t *testing.T) {
+// TestRegistryDefaultAndBuild verifies default lookup and builder registration. TestRegistryDefaultAndBuild 验证默认查找和 Builder 注册。
+func TestRegistryDefaultAndBuild(t *testing.T) {
 	DeleteAllManager()
 	t.Cleanup(DeleteAllManager)
 
-	core := defaults.NewBuilder().IsPrintBanner(false).AutoRenew(false)
-	mgr, err := BuildAndSetManager(core, "core-override")
+	core := NewBuilder().IsPrintBanner(false).AutoRenew(false)
+	auth, err := core.AuthType("core-override").Build()
 	if err != nil {
-		t.Fatalf("BuildAndSetManager(core builder) error = %v", err)
+		t.Fatalf("Build() error = %v", err)
 	}
+	mgr := auth.Manager()
 	if mgr.GetConfig().AuthType != "core-override:" {
 		t.Fatalf("core builder auth type = %q, want core-override:", mgr.GetConfig().AuthType)
 	}
@@ -113,7 +113,9 @@ func TestRootSessionFacades(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	SetManager(mgr)
+	if err := SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 
 	token1, err := AuthType("session-facade").Login(ctx, LoginOptions{LoginID: "session-user", Device: "web", DeviceID: "browser-1"})
 	if err != nil {
@@ -254,7 +256,9 @@ func TestRootPermissionAndRoleFacades(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	SetManager(mgr)
+	if err := SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	token, err := AuthType("access-facade").Login(ctx, LoginOptions{LoginID: "access-user", Device: "web", DeviceID: "browser"})
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
@@ -364,7 +368,9 @@ func TestRootTypedTerminationAndAccessOptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	SetManager(mgr)
+	if err := SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 
 	token, err := AuthType("typed-complete").Login(ctx, LoginOptions{LoginID: "typed-termination", Device: "web", DeviceID: "browser"})
 	if err != nil {
@@ -440,7 +446,9 @@ func TestRootDisableFacades(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	SetManager(mgr)
+	if err := SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 
 	if err = AuthType("disable-facade").Disable(ctx, DisableOptions{LoginID: "account-user", Duration: time.Minute, Reason: "account-risk"}); err != nil {
 		t.Fatalf("Disable() error = %v", err)
@@ -479,7 +487,7 @@ func TestRootDisableFacades(t *testing.T) {
 	if !AuthType("disable-facade").IsDisableService(ctx, "service-user", "billing") || !AuthType("disable-facade").IsDisableServiceLevel(ctx, "service-user", "reports", 2) || AuthType("disable-facade").IsDisableServiceLevel(ctx, "service-user", "reports", 4) {
 		t.Fatal("service disable predicates returned unexpected results")
 	}
-	if err = AuthType("disable-facade").CheckDisableService(ctx, "service-user", []string{"missing", "billing"}); !errors.Is(err, derror.ErrServiceDisabled) {
+	if err = AuthType("disable-facade").CheckDisableService(ctx, "service-user", "missing", "billing"); !errors.Is(err, derror.ErrServiceDisabled) {
 		t.Fatalf("CheckDisableService() error = %v, want ErrServiceDisabled", err)
 	}
 	if err = AuthType("disable-facade").CheckDisableServiceLevel(ctx, "service-user", "reports", 2); !errors.Is(err, derror.ErrServiceDisabled) {

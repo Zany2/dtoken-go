@@ -78,12 +78,18 @@ Build automatically registers and returns *dtoken.Auth; duplicate names are reje
 
 ## Connect Gin
 
+Place the middleware fragment in a setup function returning `error`; the caller should check that error and stop startup on failure.
+
 Place this fragment before registering Gin routes. It assumes auth is the built instance and router is a gin.Engine. Context binds the request instance; RequireLogin validates protected routes.
 
 ```go
 import gindt "github.com/Zany2/dtoken-go/integrations/gin"
 
-router.Use(gindt.Context(auth))
+authMiddleware1, authErr := gindt.Context(auth)
+if authErr != nil {
+    return authErr
+}
+router.Use(authMiddleware1)
 users := router.Group("/user")
 users.Use(gindt.RequireLogin())
 ```

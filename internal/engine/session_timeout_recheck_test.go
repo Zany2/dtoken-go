@@ -115,6 +115,10 @@ func TestManagerTimeoutRecheckPropagatesCurrentState(t *testing.T) {
 					if err := mgr.Logout(ctx, pair.AccessToken); err != nil {
 						t.Fatal(err)
 					}
+					// Simulate expiry of the retained logout marker before a new login reuses the token value. 模拟保留的注销标记过期后，新登录复用相同 Token 值。
+					if err := mgr.storage.Delete(ctx, mgr.getTokenKey(pair.AccessToken)); err != nil {
+						t.Fatal(err)
+					}
 					current, err := mgr.LoginWithRefreshTokenOptions(ctx, RefreshTokenOptions{LoginOptions: LoginOptions{
 						LoginID: pair.LoginID, Token: pair.AccessToken, Device: "web", DeviceID: "browser",
 					}})

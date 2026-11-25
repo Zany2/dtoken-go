@@ -103,9 +103,9 @@ func TestRenewPoolNonBlockingNestedSubmit(t *testing.T) {
 	}
 }
 
-// TestRenewPoolStopUnblocksSubmit verifies shutdown rejects waiting work and lets accepted work finish. TestRenewPoolStopUnblocksSubmit 验证关闭时拒绝等待中的任务，并允许已接收任务完成。
-func TestRenewPoolStopUnblocksSubmit(t *testing.T) {
-	cfg := DefaultRenewPoolConfig().SetMinSize(1).SetMaxSize(1).SetNonBlocking(false)
+// TestRenewPoolStopDrainsAcceptedWork verifies saturation rejects work and shutdown waits for accepted work. TestRenewPoolStopDrainsAcceptedWork 验证饱和时拒绝任务，关闭时等待已接收任务完成。
+func TestRenewPoolStopDrainsAcceptedWork(t *testing.T) {
+	cfg := DefaultRenewPoolConfig().SetMinSize(1).SetMaxSize(1)
 	mgr, err := NewRenewPoolManagerWithConfig(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -130,19 +130,22 @@ func TestRenewPoolStopUnblocksSubmit(t *testing.T) {
 	go func() {
 		submitted <- mgr.Submit(func() { rejectedRan <- struct{}{} })
 	}()
-	waitForPoolCondition(t, func() bool { return mgr.pool.Waiting() == 1 })
+	select {
+	case err := <-submitted:
+		if !errors.Is(err, antslib.ErrPoolOverload) {
+			t.Fatalf("saturated Submit() = %v, want ErrPoolOverload", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("saturated Submit blocked")
+	}
 	stopped := make(chan struct{})
 	go func() {
 		mgr.Stop()
 		close(stopped)
 	}()
-	select {
-	case err := <-submitted:
-		if !errors.Is(err, antslib.ErrPoolClosed) {
-			t.Fatalf("waiting Submit() = %v, want ErrPoolClosed", err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("Stop did not unblock Submit")
+	waitForPoolCondition(t, func() bool { return mgr.pool.IsClosed() })
+	if err := mgr.Submit(func() { rejectedRan <- struct{}{} }); err == nil {
+		t.Fatalf("closed Submit() = %v, want error", err)
 	}
 	select {
 	case <-stopped:

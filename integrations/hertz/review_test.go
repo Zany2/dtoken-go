@@ -9,7 +9,6 @@ import (
 	"github.com/Zany2/dtoken-go"
 	adapter "github.com/Zany2/dtoken-go/contract"
 	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
-	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
 	"github.com/Zany2/dtoken-go/storage/memory"
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
@@ -52,17 +51,18 @@ var hertzReviewChecks = []struct {
 // newHertzReviewManager creates an isolated manager without asynchronous maintenance. newHertzReviewManager 创建无异步维护的独立 Manager。
 func newHertzReviewManager(t *testing.T, authType string, storage adapter.Storage) *manager.Manager {
 	t.Helper()
-	b := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
+	b := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
 	if authType != "" {
 		b.AuthType(authType)
 	}
 	if storage != nil {
 		b.Storage(storage)
 	}
-	mgr, err := b.Build()
+	mgrAuth, err := b.BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	return mgr
 }
@@ -216,8 +216,12 @@ func TestHertzReviewManagerSelection(t *testing.T) {
 	global := newHertzReviewManager(t, "", nil)
 	selected := newHertzReviewManager(t, "hertz-selected", nil)
 	local := newHertzReviewManager(t, "hertz-local", nil)
-	dtoken.SetManager(global)
-	dtoken.SetManager(selected)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
+	if err := dtoken.SetManager(selected); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	ctx := hertzapp.NewContext(0)
 	getDTokenContext(ctx, local)
 	for _, tc := range []struct {
@@ -408,7 +412,9 @@ func TestHertzReviewRenewalIsolation(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newHertzReviewManager(t, "", nil)
 	local := newHertzReviewManager(t, "hertz-renew", nil)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	const token = "same-token"
 	hertzReviewLogin(t, global, token)
 	hertzReviewLogin(t, local, token)
@@ -431,8 +437,13 @@ func TestHertzReviewRenewalIsolation(t *testing.T) {
 
 // TestHertzReviewCookieRoundTrip verifies escaped custom tokens survive login cookies and cookie options remain independent. TestHertzReviewCookieRoundTrip 验证自定义 Token 经 Cookie 往返不变，且各 Cookie 选项独立。
 func TestHertzReviewCookieRoundTrip(t *testing.T) {
-	mgr := newHertzReviewManager(t, "hertz-cookie", nil)
-	mgr.GetConfig().IsReadCookie = true
+	auth, err := dtoken.NewBuilder().AuthType("hertz-cookie").IsReadCookie(true).
+		IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).BuildInstance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(auth.Close)
+	mgr := auth.Manager()
 	ctx := hertzapp.NewContext(0)
 	getDTokenContext(ctx, mgr)
 	const token = "custom+/%2B=token"
@@ -536,11 +547,12 @@ func TestHertzReviewTLSAndClientIP(t *testing.T) {
 
 // TestHertzReviewRequestData verifies body-only token extraction and owned token strings. TestHertzReviewRequestData 验证仅从 Body 读取 Token 以及 Token 字符串拥有独立内存。
 func TestHertzReviewRequestData(t *testing.T) {
-	mgr, err := defaults.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
-		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).Build()
+	mgrAuth, err := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	key := mgr.GetConfig().TokenName
 	var multipartBody bytes.Buffer

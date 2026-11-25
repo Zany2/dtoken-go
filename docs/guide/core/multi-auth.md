@@ -27,6 +27,7 @@ dtoken:app:session:client-001
 package main
 
 import (
+	"log"
 	"context"
 
 	dt "github.com/Zany2/dtoken-go"
@@ -53,7 +54,8 @@ func main() {
 		UseManagerOption(sharedOwnership).
 		Build()
 	if err != nil {
-		panic(err)
+		log.Print(err)
+		return
 	}
 
 	adminAuth, err := dt.NewBuilder().
@@ -64,13 +66,17 @@ func main() {
 		UseManagerOption(sharedOwnership).
 		Build()
 	if err != nil {
-		panic(err)
+		log.Print(err)
+		return
 	}
 
 	userToken, _ := dt.AuthType("user").LoginID(ctx, "10001")
 	adminToken, _ := adminAuth.LoginID(ctx, "admin-1")
 	_, _ = userToken, adminToken
-	registerRoutes(ctx, gin.New(), userAuth, adminAuth)
+	if err := registerRoutes(ctx, gin.New(), userAuth, adminAuth); err != nil {
+		log.Print(err)
+		return
+	}
 }
 ```
 
@@ -101,20 +107,26 @@ Package calls such as dt.CheckLogin use the default `auth:` namespace. The examp
 | `dt.AuthType("user").CheckLogin(ctx, token)` | Look up the current user engine on every operation |
 | `userAuth.CheckLogin(ctx, token)` | Use the fixed engine returned by the builder |
 
-For a missing system, CheckLogin returns ErrManagerNotFound and IsLogin returns false, without falling back. Selectors can be cached and follow explicit replacement; fixed Auth instances do not. The AuthType field in operation options does not route calls; the entry points above select the engine.
+For a missing system, CheckLogin returns ErrManagerNotFound and IsLogin returns false, without falling back. Selectors can be cached and follow explicit replacement; fixed Auth instances do not. Operation options no longer contain AuthType; the entry points above select the engine.
 
 ## Unregistered Instances And Explicit Replacement
 
-BuildInstance / MustBuildInstance do not access the registry. Use them for tests, dependency injection, or independent engines with the same name, and close each through its owner. Unregistered engines with the same name do not automatically isolate data in a shared backend: configure AuthType, KeyPrefix, or separate storage appropriately.
+BuildInstance returns (*Auth, error) without accessing the registry. Use it for tests, dependency injection, or independent engines with the same name, and close each through its owner. Unregistered engines with the same name do not automatically isolate data in a shared backend: configure AuthType, KeyPrefix, or separate storage appropriately.
 
 To replace a registered system, first stop new requests to the old engine and drain its active requests, then execute:
 
 ```go
-replacement, err := dt.NewBuilder().AuthType("user").BuildInstance()
-if err != nil {
-    panic(err)
+func replaceUserAuth() error {
+    replacement, err := dt.NewBuilder().AuthType("user").BuildInstance()
+    if err != nil {
+        return err
+    }
+    if err := dt.SetAuth(replacement); err != nil {
+        replacement.Close()
+        return err
+    }
+    return nil
 }
-dt.SetAuth(replacement)
 ```
 
 SetAuth registers the new engine and closes the old one. Existing fixed Auth instances and WithAuth bindings still refer to the old engine and cannot continue using it. CloseAll closes current registrations, excludes unregistered instances, and allows later builds. See [API and lifecycle](../../design/api-lifecycle.md) for the complete contract.
@@ -125,13 +137,22 @@ Different route groups can bind different auth systems:
 
 <!-- dtoken-compile: multi-auth -->
 ```go
-func registerRoutes(ctx context.Context, r *gin.Engine, userAuth, adminAuth *dt.Auth) {
+func registerRoutes(ctx context.Context, r *gin.Engine, userAuth, adminAuth *dt.Auth) error {
 	userGroup := r.Group("/api")
-	userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuth(userAuth)))
+	authOption1, authErr := gindt.WithAuth(userAuth)
+	if authErr != nil {
+	    return authErr
+	}
+	userGroup.Use(gindt.AuthMiddleware(ctx, authOption1))
 
 	adminGroup := r.Group("/admin")
-	adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuth(adminAuth)))
-	adminGroup.Use(gindt.RoleMiddleware(ctx, []string{"admin"}, gindt.WithAuth(adminAuth)))
+	authOption2, authErr := gindt.WithAuth(adminAuth)
+	if authErr != nil {
+	    return authErr
+	}
+	adminGroup.Use(gindt.AuthMiddleware(ctx, authOption2))
+	adminGroup.Use(gindt.RoleMiddleware(ctx, []string{"admin"}, authOption2))
+	return nil
 }
 ```
 
