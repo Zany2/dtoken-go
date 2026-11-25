@@ -15,7 +15,7 @@ import (
 // TestLoginValidationAndAuthorizationSeed verifies login validation and demo authorization data. TestLoginValidationAndAuthorizationSeed 验证登录校验与示例授权数据初始化。
 func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	setupBeegoManager(t)
-	router := newBeegoExampleRouter()
+	router := newBeegoExampleRouter(t)
 	assertBeegoResponse(t, requestBeego(router, http.MethodPost, "/login?username=alice", "", ""), http.StatusBadRequest, dterror.CodeBadRequest)
 	assertBeegoResponse(t, requestBeego(router, http.MethodPost, "/login?username=alice&password=bad", "", ""), http.StatusUnauthorized, dterror.CodeNotLogin)
 
@@ -57,7 +57,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 	if err := dtoken.AddPermissions(ctx, dtoken.PermissionOptions{LoginID: "alice", Permissions: []string{"article:read"}}); err != nil {
 		t.Fatal(err)
 	}
-	router := newBeegoExampleRouter()
+	router := newBeegoExampleRouter(t)
 	for _, path := range []string{"/me", "/admin", "/articles"} {
 		for _, header := range []string{"dtoken", "Authorization"} {
 			for _, value := range []string{token, "Bearer " + token} {
@@ -98,7 +98,8 @@ func setupBeegoManager(t *testing.T) {
 	}
 }
 
-func newBeegoExampleRouter() *web.ControllerRegister {
+func newBeegoExampleRouter(t *testing.T) *web.ControllerRegister {
+	t.Helper()
 	router := web.NewControllerRegister()
 	registerTestRoutes(t, router)
 	return router

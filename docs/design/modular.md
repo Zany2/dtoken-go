@@ -57,7 +57,7 @@ Runtime ownership is independent of module releases: engines close their owned c
 - Root architecture_test.go uses direct repository import allow-lists for contracts, configuration, errors, events, internal primitives, the engine, capabilities, shared HTTP, components, and internal/builder assembly code. HTTP and frameworks also have forbidden-dependency rules.
 - Checks scan non-_test.go Go files, including separate component and framework submodules present in the checkout. Published root modules skip framework scanning when integrations is absent; component parent directories still cover their bundled implementations.
 - architecture_integrations_test.go checks framework request operation name coverage; it does not replace signature or behavior verification.
-- The Gin export generator's check mode verifies the two shared export files.
+- The Gin export generator synchronizes two shared export files and grouped request forwarding for seven sibling frameworks. Gin remains the canonical source; native adapters, middleware, context resolution and namespace-aware queries remain handwritten. After extending the generator, run generation once before `-check`; check mode reports unmigrated or stale forwarding without changing files. See the [generator guide](../../integrations/gin/internal/integrationexportgen/README.md).
 - Standalone module and external consumer CI checks cover dependency resolution and public use outside the workspace.
 
 Import checks do not analyze transitive third-party dependencies or replace public API, compilation, or behavior verification. Functional verification is performed separately for each module.

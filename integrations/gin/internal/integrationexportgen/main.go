@@ -39,6 +39,16 @@ func main() {
 			}
 		}
 	}
+
+	canonical, err := readFacades(".")
+	if err != nil {
+		fail("read canonical request facades", err)
+	}
+	for _, packageName := range targetPackages {
+		if err := syncFacades(filepath.Join("..", packageName), canonical, packageName, *checkOnly); err != nil {
+			fail("sync "+packageName+" request facades", err)
+		}
+	}
 }
 
 // render creates one framework export file from a Gin canonical source. render 根据 Gin 标准源生成单个框架导出文件。

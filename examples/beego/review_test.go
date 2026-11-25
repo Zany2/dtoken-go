@@ -43,7 +43,7 @@ func TestInitDTokenConfiguration(t *testing.T) {
 // TestLoginParsing covers partial form results and errors before Beego's automatic parser. TestLoginParsing 覆盖表单部分解析结果，以及 Beego 自动解析前的错误分支。
 func TestLoginParsing(t *testing.T) {
 	setupBeegoManager(t)
-	router := newBeegoExampleRouter()
+	router := newBeegoExampleRouter(t)
 	for _, tc := range []struct{ path, body string }{
 		{"/login", ""},
 		{"/login", "username=alice"},
@@ -101,7 +101,7 @@ func TestLoginBodyLimit(t *testing.T) {
 	previous := web.BConfig.MaxMemory
 	web.BConfig.MaxMemory = 32
 	t.Cleanup(func() { web.BConfig.MaxMemory = previous })
-	rec := requestBeego(newBeegoExampleRouter(), http.MethodPost, "/login?username=alice&password=123456", "padding="+strings.Repeat("x", 64), "")
+	rec := requestBeego(newBeegoExampleRouter(t), http.MethodPost, "/login?username=alice&password=123456", "padding="+strings.Repeat("x", 64), "")
 	assertBeegoResponse(t, rec, http.StatusBadRequest, dterror.CodeBadRequest)
 
 	previousUpload := web.BConfig.MaxUploadSize
@@ -124,7 +124,7 @@ func TestLoginBodyLimit(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(encoded))
 		req.Header.Set("Content-Type", w.FormDataContentType())
 		rec := httptest.NewRecorder()
-		newBeegoExampleRouter().ServeHTTP(rec, req)
+		newBeegoExampleRouter(t).ServeHTTP(rec, req)
 		if req.MultipartForm != nil {
 			_ = req.MultipartForm.RemoveAll()
 		}
@@ -144,7 +144,7 @@ func TestAccountAndDeviceRestrictions(t *testing.T) {
 	if err := dtoken.Disable(ctx, dtoken.DisableOptions{LoginID: "blocked", Duration: time.Hour, Reason: ""}); err != nil {
 		t.Fatal(err)
 	}
-	router := newBeegoExampleRouter()
+	router := newBeegoExampleRouter(t)
 	assertBeegoResponse(t, requestBeego(router, http.MethodPost, "/login", "username=blocked&password=123456", ""), http.StatusForbidden, dterror.CodeAccountDisabled)
 	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "alice", Device: "web"})
 	if err != nil {
