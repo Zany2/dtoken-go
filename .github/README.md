@@ -38,9 +38,9 @@ CI also runs `.github/scripts/check-modules.sh` with workspace resolution disabl
 
 CI 还会通过 `.github/scripts/check-modules.sh` 关闭工作区解析，使用临时模块文件将依赖映射到当前源码，检查独立模块的包依赖关系。发布版本的解析需要按[迁移指南](../docs/design/module-migration_zh.md)完成发布验证。
 
-The minimum-Go job reads go.mod and checks the main module with GOWORK=off, including race detection. The external consumer checks root instance APIs, public extension types, explicit global registration, middleware capability bindings, and logout.
+The minimum-Go job reads go.mod and checks the main module with GOWORK=off, including race detection. The external consumer checks root instance APIs, public extension types, root registry registration, middleware capability bindings, and logout.
 
-最低 Go 版本任务从 go.mod 读取版本，在 GOWORK=off 下检查主模块并启用竞态检测。仓库外消费者检查覆盖根实例 API、公共扩展类型、自动注册、根包体系选择与旧 global 兼容、中间件能力绑定和退出。
+最低 Go 版本任务从 go.mod 读取版本，在 GOWORK=off 下检查主模块并启用竞态检测。仓库外消费者检查覆盖根实例 API、公共扩展类型、自动注册、根包体系选择与中间件能力绑定和退出。
 
 Manual CI accepts `root_version` and `gin_version` together to check published modules. Supplying `sso_version` as well includes the SSO consumer; omitting it preserves the two-module check. Every requested version must be nonempty and remain exactly selected after dependency resolution. The regular consumer step uses the current checkout and includes SSO. See the [SSO upgrade guide](../sso/MIGRATION.md) for scope and commands.
 

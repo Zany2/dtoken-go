@@ -16,7 +16,7 @@
 
 | Previous entry | Current entry |
 | --- | --- |
-| dtoken subdirectory | Root instance/default APIs and AuthType selectors; legacy global compatibility |
+| dtoken subdirectory | Root instance/default APIs and AuthType selectors |
 | core/adapter | contract |
 | core/config, core/derror, core/listener | config, errors, event |
 | core/manager, core/builder, defaults | Root NewBuilder and public extension types |
@@ -44,7 +44,7 @@ _ = selected
 
 Build() 自动注册并返回 *dtoken.Auth；auth.Manager() 提供底层管理器。框架优先使用 WithAuth(auth) 或 Context(auth)。策略、装配选项和工厂类型从根包导入，不要导入 internal。所有框架 NewBuilder() 均转发根包构建器，Build() 统一返回 Auth。框架不再转导出全局 API 或组件构造器。HTTP 中间件默认要求绑定实例；全局使用须显式配置 WithManagerResolver(dtoken.GetManager)。
 
-同名 Build 返回 ErrManagerAlreadyRegistered；同名独立实例改用 BuildInstance。显式替换使用 BuildInstance 后 SetAuth。默认包级调用与 AuthType 选择器共用根注册表，旧 global 调用仍可用。退出时先排空请求，再 CloseAll。详见 [API 与生命周期](api-lifecycle_zh.md)。
+同名 Build 返回 ErrManagerAlreadyRegistered；同名独立实例改用 BuildInstance。显式替换使用 BuildInstance 后 SetAuth。默认包级调用与 AuthType 选择器共用根注册表，退出时先排空请求，再 CloseAll。详见 [API 与生命周期](api-lifecycle_zh.md)。
 
 ## 权限提供器迁移
 
@@ -56,7 +56,19 @@ Builder 不提供能力开关。通过各自的构造器创建能力 Manager，�
 
 ## 门面方法迁移
 
-框架包保留 `NewBuilder` 及 `LoginByContext`、`LoginByCtx` 等请求快捷方法。`Auth` 和认证业务选项类型从根包导入。原框架包级的 `Default`、`NewByAuthType`、`SetManager`、`Login` 等全局调用迁移到 `global` 对应入口；认证操作也可直接使用构建完成的 `Auth` 实例。组件构造器从所属组件包导入。
+框架包保留 `NewBuilder` 及请求快捷方法。Auth、业务选项、默认和指定体系调用统一从根包导入。原 global 包已移除；默认调用改为 dt.XXX，指定体系改为 dt.AuthType(name).XXX，并按根包签名使用类型化选项。原 Default / NewByAuthType 改为 AuthType("") / AuthType(name)，后续操作返回查找错误；需要立即检查时调用 GetManager。组件构造器从所属组件包导入。
+
+旧调用不能只替换包名前缀，登录、权限变更和封禁等方法需要改为根包的类型化选项。下表仅用来说明升级前后的对应关系，左列 API 已删除，右列 dt 表示根包：
+
+| 升级前 | 当前调用 |
+| --- | --- |
+| `global.Login(ctx, id, device, deviceID, "user")` | `dt.AuthType("user").Login(ctx, dt.LoginOptions{LoginID: id, Device: device, DeviceID: deviceID})` |
+| `global.Logout(ctx, token, "user")` | `dt.AuthType("user").LogoutByToken(ctx, token)` |
+| `global.AddPermissions(ctx, id, values, "user")` | `dt.AuthType("user").AddPermissions(ctx, dt.PermissionOptions{LoginID: id, Permissions: values})` |
+| `global.Disable(ctx, id, duration, reason, "user")` | `dt.AuthType("user").Disable(ctx, dt.DisableOptions{LoginID: id, Duration: duration, Reason: reason})` |
+| `global.Default()` / `global.NewByAuthType("user")` | 动态选择器 `dt.AuthType("")` / `dt.AuthType("user")`；立即校验使用 `dt.GetManager(...)`，需要固定门面时包装为 `dt.New(mgr)` |
+
+选择器的创建不返回查找错误，后续业务操作才解析注册表。原来依赖构造时立即报错的代码，应先调用 GetManager。已注册和返回实例共享引擎，关闭任一固定门面会影响其他共享者。更多方法见[根包 API 参考](../api/dtoken_zh.md)。
 
 下表覆盖旧 `Auth` 门面移出的 40 个能力方法。原包级能力调用也迁移到相同服务入口；根据目标认证实例选择已组合的服务，不再通过末尾的 `authType` 参数选择实例。从当前根路径下的 `nonce`、`oauth2`、`ticket`、`shortkey` 包导入能力类型。构建 `auth` 后，表中的服务变量按以下方式组合：
 

@@ -3,7 +3,6 @@ package main
 import (
 	dtoken "github.com/Zany2/dtoken-go"
 	dterror "github.com/Zany2/dtoken-go/errors"
-	dt2 "github.com/Zany2/dtoken-go/global"
 	dt1 "github.com/Zany2/dtoken-go/storage/memory"
 
 	"context"
@@ -43,19 +42,19 @@ func TestProductionRouteFailures(t *testing.T) {
 		check(method, path, "", "", http.StatusUnauthorized, dterror.CodeNotLogin)
 		check(method, path, "", "invalid-token", http.StatusUnauthorized, dterror.CodeNotLogin)
 	}
-	token, err := dt2.Login(ctx, "reader", "web")
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "reader", Device: "web"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/admin", "/articles"} {
 		check(http.MethodGet, path, "", token, http.StatusForbidden, dterror.CodePermissionDenied)
 	}
-	if err := dt2.DisableDevice(ctx, "reader", "web", time.Hour); err != nil {
+	if err := dtoken.DisableDevice(ctx, dtoken.DeviceDisableOptions{LoginID: "reader", Device: "web", Duration: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
 	check(http.MethodGet, "/me", "", token, http.StatusForbidden, dterror.CodeAccountDisabled)
 
-	dt2.DeleteAllManager()
+	dtoken.DeleteAllManager()
 	check(http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "", http.StatusInternalServerError, dterror.CodeServerError)
 	check(http.MethodGet, "/admin", "", "", http.StatusInternalServerError, dterror.CodeServerError)
 	builtAuth1, err := dtoken.NewBuilder().Storage(&echoFailingStorage{Storage: dt1.NewStorage()}).
@@ -65,7 +64,7 @@ func TestProductionRouteFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dt2.SetManager(mgr)
+	dtoken.SetManager(mgr)
 	for _, path := range []string{"/me", "/admin", "/articles", "/logout"} {
 		method := http.MethodGet
 		if path == "/logout" {

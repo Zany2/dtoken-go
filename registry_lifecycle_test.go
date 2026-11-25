@@ -1,4 +1,4 @@
-package global
+package dtoken
 
 import (
 	"context"
@@ -265,10 +265,11 @@ func TestAuthCloseUnregistersManager(t *testing.T) {
 	mgr := newRegistryTestManager("auth-close", pool)
 	SetManager(mgr)
 
-	auth, err := NewByAuthType("auth-close")
+	selected, err := GetManager("auth-close")
 	if err != nil {
-		t.Fatalf("NewByAuthType() error = %v", err)
+		t.Fatalf("GetManager() error = %v", err)
 	}
+	auth := New(selected)
 	auth.Close()
 
 	if auth.Manager() != nil {

@@ -3,7 +3,6 @@ package beego
 import (
 	"context"
 	"errors"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,8 +16,8 @@ import (
 
 // TestBeegoContextMiddlewareManagerFailure verifies manager resolution failures invoke the failure callback. TestBeegoContextMiddlewareManagerFailure 验证 Manager 解析失败会触发失败回调。
 func TestBeegoContextMiddlewareManagerFailure(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	c, _ := newBeegoBehaviorContext(http.MethodGet, "/protected", "", "")
 	var gotErr error

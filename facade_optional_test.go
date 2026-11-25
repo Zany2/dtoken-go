@@ -1,4 +1,4 @@
-package global
+package dtoken
 
 import (
 	"context"
@@ -6,10 +6,8 @@ import (
 	"testing"
 )
 
-// TestOptionalFacadesReportDisabledModules verifies optional facades preserve disabled-module errors and zero values. TestOptionalFacadesReportDisabledModules 验证可选模块门面保留未启用错误和约定零值。
-
-// TestGlobalRefreshAndIntrospectionFacades verifies refresh-token and introspection global helpers. TestGlobalRefreshAndIntrospectionFacades 验证刷新令牌和令牌检查全局门面。
-func TestGlobalRefreshAndIntrospectionFacades(t *testing.T) {
+// TestRootRefreshAndIntrospectionFacades verifies refresh-token and introspection global helpers. TestRootRefreshAndIntrospectionFacades 验证刷新令牌和令牌检查全局门面。
+func TestRootRefreshAndIntrospectionFacades(t *testing.T) {
 	DeleteAllManager()
 	t.Cleanup(DeleteAllManager)
 
@@ -24,7 +22,7 @@ func TestGlobalRefreshAndIntrospectionFacades(t *testing.T) {
 	}
 	SetManager(mgr)
 
-	pair, err := LoginWithRefreshToken(ctx, "refresh-user", "web", "browser", "refresh-facade")
+	pair, err := AuthType("refresh-facade").LoginWithRefreshTokenOptions(ctx, RefreshTokenOptions{LoginOptions: LoginOptions{LoginID: "refresh-user", Device: "web", DeviceID: "browser"}})
 	if err != nil {
 		t.Fatalf("LoginWithRefreshToken() error = %v", err)
 	}
@@ -32,7 +30,7 @@ func TestGlobalRefreshAndIntrospectionFacades(t *testing.T) {
 		t.Fatalf("refresh pair = %+v, want login and device metadata", pair)
 	}
 
-	info, err := IntrospectToken(ctx, pair.AccessToken, "refresh-facade")
+	info, err := AuthType("refresh-facade").IntrospectToken(ctx, pair.AccessToken)
 	if err != nil {
 		t.Fatalf("IntrospectToken() error = %v", err)
 	}
@@ -40,7 +38,7 @@ func TestGlobalRefreshAndIntrospectionFacades(t *testing.T) {
 		t.Fatalf("introspection = %+v, want active refresh-user", info)
 	}
 
-	ttl, err := GetRefreshTokenTTL(ctx, pair.RefreshToken, "refresh-facade")
+	ttl, err := AuthType("refresh-facade").GetRefreshTokenTTL(ctx, pair.RefreshToken)
 	if err != nil {
 		t.Fatalf("GetRefreshTokenTTL() error = %v", err)
 	}
@@ -48,22 +46,20 @@ func TestGlobalRefreshAndIntrospectionFacades(t *testing.T) {
 		t.Fatalf("refresh ttl = %d, want positive", ttl)
 	}
 
-	rotated, err := RefreshToken(ctx, pair.RefreshToken, "refresh-facade")
+	rotated, err := AuthType("refresh-facade").RefreshToken(ctx, pair.RefreshToken)
 	if err != nil {
 		t.Fatalf("RefreshToken() error = %v", err)
 	}
 	if rotated.RefreshToken == pair.RefreshToken || rotated.AccessToken == pair.AccessToken {
 		t.Fatal("RefreshToken() should rotate both refresh and access tokens")
 	}
-	if err = RevokeRefreshToken(ctx, rotated.RefreshToken, "refresh-facade"); err != nil {
+	if err = AuthType("refresh-facade").RevokeRefreshToken(ctx, rotated.RefreshToken); err != nil {
 		t.Fatalf("RevokeRefreshToken() error = %v", err)
 	}
-	if IsLogin(ctx, rotated.AccessToken, "refresh-facade") {
+	if AuthType("refresh-facade").IsLogin(ctx, rotated.AccessToken) {
 		t.Fatal("access token should be logged out after refresh token revoke")
 	}
 }
-
-// TestGlobalTicketAndShortKeyFacades verifies lifecycle helpers for optional credential modules. TestGlobalTicketAndShortKeyFacades 验证可选凭证模块的生命周期门面。
 
 // TestInstanceTerminalShortcutFacades verifies instance terminal action shortcuts. TestInstanceTerminalShortcutFacades 验证实例终端操作快捷门面。
 func TestInstanceTerminalShortcutFacades(t *testing.T) {

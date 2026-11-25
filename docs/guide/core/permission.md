@@ -2,7 +2,7 @@
 
 [中文文档](../core/permission_zh.md) | English
 
-This page retains positional examples for the legacy `global` API; `dt` names the root package. Build automatically registers and returns Auth, so SetAuth is unnecessary. An omitted namespace selects `auth:`. New calls may use dt package functions or dt.AuthType("user"); their business signatures match Auth methods, not legacy global positional signatures. See [Auth API](../../api/auth.md).
+Here `dt` names the root package. `Build()` registers automatically; use `dt.XXX()` for the default namespace or `dt.AuthType("user").XXX()` for another namespace. Business method signatures match Auth methods. See [Auth API](../../api/auth.md).
 
 ## Overview
 
@@ -41,15 +41,15 @@ Token-based permission and role additions/removals validate the full login state
 ```go
 ctx := context.Background()
 
-token, _ := global.Login(ctx, "10001")
+token, _ := dt.Login(ctx, dt.LoginOptions{LoginID: "10001"})
 
-_ = global.AddPermissions(ctx, "10001", []string{
+_ = dt.AddPermissions(ctx, dt.PermissionOptions{LoginID: "10001", Permissions: []string{
     "user:read",
     "user:write",
     "admin:*",
-})
+}})
 
-_ = global.AddPermissionsByToken(ctx, token, []string{
+_ = dt.AddPermissionsByToken(ctx, token, []string{
     "article:publish",
 })
 ```
@@ -59,8 +59,8 @@ _ = global.AddPermissionsByToken(ctx, token, []string{
 ```go
 ctx := context.Background()
 
-_ = global.RemovePermissions(ctx, "10001", []string{"user:write"})
-_ = global.RemovePermissionsByToken(ctx, token, []string{"article:publish"})
+_ = dt.RemovePermissions(ctx, dt.PermissionOptions{LoginID: "10001", Permissions: []string{"user:write"}})
+_ = dt.RemovePermissionsByToken(ctx, token, []string{"article:publish"})
 ```
 
 ### Query Permissions
@@ -68,8 +68,8 @@ _ = global.RemovePermissionsByToken(ctx, token, []string{"article:publish"})
 ```go
 ctx := context.Background()
 
-permissions, err := global.GetPermissions(ctx, "10001")
-permissionsByToken, err := global.GetPermissionsByToken(ctx, token)
+permissions, err := dt.GetPermissions(ctx, "10001")
+permissionsByToken, err := dt.GetPermissionsByToken(ctx, token)
 ```
 
 ## Permission Checks
@@ -79,10 +79,10 @@ permissionsByToken, err := global.GetPermissionsByToken(ctx, token)
 ```go
 ctx := context.Background()
 
-hasPermission := global.HasPermission(ctx, "10001", "user:read")
-hasPermissionByToken := global.HasPermissionByToken(ctx, token, "user:read")
+hasPermission := dt.HasPermission(ctx, "10001", "user:read")
+hasPermissionByToken := dt.HasPermissionByToken(ctx, token, "user:read")
 
-err := global.CheckPermission(ctx, "10001", "user:read")
+err := dt.CheckPermission(ctx, dt.PermissionOptions{LoginID: "10001", Permission: "user:read"})
 ```
 
 ### AND Logic
@@ -90,12 +90,12 @@ err := global.CheckPermission(ctx, "10001", "user:read")
 ```go
 ctx := context.Background()
 
-hasAll := global.HasPermissionsAnd(ctx, "10001", []string{
+hasAll := dt.HasPermissionsAnd(ctx, "10001", []string{
     "user:read",
     "user:write",
 })
 
-err := global.CheckPermissionAnd(ctx, "10001", []string{
+err := dt.CheckPermissionAnd(ctx, "10001", []string{
     "user:read",
     "user:write",
 })
@@ -106,12 +106,12 @@ err := global.CheckPermissionAnd(ctx, "10001", []string{
 ```go
 ctx := context.Background()
 
-hasAny := global.HasPermissionsOr(ctx, "10001", []string{
+hasAny := dt.HasPermissionsOr(ctx, "10001", []string{
     "admin:read",
     "report:read",
 })
 
-err := global.CheckPermissionOr(ctx, "10001", []string{
+err := dt.CheckPermissionOr(ctx, "10001", []string{
     "admin:read",
     "report:read",
 })
@@ -136,15 +136,15 @@ Two important implementation details:
 ```go
 ctx := context.Background()
 
-_ = global.AddPermissions(ctx, "10001", []string{
+_ = dt.AddPermissions(ctx, dt.PermissionOptions{LoginID: "10001", Permissions: []string{
     "admin:*",
     "user:*:view",
-})
+}})
 
-global.HasPermission(ctx, "10001", "admin:read")        // true
-global.HasPermission(ctx, "10001", "admin:delete")      // true
-global.HasPermission(ctx, "10001", "user:profile:view") // true
-global.HasPermission(ctx, "10001", "user:view")         // false
+dt.HasPermission(ctx, "10001", "admin:read")        // true
+dt.HasPermission(ctx, "10001", "admin:delete")      // true
+dt.HasPermission(ctx, "10001", "user:profile:view") // true
+dt.HasPermission(ctx, "10001", "user:view")         // false
 ```
 
 ## Role APIs
@@ -152,22 +152,22 @@ global.HasPermission(ctx, "10001", "user:view")         // false
 ```go
 ctx := context.Background()
 
-_ = global.AddRoles(ctx, "10001", []string{"admin", "editor"})
-_ = global.AddRolesByToken(ctx, token, []string{"reviewer"})
+_ = dt.AddRoles(ctx, dt.RoleOptions{LoginID: "10001", Roles: []string{"admin", "editor"}})
+_ = dt.AddRolesByToken(ctx, token, []string{"reviewer"})
 
-_ = global.RemoveRoles(ctx, "10001", []string{"editor"})
-_ = global.RemoveRolesByToken(ctx, token, []string{"reviewer"})
+_ = dt.RemoveRoles(ctx, dt.RoleOptions{LoginID: "10001", Roles: []string{"editor"}})
+_ = dt.RemoveRolesByToken(ctx, token, []string{"reviewer"})
 
-roles, err := global.GetRoles(ctx, "10001")
-rolesByToken, err := global.GetRolesByToken(ctx, token)
+roles, err := dt.GetRoles(ctx, "10001")
+rolesByToken, err := dt.GetRolesByToken(ctx, token)
 
-hasRole := global.HasRole(ctx, "10001", "admin")
-hasAnyRole := global.HasRolesOr(ctx, "10001", []string{"admin", "manager"})
-hasAllRoles := global.HasRolesAnd(ctx, "10001", []string{"admin", "editor"})
+hasRole := dt.HasRole(ctx, "10001", "admin")
+hasAnyRole := dt.HasRolesOr(ctx, "10001", []string{"admin", "manager"})
+hasAllRoles := dt.HasRolesAnd(ctx, "10001", []string{"admin", "editor"})
 
-err = global.CheckRole(ctx, "10001", "admin")
-err = global.CheckRoleOr(ctx, "10001", []string{"admin", "manager"})
-err = global.CheckRoleAnd(ctx, "10001", []string{"admin", "editor"})
+err = dt.CheckRole(ctx, dt.RoleOptions{LoginID: "10001", Role: "admin"})
+err = dt.CheckRoleOr(ctx, "10001", []string{"admin", "manager"})
+err = dt.CheckRoleAnd(ctx, "10001", []string{"admin", "editor"})
 ```
 
 ## Disable APIs
@@ -177,15 +177,15 @@ err = global.CheckRoleAnd(ctx, "10001", []string{"admin", "editor"})
 ```go
 ctx := context.Background()
 
-_ = global.Disable(ctx, "10001", 2*time.Hour, "abuse")
+_ = dt.Disable(ctx, dt.DisableOptions{LoginID: "10001", Duration: 2*time.Hour, Reason: "abuse"})
 
-disabled := global.IsDisable(ctx, "10001")
-err := global.CheckDisable(ctx, "10001")
+disabled := dt.IsDisable(ctx, "10001")
+err := dt.CheckDisable(ctx, "10001")
 
-info, err := global.GetDisableInfo(ctx, "10001")
-ttl, err := global.GetDisableTTL(ctx, "10001")
+info, err := dt.GetDisableInfo(ctx, "10001")
+ttl, err := dt.GetDisableTTL(ctx, "10001")
 
-_ = global.Untie(ctx, "10001")
+_ = dt.Untie(ctx, "10001")
 ```
 
 `GetDisableTTL()` returns:
@@ -199,21 +199,21 @@ _ = global.Untie(ctx, "10001")
 ```go
 ctx := context.Background()
 
-_ = global.DisableService(ctx, "10001", "comment", 30*time.Minute)
-_ = global.DisableServiceWithReason(ctx, "10001", "comment", 30*time.Minute, "spam")
-_ = global.DisableServiceLevel(ctx, "10001", "comment", 2, 30*time.Minute)
-_ = global.DisableServiceLevelWithReason(ctx, "10001", "comment", 3, 30*time.Minute, "risk")
+_ = dt.DisableService(ctx, dt.ServiceDisableOptions{LoginID: "10001", Service: "comment", Duration: 30*time.Minute})
+_ = dt.DisableServiceWithReason(ctx, "10001", "comment", 30*time.Minute, "spam")
+_ = dt.DisableServiceLevel(ctx, "10001", "comment", 2, 30*time.Minute)
+_ = dt.DisableServiceLevelWithReason(ctx, "10001", "comment", 3, 30*time.Minute, "risk")
 
-serviceDisabled := global.IsDisableService(ctx, "10001", "comment")
-levelDisabled := global.IsDisableServiceLevel(ctx, "10001", "comment", 2)
+serviceDisabled := dt.IsDisableService(ctx, "10001", "comment")
+levelDisabled := dt.IsDisableServiceLevel(ctx, "10001", "comment", 2)
 
-err := global.CheckDisableService(ctx, "10001", []string{"comment", "post"})
-err = global.CheckDisableServiceLevel(ctx, "10001", "comment", 2)
+err := dt.CheckDisableService(ctx, "10001", []string{"comment", "post"})
+err = dt.CheckDisableServiceLevel(ctx, "10001", "comment", 2)
 
-serviceInfo, err := global.GetDisableServiceInfo(ctx, "10001", "comment")
-serviceTTL, err := global.GetDisableServiceTTL(ctx, "10001", "comment")
+serviceInfo, err := dt.GetDisableServiceInfo(ctx, "10001", "comment")
+serviceTTL, err := dt.GetDisableServiceTTL(ctx, "10001", "comment")
 
-_ = global.UntieService(ctx, "10001", "comment")
+_ = dt.UntieService(ctx, "10001", "comment")
 ```
 
 ## Custom Permission And Role Provider
@@ -242,7 +242,7 @@ if err != nil {
 defer auth.Close()
 ```
 
-Build automatically registers this instance for the legacy global calls above. For HTTP, inject the same instance with WithAuth(auth). See [AccessProvider](access-provider.md).
+Build automatically registers this instance for the root calls above. For HTTP, inject the same instance with WithAuth(auth). See [AccessProvider](access-provider.md).
 
 ## Using With Gin Routes
 

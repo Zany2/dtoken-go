@@ -1,642 +1,208 @@
 [English](dtoken.md) | 中文文档
 
-# global 兼容 API 参考
+# 根包 API 参考
 
-## 概述
+本文 dt 表示 `github.com/Zany2/dtoken-go`。根包函数使用默认体系 `auth:`；`dt.AuthType(name)` 选择其他体系，其业务方法与根包函数和 Auth 实例签名一致。完整选项与实例说明见 [Auth API](auth_zh.md)。
 
-本页使用 global 作为 github.com/Zany2/dtoken-go/global 的导入别名，记录全局认证 API。根包提供实例方法、默认体系包级方法和 AuthType 选择器，Nonce、OAuth2、Ticket 和 ShortKey 通过独立服务调用。 本页 `dt` 指向根包 `github.com/Zany2/dtoken-go`，用于公开模型与引擎扩展类型。
+原 global 包已移除；下列签名属于根包，登录、权限变更和封禁等操作使用类型化选项，不接受旧版末尾 authType 参数。
 
-当前版本的 `global` 以 `context.Context` 为统一入口，认证体系可通过可选 `authType` 参数区分。
+## 初始化与体系选择
 
-新应用使用根包的[统一门面 API](auth_zh.md)。Build 自动注册，旧 global 与根包共用注册表。本页函数签名属于 global 包；类型化选项以根包声明为准，示例中的 dt 为根包别名。
-
-## 初始化
-
-<!-- dtoken-compile: global-registration -->
+<!-- dtoken-compile: root-registration -->
 ```go
 package main
 
 import (
-	"context"
-	"fmt"
+    "context"
+    "fmt"
 
-	dt "github.com/Zany2/dtoken-go"
-	global "github.com/Zany2/dtoken-go/global"
+    dt "github.com/Zany2/dtoken-go"
 )
 
 func main() {
-	auth, err := dt.NewBuilder().IsPrintBanner(false).Build()
-	if err != nil {
-		panic(err)
-	}
-	defer auth.Close()
-	token, err := global.Login(context.Background(), "alice")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(token)
+    defer dt.CloseAll()
+    dt.NewBuilder().IsPrintBanner(false).MustBuild()
+    dt.NewBuilder().AuthType("user").IsPrintBanner(false).MustBuild()
+    ctx := context.Background()
+    token, err := dt.AuthType("user").Login(ctx, dt.LoginOptions{LoginID: "10001", Device: "web"})
+    if err != nil {
+        panic(err)
+    }
+    if err := dt.AuthType("user").CheckLogin(ctx, token); err != nil {
+        panic(err)
+    }
+    fmt.Println(dt.AuthType("user").IsLogin(ctx, token))
 }
 ```
 
-## 登录认证 API
+Build 自动注册并返回 Auth；同名注册返回 ErrManagerAlreadyRegistered。BuildInstance 不注册，需要持有者单独 Close。AuthType 选择器每次操作查找注册表，缺失体系返回 ErrManagerNotFound，布尔检查返回 false，不回退默认体系。固定实例不会跟随替换。以下为函数声明索引，类型均从根包引用；ctx 使用当前请求上下文，time.Duration 参数与 Builder 的秒数配置不同。
 
-### Login
-
-登录并返回 Token。
-
-**签名**：
-```go
-func Login(ctx context.Context, loginID string, params ...string) (string, error)
-```
-
-**参数**：
-- `ctx` - 请求上下文
-- `loginID` - 登录 ID
-- `params` - 可选参数，顺序为 `[device, deviceID, authType]`
-
-**返回**：
-- `string` - Token 值
-- `error` - 错误信息
-
-**示例**：
-```go
-token, _ := global.Login(ctx, "1000")
-token, _ := global.Login(ctx, "1000", "mobile")
-token, _ := global.Login(ctx, "1000", "mobile", "device-001", "user")
-```
-
-### LoginWithRefreshToken
-
-登录并返回 access token 与 refresh token。
-
-**签名**：
-```go
-func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*dt.RefreshTokenPair, error)
-func LoginWithRefreshTokenOptions(ctx context.Context, opts dt.RefreshTokenOptions, authType ...string) (*dt.RefreshTokenPair, error)
-```
-
-**示例**：
-```go
-pair, err := global.LoginWithRefreshToken(ctx, "1000", "web", "browser-001")
-if err != nil {
-    return err
-}
-
-fmt.Println(pair.AccessToken)
-fmt.Println(pair.RefreshToken)
-```
-
-### RefreshToken
-
-轮换 refresh token，并返回新的令牌对。
-
-**签名**：
-```go
-func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*dt.RefreshTokenPair, error)
-func RevokeRefreshToken(ctx context.Context, refreshToken string, authType ...string) error
-func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...string) (int64, error)
-```
-
-**示例**：
-```go
-nextPair, err := global.RefreshToken(ctx, pair.RefreshToken)
-if err != nil {
-    return err
-}
-
-ttl, err := global.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
-if err != nil {
-    return err
-}
-fmt.Println(ttl)
-
-if err := global.RevokeRefreshToken(ctx, nextPair.RefreshToken); err != nil {
-    return err
-}
-```
-
-### IntrospectToken
-
-无续期副作用地检查 token 是否有效，并返回归属信息。
-
-**签名**：
-```go
-func IntrospectToken(ctx context.Context, tokenValue string, authType ...string) (*dt.TokenIntrospection, error)
-```
-
-**示例**：
-```go
-info, err := global.IntrospectToken(ctx, token)
-if err != nil {
-    return err
-}
-if !info.Active {
-    // token 已失效
-}
-```
-
-### IsLogin
-
-检查 Token 是否已登录。
-
-**签名**：
-```go
-func IsLogin(ctx context.Context, tokenValue string, authType ...string) bool
-```
-
-**示例**：
-```go
-if global.IsLogin(ctx, token) {
-    // 已登录
-}
-```
-
-### GetLoginID
-
-根据 Token 获取登录 ID。
-
-**签名**：
-```go
-func GetLoginID(ctx context.Context, tokenValue string, authType ...string) (string, error)
-```
-
-**示例**：
-```go
-loginID, err := global.GetLoginID(ctx, token)
-```
-
-### Logout
-
-根据 Token 登出。
-
-**签名**：
-```go
-func Logout(ctx context.Context, tokenValue string, authType ...string) error
-```
-
-**示例**：
-```go
-_ = global.Logout(ctx, token)
-```
-
-### Kickout
-
-根据 Token 踢人下线。
-
-**签名**：
-```go
-func Kickout(ctx context.Context, tokenValue string, authType ...string) error
-```
-
-**示例**：
-```go
-_ = global.Kickout(ctx, token)
-```
-
-### 常用扩展方法
+## 登录与 Token 生命周期
 
 ```go
-func LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, params ...string) (string, error)
-func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*dt.RefreshTokenPair, error)
-func LoginWithRefreshTokenOptions(ctx context.Context, opts dt.RefreshTokenOptions, authType ...string) (*dt.RefreshTokenPair, error)
-func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*dt.RefreshTokenPair, error)
-func RevokeRefreshToken(ctx context.Context, refreshToken string, authType ...string) error
-func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...string) (int64, error)
-func IntrospectToken(ctx context.Context, tokenValue string, authType ...string) (*dt.TokenIntrospection, error)
-func LoginByToken(ctx context.Context, tokenValue string, authType ...string) error
-func CheckLogin(ctx context.Context, tokenValue string, authType ...string) error
-func LogoutByDevice(ctx context.Context, loginID string, device string, authType ...string) error
-func LogoutByDeviceAndDeviceID(ctx context.Context, loginID string, params ...string) error
-func LogoutByLoginID(ctx context.Context, loginID string, authType ...string) error
-func KickoutByDevice(ctx context.Context, loginID string, device string, authType ...string) error
-func KickoutByDeviceAndDeviceID(ctx context.Context, loginID string, params ...string) error
-func KickoutByLoginID(ctx context.Context, loginID string, authType ...string) error
-func Replace(ctx context.Context, tokenValue string, authType ...string) error
-func ReplaceByDevice(ctx context.Context, loginID string, device string, authType ...string) error
-func ReplaceByDeviceAndDeviceID(ctx context.Context, loginID string, params ...string) error
-func ReplaceByLoginID(ctx context.Context, loginID string, authType ...string) error
-func GetTokenInfo(ctx context.Context, tokenValue string, authType ...string) (*dt.TokenInfo, error)
-func GetDevice(ctx context.Context, tokenValue string, authType ...string) (string, error)
-func GetDeviceID(ctx context.Context, tokenValue string, authType ...string) (string, error)
-func GetTokenCreateTime(ctx context.Context, tokenValue string, authType ...string) (int64, error)
-func GetTokenTTL(ctx context.Context, tokenValue string, authType ...string) (int64, error)
-func RenewTimeout(ctx context.Context, tokenValue string, timeout time.Duration, authType ...string) error
+func Login(ctx context.Context, opts dt.LoginOptions) (string, error)
+func LoginID(ctx context.Context, loginID string) (string, error)
+func LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration) (string, error)
+func LoginWithRefreshToken(ctx context.Context, loginID string) (*dt.RefreshTokenPair, error)
+func LoginWithRefreshTokenOptions(ctx context.Context, opts dt.RefreshTokenOptions) (*dt.RefreshTokenPair, error)
+func RefreshToken(ctx context.Context, refreshToken string) (*dt.RefreshTokenPair, error)
+func RevokeRefreshToken(ctx context.Context, refreshToken string) error
+func GetRefreshTokenTTL(ctx context.Context, refreshToken string) (int64, error)
+func IntrospectToken(ctx context.Context, token string) (*dt.TokenIntrospection, error)
+func LoginByToken(ctx context.Context, token string) error
+func LogoutByToken(ctx context.Context, token string) error
+func LogoutByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) error
+func LogoutByDevice(ctx context.Context, loginID, device string) error
+func LogoutByLoginID(ctx context.Context, loginID string) error
+func Logout(ctx context.Context, opts dt.LogoutOptions) error
+func KickoutByToken(ctx context.Context, token string) error
+func KickoutByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) error
+func KickoutByDevice(ctx context.Context, loginID, device string) error
+func KickoutByLoginID(ctx context.Context, loginID string) error
+func Kickout(ctx context.Context, opts dt.LogoutOptions) error
+func ReplaceByToken(ctx context.Context, token string) error
+func ReplaceByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) error
+func ReplaceByDevice(ctx context.Context, loginID, device string) error
+func ReplaceByLoginID(ctx context.Context, loginID string) error
+func Replace(ctx context.Context, opts dt.LogoutOptions) error
+func IsLogin(ctx context.Context, token string) bool
+func CheckLogin(ctx context.Context, token string) error
+func GetLoginID(ctx context.Context, token string) (string, error)
+func GetTokenInfo(ctx context.Context, token string) (*dt.TokenInfo, error)
+func GetDevice(ctx context.Context, token string) (string, error)
+func GetDeviceAndDeviceID(ctx context.Context, token string) (string, string, error)
+func GetDeviceID(ctx context.Context, token string) (string, error)
+func GetTokenCreateTime(ctx context.Context, token string) (int64, error)
+func GetTokenTTL(ctx context.Context, token string) (int64, error)
+func RenewTimeout(ctx context.Context, token string, timeout time.Duration) error
 ```
 
-## 权限验证 API
-
-### AddPermissions
-
-为指定账号添加权限。
-
-**签名**：
-```go
-func AddPermissions(ctx context.Context, loginID string, permissions []string, authType ...string) error
-```
-
-**示例**：
-```go
-_ = global.AddPermissions(ctx, "1000", []string{
-    "user:read",
-    "user:write",
-    "admin:*",
-})
-```
-
-### HasPermission
-
-检查是否拥有指定权限。
-
-**签名**：
-```go
-func HasPermission(ctx context.Context, loginID string, permission string, authType ...string) bool
-```
-
-**示例**：
-```go
-if global.HasPermission(ctx, "1000", "user:read") {
-    // 有权限
-}
-```
-
-### HasPermissionsAnd
-
-检查是否拥有所有权限（AND 逻辑）。
-
-**签名**：
-```go
-func HasPermissionsAnd(ctx context.Context, loginID string, permissions []string, authType ...string) bool
-```
-
-### HasPermissionsOr
-
-检查是否拥有任一权限（OR 逻辑）。
-
-**签名**：
-```go
-func HasPermissionsOr(ctx context.Context, loginID string, permissions []string, authType ...string) bool
-```
-
-### 常用扩展方法
+## Session 与终端
 
 ```go
-func AddPermissionsByToken(ctx context.Context, tokenValue string, permissions []string, authType ...string) error
-func RemovePermissions(ctx context.Context, loginID string, permissions []string, authType ...string) error
-func RemovePermissionsByToken(ctx context.Context, tokenValue string, permissions []string, authType ...string) error
-func GetPermissions(ctx context.Context, loginID string, authType ...string) ([]string, error)
-func GetPermissionsByToken(ctx context.Context, tokenValue string, authType ...string) ([]string, error)
-func HasPermissionByToken(ctx context.Context, tokenValue string, permission string, authType ...string) bool
-func HasPermissionsAndByToken(ctx context.Context, tokenValue string, permissions []string, authType ...string) bool
-func HasPermissionsOrByToken(ctx context.Context, tokenValue string, permissions []string, authType ...string) bool
-func CheckPermission(ctx context.Context, loginID string, permission string, authType ...string) error
-func CheckPermissionAnd(ctx context.Context, loginID string, permissions []string, authType ...string) error
-func CheckPermissionOr(ctx context.Context, loginID string, permissions []string, authType ...string) error
+func GetOnlineTerminalCount(ctx context.Context, loginID string) (int, error)
+func GetOnlineTerminalCountByDevice(ctx context.Context, loginID, device string) (int, error)
+func GetOnlineTerminalCountByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) (int, error)
+func ForEachTerminal(ctx context.Context, loginID string, visitor dt.TerminalVisitor) error
+func ForEachTerminalByDevice(ctx context.Context, loginID, device string, visitor dt.TerminalVisitor) error
+func GetSession(ctx context.Context, loginID string) (*dt.Session, error)
+func GetSessionByToken(ctx context.Context, token string) (*dt.Session, error)
+func GetTokenValueListByLoginID(ctx context.Context, loginID string, checkAlive bool) ([]string, error)
+func GetTokenValueListByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string, checkAlive bool) ([]string, error)
+func GetTokenValueListByDevice(ctx context.Context, loginID, device string, checkAlive bool) ([]string, error)
+func GetTerminalListByLoginID(ctx context.Context, loginID string) ([]dt.TerminalInfo, error)
+func GetTerminalListByLoginIDAndDevice(ctx context.Context, loginID, device string) ([]dt.TerminalInfo, error)
+func GetTerminalInfoByToken(ctx context.Context, token string) (*dt.TerminalInfo, error)
+func SetSessionValue(ctx context.Context, loginID, key string, value any) error
+func GetSessionValue(ctx context.Context, loginID, key string) (any, bool, error)
+func DeleteSessionValue(ctx context.Context, loginID, key string) error
+func SetSessionValueByToken(ctx context.Context, token, key string, value any) error
+func GetSessionValueByToken(ctx context.Context, token, key string) (any, bool, error)
+func DeleteSessionValueByToken(ctx context.Context, token, key string) error
+func GetTokenValueByLoginID(ctx context.Context, loginID string) (string, error)
+func GetTokenValueByLoginIDAndDevice(ctx context.Context, loginID, device string) (string, error)
+func SearchTokenValue(ctx context.Context, keyword string, start, size int) ([]string, error)
+func SearchSessionId(ctx context.Context, keyword string, start, size int) ([]string, error)
 ```
 
-## 角色管理 API
-
-### AddRoles
-
-为指定账号添加角色。
-
-**签名**：
-```go
-func AddRoles(ctx context.Context, loginID string, roles []string, authType ...string) error
-```
-
-**示例**：
-```go
-_ = global.AddRoles(ctx, "1000", []string{"admin", "manager"})
-```
-
-### HasRole
-
-检查是否拥有指定角色。
-
-**签名**：
-```go
-func HasRole(ctx context.Context, loginID string, role string, authType ...string) bool
-```
-
-**示例**：
-```go
-if global.HasRole(ctx, "1000", "admin") {
-    // 有 admin 角色
-}
-```
-
-### HasRolesAnd / HasRolesOr
-
-多角色检查。
-
-**示例**：
-```go
-global.HasRolesAnd(ctx, "1000", []string{"admin", "manager"})
-global.HasRolesOr(ctx, "1000", []string{"admin", "super-admin"})
-```
-
-### 常用扩展方法
+## 权限
 
 ```go
-func AddRolesByToken(ctx context.Context, tokenValue string, roles []string, authType ...string) error
-func RemoveRoles(ctx context.Context, loginID string, roles []string, authType ...string) error
-func RemoveRolesByToken(ctx context.Context, tokenValue string, roles []string, authType ...string) error
-func GetRoles(ctx context.Context, loginID string, authType ...string) ([]string, error)
-func GetRolesByToken(ctx context.Context, tokenValue string, authType ...string) ([]string, error)
-func HasRoleByToken(ctx context.Context, tokenValue string, role string, authType ...string) bool
-func HasRolesAndByToken(ctx context.Context, tokenValue string, roles []string, authType ...string) bool
-func HasRolesOrByToken(ctx context.Context, tokenValue string, roles []string, authType ...string) bool
-func CheckRole(ctx context.Context, loginID string, role string, authType ...string) error
-func CheckRoleAnd(ctx context.Context, loginID string, roles []string, authType ...string) error
-func CheckRoleOr(ctx context.Context, loginID string, roles []string, authType ...string) error
+func CheckPermission(ctx context.Context, opts dt.PermissionOptions) error
+func CheckPermissionsAnd(ctx context.Context, opts dt.PermissionOptions) error
+func CheckPermissionsOr(ctx context.Context, opts dt.PermissionOptions) error
+func AddPermissions(ctx context.Context, opts dt.PermissionOptions) error
+func AddPermissionsByToken(ctx context.Context, token string, permissions []string) error
+func RemovePermissions(ctx context.Context, opts dt.PermissionOptions) error
+func RemovePermissionsByToken(ctx context.Context, token string, permissions []string) error
+func GetPermissions(ctx context.Context, loginID string) ([]string, error)
+func GetPermissionsByToken(ctx context.Context, token string) ([]string, error)
+func HasPermission(ctx context.Context, loginID, permission string) bool
+func HasPermissionByToken(ctx context.Context, token, permission string) bool
+func HasPermissionsAnd(ctx context.Context, loginID string, permissions []string) bool
+func HasPermissionsAndByToken(ctx context.Context, token string, permissions []string) bool
+func HasPermissionsOr(ctx context.Context, loginID string, permissions []string) bool
+func HasPermissionsOrByToken(ctx context.Context, token string, permissions []string) bool
+func CheckPermissionByToken(ctx context.Context, token, permission string) error
+func CheckPermissionAnd(ctx context.Context, loginID string, permissions []string) error
+func CheckPermissionAndByToken(ctx context.Context, token string, permissions []string) error
+func CheckPermissionOr(ctx context.Context, loginID string, permissions []string) error
+func CheckPermissionOrByToken(ctx context.Context, token string, permissions []string) error
 ```
 
-## 账号封禁 API
-
-### Disable
-
-封禁账号。
-
-**签名**：
-```go
-func Disable(ctx context.Context, loginID string, duration time.Duration, reason string, authType ...string) error
-```
-
-**参数**：
-- `loginID` - 登录 ID
-- `duration` - 封禁时长
-- `reason` - 封禁原因
-
-**示例**：
-```go
-_ = global.Disable(ctx, "1000", 1*time.Hour, "manual disable")
-```
-
-### IsDisable
-
-检查账号是否被封禁。
-
-**签名**：
-```go
-func IsDisable(ctx context.Context, loginID string, authType ...string) bool
-```
-
-### Untie
-
-解封账号。
-
-**签名**：
-```go
-func Untie(ctx context.Context, loginID string, authType ...string) error
-```
-
-### GetDisableTTL
-
-获取剩余封禁时间。
-
-**签名**：
-```go
-func GetDisableTTL(ctx context.Context, loginID string, authType ...string) (int64, error)
-```
-
-### 常用扩展方法
+## 角色
 
 ```go
-func GetDisableInfo(ctx context.Context, loginID string, authType ...string) (*dt.DisableInfo, error)
-func CheckDisable(ctx context.Context, loginID string, authType ...string) error
-func DisableService(ctx context.Context, loginID, service string, duration time.Duration, authType ...string) error
-func DisableServiceWithReason(ctx context.Context, loginID, service string, duration time.Duration, reason string, authType ...string) error
-func DisableServiceLevel(ctx context.Context, loginID, service string, level int, duration time.Duration, authType ...string) error
-func DisableServiceLevelWithReason(ctx context.Context, loginID, service string, level int, duration time.Duration, reason string, authType ...string) error
-func UntieService(ctx context.Context, loginID, service string, authType ...string) error
-func IsDisableService(ctx context.Context, loginID, service string, authType ...string) bool
-func IsDisableServiceLevel(ctx context.Context, loginID, service string, level int, authType ...string) bool
-func CheckDisableService(ctx context.Context, loginID string, services []string, authType ...string) error
-func CheckDisableServiceLevel(ctx context.Context, loginID, service string, level int, authType ...string) error
-func GetDisableServiceInfo(ctx context.Context, loginID, service string, authType ...string) (*dt.ServiceDisableInfo, error)
-func GetDisableServiceTTL(ctx context.Context, loginID, service string, authType ...string) (int64, error)
+func CheckRole(ctx context.Context, opts dt.RoleOptions) error
+func CheckRolesAnd(ctx context.Context, opts dt.RoleOptions) error
+func CheckRolesOr(ctx context.Context, opts dt.RoleOptions) error
+func AddRoles(ctx context.Context, opts dt.RoleOptions) error
+func AddRolesByToken(ctx context.Context, token string, roles []string) error
+func RemoveRoles(ctx context.Context, opts dt.RoleOptions) error
+func RemoveRolesByToken(ctx context.Context, token string, roles []string) error
+func GetRoles(ctx context.Context, loginID string) ([]string, error)
+func GetRolesByToken(ctx context.Context, token string) ([]string, error)
+func HasRole(ctx context.Context, loginID, role string) bool
+func HasRoleByToken(ctx context.Context, token, role string) bool
+func HasRolesAnd(ctx context.Context, loginID string, roles []string) bool
+func HasRolesAndByToken(ctx context.Context, token string, roles []string) bool
+func HasRolesOr(ctx context.Context, loginID string, roles []string) bool
+func HasRolesOrByToken(ctx context.Context, token string, roles []string) bool
+func CheckRoleByToken(ctx context.Context, token, role string) error
+func CheckRoleAnd(ctx context.Context, loginID string, roles []string) error
+func CheckRoleAndByToken(ctx context.Context, token string, roles []string) error
+func CheckRoleOr(ctx context.Context, loginID string, roles []string) error
+func CheckRoleOrByToken(ctx context.Context, token string, roles []string) error
 ```
 
-## Session 管理 API
-
-### GetSession
-
-根据登录 ID 获取 Session。
-
-**签名**：
-```go
-func GetSession(ctx context.Context, loginID string, authType ...string) (*dt.Session, error)
-```
-
-### GetSessionByToken
-
-根据 Token 获取 Session。
-
-**签名**：
-```go
-func GetSessionByToken(ctx context.Context, tokenValue string, authType ...string) (*dt.Session, error)
-```
-
-**示例**：
-```go
-if err := global.SetSessionValue(ctx, "1000", "nickname", "张三"); err != nil {
-    return err
-}
-nickname, found, err := global.GetSessionValue(ctx, "1000", "nickname")
-if err != nil {
-    return err
-}
-fmt.Println(nickname, found)
-```
-
-`GetSession` 和 `GetSessionByToken` 返回解码后的快照，直接修改返回结构的 `Data` map 只修改本地值。应使用 `SetSessionValue` 或 `SetSessionValueByToken` 持久化账号数据，同时保留 Session 的有效期。
-
-### 常用扩展方法
+## 封禁状态
 
 ```go
-func GetOnlineTerminalCount(ctx context.Context, loginID string, authType ...string) (int, error)
-func GetOnlineTerminalCountByDevice(ctx context.Context, loginID string, device string, authType ...string) (int, error)
-func GetOnlineTerminalCountByDeviceAndDeviceID(ctx context.Context, loginID string, device string, deviceID string, authType ...string) (int, error)
-func ForEachTerminal(ctx context.Context, loginID string, visitor dt.TerminalVisitor, authType ...string) error
-func ForEachTerminalByDevice(ctx context.Context, loginID, device string, visitor dt.TerminalVisitor, authType ...string) error
-func GetTokenValueListByLoginID(ctx context.Context, loginID string, checkAlive bool, authType ...string) ([]string, error)
-func GetTokenValueListByDeviceAndDeviceID(ctx context.Context, loginID string, device string, deviceID string, checkAlive bool, authType ...string) ([]string, error)
-func GetTokenValueListByDevice(ctx context.Context, loginID string, device string, checkAlive bool, authType ...string) ([]string, error)
-func GetTerminalListByLoginID(ctx context.Context, loginID string, authType ...string) ([]dt.TerminalInfo, error)
-func GetTerminalListByLoginIDAndDevice(ctx context.Context, loginID string, device string, authType ...string) ([]dt.TerminalInfo, error)
-func GetTerminalInfoByToken(ctx context.Context, tokenValue string, authType ...string) (*dt.TerminalInfo, error)
-func GetTokenValueByLoginID(ctx context.Context, loginID string, authType ...string) (string, error)
-func GetTokenValueByLoginIDAndDevice(ctx context.Context, loginID string, device string, authType ...string) (string, error)
-func SearchTokenValue(ctx context.Context, keyword string, start, size int, authType ...string) ([]string, error)
-func SearchSessionId(ctx context.Context, keyword string, start, size int, authType ...string) ([]string, error)
+func Disable(ctx context.Context, opts dt.DisableOptions) error
+func Untie(ctx context.Context, loginID string) error
+func IsDisable(ctx context.Context, loginID string) bool
+func CheckDisable(ctx context.Context, loginID string) error
+func GetDisableInfo(ctx context.Context, loginID string) (*dt.DisableInfo, error)
+func GetDisableTTL(ctx context.Context, loginID string) (int64, error)
+func DisableService(ctx context.Context, opts dt.ServiceDisableOptions) error
+func DisableServiceWithReason(ctx context.Context, loginID, service string, duration time.Duration, reason string) error
+func DisableServiceLevel(ctx context.Context, loginID, service string, level int, duration time.Duration) error
+func DisableServiceLevelWithReason(ctx context.Context, loginID, service string, level int, duration time.Duration, reason string) error
+func DisableDevice(ctx context.Context, opts dt.DeviceDisableOptions) error
+func DisableDeviceWithReason(ctx context.Context, loginID, device string, duration time.Duration, reason string) error
+func DisableDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string, duration time.Duration) error
+func DisableDeviceAndDeviceIDWithReason(ctx context.Context, loginID, device, deviceID string, duration time.Duration, reason string) error
+func UntieService(ctx context.Context, loginID, service string) error
+func IsDisableService(ctx context.Context, loginID, service string) bool
+func IsDisableServiceLevel(ctx context.Context, loginID, service string, level int) bool
+func CheckDisableService(ctx context.Context, loginID string, services ...string) error
+func CheckDisableServiceLevel(ctx context.Context, loginID, service string, level int) error
+func GetDisableServiceInfo(ctx context.Context, loginID, service string) (*dt.ServiceDisableInfo, error)
+func GetDisableServiceTTL(ctx context.Context, loginID, service string) (int64, error)
+func UntieDevice(ctx context.Context, loginID, device string) error
+func UntieDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) error
+func IsDisableDevice(ctx context.Context, loginID, device string) bool
+func IsDisableDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) bool
+func CheckDisableDevice(ctx context.Context, loginID, device string) error
+func CheckDisableDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) error
+func GetDisableDeviceInfo(ctx context.Context, loginID, device string) (*dt.DeviceDisableInfo, error)
+func GetDisableDeviceAndDeviceIDInfo(ctx context.Context, loginID, device, deviceID string) (*dt.DeviceDisableInfo, error)
+func GetDisableDeviceTTL(ctx context.Context, loginID, device string) (int64, error)
+func GetDisableDeviceAndDeviceIDTTL(ctx context.Context, loginID, device, deviceID string) (int64, error)
 ```
 
-## 高级 API
+## 注册与关闭
 
-### GetTokenInfo
+| API | 行为 |
+| --- | --- |
+| `NewBuilder().Build()` | 自动注册并返回 Auth |
+| `NewBuilder().BuildInstance()` | 创建未注册实例 |
+| `GetManager(authType...)` | 立即查找当前 Manager，省略名称时选择默认体系 |
+| `GetEventManager(authType...)` | 获取所选体系的事件管理器 |
+| `SetAuth(auth) / SetManager(mgr)` | 显式注册或替换，关闭旧引擎 |
+| `BuildAndSetManager(builder, authType...)` | 高级构建注册入口，保留显式替换行为 |
+| `Close() / AuthType(name).Close()` | 关闭默认或当前指定体系 |
+| `CloseAll() / DeleteAllManager()` | 关闭全部当前注册实例 |
+| `DeleteManager(authType...)` | 移除并关闭所选 Manager，返回查找错误 |
 
-获取 Token 详细信息。
-
-**签名**：
-```go
-func GetTokenInfo(ctx context.Context, tokenValue string, authType ...string) (*dt.TokenInfo, error)
-```
-
-**返回**：
-```go
-type TokenInfo struct {
-    AuthType      string         `json:"authType"`
-    LoginID       string         `json:"loginId"`
-    Device        string         `json:"device"`
-    DeviceID      string         `json:"deviceId"`
-    CreateTime    int64          `json:"createTime"`
-    Timeout       int64          `json:"timeout"`
-    ActiveTimeout int64          `json:"activeTimeout,omitempty"`
-    Extra         map[string]any `json:"extra,omitempty"`
-}
-```
-
-### 独立能力
-
-Nonce 和 OAuth2 由各自包的 Service 提供，不属于 global API。参见 [Nonce](../guide/security/nonce_zh.md)、[OAuth2](../guide/security/oauth2_zh.md) 与 [Ticket、ShortKey](../guide/security/advanced-features_zh.md)。
-
-### Manager 生命周期 API
-
-```go
-func SetAuth(auth *dt.Auth)
-func Default() (*dt.Auth, error)
-func SetManager(mgr *dt.Manager)
-func GetManager(authType ...string) (*dt.Manager, error)
-func DeleteManager(authType ...string) error
-func DeleteAllManager()
-```
-
-应用优先调用 `SetAuth` 注册实例；`Default` 获取默认认证体系的门面。`SetManager` 用于高级适配场景，与 `SetAuth` 共享注册表和资源所有权规则。
-
-`SetManager` 会替换并立即关闭相同认证类型的旧 Manager。运行期替换前应先确保旧 Manager 不再接收新请求且没有正在执行的请求；Manager 被替换或关闭后不得再次注册。`DeleteManager` 和 `DeleteAllManager` 会先从注册表移除 Manager，再释放其资源。多个 Manager 共享 Storage、Logger 或 Pool 时，应使用 `dt.WithComponentOwnership` 将共享组件标记为调用方持有。
-
-## 常用方法索引
-
-### Manager 生命周期
-- `SetAuth`
-- `Default`
-- `SetManager`
-- `GetManager`
-- `DeleteManager`
-- `DeleteAllManager`
-
-### 登录认证
-- `Login`
-- `LoginWithTimeout`
-- `LoginWithRefreshToken`
-- `LoginWithRefreshTokenOptions`
-- `RefreshToken`
-- `RevokeRefreshToken`
-- `GetRefreshTokenTTL`
-- `IntrospectToken`
-- `LoginByToken`
-- `Logout`
-- `LogoutByDeviceAndDeviceID`
-- `LogoutByDevice`
-- `LogoutByLoginID`
-- `Kickout`
-- `Replace`
-- `KickoutByDeviceAndDeviceID`
-- `KickoutByDevice`
-- `KickoutByLoginID`
-- `ReplaceByDeviceAndDeviceID`
-- `ReplaceByDevice`
-- `ReplaceByLoginID`
-- `IsLogin`
-- `CheckLogin`
-- `GetLoginID`
-- `GetTokenInfo`
-- `GetDevice`
-- `GetDeviceID`
-- `GetTokenCreateTime`
-- `GetTokenTTL`
-- `RenewTimeout`
-
-### 在线终端 / Session
-- `GetOnlineTerminalCount`
-- `GetOnlineTerminalCountByDevice`
-- `GetOnlineTerminalCountByDeviceAndDeviceID`
-- `ForEachTerminal`
-- `ForEachTerminalByDevice`
-- `GetSession`
-- `GetSessionByToken`
-- `SetSessionValue`
-- `GetSessionValue`
-- `DeleteSessionValue`
-- `SetSessionValueByToken`
-- `GetSessionValueByToken`
-- `DeleteSessionValueByToken`
-- `GetTokenValueListByLoginID`
-- `GetTokenValueListByDeviceAndDeviceID`
-- `GetTokenValueListByDevice`
-- `GetTerminalListByLoginID`
-- `GetTerminalListByLoginIDAndDevice`
-- `GetTerminalInfoByToken`
-- `GetTokenValueByLoginID`
-- `GetTokenValueByLoginIDAndDevice`
-- `SearchTokenValue`
-- `SearchSessionId`
-
-### 账号封禁
-- `Disable`
-- `Untie`
-- `IsDisable`
-- `GetDisableInfo`
-- `GetDisableTTL`
-- `DisableService`
-- `DisableServiceWithReason`
-- `DisableServiceLevel`
-- `DisableServiceLevelWithReason`
-- `UntieService`
-- `IsDisableService`
-- `IsDisableServiceLevel`
-- `CheckDisableService`
-- `CheckDisableServiceLevel`
-- `GetDisableServiceInfo`
-- `GetDisableServiceTTL`
-- `CheckDisable`
-
-### 权限验证
-- `AddPermissions`
-- `AddPermissionsByToken`
-- `RemovePermissions`
-- `RemovePermissionsByToken`
-- `GetPermissions`
-- `GetPermissionsByToken`
-- `HasPermission`
-- `HasPermissionByToken`
-- `HasPermissionsAnd`
-- `HasPermissionsAndByToken`
-- `HasPermissionsOr`
-- `HasPermissionsOrByToken`
-- `CheckPermission`
-- `CheckPermissionAnd`
-- `CheckPermissionOr`
-
-### 角色管理
-- `AddRoles`
-- `AddRolesByToken`
-- `RemoveRoles`
-- `RemoveRolesByToken`
-- `GetRoles`
-- `GetRolesByToken`
-- `HasRole`
-- `HasRoleByToken`
-- `HasRolesAnd`
-- `HasRolesAndByToken`
-- `HasRolesOr`
-- `HasRolesOrByToken`
-- `CheckRole`
-- `CheckRoleAnd`
-- `CheckRoleOr`
-
-## 下一步
-
-- [登录认证指南](../guide/core/authentication_zh.md)
-- [权限验证指南](../guide/core/permission_zh.md)
-- [OAuth2 指南](../guide/security/oauth2_zh.md)
+关闭或替换前先排空请求。注册表与构建返回的实例共用引擎；共享组件通过 WithComponentOwnership 声明为调用方持有。详见 [API 与生命周期](../design/api-lifecycle_zh.md)。Nonce、OAuth2、Ticket、ShortKey 使用各自的 [Service](../guide/security/advanced-features_zh.md)，不作为根认证门面方法。

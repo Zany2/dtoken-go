@@ -47,7 +47,7 @@ if !info.Active {
 fmt.Println(info.LoginID, info.ExpiresIn, info.Permissions, info.Roles)
 ```
 
-框架请求使用 GetDTokenContext(r) 返回的上下文执行 IntrospectToken；全局调用使用 global 包，框架不再转导出。
+框架请求使用 GetDTokenContext(r) 返回的上下文执行 IntrospectToken；默认和指定体系调用使用根包，框架不转导出这些 API。
 
 ## Refresh Token
 

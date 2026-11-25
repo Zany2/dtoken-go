@@ -162,7 +162,7 @@ func main() {
 
 上例只注册 user 和 admin，不包含默认体系。未注册的体系不会回退到默认体系，`CheckLogin` 返回 `ErrManagerNotFound`，`IsLogin` 返回 false。同名 `Build` 返回 `ErrManagerAlreadyRegistered`；需要不注册的独立实例时使用 `BuildInstance()`。根包业务函数与实例方法签名一致，通过调用入口选择体系，`LoginOptions.AuthType` 不改变这些入口的体系选择。
 
-应用退出时先停止接收并排空请求，再调用 `dtoken.CloseAll()` 关闭当前注册实例；未注册实例单独调用 `auth.Close()`。旧 global 包共用这张注册表。更多用法见[多认证体系](docs/guide/core/multi-auth_zh.md)和 [API 与生命周期](docs/design/api-lifecycle_zh.md)。
+应用退出时先停止接收并排空请求，再调用 `dtoken.CloseAll()` 关闭当前注册实例；未注册实例单独调用 `auth.Close()`。更多用法见[多认证体系](docs/guide/core/multi-auth_zh.md)和 [API 与生命周期](docs/design/api-lifecycle_zh.md)。
 
 ## Web 框架接入
 
@@ -254,7 +254,6 @@ router.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), options..
 | 包 | 职责 |
 | --- | --- |
 | 根包 `dtoken` | 实例/默认 API、AuthType 选择器、共享注册表、Builder 与高级扩展类型 |
-| `global` | 转发到根共享注册表的旧版兼容 API |
 | `contract`、`config`、`errors`、`event` | 公共契约与共享模型、核心配置、错误、事件发布与监听分发 |
 | `internal/engine` | 内部认证引擎，应用不直接导入 |
 | `internal/builder`、`internal/defaults` | 通用组件装配与内置默认组件工厂 |
@@ -296,7 +295,7 @@ router.Use(gindt.RegisterDTokenContextMiddleware(context.Background(), options..
 - [SSO Redis 存储](sso/storage/redis/README_zh.md)
 - [SSO 测试说明](sso/TESTING_zh.md)
 - [Refresh Token](docs/guide/security/refresh-token_zh.md)
-- [全局 API 参考](docs/api/dtoken_zh.md)
+- [根包 API 参考](docs/api/dtoken_zh.md)
 
 ### 示例项目
 

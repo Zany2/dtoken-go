@@ -162,7 +162,7 @@ func main() {
 
 This example registers only user and admin, with no default system. Missing systems do not fall back to the default: `CheckLogin` returns `ErrManagerNotFound`, and `IsLogin` returns false. Duplicate `Build` calls return `ErrManagerAlreadyRegistered`; use `BuildInstance()` for unregistered instances. Root business functions and instance methods have matching signatures. Select the system through the calling entry point; `LoginOptions.AuthType` does not change routing for these APIs.
 
-On application shutdown, stop accepting requests and drain active handlers before calling `dtoken.CloseAll()` to close current registrations. Close unregistered instances separately with `auth.Close()`. The legacy global package shares this registry. See [multi-auth](docs/guide/core/multi-auth.md) and [API and lifecycle](docs/design/api-lifecycle.md) for more details.
+On application shutdown, stop accepting requests and drain active handlers before calling `dtoken.CloseAll()` to close current registrations. Close unregistered instances separately with `auth.Close()`. See [multi-auth](docs/guide/core/multi-auth.md) and [API and lifecycle](docs/design/api-lifecycle.md) for more details.
 
 ## Web Framework Integration
 
@@ -254,7 +254,6 @@ Instance calls follow `application → Auth → authentication engine → compon
 | Package | Responsibility |
 | --- | --- |
 | Root `dtoken` package | Instance/default APIs, AuthType selectors, shared registry, builder, and advanced extension types |
-| `global` | Legacy APIs forwarding to the shared root registry |
 | `contract`, `config`, `errors`, `event` | Public contracts and shared models, core configuration, errors, event publishing and listener dispatch |
 | `internal/engine` | Internal authentication engine; applications do not import it |
 | `internal/builder`, `internal/defaults` | Generic component assembly and bundled default component factories |
@@ -296,7 +295,7 @@ Maintainers can start with [architecture](docs/design/architecture.md), then use
 - [SSO Redis Storage](sso/storage/redis/README.md)
 - [SSO Testing](sso/TESTING.md)
 - [Refresh Token](docs/guide/security/refresh-token.md)
-- [Global API Reference](docs/api/dtoken.md)
+- [Root API Reference](docs/api/dtoken.md)
 
 ### Example Projects
 

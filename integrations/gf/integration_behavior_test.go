@@ -3,7 +3,6 @@ package gf
 import (
 	"context"
 	"errors"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,8 +17,8 @@ import (
 
 // TestGFRegisterContextMiddlewareUsesFailureCallback verifies manager resolution failures stop before request traversal. TestGFRegisterContextMiddlewareUsesFailureCallback 验证 Manager 解析失败时会触发失败回调并停止请求遍历。
 func TestGFRegisterContextMiddlewareUsesFailureCallback(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	var gotErr error
 	handler := RegisterDTokenContextMiddleware(
@@ -79,8 +78,8 @@ func TestGFContextAdapterRequestValues(t *testing.T) {
 
 // TestGFAnnotationHandlerControlFlow verifies annotation success and failure callbacks. TestGFAnnotationHandlerControlFlow 验证注解成功路径与失败回调。
 func TestGFAnnotationHandlerControlFlow(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
 	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
@@ -148,8 +147,8 @@ func TestGFTypedNilContextIsSafe(t *testing.T) {
 
 // TestGFContextFacadeUsesCachedManager verifies request-context facade operations use the cached manager. TestGFContextFacadeUsesCachedManager 验证请求上下文门面会复用缓存的 Manager。
 func TestGFContextFacadeUsesCachedManager(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
 	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()

@@ -45,6 +45,18 @@ options.OnHTTPError = func(_ *http.Request, status int, err error) {
 
 ## 生命周期与验证
 
+### 响应编码
+
+SSO JSON 输出先编码完整响应，再提交 HTTP 状态。扩展值包含 NaN、channel、循环映射或失败的自定义 JSON 编码器时，返回 HTTP 500 和 `{"code":500,"message":"SSO response encoding failed"}`，不发送部分身份或扩展数据。成功响应保留 HTML 转义、整数精度及结尾换行，且只编码一次。
+
+中心成功响应的编码故障在提交响应头前，通过 `OnHTTPError` 观察一次；错误可匹配 `ErrSerializeFailed`，并保留 JSON 错误链供本地诊断。客户端输出使用相同固定回退，不调用中心观察器。已认证退出错误保留原生命周期观察和阶段响应，不重复观察。
+
+编码发生在业务操作之后：失败不会恢复已消费 Ticket／Code／nonce，不撤销已完成的凭证撤销／退出，也不删除已完成的回调登记。查询响应编码失败本身不撤销凭证。nonce 消费后需新签名请求；一次性凭证已消费则需重新登录。完整编码需要内存缓冲，应用应控制扩展数据规模；本次不新增响应大小配置或流式能力。
+
+完整性保证适用于 HTTP 提交前。连接在响应体写入途中断开时，服务端无法替换状态或保证送达，不追加第二份错误响应，也不重复业务操作。此类传输故障不会作为编码失败触发 `OnHTTPError`。业务钩子或中间件提前写出的响应也无法撤回。自定义编码器必须正常返回；其 panic 及无界执行不由编码边界恢复。
+
+[http_response_test.go](http_response_test.go) 覆盖无效 JSON 值、自定义错误、完整回退、四种凭证模式、兑换及 nonce 消费、退出报告隐私、成功编码保真和部分写入失败。这些用例尚未运行。定向命令：`go test ./sso/... -run 'TestHTTPResponse' -count=1`。
+
 错误报告不增加重试、回滚或状态恢复。成功占用 nonce 前拒绝不消费它；后续钩子失败不恢复已占用 nonce，重试需新签名请求。Ticket／Code 兑换前策略失败保留凭证，兑换后补充结果钩子失败保持已消费状态。删除失败可能使凭证仍有效。应根据操作结果决定恢复方式，不在观察器中执行补偿。
 
 [http_errors_test.go](http_errors_test.go) 和 [http_errors_lifecycle_test.go](http_errors_lifecycle_test.go) 覆盖六个端点、错误分类、三种初始化调用入口、防重放存储恢复、四种凭证模式、兑换阶段及观察次数。既有退出阶段测试覆盖严格／尽力观察行为。源码已格式化并静态检查，**尚未执行**。准备好后从仓库根目录运行：

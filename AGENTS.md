@@ -50,7 +50,6 @@ Examples:
 - The root module publishes core, the public facade, default wiring, bundled basic components, and shared auth checks together. Optional components, framework integrations, SSO, examples, and application tests use independent modules.
 - Packages are split by responsibility:
   - Root package `dtoken`: instance and default facade APIs, AuthType selectors, the shared manager registry, the high-level builder, and public engine extension types.
-  - `global`: legacy facade APIs forwarding to the root shared manager registry.
   - `internal/engine`, `internal/builder`, `internal/defaults`: auth implementation and default component wiring.
   - `contract`, `config`, `errors`, `event`: public extension contracts and shared domain types. Capability service interfaces and data types live in contract/nonce, contract/oauth2, contract/ticket, and contract/shortkey.
   - `nonce`, `oauth2`, `ticket`, `shortkey`: independently composed capabilities and event-aware services.
@@ -62,7 +61,7 @@ Examples:
 - Keep capability implementations out of the internal auth engine and HTTP packages. HTTP adapters depend on capability contracts; bundled services implement those contracts. Compose services explicitly and bind HTTP capabilities through `WithCapabilities`.
 - Use the root `NewBuilder().Build()` to register and return an Auth; duplicate namespaces fail. Use `BuildInstance()` for unregistered instances and tests. Inject instances with `WithAuth` or managers with `WithManager`.
 - Manager is a supported advanced API, obtained from a built Auth; avoid runtime mutation of its configuration. Use SetAuth only for explicit registration or replacement and document shared engine ownership.
-- Root package functions select the default namespace; AuthType(name) resolves the selected namespace on each operation. Root and legacy global APIs share one registry. HTTP registry lookup requires WithManagerResolver(dtoken.GetManager); otherwise inject a concrete instance with WithAuth. Drain application requests before CloseAll; the library does not install signal handlers.
+- Root package functions select the default namespace; AuthType(name) resolves the selected namespace on each operation. Root default functions and AuthType selectors share one registry. HTTP registry lookup requires WithManagerResolver(dtoken.GetManager); otherwise inject a concrete instance with WithAuth. Drain application requests before CloseAll; the library does not install signal handlers.
 - Add optional components in their component packages. Frameworks do not re-export component constructors or global functions. Maintain shared HTTP exports through the Gin integration export generator.
 
 ## Go Coding Rules

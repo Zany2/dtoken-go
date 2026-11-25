@@ -1,6 +1,6 @@
 # Event Listener Guide
 
-Fragment aliases: dt = github.com/Zany2/dtoken-go, global = github.com/Zany2/dtoken-go/global, listener = github.com/Zany2/dtoken-go/event.
+Fragment aliases: dt = github.com/Zany2/dtoken-go, listener = github.com/Zany2/dtoken-go/event.
 
 [中文文档](listener_zh.md) | English
 
@@ -14,10 +14,10 @@ It is used for authentication and lifecycle events, access checks and changes, r
 
 ## Accessing the Event Manager
 
-The current version exposes the event manager through the global facade, the instance facade, and `dt.Manager`:
+Obtain the event manager through the root registry, a selected Auth, or the advanced `dt.Manager`:
 
 ```go
-globalEventMgr, err := global.GetEventManager("user")
+registryEventMgr, err := dt.GetEventManager("user")
 if err != nil {
     // Handle the lookup error.
 }
@@ -25,7 +25,7 @@ instanceEventMgr := auth.EventManager()
 coreEventMgr := mgr.GetEventManager()
 ```
 
-After obtaining `*listener.Manager`, use its registration APIs such as `RegisterFunc` and `RegisterFuncWithConfig`. The global facade, instance facade, and core manager are alternative access paths; choose the manager that belongs to your application.
+After obtaining `*listener.Manager`, use its registration APIs such as `RegisterFunc` and `RegisterFuncWithConfig`. `dt.AuthType("user").EventManager()` also resolves the selected system; it returns nil if unavailable, while `dt.GetEventManager("user")` reports an error. All paths return the event manager owned by the selected engine.
 
 ## Internal Event Types
 

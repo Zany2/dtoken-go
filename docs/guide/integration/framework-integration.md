@@ -4,9 +4,9 @@
 
 ## Overview
 
-The root exposes instance APIs, default namespace functions, and AuthType selectors; global retains legacy calls. NewBuilder().Build() automatically registers and returns Auth. Bind HTTP explicitly with WithAuth(auth) or WithManager(auth.Manager()). Bind independent request services with WithCapabilities.
+The root exposes instance APIs, default namespace functions, and AuthType selectors. NewBuilder().Build() automatically registers and returns Auth. Bind HTTP explicitly with WithAuth(auth) or WithManager(auth.Manager()). Bind independent request services with WithCapabilities.
 
-Frameworks provide HTTP adapters, middleware, and request helpers. Their NewBuilder() returns the root Builder and Build() automatically registers and returns Auth; BuildInstance() does not register. Use root registry calls or legacy positional calls from global. Import Redis, MsgPack, and other components from their own packages.
+Frameworks provide HTTP adapters, middleware, and request helpers. Their NewBuilder() returns the root Builder and Build() automatically registers and returns Auth; BuildInstance() does not register. Use root default functions or AuthType selectors. Import Redis, MsgPack, and other components from their own packages.
 
 Selection order: explicit WithAuth/WithManager, the bound request instance, then an explicitly configured ManagerResolver. WithAuthType selects a namespace through that resolver; without one, it must match the bound instance. A request without either a binding or a resolver returns ErrManagerNotFound. Checks without an override preserve instance and capability bindings; switching instances clears capability bindings.
 

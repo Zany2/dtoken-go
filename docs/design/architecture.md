@@ -9,7 +9,7 @@ DToken-Go centers on a stateful authentication engine. Public contracts support 
 | Area | Location | Responsibility |
 | --- | --- | --- |
 | Application entry | Root dtoken package | Auth instance APIs, application Builder, public options and types |
-| Registry access | Root registry.go and default_*.go; global compatibility facades | Automatic registration, AuthType selection and default calls |
+| Registry access | Root registry.go and default_*.go | Automatic registration, AuthType selection and default calls |
 | Core authentication | internal/engine | Authentication state, Session, terminals, and core lifecycle |
 | Assembly | internal/builder, internal/defaults | Generic component assembly and bundled default factories |
 | Public foundations | contract, config, errors, event | Contracts, shared models, configuration, errors, and event services |
@@ -27,9 +27,7 @@ This diagram shows primary dependencies, omitting some configuration, error, and
 flowchart TD
     App["Application"] --> Auth["Root Auth"]
     App --> Registry["Root registry / AuthType / default APIs"]
-    App --> Global["Legacy global APIs"]
-    Global --> Registry
-    Registry --> Auth
+    Registry --> Engine
     Auth --> Engine["internal/engine"]
     App --> Framework["integrations"]
     Framework --> HTTP["httpauth / httpauth/context"]
@@ -43,8 +41,8 @@ flowchart TD
 ```
 
 - The engine depends on contracts, not concrete components, capabilities, or frameworks.
-- Shared HTTP code depends on capability service interfaces, without importing implementations or global.
-- The root owns the shared registry; Build registers automatically, BuildInstance remains isolated, and global delegates to the same registry.
+- Shared HTTP code depends on capability service interfaces, without importing implementations.
+- The root owns the shared registry; Build registers automatically, BuildInstance remains isolated,.
 - The root Builder is an assembly entry and can select bundled components. Component selection stays outside engine operations.
 
 See [modular design](modular.md) for complete dependency rules and Go module releases. These layers describe responsibilities, not a requirement for one Go module per layer.
@@ -64,7 +62,7 @@ The three construction locations serve application configuration, generic assemb
 | Call style | Main path |
 | --- | --- |
 | Instance operation | Application → Auth → engine → component contracts |
-| Global operation | Application → root default/selected facade (or legacy global) → shared registry → registered engine |
+| Global operation | Application → root default/selected facade → shared registry → registered engine |
 | HTTP core authentication | Framework adapter → shared HTTP checks or request context → engine |
 | HTTP capability operation | Framework request entry → bound capability interface → service implementation |
 | Direct capability operation | Application → explicitly constructed service → borrowed components |
@@ -77,7 +75,7 @@ Manager organizes account coordination, Token maintenance, and runtime shutdown 
 
 Applications prefer Auth; Manager is a supported advanced API. Engine type aliases exposed by the root remain public APIs, with compatibility obligations even when their implementation path is internal. Shared models such as TokenInfo, Session, and TerminalInfo are declared in contract.
 
-Auth facades, global registration, and framework bindings may share one engine. Capability services borrow components, and event bindings do not transfer ownership. [API and lifecycle](api-lifecycle.md) is the source for construction, sharing, replacement, and shutdown contracts.
+Auth facades, registry registration, and framework bindings may share one engine. Capability services borrow components, and event bindings do not transfer ownership. [API and lifecycle](api-lifecycle.md) is the source for construction, sharing, replacement, and shutdown contracts.
 
 ## Documentation responsibilities
 

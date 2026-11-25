@@ -20,6 +20,7 @@ The Redis module's integration tests require `DTOKEN_REDIS_URL` pointing to a de
 | Area | Required result | Current status |
 | --- | --- | --- |
 | Minimum Go | SSO and SSO Redis pass with their own declared Go, workspace and automatic toolchain upgrades disabled | CI matrix and -sso discovery added; pending execution |
+| JSON response integrity | Encode before commitment; fixed 500 on failure, retained diagnostics and unchanged credential consumption | Five regression groups added; pending execution; see [response encoding](HTTP_ERRORS.md#response-encoding) |
 | Center HTTP failures | Six endpoints hide internal diagnostics, retain classification and observe failures once without changing credential lifecycles | Regression sources and public facade example added; pending execution; see [HTTP errors](HTTP_ERRORS.md) |
 | SSO release dependency set | Root, SSO, general Redis and SSO Redis remain at exact requested versions without replacements | Dedicated consumer and manual workflow added; pending execution |
 | HTTP request limits | Six center endpoints and both callback types reject overflow with 413 before nonce/state/credential consumption | Six regression groups added; pending execution |

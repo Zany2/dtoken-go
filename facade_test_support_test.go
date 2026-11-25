@@ -1,21 +1,18 @@
-package global
+package dtoken
 
 import (
-	"github.com/Zany2/dtoken-go"
 	derror "github.com/Zany2/dtoken-go/errors"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
 )
 
-var NewBuilder = dtoken.NewBuilder
-
-func buildTestManager(b *dtoken.Builder) (*manager.Manager, error) {
+func buildTestManager(b *Builder) (*manager.Manager, error) {
 	auth, err := b.BuildInstance()
 	if err != nil {
 		return nil, err
 	}
 	return auth.Manager(), nil
 }
-func mustBuildTestManager(b *dtoken.Builder) *manager.Manager {
+func mustBuildTestManager(b *Builder) *manager.Manager {
 	mgr, err := buildTestManager(b)
 	if err != nil {
 		panic(err)

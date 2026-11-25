@@ -5,8 +5,8 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
+	"github.com/Zany2/dtoken-go"
 	adapter "github.com/Zany2/dtoken-go/contract"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
 	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
@@ -99,8 +99,8 @@ func fiberReviewLogin(t *testing.T, mgr *manager.Manager, token string) {
 
 // TestFiberReviewUserContext verifies user values, deadlines and cancellation reach checks and facades. TestFiberReviewUserContext 验证用户上下文值、截止时间与取消信号传入鉴权及门面。
 func TestFiberReviewUserContext(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	for _, check := range fiberReviewChecks {
 		t.Run(check.name, func(t *testing.T) {
 			storage := &fiberReviewStorage{Storage: memory.NewStorage()}
@@ -182,13 +182,13 @@ func (s *fiberReviewStorage) Get(ctx context.Context, key string) (any, error) {
 
 // TestFiberReviewManagerSelection verifies precedence, inheritance and closed-manager rejection. TestFiberReviewManagerSelection 验证选择优先级、请求继承与已关闭 Manager 的拒绝行为。
 func TestFiberReviewManagerSelection(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	global := newFiberReviewManager(t, "", nil)
 	local := newFiberReviewManager(t, "fiber-local", nil)
 	closed := newFiberReviewManager(t, "fiber-closed", nil)
 	closed.CloseManager()
-	dtglobal.SetManager(global)
+	dtoken.SetManager(global)
 	const token = "same-token"
 	fiberReviewLogin(t, global, token)
 	fiberReviewLogin(t, local, token)
@@ -200,8 +200,8 @@ func TestFiberReviewManagerSelection(t *testing.T) {
 			want   *manager.Manager
 		}{
 			{"cached", local, nil, local},
-			{"global", nil, []AuthOption{WithManagerResolver(dtglobal.GetManager)}, global},
-			{"auth_type", local, []AuthOption{WithManagerResolver(dtglobal.GetManager), WithAuthType(global.GetConfig().AuthType)}, global},
+			{"global", nil, []AuthOption{WithManagerResolver(dtoken.GetManager)}, global},
+			{"auth_type", local, []AuthOption{WithManagerResolver(dtoken.GetManager), WithAuthType(global.GetConfig().AuthType)}, global},
 			{"explicit", local, []AuthOption{WithManager(global), WithAuthType("missing")}, global},
 			{"missing_type", local, []AuthOption{WithAuthType("missing")}, nil},
 			{"closed", closed, nil, nil},
@@ -243,11 +243,11 @@ func TestFiberReviewManagerSelection(t *testing.T) {
 
 // TestFiberReviewRenewalUsesRequestManager protects identical tokens in different namespaces. TestFiberReviewRenewalUsesRequestManager 验证不同认证空间内同值 Token 的续期归属。
 func TestFiberReviewRenewalUsesRequestManager(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	global := newFiberReviewManager(t, "", nil)
 	local := newFiberReviewManager(t, "fiber-renew", nil)
-	dtglobal.SetManager(global)
+	dtoken.SetManager(global)
 	const token = "renew-token"
 	fiberReviewLogin(t, global, token)
 	fiberReviewLogin(t, local, token)
@@ -270,10 +270,10 @@ func TestFiberReviewRenewalUsesRequestManager(t *testing.T) {
 
 // TestFiberReviewCachedContextValidation rejects unusable cached managers and replaces typed nils. TestFiberReviewCachedContextValidation 拒绝不可用的缓存 Manager 并替换带类型空值。
 func TestFiberReviewCachedContextValidation(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	global := newFiberReviewManager(t, "", nil)
-	dtglobal.SetManager(global)
+	dtoken.SetManager(global)
 	c := newFiberReviewContext(t)
 	var typedNil *corecontext.DTokenContext
 	c.Locals(DTokenCtxKey, typedNil)

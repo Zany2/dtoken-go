@@ -1,4 +1,4 @@
-package global
+package dtoken
 
 import (
 	"context"
@@ -10,10 +10,6 @@ import (
 
 	manager "github.com/Zany2/dtoken-go/internal/engine"
 )
-
-// TestBuilderSettersConfigureAllModules verifies every high-level builder setter writes the intended value. TestBuilderSettersConfigureAllModules 验证高层 Builder 配置器均写入预期值。
-
-// TestBuilderInjectsExplicitComponents verifies direct component and optional-manager setters. TestBuilderInjectsExplicitComponents 验证显式核心组件和可选管理器注入。
 
 // TestBuilderConfigAndAccessProvider verifies config copy/reset behavior and access-provider wiring. TestBuilderConfigAndAccessProvider 验证 Config 的复制/重置行为和访问提供器装配。
 func TestBuilderConfigAndAccessProvider(t *testing.T) {
@@ -74,8 +70,8 @@ func TestBuilderConfigAndAccessProvider(t *testing.T) {
 	}
 }
 
-// TestGlobalTerminalOperationFamilies verifies global logout, kickout, and replace routes. TestGlobalTerminalOperationFamilies 验证全局 logout、kickout 和 replace 路由。
-func TestGlobalTerminalOperationFamilies(t *testing.T) {
+// TestRootTerminalOperationFamilies verifies global logout, kickout, and replace routes. TestRootTerminalOperationFamilies 验证全局 logout、kickout 和 replace 路由。
+func TestRootTerminalOperationFamilies(t *testing.T) {
 	DeleteAllManager()
 	t.Cleanup(DeleteAllManager)
 
@@ -87,7 +83,7 @@ func TestGlobalTerminalOperationFamilies(t *testing.T) {
 	SetManager(mgr)
 
 	login := func(loginID, device, deviceID string) string {
-		token, loginErr := Login(ctx, loginID, device, deviceID, "global-terminal")
+		token, loginErr := AuthType("global-terminal").Login(ctx, LoginOptions{LoginID: loginID, Device: device, DeviceID: deviceID})
 		if loginErr != nil {
 			t.Fatalf("Login(%s) error = %v", loginID, loginErr)
 		}
@@ -96,50 +92,50 @@ func TestGlobalTerminalOperationFamilies(t *testing.T) {
 
 	logoutDeviceToken := login("logout-device", "web", "logout-1")
 	login("logout-device", "web", "logout-2")
-	if err = LogoutByDevice(ctx, "logout-device", "web", "global-terminal"); err != nil || IsLogin(ctx, logoutDeviceToken, "global-terminal") {
-		t.Fatalf("LogoutByDevice() error = %v, token active = %v", err, IsLogin(ctx, logoutDeviceToken, "global-terminal"))
+	if err = AuthType("global-terminal").LogoutByDevice(ctx, "logout-device", "web"); err != nil || AuthType("global-terminal").IsLogin(ctx, logoutDeviceToken) {
+		t.Fatalf("LogoutByDevice() error = %v, token active = %v", err, AuthType("global-terminal").IsLogin(ctx, logoutDeviceToken))
 	}
 	logoutLoginToken := login("logout-login", "mobile", "logout-login-1")
-	if err = LogoutByLoginID(ctx, "logout-login", "global-terminal"); err != nil || IsLogin(ctx, logoutLoginToken, "global-terminal") {
-		t.Fatalf("LogoutByLoginID() error = %v, token active = %v", err, IsLogin(ctx, logoutLoginToken, "global-terminal"))
+	if err = AuthType("global-terminal").LogoutByLoginID(ctx, "logout-login"); err != nil || AuthType("global-terminal").IsLogin(ctx, logoutLoginToken) {
+		t.Fatalf("LogoutByLoginID() error = %v, token active = %v", err, AuthType("global-terminal").IsLogin(ctx, logoutLoginToken))
 	}
 	directLogoutToken := login("logout-direct", "web", "logout-direct-1")
-	if err = Logout(ctx, directLogoutToken, "global-terminal"); err != nil || IsLogin(ctx, directLogoutToken, "global-terminal") {
-		t.Fatalf("Logout() error = %v, token active = %v", err, IsLogin(ctx, directLogoutToken, "global-terminal"))
+	if err = AuthType("global-terminal").LogoutByToken(ctx, directLogoutToken); err != nil || AuthType("global-terminal").IsLogin(ctx, directLogoutToken) {
+		t.Fatalf("Logout() error = %v, token active = %v", err, AuthType("global-terminal").IsLogin(ctx, directLogoutToken))
 	}
 
 	kickToken := login("kick-token", "web", "kick-token-1")
-	if err = Kickout(ctx, kickToken, "global-terminal"); err != nil || IsLogin(ctx, kickToken, "global-terminal") {
-		t.Fatalf("Kickout() error = %v, token active = %v", err, IsLogin(ctx, kickToken, "global-terminal"))
+	if err = AuthType("global-terminal").KickoutByToken(ctx, kickToken); err != nil || AuthType("global-terminal").IsLogin(ctx, kickToken) {
+		t.Fatalf("Kickout() error = %v, token active = %v", err, AuthType("global-terminal").IsLogin(ctx, kickToken))
 	}
 	kickConcreteToken := login("kick-concrete", "web", "kick-concrete-1")
-	if err = KickoutByDeviceAndDeviceID(ctx, "kick-concrete", "web", "kick-concrete-1", "global-terminal"); err != nil || IsLogin(ctx, kickConcreteToken, "global-terminal") {
-		t.Fatalf("KickoutByDeviceAndDeviceID() error = %v, token active = %v", err, IsLogin(ctx, kickConcreteToken, "global-terminal"))
+	if err = AuthType("global-terminal").KickoutByDeviceAndDeviceID(ctx, "kick-concrete", "web", "kick-concrete-1"); err != nil || AuthType("global-terminal").IsLogin(ctx, kickConcreteToken) {
+		t.Fatalf("KickoutByDeviceAndDeviceID() error = %v, token active = %v", err, AuthType("global-terminal").IsLogin(ctx, kickConcreteToken))
 	}
 	kickDeviceToken := login("kick-device", "web", "kick-device-1")
-	if err = KickoutByDevice(ctx, "kick-device", "web", "global-terminal"); err != nil || IsLogin(ctx, kickDeviceToken, "global-terminal") {
-		t.Fatalf("KickoutByDevice() error = %v, token active = %v", err, IsLogin(ctx, kickDeviceToken, "global-terminal"))
+	if err = AuthType("global-terminal").KickoutByDevice(ctx, "kick-device", "web"); err != nil || AuthType("global-terminal").IsLogin(ctx, kickDeviceToken) {
+		t.Fatalf("KickoutByDevice() error = %v, token active = %v", err, AuthType("global-terminal").IsLogin(ctx, kickDeviceToken))
 	}
 	kickLoginToken := login("kick-login", "mobile", "kick-login-1")
-	if err = KickoutByLoginID(ctx, "kick-login", "global-terminal"); err != nil || IsLogin(ctx, kickLoginToken, "global-terminal") {
-		t.Fatalf("KickoutByLoginID() error = %v, token active = %v", err, IsLogin(ctx, kickLoginToken, "global-terminal"))
+	if err = AuthType("global-terminal").KickoutByLoginID(ctx, "kick-login"); err != nil || AuthType("global-terminal").IsLogin(ctx, kickLoginToken) {
+		t.Fatalf("KickoutByLoginID() error = %v, token active = %v", err, AuthType("global-terminal").IsLogin(ctx, kickLoginToken))
 	}
 
 	replaceToken := login("replace-token", "web", "replace-token-1")
-	if err = Replace(ctx, replaceToken, "global-terminal"); err != nil || IsLogin(ctx, replaceToken, "global-terminal") {
-		t.Fatalf("Replace() error = %v, token active = %v", err, IsLogin(ctx, replaceToken, "global-terminal"))
+	if err = AuthType("global-terminal").ReplaceByToken(ctx, replaceToken); err != nil || AuthType("global-terminal").IsLogin(ctx, replaceToken) {
+		t.Fatalf("Replace() error = %v, token active = %v", err, AuthType("global-terminal").IsLogin(ctx, replaceToken))
 	}
 	replaceConcreteToken := login("replace-concrete", "web", "replace-concrete-1")
-	if err = ReplaceByDeviceAndDeviceID(ctx, "replace-concrete", "web", "replace-concrete-1", "global-terminal"); err != nil || IsLogin(ctx, replaceConcreteToken, "global-terminal") {
-		t.Fatalf("ReplaceByDeviceAndDeviceID() error = %v, token active = %v", err, IsLogin(ctx, replaceConcreteToken, "global-terminal"))
+	if err = AuthType("global-terminal").ReplaceByDeviceAndDeviceID(ctx, "replace-concrete", "web", "replace-concrete-1"); err != nil || AuthType("global-terminal").IsLogin(ctx, replaceConcreteToken) {
+		t.Fatalf("ReplaceByDeviceAndDeviceID() error = %v, token active = %v", err, AuthType("global-terminal").IsLogin(ctx, replaceConcreteToken))
 	}
 	replaceDeviceToken := login("replace-device", "web", "replace-device-1")
-	if err = ReplaceByDevice(ctx, "replace-device", "web", "global-terminal"); err != nil || IsLogin(ctx, replaceDeviceToken, "global-terminal") {
-		t.Fatalf("ReplaceByDevice() error = %v, token active = %v", err, IsLogin(ctx, replaceDeviceToken, "global-terminal"))
+	if err = AuthType("global-terminal").ReplaceByDevice(ctx, "replace-device", "web"); err != nil || AuthType("global-terminal").IsLogin(ctx, replaceDeviceToken) {
+		t.Fatalf("ReplaceByDevice() error = %v, token active = %v", err, AuthType("global-terminal").IsLogin(ctx, replaceDeviceToken))
 	}
 	replaceLoginToken := login("replace-login", "mobile", "replace-login-1")
-	if err = ReplaceByLoginID(ctx, "replace-login", "global-terminal"); err != nil || IsLogin(ctx, replaceLoginToken, "global-terminal") {
-		t.Fatalf("ReplaceByLoginID() error = %v, token active = %v", err, IsLogin(ctx, replaceLoginToken, "global-terminal"))
+	if err = AuthType("global-terminal").ReplaceByLoginID(ctx, "replace-login"); err != nil || AuthType("global-terminal").IsLogin(ctx, replaceLoginToken) {
+		t.Fatalf("ReplaceByLoginID() error = %v, token active = %v", err, AuthType("global-terminal").IsLogin(ctx, replaceLoginToken))
 	}
 }
 
@@ -432,12 +428,6 @@ func TestInstanceSessionAndAccessFacades(t *testing.T) {
 	requireFacadeNoError(t, "Auth.RemoveRoles", auth.RemoveRoles(ctx, RoleOptions{LoginID: "session-access-user", Roles: []string{"operator"}}))
 	requireFacadeNoError(t, "Auth.RemoveRolesByToken", auth.RemoveRolesByToken(ctx, token1, []string{"admin"}))
 }
-
-// TestInstanceDisableAndCredentialFacades verifies instance disable, ticket, and short-key forwarding. TestInstanceDisableAndCredentialFacades 验证实例封禁、Ticket 和短 Key 转发。
-
-// TestInstanceOAuth2Facade verifies all instance OAuth2 forwarding routes. TestInstanceOAuth2Facade 验证实例 OAuth2 全部转发入口。
-
-// TestOptionalFacadeErrorsAfterClose verifies optional status helpers return their documented zero status after close. TestOptionalFacadeErrorsAfterClose 验证关闭后可选状态方法返回约定零值和错误。
 
 func requireFacadeNoError(t *testing.T, name string, err error) {
 	t.Helper()

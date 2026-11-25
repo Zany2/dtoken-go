@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/Zany2/dtoken-go"
 	adapter "github.com/Zany2/dtoken-go/contract"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
 	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
@@ -82,8 +82,8 @@ func echoReviewLogin(t *testing.T, mgr *manager.Manager, token string) {
 
 // TestEchoReviewRequestContext verifies per-request values, deadlines and cancellation reach hooks and storage. TestEchoReviewRequestContext 验证请求值、截止时间与取消信号传入钩子及存储。
 func TestEchoReviewRequestContext(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	for _, check := range echoReviewChecks {
 		t.Run(check.name, func(t *testing.T) {
 			storage := &echoReviewStorage{Storage: memory.NewStorage()}
@@ -158,13 +158,13 @@ func (s *echoReviewStorage) Get(ctx context.Context, key string) (any, error) {
 
 // TestEchoReviewManagerSelection verifies explicit precedence, inheritance and closed-manager rejection. TestEchoReviewManagerSelection 验证显式配置优先级、请求继承与已关闭 Manager 的拒绝行为。
 func TestEchoReviewManagerSelection(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	global := newEchoReviewManager(t, "", nil)
 	local := newEchoReviewManager(t, "echo-local", nil)
 	closed := newEchoReviewManager(t, "echo-closed", nil)
 	closed.CloseManager()
-	dtglobal.SetManager(global)
+	dtoken.SetManager(global)
 	const token = "same-token"
 	echoReviewLogin(t, global, token)
 	echoReviewLogin(t, local, token)
@@ -176,8 +176,8 @@ func TestEchoReviewManagerSelection(t *testing.T) {
 			want   *manager.Manager
 		}{
 			{"cached", local, nil, local},
-			{"global", nil, []AuthOption{WithManagerResolver(dtglobal.GetManager)}, global},
-			{"auth_type", local, []AuthOption{WithManagerResolver(dtglobal.GetManager), WithAuthType(global.GetConfig().AuthType)}, global},
+			{"global", nil, []AuthOption{WithManagerResolver(dtoken.GetManager)}, global},
+			{"auth_type", local, []AuthOption{WithManagerResolver(dtoken.GetManager), WithAuthType(global.GetConfig().AuthType)}, global},
 			{"explicit", local, []AuthOption{WithManager(global), WithAuthType("missing")}, global},
 			{"missing_type", local, []AuthOption{WithAuthType("missing")}, nil},
 			{"closed", closed, nil, nil},
@@ -222,11 +222,11 @@ func TestEchoReviewManagerSelection(t *testing.T) {
 
 // TestEchoReviewRenewalUsesRequestManager protects identical tokens in different auth namespaces. TestEchoReviewRenewalUsesRequestManager 验证不同认证空间内同值 Token 的续期归属。
 func TestEchoReviewRenewalUsesRequestManager(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	global := newEchoReviewManager(t, "", nil)
 	local := newEchoReviewManager(t, "echo-renew", nil)
-	dtglobal.SetManager(global)
+	dtoken.SetManager(global)
 	const token = "renew-token"
 	echoReviewLogin(t, global, token)
 	echoReviewLogin(t, local, token)
@@ -250,10 +250,10 @@ func TestEchoReviewRenewalUsesRequestManager(t *testing.T) {
 
 // TestEchoReviewCachedContextValidation checks typed nils and unusable cached managers. TestEchoReviewCachedContextValidation 检查带类型空值与不可用的缓存 Manager。
 func TestEchoReviewCachedContextValidation(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	global := newEchoReviewManager(t, "", nil)
-	dtglobal.SetManager(global)
+	dtoken.SetManager(global)
 	c := echo4.New().NewContext(httptest.NewRequest(http.MethodGet, "/", nil), httptest.NewRecorder())
 	var typedNil *corecontext.DTokenContext
 	c.Set(DTokenCtxKey, typedNil)

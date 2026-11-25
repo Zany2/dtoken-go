@@ -1,6 +1,6 @@
 # 事件监听指南
 
-代码片段中，dt = github.com/Zany2/dtoken-go，global = github.com/Zany2/dtoken-go/global，listener = github.com/Zany2/dtoken-go/event。
+代码片段中，dt = github.com/Zany2/dtoken-go，listener = github.com/Zany2/dtoken-go/event。
 
 [English](listener.md) | 中文文档
 
@@ -14,10 +14,10 @@
 
 ## 获取事件管理器
 
-当前版本可通过全局门面、实例门面和 `dt.Manager` 获取事件管理器：
+可通过根包注册表、Auth 实例或高级 `dt.Manager` 获取事件管理器：
 
 ```go
-globalEventMgr, err := global.GetEventManager("user")
+registryEventMgr, err := dt.GetEventManager("user")
 if err != nil {
     // 处理查找错误。
 }
@@ -25,7 +25,7 @@ instanceEventMgr := auth.EventManager()
 coreEventMgr := mgr.GetEventManager()
 ```
 
-取得 `*listener.Manager` 后，可使用 `RegisterFunc`、`RegisterFuncWithConfig` 等注册 API。全局门面、实例门面和核心 Manager 是三种可选入口，应选择当前应用实际持有的管理器。
+取得 `*listener.Manager` 后，可使用 `RegisterFunc`、`RegisterFuncWithConfig` 等注册 API。也可通过 `dt.AuthType("user").EventManager()` 查找指定体系，不可用时返回 nil；`dt.GetEventManager("user")` 则返回查找错误。这些入口最终取得所选引擎持有的同一个事件管理器。
 
 ## 内部事件类型
 

@@ -2,7 +2,7 @@
 
 English | [中文文档](nonce_zh.md)
 
-Nonce is an independent capability composed through the nonce package Manager and Service. It requires no global registration or builder switches. The Manager handles credentials; the Service publishes events through an optional emitter.
+Nonce is an independent capability composed through the nonce package Manager and Service. It requires no registry registration or builder switches. The Manager handles credentials; the Service publishes events through an optional emitter.
 
 The interface lives in contract/nonce and the implementation in nonce; both ship with the root module. Service borrows storage and does not close it. Close Auth after all capability calls finish.
 

@@ -19,6 +19,7 @@ var protocolErrors = []struct {
 	{ErrReplayProtectionConfig, http.StatusInternalServerError},
 	{ErrAuthorizationPolicyUnavailable, http.StatusServiceUnavailable},
 	{ErrStorageUnavailable, http.StatusInternalServerError},
+	{ErrSerializeFailed, http.StatusInternalServerError},
 	{context.Canceled, http.StatusInternalServerError},
 	{context.DeadlineExceeded, http.StatusInternalServerError},
 	{ErrRequestTooLarge, http.StatusRequestEntityTooLarge},
@@ -54,6 +55,15 @@ var protocolErrors = []struct {
 	{ErrInvalidSign, http.StatusUnauthorized},
 	{ErrMethodNotAllowed, http.StatusMethodNotAllowed},
 	{ErrClientNotFound, http.StatusNotFound},
+}
+
+// writeHTTPResponse observes encoding failures before committing a fixed public fallback. writeHTTPResponse 在提交固定公开回退响应前观察编码失败。
+func (h *HTTPServer) writeHTTPResponse(w http.ResponseWriter, r *http.Request, status int, response Response) {
+	status, payload, err := prepareJSON(status, response)
+	if err != nil {
+		h.observeHTTPError(r, status, err)
+	}
+	writeJSONBytes(w, status, payload)
 }
 
 // protocolError returns a known public message without calling Error on the supplied diagnostic. protocolError 返回已知公开消息，不调用传入诊断错误的 Error 方法。

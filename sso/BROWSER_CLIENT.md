@@ -1,5 +1,7 @@
 # Browser client integration
 
+The same browser handlers support HTTP and shared-store exchange. Set `ClientApp`'s `SharedStoreServer` for local exchange, or `UseHTTPCheck=true` to force HTTP. Both paths share state, PKCE, local-session hooks, and logout. See [deployment patterns](DEPLOYMENT_MODES.md).
+
 `BrowserClient` composes login initiation, browser binding, callback validation, credential exchange/lookup, session deadlines, and logout handlers on top of `ClientApp`. Local sessions remain application-owned: use root `dtoken.Auth` or an existing session system without global registration. Existing low-level APIs remain unchanged.
 
 ## Composition

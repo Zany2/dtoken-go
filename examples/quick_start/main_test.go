@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/Zany2/dtoken-go"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	"github.com/Zany2/dtoken-go/internal/defaults"
 	"github.com/gin-gonic/gin"
 	"net/http"
@@ -50,13 +49,13 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	if !ok || token == "" {
 		t.Fatal("login response did not contain a token")
 	}
-	if loginID, err := dtglobal.GetLoginID(context.Background(), token); err != nil || loginID != "alice" {
+	if loginID, err := dtoken.GetLoginID(context.Background(), token); err != nil || loginID != "alice" {
 		t.Fatalf("returned token loginID = %q, error = %v", loginID, err)
 	}
-	if !dtglobal.HasRole(context.Background(), "alice", "admin") {
+	if !dtoken.HasRole(context.Background(), "alice", "admin") {
 		t.Fatal("login did not seed admin role")
 	}
-	if !dtglobal.HasPermission(context.Background(), "alice", "article:read") {
+	if !dtoken.HasPermission(context.Background(), "alice", "article:read") {
 		t.Fatal("login did not seed article permission")
 	}
 }
@@ -65,14 +64,14 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupQuickStartManager(t)
 	ctx := context.Background()
-	token, err := dtglobal.Login(ctx, "alice")
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "alice"})
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
-	if err = dtglobal.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
+	if err = dtoken.AddRoles(ctx, dtoken.RoleOptions{LoginID: "alice", Roles: []string{"admin"}}); err != nil {
 		t.Fatalf("AddRoles() error = %v", err)
 	}
-	if err = dtglobal.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
+	if err = dtoken.AddPermissions(ctx, dtoken.PermissionOptions{LoginID: "alice", Permissions: []string{"article:read"}}); err != nil {
 		t.Fatalf("AddPermissions() error = %v", err)
 	}
 
@@ -105,14 +104,14 @@ func TestMiddlewareUsesRequestContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupQuickStartManager(t)
 	ctx := context.Background()
-	token, err := dtglobal.Login(ctx, "context-user")
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "context-user"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := dtglobal.AddRoles(ctx, "context-user", []string{"admin"}); err != nil {
+	if err := dtoken.AddRoles(ctx, dtoken.RoleOptions{LoginID: "context-user", Roles: []string{"admin"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := dtglobal.AddPermissions(ctx, "context-user", []string{"article:read"}); err != nil {
+	if err := dtoken.AddPermissions(ctx, dtoken.PermissionOptions{LoginID: "context-user", Permissions: []string{"article:read"}}); err != nil {
 		t.Fatal(err)
 	}
 	for _, check := range []struct {
@@ -160,7 +159,7 @@ func TestMiddlewareUsesRequestContext(t *testing.T) {
 func TestAccessDenialStopsHandlers(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupQuickStartManager(t)
-	token, err := dtglobal.Login(context.Background(), "unprivileged-user")
+	token, err := dtoken.Login(context.Background(), dtoken.LoginOptions{LoginID: "unprivileged-user"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,8 +198,8 @@ func TestAccessDenialStopsHandlers(t *testing.T) {
 
 func setupQuickStartManager(t *testing.T) {
 	t.Helper()
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	mgr, err := defaults.NewBuilder().
 		TokenName(tokenHeader).
@@ -212,7 +211,7 @@ func setupQuickStartManager(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtglobal.SetManager(mgr)
+	dtoken.SetManager(mgr)
 }
 
 func requestQuickStart(t *testing.T, router *gin.Engine, method, path, body, token string) *httptest.ResponseRecorder {
@@ -229,20 +228,20 @@ func requestQuickStart(t *testing.T, router *gin.Engine, method, path, body, tok
 
 // registeredAuth returns the explicitly registered test fixture. registeredAuth 返回显式注册的测试夹具。
 func registeredAuth() *dtoken.Auth {
-	auth, err := dtglobal.Default()
+	mgr, err := dtoken.GetManager()
 	if err != nil {
 		panic(err)
 	}
-	return auth
+	return dtoken.New(mgr)
 }
 
 // registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
 func registerTestRoutes(r *gin.Engine) { registerRoutes(r, registeredAuth()) }
 
-// TestInjectedLoginWithoutGlobal verifies login and access grants use the injected instance. TestInjectedLoginWithoutGlobal 验证登录与授权使用注入实例且无需全局注册。
-func TestInjectedLoginWithoutGlobal(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+// TestInjectedLoginUsesBuiltInstance verifies routes and the registry share the built engine. TestInjectedLoginUsesBuiltInstance 验证路由与注册表共用构建返回的引擎。
+func TestInjectedLoginUsesBuiltInstance(t *testing.T) {
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	auth := initDToken()
 	t.Cleanup(auth.Close)
 	router := gin.New()
@@ -258,7 +257,7 @@ func TestInjectedLoginWithoutGlobal(t *testing.T) {
 	if !auth.HasRole(ctx, "alice", "admin") || !auth.HasPermission(ctx, "alice", "article:read") {
 		t.Fatal("access grants missing from injected instance")
 	}
-	if _, err := dtglobal.GetManager(); err == nil {
-		t.Fatal("example unexpectedly registered a global manager")
+	if mgr, err := dtoken.GetManager(); err != nil || mgr != auth.Manager() {
+		t.Fatalf("Build registration differs from injected instance: %v", err)
 	}
 }

@@ -1,6 +1,6 @@
 # Session 与终端管理
 
-代码片段中，dt = github.com/Zany2/dtoken-go，global = github.com/Zany2/dtoken-go/global。
+代码片段中，dt = github.com/Zany2/dtoken-go。
 
 [English](../core/session-terminal.md) | 中文文档
 
@@ -21,8 +21,8 @@ Token 元信息由 `TokenInfo` 保存，包含认证体系、登录 ID、设备�
 ```go
 ctx := context.Background()
 
-sess, err := global.GetSession(ctx, "10001")
-sess, err = global.GetSessionByToken(ctx, token)
+sess, err := dt.GetSession(ctx, "10001")
+sess, err = dt.GetSessionByToken(ctx, token)
 ```
 
 Session 可用于查看当前账号下有哪些终端在线。
@@ -34,34 +34,34 @@ Session 可用于查看当前账号下有哪些终端在线。
 ## 查询终端
 
 ```go
-terminal, err := global.GetTerminalInfoByToken(ctx, token)
+terminal, err := dt.GetTerminalInfoByToken(ctx, token)
 ```
 
 按账号、设备类型、具体设备统计在线数量：
 
 ```go
-count, err := global.GetOnlineTerminalCount(ctx, "10001")
-webCount, err := global.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
-deviceCount, err := global.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "web", "browser-1")
+count, err := dt.GetOnlineTerminalCount(ctx, "10001")
+webCount, err := dt.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
+deviceCount, err := dt.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "web", "browser-1")
 ```
 
 ## 查询 Token 列表
 
 ```go
-tokens, err := global.GetTokenValueListByLoginID(ctx, "10001", true)
-tokens, err = global.GetTokenValueListByDevice(ctx, "10001", "web", true)
-tokens, err = global.GetTokenValueListByDeviceAndDeviceID(ctx, "10001", "web", "browser-1", true)
+tokens, err := dt.GetTokenValueListByLoginID(ctx, "10001", true)
+tokens, err = dt.GetTokenValueListByDevice(ctx, "10001", "web", true)
+tokens, err = dt.GetTokenValueListByDeviceAndDeviceID(ctx, "10001", "web", "browser-1", true)
 ```
 
 最后一个布尔参数表示是否只返回仍然有效的 Token。
 
-Manager 的 Token 列表方法最多接收一个可选 `checkAlive` 值；本文展示的 global 函数必须显式传入布尔值，其后才是可选的 authType。开启时，列表、在线计数和最新 Token 查询都会核对终端与 Token 的账号、设备、创建时间及生命周期序号，忽略不匹配的陈旧条目。按 Token 查询终端详情同样执行匹配，不返回旧登录的设备或扩展数据。
+Manager 的 Token 列表方法最多接收一个可选 `checkAlive` 值；本文展示的根包函数必须显式传入布尔值，通过 dt.AuthType(name) 选择体系。开启时，列表、在线计数和最新 Token 查询都会核对终端与 Token 的账号、设备、创建时间及生命周期序号，忽略不匹配的陈旧条目。按 Token 查询终端详情同样执行匹配，不返回旧登录的设备或扩展数据。
 
 ## 查询终端列表
 
 ```go
-terminals, err := global.GetTerminalListByLoginID(ctx, "10001")
-terminals, err = global.GetTerminalListByLoginIDAndDevice(ctx, "10001", "web")
+terminals, err := dt.GetTerminalListByLoginID(ctx, "10001")
+terminals, err = dt.GetTerminalListByLoginIDAndDevice(ctx, "10001", "web")
 ```
 
 ## 获取最新 Token
@@ -69,19 +69,19 @@ terminals, err = global.GetTerminalListByLoginIDAndDevice(ctx, "10001", "web")
 Manager 的 `GetTerminalListByLoginID` 和 `GetTokenValueByLoginID` 最多接受一个可选设备类型，多余参数返回错误。
 
 ```go
-token, err := global.GetTokenValueByLoginID(ctx, "10001")
-token, err = global.GetTokenValueByLoginIDAndDevice(ctx, "10001", "web")
+token, err := dt.GetTokenValueByLoginID(ctx, "10001")
+token, err = dt.GetTokenValueByLoginIDAndDevice(ctx, "10001", "web")
 ```
 
 ## 遍历终端
 
 ```go
-err := global.ForEachTerminal(ctx, "10001", func(info dt.TerminalInfo) bool {
+err := dt.ForEachTerminal(ctx, "10001", func(info dt.TerminalInfo) bool {
     fmt.Println(info.Device, info.DeviceID, info.Token)
     return true
 })
 
-err = global.ForEachTerminalByDevice(ctx, "10001", "web", func(info dt.TerminalInfo) bool {
+err = dt.ForEachTerminalByDevice(ctx, "10001", "web", func(info dt.TerminalInfo) bool {
     return true
 })
 ```
@@ -93,8 +93,8 @@ err = global.ForEachTerminalByDevice(ctx, "10001", "web", func(info dt.TerminalI
 ## 搜索
 
 ```go
-tokens, err := global.SearchTokenValue(ctx, "keyword", 0, 20)
-sessions, err := global.SearchSessionId(ctx, "keyword", 0, 20)
+tokens, err := dt.SearchTokenValue(ctx, "keyword", 0, 20)
+sessions, err := dt.SearchSessionId(ctx, "keyword", 0, 20)
 ```
 
 这些能力依赖存储实现支持 key 扫描。内置内存存储和 Redis 存储均支持。

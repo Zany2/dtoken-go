@@ -7,15 +7,14 @@ import (
 	"testing"
 
 	"github.com/Zany2/dtoken-go"
-	"github.com/Zany2/dtoken-go/global"
 	gindt "github.com/Zany2/dtoken-go/integrations/gin"
 	"github.com/gin-gonic/gin"
 )
 
 // TestInstanceAndExplicitRegistry checks automatic registration and explicit HTTP resolver binding. TestInstanceAndExplicitRegistry 验证自动注册与 HTTP 解析器的显式绑定。
 func TestInstanceAndExplicitRegistry(t *testing.T) {
-	global.DeleteAllManager()
-	t.Cleanup(global.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	var builder *dtoken.Builder = gindt.NewBuilder()
 	auth, err := builder.IsPrintBanner(false).IsLog(false).AutoRenew(false).Build()
 	if err != nil {
@@ -34,7 +33,6 @@ func TestInstanceAndExplicitRegistry(t *testing.T) {
 		{"unbound", nil, http.StatusNotFound},
 		{"instance", []gindt.AuthOption{gindt.WithAuth(auth)}, http.StatusNoContent},
 		{"registry", []gindt.AuthOption{gindt.WithManagerResolver(dtoken.GetManager)}, http.StatusNoContent},
-		{"legacy registry", []gindt.AuthOption{gindt.WithManagerResolver(global.GetManager)}, http.StatusNoContent},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			router := gin.New()

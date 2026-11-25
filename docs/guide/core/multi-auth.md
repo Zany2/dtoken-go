@@ -18,9 +18,9 @@ dtoken:admin:token:yyy
 dtoken:app:session:client-001
 ```
 
-`AuthType("user")` is normalized to `user:`. Global APIs accept either `"user"` or `"user:"`.
+`AuthType("user")` is normalized to `user:`. Builders, `dt.AuthType(name)`, and `dt.GetManager(name)` accept either `"user"` or `"user:"`. TokenName selects the HTTP field used to read tokens; KeyPrefix and AuthType determine the storage namespace.
 
-## Register Multiple Managers
+## Build And Register Multiple Systems
 
 <!-- dtoken-compile: multi-auth -->
 ```go
@@ -78,7 +78,7 @@ Managers own and close Storage, Logger, and Pool components configured through a
 
 Call `Auth.Close()` (or advanced `Manager.CloseManager()`) from the application's external shutdown flow after stopping new business requests and waiting for in-flight synchronous calls. Do not call it synchronously inside a manager task or event listener: shutdown waits for accepted tasks and listeners, which can include the caller itself. A callback that needs shutdown should signal the application lifecycle controller and return. Business calls after shutdown are not supported; `CloseManager` is not a request-draining barrier.
 
-Duplicate Build returns `errors.ErrManagerAlreadyRegistered` without replacing an instance. For explicit replacement, build with BuildInstance and call dt.SetAuth(auth). The legacy global package shares the root registry.
+Duplicate Build returns `errors.ErrManagerAlreadyRegistered` without replacing an instance. For explicit replacement, build with BuildInstance and call dt.SetAuth(auth).
 
 ## Call A Specific Auth System
 
@@ -93,7 +93,31 @@ err = user.CheckPermission(ctx, dt.PermissionOptions{LoginID: "10001", Permissio
 roles, err := user.GetRoles(ctx, "10001")
 ```
 
-Package calls such as dt.CheckLogin use the default `auth:` namespace. A missing explicit namespace returns ErrManagerNotFound and never uses the default instead.
+Package calls such as dt.CheckLogin use the default `auth:` namespace. The example above builds only user and admin, with no default registration. Build another instance without AuthType to enable default calls.
+
+| Entry point | Selection behavior |
+| --- | --- |
+| `dt.CheckLogin(ctx, token)` | Look up the default namespace auth: |
+| `dt.AuthType("user").CheckLogin(ctx, token)` | Look up the current user engine on every operation |
+| `userAuth.CheckLogin(ctx, token)` | Use the fixed engine returned by the builder |
+
+For a missing system, CheckLogin returns ErrManagerNotFound and IsLogin returns false, without falling back. Selectors can be cached and follow explicit replacement; fixed Auth instances do not. The AuthType field in operation options does not route calls; the entry points above select the engine.
+
+## Unregistered Instances And Explicit Replacement
+
+BuildInstance / MustBuildInstance do not access the registry. Use them for tests, dependency injection, or independent engines with the same name, and close each through its owner. Unregistered engines with the same name do not automatically isolate data in a shared backend: configure AuthType, KeyPrefix, or separate storage appropriately.
+
+To replace a registered system, first stop new requests to the old engine and drain its active requests, then execute:
+
+```go
+replacement, err := dt.NewBuilder().AuthType("user").BuildInstance()
+if err != nil {
+    panic(err)
+}
+dt.SetAuth(replacement)
+```
+
+SetAuth registers the new engine and closes the old one. Existing fixed Auth instances and WithAuth bindings still refer to the old engine and cannot continue using it. CloseAll closes current registrations, excludes unregistered instances, and allows later builds. See [API and lifecycle](../../design/api-lifecycle.md) for the complete contract.
 
 ## Use With Framework Middleware
 
@@ -113,7 +137,7 @@ func registerRoutes(ctx context.Context, r *gin.Engine, userAuth, adminAuth *dt.
 
 With this setup, `/api` only recognizes Tokens from `user`, and `/admin` only recognizes Tokens from `admin`.
 
-Each group binds its instance through `WithAuth`, independently of global registration. For dynamic registry lookup, explicitly configure `WithManagerResolver(dt.GetManager)` and select a namespace with `WithAuthType`.
+Each group binds its instance through `WithAuth`, independently of registry registration. For dynamic registry lookup, explicitly configure `WithManagerResolver(dt.GetManager)` and select a namespace with `WithAuthType`.
 
 ## Redis Key Isolation
 

@@ -158,7 +158,7 @@ func (c *AuthController) Refresh(r *ghttp.Request) {
 
 ## OAuth2 Refresh Token
 
-OAuth2 refresh uses an independent service created with oauth2.NewService(server, auth). See the OAuth2 guide for initialization; this is not an Auth or global method:
+OAuth2 refresh uses an independent service created with oauth2.NewService(server, auth). See the OAuth2 guide for initialization; this is a capability service method:
 
 ```go
 newToken, err := service.RefreshOAuth2AccessToken(

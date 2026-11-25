@@ -34,7 +34,7 @@ Build / MustBuild register automatically. Duplicate Build returns errors.ErrMana
 | Query and persist session data | `auth.GetSession` / `auth.SetSessionValue` / `auth.GetSessionValue` |
 | Refresh tokens | `auth.LoginWithRefreshToken` / `auth.LoginWithRefreshTokenOptions` / `auth.RefreshToken` |
 
-Instance methods use their own authentication namespace; an option's `AuthType` does not switch the instance to another engine. Use another Auth or dtoken.AuthType(name) for another namespace. That option field remains for legacy global option calls.
+Instance methods use their own authentication namespace; an option's `AuthType` does not switch the instance to another engine. Use another Auth or dtoken.AuthType(name) for another namespace. That option field is retained for source compatibility and does not control routing.
 
 ## Login And Permission Example
 
@@ -61,18 +61,11 @@ if err := auth.CheckPermission(ctx, dtoken.PermissionOptions{
 }
 ```
 
-## Differences From Legacy global APIs
+## Root And Instance Calls
 
-`global` resolves instances through a registry; many functions accept an optional trailing authType. Instance method names and parameters can differ, so changing only the call prefix is insufficient.
+Root functions and instance methods use the same business signatures. Use `dt.Login(ctx, dt.LoginOptions{LoginID: "10001"})` for the default namespace, `dt.AuthType("user").Login(ctx, dt.LoginOptions{LoginID: "10001"})` for a named namespace, or `auth.Login(ctx, dt.LoginOptions{LoginID: "10001"})` for a fixed instance. Here dt names the root package. The former global package is removed; positional calls must be migrated to these signatures. See the [root API reference](dtoken.md).
 
-| Global call | Corresponding instance call |
-| --- | --- |
-| `global.Login(ctx, id, device, deviceID, authType)` | `auth.Login(ctx, dtoken.LoginOptions{LoginID: id, Device: device, DeviceID: deviceID})` |
-| `global.Logout(ctx, token)` | `auth.LogoutByToken(ctx, token)` |
-| `global.AddPermissions(ctx, id, values)` | `auth.AddPermissions(ctx, dtoken.PermissionOptions{LoginID: id, Permissions: values})` |
-| `global.CheckPermission(ctx, id, value)` | `auth.CheckPermission(ctx, dtoken.PermissionOptions{LoginID: id, Permission: value})` |
-
-See the [global API reference](dtoken.md). HTTP middleware uses instances through `WithAuth(auth)`. Grouped request-context APIs use underlying Manager option types; distinguish root LoginOptions from ManagerLoginOptions when passing options.
+HTTP uses WithAuth(auth) or an explicit WithManagerResolver(dt.GetManager). Grouped request-context APIs use Manager option types; distinguish root LoginOptions from ManagerLoginOptions.
 
 ## Lifecycle And Extensions
 

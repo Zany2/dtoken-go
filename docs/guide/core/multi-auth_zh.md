@@ -18,9 +18,9 @@ dtoken:admin:token:yyy
 dtoken:app:session:client-001
 ```
 
-`AuthType("user")` 会自动规范化为 `user:`，调用全局 API 时传入 `"user"` 或 `"user:"` 都可以。
+`AuthType("user")` 会自动规范化为 `user:`，构建、`dt.AuthType(name)` 和 `dt.GetManager(name)` 都接受 `"user"` 或 `"user:"`。`TokenName` 决定 HTTP 读取 Token 的字段名，存储命名空间由 `KeyPrefix` 与 `AuthType` 决定。
 
-## 注册多套 Manager
+## 构建并注册多个体系
 
 <!-- dtoken-compile: multi-auth -->
 ```go
@@ -78,7 +78,7 @@ Manager 默认持有并关闭通过 Builder 配置的 Storage、Logger 和 Pool�
 
 应先停止接收新业务请求、等待执行中的同步调用结束，再由应用外部关闭流程调用 `Auth.Close()`；高级 Manager 入口为 `CloseManager()`。不要在 Manager 任务或事件监听器内部同步调用它：关闭过程会等待已接收的任务和监听器，可能包含调用者自身。回调需要发起关闭时，应通知应用生命周期控制方后返回。关闭后不再支持业务调用；`CloseManager` 不负责排空业务请求。
 
-同名 Build 返回 `errors.ErrManagerAlreadyRegistered`，不会替换已有实例。需要主动替换时使用 `BuildInstance()` 构建，再调用 `dt.SetAuth(auth)`。旧 global 包与根包共用注册表。
+同名 Build 返回 `errors.ErrManagerAlreadyRegistered`，不会替换已有实例。需要主动替换时使用 `BuildInstance()` 构建，再调用 `dt.SetAuth(auth)`。
 
 ## 调用指定认证体系
 
@@ -93,7 +93,31 @@ err = user.CheckPermission(ctx, dt.PermissionOptions{LoginID: "10001", Permissio
 roles, err := user.GetRoles(ctx, "10001")
 ```
 
-直接调用 dt.CheckLogin 等包级方法使用默认体系 `auth:`。显式选择的体系不存在时返回 ErrManagerNotFound，不会改用默认体系。
+直接调用 dt.CheckLogin 等包级方法使用默认体系 `auth:`。上面的示例只构建 user 和 admin，没有注册默认体系；如需默认调用，另用未设置 AuthType 的 Builder 构建。
+
+| 入口 | 选择行为 |
+| --- | --- |
+| `dt.CheckLogin(ctx, token)` | 查找默认体系 `auth:` |
+| `dt.AuthType("user").CheckLogin(ctx, token)` | 每次操作查找当前 user 引擎 |
+| `userAuth.CheckLogin(ctx, token)` | 使用构建返回的固定引擎 |
+
+选择不存在的体系时，CheckLogin 返回 `ErrManagerNotFound`，IsLogin 返回 false，不会回退默认体系。选择器可以缓存，并会跟随显式替换；构建返回的固定实例不会。业务选项中的 `AuthType` 字段不参与路由，体系由上述调用入口确定。
+
+## 独立实例与显式替换
+
+`BuildInstance()` / `MustBuildInstance()` 不访问注册表，适用于测试、依赖注入或需要同名独立引擎的场景；持有者单独调用 `auth.Close()`。同名未注册实例不会自动隔离共享后端中的数据，仍须正确配置 AuthType、KeyPrefix 或独立存储。
+
+需要替换已注册体系时，在停止旧引擎的新请求并排空已有请求后执行：
+
+```go
+replacement, err := dt.NewBuilder().AuthType("user").BuildInstance()
+if err != nil {
+    panic(err)
+}
+dt.SetAuth(replacement)
+```
+
+SetAuth 注册新引擎并关闭旧引擎；已有固定 Auth 和 WithAuth 绑定仍引用旧引擎，不能继续使用。`dt.CloseAll()` 关闭全部当前注册实例，不包含未注册实例，也不禁止随后重新构建。完整约定见 [API 与生命周期](../../design/api-lifecycle_zh.md)。
 
 ## 框架中间件中使用
 

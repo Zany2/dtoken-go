@@ -1,4 +1,4 @@
-package global
+package dtoken
 
 import (
 	"context"
@@ -44,8 +44,8 @@ func TestRegistryNormalizesAuthType(t *testing.T) {
 	}
 }
 
-// TestGlobalFacadeLoginAndAccessFlow verifies global functions route to selected manager. TestGlobalFacadeLoginAndAccessFlow 验证全局函数会路由到指定管理器。
-func TestGlobalFacadeLoginAndAccessFlow(t *testing.T) {
+// TestRootFacadeLoginAndAccessFlow verifies global functions route to selected manager. TestRootFacadeLoginAndAccessFlow 验证全局函数会路由到指定管理器。
+func TestRootFacadeLoginAndAccessFlow(t *testing.T) {
 	DeleteAllManager()
 	t.Cleanup(DeleteAllManager)
 
@@ -60,21 +60,21 @@ func TestGlobalFacadeLoginAndAccessFlow(t *testing.T) {
 	}
 	SetManager(mgr)
 
-	token, err := Login(ctx, "user-1", "web", "browser-1", "facade")
+	token, err := AuthType("facade").Login(ctx, LoginOptions{LoginID: "user-1", Device: "web", DeviceID: "browser-1"})
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
-	if !IsLogin(ctx, token, "facade") {
+	if !AuthType("facade").IsLogin(ctx, token) {
 		t.Fatal("IsLogin() = false, want true")
 	}
-	device, err := GetDevice(ctx, token, "facade")
+	device, err := AuthType("facade").GetDevice(ctx, token)
 	if err != nil {
 		t.Fatalf("GetDevice() error = %v", err)
 	}
 	if device != "web" {
 		t.Fatalf("GetDevice() = %q, want web", device)
 	}
-	combinedDevice, combinedDeviceID, err := GetDeviceAndDeviceID(ctx, token, "facade")
+	combinedDevice, combinedDeviceID, err := AuthType("facade").GetDeviceAndDeviceID(ctx, token)
 	if err != nil {
 		t.Fatalf("GetDeviceAndDeviceID() error = %v", err)
 	}
@@ -82,23 +82,23 @@ func TestGlobalFacadeLoginAndAccessFlow(t *testing.T) {
 		t.Fatalf("GetDeviceAndDeviceID() = %q/%q, want web/browser-1", combinedDevice, combinedDeviceID)
 	}
 
-	if err = AddPermissions(ctx, "user-1", []string{"profile:read"}, "facade"); err != nil {
+	if err = AuthType("facade").AddPermissions(ctx, PermissionOptions{LoginID: "user-1", Permissions: []string{"profile:read"}}); err != nil {
 		t.Fatalf("AddPermissions() error = %v", err)
 	}
-	if !HasPermission(ctx, "user-1", "profile:read", "facade") {
+	if !AuthType("facade").HasPermission(ctx, "user-1", "profile:read") {
 		t.Fatal("HasPermission() = false, want true")
 	}
-	if err = AddRolesByToken(ctx, token, []string{"member"}, "facade"); err != nil {
+	if err = AuthType("facade").AddRolesByToken(ctx, token, []string{"member"}); err != nil {
 		t.Fatalf("AddRolesByToken() error = %v", err)
 	}
-	if !HasRoleByToken(ctx, token, "member", "facade") {
+	if !AuthType("facade").HasRoleByToken(ctx, token, "member") {
 		t.Fatal("HasRoleByToken() = false, want true")
 	}
 
-	if err = LogoutByDeviceAndDeviceID(ctx, "user-1", "web", "browser-1", "facade"); err != nil {
+	if err = AuthType("facade").LogoutByDeviceAndDeviceID(ctx, "user-1", "web", "browser-1"); err != nil {
 		t.Fatalf("LogoutByDeviceAndDeviceID() error = %v", err)
 	}
-	if IsLogin(ctx, token, "facade") {
+	if AuthType("facade").IsLogin(ctx, token) {
 		t.Fatal("IsLogin() after logout = true, want false")
 	}
 }
@@ -159,5 +159,3 @@ func TestInstanceFacadeOptions(t *testing.T) {
 		t.Fatalf("manager auth type = %q, want normalized instance", cfg.AuthType)
 	}
 }
-
-// TestInstanceFacadeOptionalModules verifies optional module instance facade methods. TestInstanceFacadeOptionalModules 验证可选模块实例门面方法。

@@ -4,7 +4,6 @@ import (
 	dtoken "github.com/Zany2/dtoken-go"
 	dt1 "github.com/Zany2/dtoken-go/contract"
 	dterror "github.com/Zany2/dtoken-go/errors"
-	dt3 "github.com/Zany2/dtoken-go/global"
 	dt2 "github.com/Zany2/dtoken-go/storage/memory"
 
 	"bytes"
@@ -28,7 +27,7 @@ import (
 // TestInitDTokenConfiguration verifies the actual example's renewal configuration. TestInitDTokenConfiguration 验证实际示例的续期配置。
 func TestInitDTokenConfiguration(t *testing.T) {
 	setupBeegoManager(t)
-	mgr, err := dt3.GetManager()
+	mgr, err := dtoken.GetManager()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,20 +141,20 @@ func TestLoginBodyLimit(t *testing.T) {
 func TestAccountAndDeviceRestrictions(t *testing.T) {
 	setupBeegoManager(t)
 	ctx := context.Background()
-	if err := dt3.Disable(ctx, "blocked", time.Hour, ""); err != nil {
+	if err := dtoken.Disable(ctx, dtoken.DisableOptions{LoginID: "blocked", Duration: time.Hour, Reason: ""}); err != nil {
 		t.Fatal(err)
 	}
 	router := newBeegoExampleRouter()
 	assertBeegoResponse(t, requestBeego(router, http.MethodPost, "/login", "username=blocked&password=123456", ""), http.StatusForbidden, dterror.CodeAccountDisabled)
-	token, err := dt3.Login(ctx, "alice", "web")
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "alice", Device: "web"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := dt3.DisableDevice(ctx, "alice", "web", time.Hour); err != nil {
+	if err := dtoken.DisableDevice(ctx, dtoken.DeviceDisableOptions{LoginID: "alice", Device: "web", Duration: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
 	assertBeegoResponse(t, requestBeego(router, http.MethodGet, "/me", "", token), http.StatusForbidden, dterror.CodeAccountDisabled)
-	if err := dt3.UntieDevice(ctx, "alice", "web"); err != nil {
+	if err := dtoken.UntieDevice(ctx, "alice", "web"); err != nil {
 		t.Fatal(err)
 	}
 	assertBeegoResponse(t, requestBeego(router, http.MethodGet, "/me", "", token), http.StatusOK, dterror.CodeSuccess)
@@ -163,8 +162,8 @@ func TestAccountAndDeviceRestrictions(t *testing.T) {
 
 // TestStorageErrorsUseUnifiedResponse verifies both handler and filter failures are sanitized. TestStorageErrorsUseUnifiedResponse 验证处理器与过滤器的故障响应均隐藏内部详情。
 func TestStorageErrorsUseUnifiedResponse(t *testing.T) {
-	dt3.DeleteAllManager()
-	t.Cleanup(dt3.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	storage := &failingBeegoStorage{Storage: dt2.NewStorage()}
 	builtAuth1, err := dtoken.NewBuilder().Storage(storage).
 		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
@@ -173,7 +172,7 @@ func TestStorageErrorsUseUnifiedResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dt3.SetManager(mgr)
+	dtoken.SetManager(mgr)
 	for _, withAuth := range []bool{false, true} {
 		t.Run(fmt.Sprintf("withAuth=%t", withAuth), func(t *testing.T) {
 			handlerCalls := 0

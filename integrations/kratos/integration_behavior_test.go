@@ -3,7 +3,6 @@ package kratos
 import (
 	"context"
 	"errors"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -18,8 +17,8 @@ import (
 
 // TestKratosContextMiddlewareManagerFailure verifies manager resolution failures return through FailFunc. TestKratosContextMiddlewareManagerFailure 验证 Manager 解析失败会通过 FailFunc 返回。
 func TestKratosContextMiddlewareManagerFailure(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	var gotErr error
 	handler := RegisterDTokenContextMiddleware(
@@ -249,8 +248,8 @@ func TestKratosContextLookupHandlesNilAndTypedNil(t *testing.T) {
 	}
 
 	mgr := newKratosBehaviorManager(t)
-	dtglobal.SetManager(mgr)
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.SetManager(mgr)
+	t.Cleanup(dtoken.DeleteAllManager)
 	if _, err := GetLoginIDByCtx(nil); !errors.Is(err, derror.ErrNotLogin) {
 		t.Fatalf("GetLoginIDByCtx(nil) error = %v, want ErrNotLogin", err)
 	}

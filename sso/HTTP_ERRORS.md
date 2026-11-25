@@ -45,6 +45,18 @@ Authenticated HTTP logout failures invoke `OnLogoutResult` first, then `OnHTTPEr
 
 ## Lifecycle and verification
 
+### Response encoding
+
+SSO JSON writers encode the complete envelope before committing the HTTP status. Unsupported extension values (for example NaN, channels, cyclic maps or failing custom JSON marshalers) produce HTTP 500 with `{"code":500,"message":"SSO response encoding failed"}`. No partial identity or extension data is sent. Successful JSON retains HTML escaping, integer precision and its trailing newline; it is encoded only once.
+
+Center success responses use `OnHTTPError` to report an encoding failure once, before headers are committed. The error matches `ErrSerializeFailed` and retains the JSON error chain for local diagnostics. Client-side writers use the same fixed fallback without invoking the center observer. Authenticated logout errors keep their existing lifecycle observer and stage response, without duplicate observation.
+
+Encoding happens after the underlying operation: failure does not restore a consumed Ticket/Code/nonce, undo a revoke/logout, or remove already-completed callback registrations. Inspection encoding failure does not itself revoke credentials. A fresh signed retry is required after nonce consumption; consumed one-time credentials require a new login. JSON must be buffered in memory, so applications should keep extension data reasonably small. This change adds no response-size configuration or streaming support.
+
+The guarantee applies before HTTP commitment. If the connection breaks during the body write, the server cannot replace the status or guarantee delivery; it does not append a second error response or repeat the operation. Such transport failures are not reported as encoding failures through `OnHTTPError`. Previously written headers/body from application hooks or middleware also cannot be undone. Custom marshalers must terminate normally: their panics and unbounded work are not recovered by this encoding boundary.
+
+[http_response_test.go](http_response_test.go) covers invalid JSON values, custom errors, full-response fallback, four credential modes, exchange and nonce consumption, logout report privacy, successful encoding fidelity and partial-write failure. These cases have not run. Focused command: `go test ./sso/... -run 'TestHTTPResponse' -count=1`.
+
 Reporting adds no retry, rollback or restoration. Rejection before a successful nonce claim leaves it available; a claimed nonce stays consumed after a later hook failure, requiring a fresh signed retry. Policy failure before Ticket/Code exchange preserves the credential; enrichment failure after exchange keeps it consumed. A failed deletion can leave a credential valid. Drive recovery from operation results, not compensation in the observer.
 
 [http_errors_test.go](http_errors_test.go) and [http_errors_lifecycle_test.go](http_errors_lifecycle_test.go) cover six endpoints, classification, three initialization paths, replay-storage recovery, four credential modes, exchange stages and observation counts. Existing logout-stage tests cover strict/best-effort observations. Sources are formatted and statically reviewed, **not executed**. Run from the repository root when ready:

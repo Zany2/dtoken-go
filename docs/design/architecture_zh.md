@@ -9,7 +9,7 @@ DToken-Go 以有状态认证引擎为核心，通过公共契约替换组件，�
 | 区域 | 位置 | 职责 |
 | --- | --- | --- |
 | 应用入口 | 根包 dtoken | Auth 实例 API、应用 Builder、公开选项与类型 |
-| 注册表访问 | 根 registry.go、default_*.go 与 global 兼容门面 | 自动注册、AuthType 选择及默认调用 |
+| 注册表访问 | 根 registry.go 与 default_*.go | 自动注册、AuthType 选择及默认调用 |
 | 核心认证 | internal/engine | 认证状态、Session、终端和核心生命周期 |
 | 装配 | internal/builder、internal/defaults | 通用组件装配与内置默认工厂 |
 | 公共基础 | contract、config、errors、event | 契约、共享模型、配置、错误和事件服务 |
@@ -27,9 +27,7 @@ SSO 保留独立模块和生命周期，内部设计见 [SSO 文档](../../sso/R
 flowchart TD
     App["Application"] --> Auth["Root Auth"]
     App --> Registry["Root registry / AuthType / default APIs"]
-    App --> Global["Legacy global APIs"]
-    Global --> Registry
-    Registry --> Auth
+    Registry --> Engine
     Auth --> Engine["internal/engine"]
     App --> Framework["integrations"]
     Framework --> HTTP["httpauth / httpauth/context"]
@@ -43,8 +41,8 @@ flowchart TD
 ```
 
 - 核心引擎依赖契约，不依赖具体组件、独立能力或框架。
-- HTTP 公共层依赖能力服务接口，不导入能力实现或 global。
-- 根包持有共享注册表；Build 自动注册，BuildInstance 保持独立，global 转发到同一注册表。
+- HTTP 公共层依赖能力服务接口，不导入能力实现。
+- 根包持有共享注册表；Build 自动注册，BuildInstance 保持独立。
 - 根 Builder 是装配入口，可以选择内置组件；组件选择不进入引擎业务代码。
 
 完整依赖规则和 Go 模块发布范围见[模块化设计](modular_zh.md)。这里的层次按职责划分，不要求每层独立成为 Go 模块。
@@ -64,7 +62,7 @@ flowchart TD
 | 调用方式 | 主要路径 |
 | --- | --- |
 | 实例调用 | 应用 → Auth → 核心引擎 → 组件契约 |
-| 全局调用 | 应用 → 根默认/指定门面（或旧 global）→ 共享注册表 → 已注册的引擎 |
+| 全局调用 | 应用 → 根默认/指定门面→ 共享注册表 → 已注册的引擎 |
 | HTTP 核心鉴权 | 框架适配器 → HTTP 公共检查或请求上下文 → 引擎 |
 | HTTP 能力调用 | 框架请求入口 → 请求中绑定的能力接口 → 服务实现 |
 | 直接能力调用 | 应用 → 显式构建的能力服务 → 借用的组件 |

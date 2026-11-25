@@ -1,5 +1,7 @@
 # SSO Testing
 
+Shared-store regression sources cover separate issuer/consumer instances, ordinary/atomic storage, HTTP compatibility, policy, PKCE, nonces, failure lifecycles, and two-domain login/global logout. The new tests and public API example have not been run; see [deployment verification](DEPLOYMENT_MODES.md#verification-status).
+
 This document describes recommended verification flows for the standalone SSO module, including in-memory mode, Redis mode, Server/Client integration, and single logout.
 
 ## Release integration checks
@@ -11,6 +13,8 @@ Both configuration guides now contain complete marked programs consumed by the e
 New minimum-Go CI entries and a dedicated four-module consumer cover published Redis construction/ownership and browser-to-account-logout public APIs. The dedicated consumer disables workspace/toolchain upgrades and runs race detection without Redis. The scripts, discovery regressions and CI additions have not run; see [dedicated release checks](MIGRATION.md#dedicated-sso-release-checks).
 
 ## Unit Tests
+
+Protocol response integrity regressions cover encoding before status commitment, fixed 500 fallback, error observation, four credential modes, consumed Ticket/Code/nonce and interrupted writes. Sources have not run; see [response encoding](HTTP_ERRORS.md#response-encoding).
 
 Center error regressions cover six routes, private diagnostics, initialization paths, replay storage recovery, four credential modes and pre/post-consumption exchange failures. Logout regressions also check observer counts for strict/best-effort outcomes. Sources have not run; see [HTTP error verification](HTTP_ERRORS.md#lifecycle-and-verification).
 

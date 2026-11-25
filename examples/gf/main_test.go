@@ -1,16 +1,16 @@
 package main
 
 import (
-	dtglobal "github.com/Zany2/dtoken-go/global"
+	"github.com/Zany2/dtoken-go"
 	"testing"
 )
 
 func TestInitDTokenConfiguration(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
-	dtglobal.SetAuth(initDToken())
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+	initDToken()
 
-	mgr, err := dtglobal.GetManager()
+	mgr, err := dtoken.GetManager()
 	if err != nil {
 		t.Fatalf("GetManager() error = %v", err)
 	}

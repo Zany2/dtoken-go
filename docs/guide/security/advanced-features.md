@@ -47,7 +47,7 @@ if !info.Active {
 fmt.Println(info.LoginID, info.ExpiresIn, info.Permissions, info.Roles)
 ```
 
-Use the request context from GetDTokenContext(r) for IntrospectToken. Global operations live in global; frameworks do not re-export them.
+Use the request context from GetDTokenContext(r) for IntrospectToken. Default and named-system calls live in the root package; frameworks do not re-export them.
 
 ## Refresh Token
 

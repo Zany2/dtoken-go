@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"github.com/Zany2/dtoken-go"
 	dterror "github.com/Zany2/dtoken-go/errors"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	"net/http"
 	"net/http/httptest"
@@ -43,13 +42,13 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	if envelope.Code != dterror.CodeSuccess || envelope.Data.Token == "" {
 		t.Fatalf("login envelope = %+v, want success and token", envelope)
 	}
-	if id, err := dtglobal.GetLoginID(context.Background(), envelope.Data.Token); err != nil || id != "alice" {
+	if id, err := dtoken.GetLoginID(context.Background(), envelope.Data.Token); err != nil || id != "alice" {
 		t.Fatalf("returned token login ID=%q error=%v", id, err)
 	}
-	if !dtglobal.HasRole(context.Background(), "alice", "admin") {
+	if !dtoken.HasRole(context.Background(), "alice", "admin") {
 		t.Fatal("login did not seed admin role")
 	}
-	if !dtglobal.HasPermission(context.Background(), "alice", "article:read") {
+	if !dtoken.HasPermission(context.Background(), "alice", "article:read") {
 		t.Fatal("login did not seed article permission")
 	}
 }
@@ -58,14 +57,14 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 func TestProtectedRoutesAndLogout(t *testing.T) {
 	setupKratosManager(t)
 	ctx := context.Background()
-	token, err := dtglobal.Login(ctx, "alice")
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "alice"})
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
-	if err = dtglobal.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
+	if err = dtoken.AddRoles(ctx, dtoken.RoleOptions{LoginID: "alice", Roles: []string{"admin"}}); err != nil {
 		t.Fatalf("AddRoles() error = %v", err)
 	}
-	if err = dtglobal.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
+	if err = dtoken.AddPermissions(ctx, dtoken.PermissionOptions{LoginID: "alice", Permissions: []string{"article:read"}}); err != nil {
 		t.Fatalf("AddPermissions() error = %v", err)
 	}
 
@@ -91,7 +90,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 		}
 	}
 
-	bobToken, err := dtglobal.Login(ctx, "bob")
+	bobToken, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "bob"})
 	if err != nil {
 		t.Fatalf("Login(bob) error = %v", err)
 	}
@@ -112,9 +111,9 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 
 func setupKratosManager(t *testing.T) {
 	t.Helper()
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
-	dtglobal.SetAuth(initDToken())
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+	initDToken()
 }
 
 func requestKratos(t *testing.T, server *khttp.Server, method, path, body, token string) *httptest.ResponseRecorder {
@@ -122,7 +121,7 @@ func requestKratos(t *testing.T, server *khttp.Server, method, path, body, token
 	req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	if token != "" {
-		mgr, err := dtglobal.GetManager()
+		mgr, err := dtoken.GetManager()
 		if err != nil {
 			t.Fatalf("GetManager() error = %v", err)
 		}
@@ -135,17 +134,17 @@ func requestKratos(t *testing.T, server *khttp.Server, method, path, body, token
 
 // registeredAuth returns the explicitly registered test fixture. registeredAuth 返回显式注册的测试夹具。
 func registeredAuth() *dtoken.Auth {
-	auth, err := dtglobal.Default()
+	mgr, err := dtoken.GetManager()
 	if err != nil {
 		panic(err)
 	}
-	return auth
+	return dtoken.New(mgr)
 }
 
-// TestInjectedLoginWithoutGlobal verifies login and access grants use the injected instance. TestInjectedLoginWithoutGlobal 验证登录与授权使用注入实例且无需全局注册。
-func TestInjectedLoginWithoutGlobal(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+// TestInjectedLoginUsesBuiltInstance verifies routes and the registry share the built engine. TestInjectedLoginUsesBuiltInstance 验证路由与注册表共用构建返回的引擎。
+func TestInjectedLoginUsesBuiltInstance(t *testing.T) {
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	auth := initDToken()
 	t.Cleanup(auth.Close)
 	srv := newKratosExampleServer(auth)
@@ -160,7 +159,7 @@ func TestInjectedLoginWithoutGlobal(t *testing.T) {
 	if !auth.HasRole(ctx, "alice", "admin") || !auth.HasPermission(ctx, "alice", "article:read") {
 		t.Fatal("access grants missing from injected instance")
 	}
-	if _, err := dtglobal.GetManager(); err == nil {
-		t.Fatal("example unexpectedly registered a global manager")
+	if mgr, err := dtoken.GetManager(); err != nil || mgr != auth.Manager() {
+		t.Fatalf("Build registration differs from injected instance: %v", err)
 	}
 }

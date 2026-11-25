@@ -2,7 +2,7 @@
 
 [English](../core/permission.md) | 中文文档
 
-本文保留 `global` 兼容入口的位置参数示例，`dt` 表示根包。`Build()` 自动注册并返回 Auth，无需再调用 SetAuth；省略认证类型时使用默认 `auth:`。新调用可使用 `dt.XXX()` 或 `dt.AuthType("user").XXX()`，其业务方法签名与实例一致，不能直接沿用 global 的位置参数。见 [Auth API](../../api/auth_zh.md)。
+本文 `dt` 表示根包。`Build()` 自动注册；默认体系使用 `dt.XXX()`，其他体系使用 `dt.AuthType("user").XXX()`，业务方法签名与实例一致。见 [Auth API](../../api/auth_zh.md)。
 
 ## 概览
 
@@ -41,15 +41,15 @@ func initDToken() {
 ```go
 ctx := context.Background()
 
-token, _ := global.Login(ctx, "10001")
+token, _ := dt.Login(ctx, dt.LoginOptions{LoginID: "10001"})
 
-_ = global.AddPermissions(ctx, "10001", []string{
+_ = dt.AddPermissions(ctx, dt.PermissionOptions{LoginID: "10001", Permissions: []string{
     "user:read",
     "user:write",
     "admin:*",
-})
+}})
 
-_ = global.AddPermissionsByToken(ctx, token, []string{
+_ = dt.AddPermissionsByToken(ctx, token, []string{
     "article:publish",
 })
 ```
@@ -59,8 +59,8 @@ _ = global.AddPermissionsByToken(ctx, token, []string{
 ```go
 ctx := context.Background()
 
-_ = global.RemovePermissions(ctx, "10001", []string{"user:write"})
-_ = global.RemovePermissionsByToken(ctx, token, []string{"article:publish"})
+_ = dt.RemovePermissions(ctx, dt.PermissionOptions{LoginID: "10001", Permissions: []string{"user:write"}})
+_ = dt.RemovePermissionsByToken(ctx, token, []string{"article:publish"})
 ```
 
 ### 查询权限
@@ -68,8 +68,8 @@ _ = global.RemovePermissionsByToken(ctx, token, []string{"article:publish"})
 ```go
 ctx := context.Background()
 
-permissions, err := global.GetPermissions(ctx, "10001")
-permissionsByToken, err := global.GetPermissionsByToken(ctx, token)
+permissions, err := dt.GetPermissions(ctx, "10001")
+permissionsByToken, err := dt.GetPermissionsByToken(ctx, token)
 ```
 
 ## 权限校验
@@ -79,10 +79,10 @@ permissionsByToken, err := global.GetPermissionsByToken(ctx, token)
 ```go
 ctx := context.Background()
 
-hasPermission := global.HasPermission(ctx, "10001", "user:read")
-hasPermissionByToken := global.HasPermissionByToken(ctx, token, "user:read")
+hasPermission := dt.HasPermission(ctx, "10001", "user:read")
+hasPermissionByToken := dt.HasPermissionByToken(ctx, token, "user:read")
 
-err := global.CheckPermission(ctx, "10001", "user:read")
+err := dt.CheckPermission(ctx, dt.PermissionOptions{LoginID: "10001", Permission: "user:read"})
 ```
 
 ### 多权限 AND
@@ -90,12 +90,12 @@ err := global.CheckPermission(ctx, "10001", "user:read")
 ```go
 ctx := context.Background()
 
-hasAll := global.HasPermissionsAnd(ctx, "10001", []string{
+hasAll := dt.HasPermissionsAnd(ctx, "10001", []string{
     "user:read",
     "user:write",
 })
 
-err := global.CheckPermissionAnd(ctx, "10001", []string{
+err := dt.CheckPermissionAnd(ctx, "10001", []string{
     "user:read",
     "user:write",
 })
@@ -106,12 +106,12 @@ err := global.CheckPermissionAnd(ctx, "10001", []string{
 ```go
 ctx := context.Background()
 
-hasAny := global.HasPermissionsOr(ctx, "10001", []string{
+hasAny := dt.HasPermissionsOr(ctx, "10001", []string{
     "admin:read",
     "report:read",
 })
 
-err := global.CheckPermissionOr(ctx, "10001", []string{
+err := dt.CheckPermissionOr(ctx, "10001", []string{
     "admin:read",
     "report:read",
 })
@@ -136,15 +136,15 @@ err := global.CheckPermissionOr(ctx, "10001", []string{
 ```go
 ctx := context.Background()
 
-_ = global.AddPermissions(ctx, "10001", []string{
+_ = dt.AddPermissions(ctx, dt.PermissionOptions{LoginID: "10001", Permissions: []string{
     "admin:*",
     "user:*:view",
-})
+}})
 
-global.HasPermission(ctx, "10001", "admin:read")        // true
-global.HasPermission(ctx, "10001", "admin:delete")      // true
-global.HasPermission(ctx, "10001", "user:profile:view") // true
-global.HasPermission(ctx, "10001", "user:view")         // false
+dt.HasPermission(ctx, "10001", "admin:read")        // true
+dt.HasPermission(ctx, "10001", "admin:delete")      // true
+dt.HasPermission(ctx, "10001", "user:profile:view") // true
+dt.HasPermission(ctx, "10001", "user:view")         // false
 ```
 
 ## 角色管理
@@ -152,22 +152,22 @@ global.HasPermission(ctx, "10001", "user:view")         // false
 ```go
 ctx := context.Background()
 
-_ = global.AddRoles(ctx, "10001", []string{"admin", "editor"})
-_ = global.AddRolesByToken(ctx, token, []string{"reviewer"})
+_ = dt.AddRoles(ctx, dt.RoleOptions{LoginID: "10001", Roles: []string{"admin", "editor"}})
+_ = dt.AddRolesByToken(ctx, token, []string{"reviewer"})
 
-_ = global.RemoveRoles(ctx, "10001", []string{"editor"})
-_ = global.RemoveRolesByToken(ctx, token, []string{"reviewer"})
+_ = dt.RemoveRoles(ctx, dt.RoleOptions{LoginID: "10001", Roles: []string{"editor"}})
+_ = dt.RemoveRolesByToken(ctx, token, []string{"reviewer"})
 
-roles, err := global.GetRoles(ctx, "10001")
-rolesByToken, err := global.GetRolesByToken(ctx, token)
+roles, err := dt.GetRoles(ctx, "10001")
+rolesByToken, err := dt.GetRolesByToken(ctx, token)
 
-hasRole := global.HasRole(ctx, "10001", "admin")
-hasAnyRole := global.HasRolesOr(ctx, "10001", []string{"admin", "manager"})
-hasAllRoles := global.HasRolesAnd(ctx, "10001", []string{"admin", "editor"})
+hasRole := dt.HasRole(ctx, "10001", "admin")
+hasAnyRole := dt.HasRolesOr(ctx, "10001", []string{"admin", "manager"})
+hasAllRoles := dt.HasRolesAnd(ctx, "10001", []string{"admin", "editor"})
 
-err = global.CheckRole(ctx, "10001", "admin")
-err = global.CheckRoleOr(ctx, "10001", []string{"admin", "manager"})
-err = global.CheckRoleAnd(ctx, "10001", []string{"admin", "editor"})
+err = dt.CheckRole(ctx, dt.RoleOptions{LoginID: "10001", Role: "admin"})
+err = dt.CheckRoleOr(ctx, "10001", []string{"admin", "manager"})
+err = dt.CheckRoleAnd(ctx, "10001", []string{"admin", "editor"})
 ```
 
 ## 封禁管理
@@ -177,15 +177,15 @@ err = global.CheckRoleAnd(ctx, "10001", []string{"admin", "editor"})
 ```go
 ctx := context.Background()
 
-_ = global.Disable(ctx, "10001", 2*time.Hour, "abuse")
+_ = dt.Disable(ctx, dt.DisableOptions{LoginID: "10001", Duration: 2*time.Hour, Reason: "abuse"})
 
-disabled := global.IsDisable(ctx, "10001")
-err := global.CheckDisable(ctx, "10001")
+disabled := dt.IsDisable(ctx, "10001")
+err := dt.CheckDisable(ctx, "10001")
 
-info, err := global.GetDisableInfo(ctx, "10001")
-ttl, err := global.GetDisableTTL(ctx, "10001")
+info, err := dt.GetDisableInfo(ctx, "10001")
+ttl, err := dt.GetDisableTTL(ctx, "10001")
 
-_ = global.Untie(ctx, "10001")
+_ = dt.Untie(ctx, "10001")
 ```
 
 `GetDisableTTL()` 返回值约定：
@@ -199,21 +199,21 @@ _ = global.Untie(ctx, "10001")
 ```go
 ctx := context.Background()
 
-_ = global.DisableService(ctx, "10001", "comment", 30*time.Minute)
-_ = global.DisableServiceWithReason(ctx, "10001", "comment", 30*time.Minute, "spam")
-_ = global.DisableServiceLevel(ctx, "10001", "comment", 2, 30*time.Minute)
-_ = global.DisableServiceLevelWithReason(ctx, "10001", "comment", 3, 30*time.Minute, "risk")
+_ = dt.DisableService(ctx, dt.ServiceDisableOptions{LoginID: "10001", Service: "comment", Duration: 30*time.Minute})
+_ = dt.DisableServiceWithReason(ctx, "10001", "comment", 30*time.Minute, "spam")
+_ = dt.DisableServiceLevel(ctx, "10001", "comment", 2, 30*time.Minute)
+_ = dt.DisableServiceLevelWithReason(ctx, "10001", "comment", 3, 30*time.Minute, "risk")
 
-serviceDisabled := global.IsDisableService(ctx, "10001", "comment")
-levelDisabled := global.IsDisableServiceLevel(ctx, "10001", "comment", 2)
+serviceDisabled := dt.IsDisableService(ctx, "10001", "comment")
+levelDisabled := dt.IsDisableServiceLevel(ctx, "10001", "comment", 2)
 
-err := global.CheckDisableService(ctx, "10001", []string{"comment", "post"})
-err = global.CheckDisableServiceLevel(ctx, "10001", "comment", 2)
+err := dt.CheckDisableService(ctx, "10001", []string{"comment", "post"})
+err = dt.CheckDisableServiceLevel(ctx, "10001", "comment", 2)
 
-serviceInfo, err := global.GetDisableServiceInfo(ctx, "10001", "comment")
-serviceTTL, err := global.GetDisableServiceTTL(ctx, "10001", "comment")
+serviceInfo, err := dt.GetDisableServiceInfo(ctx, "10001", "comment")
+serviceTTL, err := dt.GetDisableServiceTTL(ctx, "10001", "comment")
 
-_ = global.UntieService(ctx, "10001", "comment")
+_ = dt.UntieService(ctx, "10001", "comment")
 ```
 
 ## 自定义权限与角色提供器
@@ -242,7 +242,7 @@ if err != nil {
 defer auth.Close()
 ```
 
-Build 自动注册实例，前文 global 调用可直接使用；用于 HTTP 时通过 WithAuth(auth) 注入同一个实例。详见 [AccessProvider](access-provider_zh.md)。
+Build 自动注册实例，前文根包调用可直接使用；用于 HTTP 时通过 WithAuth(auth) 注入同一个实例。详见 [AccessProvider](access-provider_zh.md)。
 
 ## Gin 路由中使用
 

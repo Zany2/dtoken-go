@@ -1,6 +1,6 @@
 # Session And Terminal Management
 
-Fragment aliases: dt = github.com/Zany2/dtoken-go, global = github.com/Zany2/dtoken-go/global.
+Fragment aliases: dt = github.com/Zany2/dtoken-go.
 
 [中文文档](../core/session-terminal_zh.md) | English
 
@@ -21,8 +21,8 @@ Token metadata is stored in `TokenInfo`, including auth type, login ID, device, 
 ```go
 ctx := context.Background()
 
-sess, err := global.GetSession(ctx, "10001")
-sess, err = global.GetSessionByToken(ctx, token)
+sess, err := dt.GetSession(ctx, "10001")
+sess, err = dt.GetSessionByToken(ctx, token)
 ```
 
 Session helps you inspect the online terminals under one account.
@@ -34,23 +34,23 @@ Login and renewal preserve a longer existing Session TTL, including unlimited li
 ## Query Terminal
 
 ```go
-terminal, err := global.GetTerminalInfoByToken(ctx, token)
+terminal, err := dt.GetTerminalInfoByToken(ctx, token)
 ```
 
 Count online terminals by account, device type, or concrete device:
 
 ```go
-count, err := global.GetOnlineTerminalCount(ctx, "10001")
-webCount, err := global.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
-deviceCount, err := global.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "web", "browser-1")
+count, err := dt.GetOnlineTerminalCount(ctx, "10001")
+webCount, err := dt.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
+deviceCount, err := dt.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "web", "browser-1")
 ```
 
 ## Query Token Lists
 
 ```go
-tokens, err := global.GetTokenValueListByLoginID(ctx, "10001", true)
-tokens, err = global.GetTokenValueListByDevice(ctx, "10001", "web", true)
-tokens, err = global.GetTokenValueListByDeviceAndDeviceID(ctx, "10001", "web", "browser-1", true)
+tokens, err := dt.GetTokenValueListByLoginID(ctx, "10001", true)
+tokens, err = dt.GetTokenValueListByDevice(ctx, "10001", "web", true)
+tokens, err = dt.GetTokenValueListByDeviceAndDeviceID(ctx, "10001", "web", "browser-1", true)
 ```
 
 The last boolean parameter controls whether only alive tokens should be returned.
@@ -58,32 +58,32 @@ The last boolean parameter controls whether only alive tokens should be returned
 ## Query Terminal Lists
 
 ```go
-terminals, err := global.GetTerminalListByLoginID(ctx, "10001")
-terminals, err = global.GetTerminalListByLoginIDAndDevice(ctx, "10001", "web")
+terminals, err := dt.GetTerminalListByLoginID(ctx, "10001")
+terminals, err = dt.GetTerminalListByLoginIDAndDevice(ctx, "10001", "web")
 ```
 
 ## Get Latest Token
 
 Manager's `GetTerminalListByLoginID` and `GetTokenValueByLoginID` accept at most one optional device type; extra arguments return an error.
 
-Manager token-list methods accept at most one optional `checkAlive` value. The global token-list functions shown here require an explicit boolean before the optional authType. Live lists, online counts, latest-token queries, and token-based terminal details match account, device, creation time, and lifecycle sequence against the token record, ignoring stale entries.
+Manager token-list methods accept at most one optional `checkAlive` value. The root token-list functions shown here require an explicit boolean; select the namespace through dt.AuthType(name). Live lists, online counts, latest-token queries, and token-based terminal details match account, device, creation time, and lifecycle sequence against the token record, ignoring stale entries.
 
 Raw terminal lists, visitors, and token lists with `checkAlive` disabled return stored snapshots that may include expired or stale entries; queries do not delete them. The boolean returned by `GetSessionValue` / `GetSessionValueByToken` distinguishes a stored nil value from a missing key.
 
 ```go
-token, err := global.GetTokenValueByLoginID(ctx, "10001")
-token, err = global.GetTokenValueByLoginIDAndDevice(ctx, "10001", "web")
+token, err := dt.GetTokenValueByLoginID(ctx, "10001")
+token, err = dt.GetTokenValueByLoginIDAndDevice(ctx, "10001", "web")
 ```
 
 ## Iterate Terminals
 
 ```go
-err := global.ForEachTerminal(ctx, "10001", func(info dt.TerminalInfo) bool {
+err := dt.ForEachTerminal(ctx, "10001", func(info dt.TerminalInfo) bool {
     fmt.Println(info.Device, info.DeviceID, info.Token)
     return true
 })
 
-err = global.ForEachTerminalByDevice(ctx, "10001", "web", func(info dt.TerminalInfo) bool {
+err = dt.ForEachTerminalByDevice(ctx, "10001", "web", func(info dt.TerminalInfo) bool {
     return true
 })
 ```
@@ -93,8 +93,8 @@ Returning `false` stops iteration.
 ## Search
 
 ```go
-tokens, err := global.SearchTokenValue(ctx, "keyword", 0, 20)
-sessions, err := global.SearchSessionId(ctx, "keyword", 0, 20)
+tokens, err := dt.SearchTokenValue(ctx, "keyword", 0, 20)
+sessions, err := dt.SearchSessionId(ctx, "keyword", 0, 20)
 ```
 
 These APIs require key scanning support from the storage implementation. The built-in memory and Redis storage adapters both support scanning.

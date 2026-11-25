@@ -2,7 +2,7 @@
 
 [中文文档](../security/jwt_zh.md) | English
 
-Here dt names the root, global the legacy compatibility package, adapter contract, and dgenerator generator/dgenerator. Build registers automatically. Use auth.Login(ctx, dt.LoginOptions{...}), dt.LoginID, or dt.AuthType(name). The examples below retain legacy global positional calls.
+Here dt names the root, adapter contract, and dgenerator generator/dgenerator. Build registers automatically; use auth.Login(ctx, dt.LoginOptions{...}), dt.LoginID, or dt.AuthType(name).
 
 ## Overview
 
@@ -53,7 +53,6 @@ package main
 
 import (
     dt "github.com/Zany2/dtoken-go"
-    global "github.com/Zany2/dtoken-go/global"
     "context"
 
     "github.com/Zany2/dtoken-go/storage/memory"
@@ -77,7 +76,7 @@ func main() {
     defer dt.CloseAll()
 
     ctx := context.Background()
-    token, _ := global.Login(ctx, "10001", "web", "chrome-mac")
+    token, _ := dt.Login(ctx, dt.LoginOptions{LoginID: "10001", Device: "web", DeviceID: "chrome-mac"})
     _ = token
 }
 ```
@@ -103,12 +102,12 @@ defer auth.Close()
 ```go
 ctx := context.Background()
 
-token, err := global.Login(ctx, "10001", "web")
+token, err := dt.Login(ctx, dt.LoginOptions{LoginID: "10001", Device: "web"})
 
-isLogin := global.IsLogin(ctx, token)
-loginID, err := global.GetLoginID(ctx, token)
-info, err := global.GetTokenInfo(ctx, token)
-ttl, err := global.GetTokenTTL(ctx, token)
+isLogin := dt.IsLogin(ctx, token)
+loginID, err := dt.GetLoginID(ctx, token)
+info, err := dt.GetTokenInfo(ctx, token)
+ttl, err := dt.GetTokenTTL(ctx, token)
 ```
 
 The usage is the same as with UUID or random token styles.

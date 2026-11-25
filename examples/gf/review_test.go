@@ -4,7 +4,6 @@ import (
 	dtoken "github.com/Zany2/dtoken-go"
 	dt2 "github.com/Zany2/dtoken-go/contract"
 	dterror "github.com/Zany2/dtoken-go/errors"
-	dt4 "github.com/Zany2/dtoken-go/global"
 	dt1 "github.com/Zany2/dtoken-go/internal/engine"
 	dt3 "github.com/Zany2/dtoken-go/storage/memory"
 
@@ -205,8 +204,8 @@ func TestAccountAndDeviceRestrictions(t *testing.T) {
 
 // TestStorageFailuresStayServerErrors verifies handler and middleware failures do not leak backend details. TestStorageFailuresStayServerErrors 验证处理器和中间件均将存储故障作为服务端错误且不泄露详情。
 func TestStorageFailuresStayServerErrors(t *testing.T) {
-	dt4.DeleteAllManager()
-	t.Cleanup(dt4.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	builtAuth1, err := dtoken.NewBuilder().Storage(&failingGFStorage{Storage: dt3.NewStorage()}).
 		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
 	mgr := builtAuth1.Manager()
@@ -214,7 +213,7 @@ func TestStorageFailuresStayServerErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dt4.SetManager(mgr)
+	dtoken.SetManager(mgr)
 	for _, withAuth := range []bool{false, true} {
 		t.Run(map[bool]string{false: "handlers", true: "middleware"}[withAuth], func(t *testing.T) {
 			register := registerTestRoutes
@@ -265,10 +264,10 @@ func (*failingGFStorage) Get(context.Context, string) (any, error) {
 
 func setupGFManager(t *testing.T) *dt1.Manager {
 	t.Helper()
-	dt4.DeleteAllManager()
-	t.Cleanup(dt4.DeleteAllManager)
-	dt4.SetAuth(initDToken())
-	mgr, err := dt4.GetManager()
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+	initDToken()
+	mgr, err := dtoken.GetManager()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,20 +337,20 @@ func decodeGFPair(t *testing.T, rec *httptest.ResponseRecorder) dt1.RefreshToken
 
 // registeredAuth returns the explicitly registered test fixture. registeredAuth 返回显式注册的测试夹具。
 func registeredAuth() *dtoken.Auth {
-	auth, err := dt4.Default()
+	mgr, err := dtoken.GetManager()
 	if err != nil {
 		panic(err)
 	}
-	return auth
+	return dtoken.New(mgr)
 }
 
 // registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
 func registerTestRoutes(s *ghttp.Server) { registerRoutes(s, registeredAuth()) }
 
-// TestInjectedLoginWithoutGlobal verifies login and access grants use the injected instance. TestInjectedLoginWithoutGlobal 验证登录与授权使用注入实例且无需全局注册。
-func TestInjectedLoginWithoutGlobal(t *testing.T) {
-	dt4.DeleteAllManager()
-	t.Cleanup(dt4.DeleteAllManager)
+// TestInjectedLoginUsesBuiltInstance verifies routes and the registry share the built engine. TestInjectedLoginUsesBuiltInstance 验证路由与注册表共用构建返回的引擎。
+func TestInjectedLoginUsesBuiltInstance(t *testing.T) {
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	auth := initDToken()
 	t.Cleanup(auth.Close)
 	s := newGFServer(t, func(s *ghttp.Server) { registerRoutes(s, auth) })
@@ -366,7 +365,7 @@ func TestInjectedLoginWithoutGlobal(t *testing.T) {
 	if !auth.HasRole(ctx, "alice", "admin") || !auth.HasPermission(ctx, "alice", "article:read") {
 		t.Fatal("access grants missing from injected instance")
 	}
-	if _, err := dt4.GetManager(); err == nil {
-		t.Fatal("example unexpectedly registered a global manager")
+	if mgr, err := dtoken.GetManager(); err != nil || mgr != auth.Manager() {
+		t.Fatalf("Build registration differs from injected instance: %v", err)
 	}
 }

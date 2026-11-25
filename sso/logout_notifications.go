@@ -209,7 +209,7 @@ func (h *HTTPServer) writeLogoutResult(w http.ResponseWriter, r *http.Request, r
 		writeJSON(w, status, response)
 		return
 	}
-	writeJSON(w, http.StatusOK, OKResponse(result))
+	h.writeHTTPResponse(w, r, http.StatusOK, OKResponse(result))
 }
 
 // logoutDeliveryError records retry policy separately from the retained cause. logoutDeliveryError 独立于原始原因记录重试策略。

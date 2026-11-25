@@ -2,7 +2,7 @@
 
 This example shows how to use `github.com/Zany2/dtoken-go/integrations/gin` with Gin middleware.
 
-The root package creates an instance with `dtoken.NewBuilder().Build()`. Production route registration injects its Manager through `gindt.WithAuth(auth)`, and `auth.Close()` releases its lifecycle resources. Login, grants and refresh use the request's Manager. Build also makes the same engine available to root registry calls and legacy global API callers. The instance flow tests cover a non-default instance with an empty registry and with a separate default instance.
+The root package creates an instance with `dtoken.NewBuilder().Build()`. Production route registration injects its Manager through `gindt.WithAuth(auth)`, and `auth.Close()` releases its lifecycle resources. Login, grants and refresh use the request's Manager. Build also makes the same engine available to root default functions and AuthType selectors. The instance flow tests cover a non-default instance with an empty registry and with a separate default instance.
 
 Build automatically registers and returns one Auth instance. The application explicitly binds that instance with `WithAuth`; login and request checks use the bound engine. Close it after draining requests. Use `BuildInstance()` for an unregistered instance.
 

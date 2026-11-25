@@ -1,12 +1,10 @@
 package main
 
 import (
-	"github.com/Zany2/dtoken-go"
-	dterror "github.com/Zany2/dtoken-go/errors"
-	dt1 "github.com/Zany2/dtoken-go/global"
-
 	"context"
 	"encoding/json"
+	"github.com/Zany2/dtoken-go"
+	dterror "github.com/Zany2/dtoken-go/errors"
 	web "github.com/beego/beego/v2/server/web"
 	"net/http"
 	"net/http/httptest"
@@ -36,11 +34,11 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 		if err := json.Unmarshal(login.Body.Bytes(), &envelope); err != nil {
 			t.Fatal(err)
 		}
-		if id, err := dt1.GetLoginID(context.Background(), envelope.Data.Token); err != nil || id != "alice" {
+		if id, err := dtoken.GetLoginID(context.Background(), envelope.Data.Token); err != nil || id != "alice" {
 			t.Fatalf("returned token login ID=%q error=%v", id, err)
 		}
 	}
-	if !dt1.HasRole(context.Background(), "alice", "admin") || !dt1.HasPermission(context.Background(), "alice", "article:read") {
+	if !dtoken.HasRole(context.Background(), "alice", "admin") || !dtoken.HasPermission(context.Background(), "alice", "article:read") {
 		t.Fatal("login did not seed demo authorization")
 	}
 }
@@ -49,14 +47,14 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 func TestProtectedRoutesAndLogout(t *testing.T) {
 	setupBeegoManager(t)
 	ctx := context.Background()
-	token, err := dt1.Login(ctx, "alice")
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "alice"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := dt1.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
+	if err := dtoken.AddRoles(ctx, dtoken.RoleOptions{LoginID: "alice", Roles: []string{"admin"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := dt1.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
+	if err := dtoken.AddPermissions(ctx, dtoken.PermissionOptions{LoginID: "alice", Permissions: []string{"article:read"}}); err != nil {
 		t.Fatal(err)
 	}
 	router := newBeegoExampleRouter()
@@ -80,7 +78,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 			assertBeegoResponse(t, requestBeego(router, method, path, "", invalid), http.StatusUnauthorized, dterror.CodeNotLogin)
 		}
 	}
-	bobToken, err := dt1.Login(ctx, "bob")
+	bobToken, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "bob"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,9 +91,9 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 
 func setupBeegoManager(t *testing.T) {
 	t.Helper()
-	dt1.DeleteAllManager()
-	t.Cleanup(dt1.DeleteAllManager)
-	dt1.SetAuth(initDToken())
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+	initDToken()
 }
 
 func newBeegoExampleRouter() *web.ControllerRegister {
@@ -128,20 +126,20 @@ func assertBeegoResponse(t *testing.T, rec *httptest.ResponseRecorder, status, c
 
 // registeredAuth returns the explicitly registered test fixture. registeredAuth 返回显式注册的测试夹具。
 func registeredAuth() *dtoken.Auth {
-	auth, err := dt1.Default()
+	mgr, err := dtoken.GetManager()
 	if err != nil {
 		panic(err)
 	}
-	return auth
+	return dtoken.New(mgr)
 }
 
 // registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
 func registerTestRoutes(r *web.ControllerRegister) { registerRoutes(r, registeredAuth()) }
 
-// TestInjectedLoginWithoutGlobal verifies login and access grants use the injected instance. TestInjectedLoginWithoutGlobal 验证登录与授权使用注入实例且无需全局注册。
-func TestInjectedLoginWithoutGlobal(t *testing.T) {
-	dt1.DeleteAllManager()
-	t.Cleanup(dt1.DeleteAllManager)
+// TestInjectedLoginUsesBuiltInstance verifies routes and the registry share the built engine. TestInjectedLoginUsesBuiltInstance 验证路由与注册表共用构建返回的引擎。
+func TestInjectedLoginUsesBuiltInstance(t *testing.T) {
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	auth := initDToken()
 	t.Cleanup(auth.Close)
 	router := web.NewControllerRegister()
@@ -157,7 +155,7 @@ func TestInjectedLoginWithoutGlobal(t *testing.T) {
 	if !auth.HasRole(ctx, "alice", "admin") || !auth.HasPermission(ctx, "alice", "article:read") {
 		t.Fatal("access grants missing from injected instance")
 	}
-	if _, err := dt1.GetManager(); err == nil {
-		t.Fatal("example unexpectedly registered a global manager")
+	if mgr, err := dtoken.GetManager(); err != nil || mgr != auth.Manager() {
+		t.Fatalf("Build registration differs from injected instance: %v", err)
 	}
 }

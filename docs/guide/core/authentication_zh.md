@@ -2,7 +2,7 @@
 
 [English](../core/authentication.md) | 中文文档
 
-本文保留 `global` 兼容入口的位置参数示例，`dt` 表示根包。`Build()` 自动注册并返回 Auth，无需再调用 SetAuth；省略认证类型时使用默认 `auth:`。新调用可使用 `dt.XXX()` 或 `dt.AuthType("user").XXX()`，其业务方法签名与实例一致，不能直接沿用 global 的位置参数。见 [Auth API](../../api/auth_zh.md)。
+本文 `dt` 表示根包。`Build()` 自动注册；默认体系使用 `dt.XXX()`，其他体系使用 `dt.AuthType("user").XXX()`，业务方法签名与实例一致。见 [Auth API](../../api/auth_zh.md)。
 
 ## 基本登录
 
@@ -14,7 +14,6 @@ package main
 
 import (
     dt "github.com/Zany2/dtoken-go"
-    global "github.com/Zany2/dtoken-go/global"
     "context"
 
     "github.com/Zany2/dtoken-go/storage/memory"
@@ -34,7 +33,7 @@ func main() {
     defer dt.CloseAll()
 
     ctx := context.Background()
-    token, _ := global.Login(ctx, "10001")
+    token, _ := dt.Login(ctx, dt.LoginOptions{LoginID: "10001"})
     _ = token
 }
 ```
@@ -45,13 +44,13 @@ func main() {
 ctx := context.Background()
 
 // 默认登录
-token, err := global.Login(ctx, "10001")
+token, err := dt.Login(ctx, dt.LoginOptions{LoginID: "10001"})
 
 // 指定设备类型
-token, err = global.Login(ctx, "10001", "web")
+token, err = dt.Login(ctx, dt.LoginOptions{LoginID: "10001", Device: "web"})
 
 // 指定设备类型和设备 ID
-token, err = global.Login(ctx, "10001", "app", "ios-iphone-15")
+token, err = dt.Login(ctx, dt.LoginOptions{LoginID: "10001", Device: "app", DeviceID: "ios-iphone-15"})
 ```
 
 ### 指定过期时间登录
@@ -60,10 +59,10 @@ token, err = global.Login(ctx, "10001", "app", "ios-iphone-15")
 ctx := context.Background()
 
 // 当前 token 单独设置 2 小时过期
-token, err := global.LoginWithTimeout(ctx, "10001", 2*time.Hour)
+token, err := dt.Login(ctx, dt.LoginOptions{LoginID: "10001", Timeout: 2*time.Hour})
 
 // 同时指定设备类型和设备 ID
-token, err = global.LoginWithTimeout(ctx, "10001", 2*time.Hour, "web", "chrome-mac")
+token, err = dt.Login(ctx, dt.LoginOptions{LoginID: "10001", Timeout: 2*time.Hour, Device: "web", DeviceID: "chrome-mac"})
 ```
 
 ### 基于旧 Token 续期登录
@@ -71,7 +70,7 @@ token, err = global.LoginWithTimeout(ctx, "10001", 2*time.Hour, "web", "chrome-m
 ```go
 ctx := context.Background()
 
-err := global.LoginByToken(ctx, token)
+err := dt.LoginByToken(ctx, token)
 ```
 
 `LoginByToken()` 会在当前 token 仍然有效时，异步续期 token、session、活跃时间等相关信息。
@@ -84,10 +83,10 @@ err := global.LoginByToken(ctx, token)
 ctx := context.Background()
 
 // 返回布尔值
-isLogin := global.IsLogin(ctx, token)
+isLogin := dt.IsLogin(ctx, token)
 
 // 未登录时返回错误
-err := global.CheckLogin(ctx, token)
+err := dt.CheckLogin(ctx, token)
 ```
 
 ## 获取登录信息
@@ -97,19 +96,19 @@ err := global.CheckLogin(ctx, token)
 ```go
 ctx := context.Background()
 
-loginID, err := global.GetLoginID(ctx, token)
+loginID, err := dt.GetLoginID(ctx, token)
 ```
 
 ### 获取 Token 信息
 
 `GetTokenInfo` 读取已存储的元数据，成功返回不代表登录态有效；它不检查账号或设备封禁、活跃超时及 Session 有效性。普通登录态判断请使用 `IsLogin` 或 `CheckLogin`。这些方法以及 `GetLoginID` 等身份查询校验 Token 和当前限制，正常路径不读取、解码账号 Session。Token 记录本身仍需解码，存储 TTL 决定其是否到期；续期资格交由后台维护判断。
 
-Session 查询、权限和角色检查以及 `IntrospectToken` 仍要求账号 Session 有效，不活跃超时清理也会加载 Session。单独删除或损坏 Session 不再使普通登录校验中的 Token 失效；撤销凭据应使用注销或踢人 API。Session 无效时，后台维护不会续期或持久化活跃时间。
+Session 查询、按 Token 检查权限和角色以及 `IntrospectToken` 仍要求账号 Session 有效；按账号查询访问数据可直接使用 AccessProvider，其返回 nil 时回退到 Session。不活跃超时清理也会加载 Session。单独删除或损坏 Session 不再使普通登录校验中的 Token 失效；撤销凭据应使用注销或踢人 API。Session 无效时，后台维护不会续期或持久化活跃时间。
 
 ```go
 ctx := context.Background()
 
-info, err := global.GetTokenInfo(ctx, token)
+info, err := dt.GetTokenInfo(ctx, token)
 if err == nil {
     fmt.Println("认证体系:", info.AuthType)
     fmt.Println("登录 ID:", info.LoginID)
@@ -138,10 +137,10 @@ if err == nil {
 ```go
 ctx := context.Background()
 
-device, err := global.GetDevice(ctx, token)
-deviceID, err := global.GetDeviceID(ctx, token)
-createTime, err := global.GetTokenCreateTime(ctx, token)
-ttl, err := global.GetTokenTTL(ctx, token)
+device, err := dt.GetDevice(ctx, token)
+deviceID, err := dt.GetDeviceID(ctx, token)
+createTime, err := dt.GetTokenCreateTime(ctx, token)
+ttl, err := dt.GetTokenTTL(ctx, token)
 ```
 
 ## 登出
@@ -151,7 +150,7 @@ ttl, err := global.GetTokenTTL(ctx, token)
 ```go
 ctx := context.Background()
 
-err := global.Logout(ctx, token)
+err := dt.LogoutByToken(ctx, token)
 ```
 
 ### 根据账号维度登出
@@ -160,13 +159,13 @@ err := global.Logout(ctx, token)
 ctx := context.Background()
 
 // 登出指定账号的所有终端
-err := global.LogoutByLoginID(ctx, "10001")
+err := dt.LogoutByLoginID(ctx, "10001")
 
 // 登出指定账号下某个设备类型的所有终端
-err = global.LogoutByDevice(ctx, "10001", "web")
+err = dt.LogoutByDevice(ctx, "10001", "web")
 
 // 登出指定账号下某个设备类型 + 设备 ID 的终端
-err = global.LogoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
+err = dt.LogoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ## 踢人下线
@@ -176,7 +175,7 @@ err = global.LogoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```go
 ctx := context.Background()
 
-err := global.Kickout(ctx, token)
+err := dt.KickoutByToken(ctx, token)
 ```
 
 ### 根据账号维度踢人
@@ -184,9 +183,9 @@ err := global.Kickout(ctx, token)
 ```go
 ctx := context.Background()
 
-err := global.KickoutByLoginID(ctx, "10001")
-err = global.KickoutByDevice(ctx, "10001", "web")
-err = global.KickoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
+err := dt.KickoutByLoginID(ctx, "10001")
+err = dt.KickoutByDevice(ctx, "10001", "web")
+err = dt.KickoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 被踢下线的 token 不会立即从存储中删除，而是会被标记为 `kickout` 状态，后续校验时会返回对应错误。
@@ -198,7 +197,7 @@ err = global.KickoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```go
 ctx := context.Background()
 
-err := global.Replace(ctx, token)
+err := dt.ReplaceByToken(ctx, token)
 ```
 
 ### 根据账号维度顶人
@@ -206,9 +205,9 @@ err := global.Replace(ctx, token)
 ```go
 ctx := context.Background()
 
-err := global.ReplaceByLoginID(ctx, "10001")
-err = global.ReplaceByDevice(ctx, "10001", "web")
-err = global.ReplaceByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
+err := dt.ReplaceByLoginID(ctx, "10001")
+err = dt.ReplaceByDevice(ctx, "10001", "web")
+err = dt.ReplaceByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 被顶下线的 token 会被标记为 `replaced` 状态，适合用在“新登录挤掉旧登录”的场景中。
@@ -218,9 +217,9 @@ err = global.ReplaceByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```go
 ctx := context.Background()
 
-count, err := global.GetOnlineTerminalCount(ctx, "10001")
-webCount, err := global.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
-singleCount, err := global.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
+count, err := dt.GetOnlineTerminalCount(ctx, "10001")
+webCount, err := dt.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
+singleCount, err := dt.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ## 登录配置

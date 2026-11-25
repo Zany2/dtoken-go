@@ -412,32 +412,12 @@ func (h *HTTPServer) HandleToken(w http.ResponseWriter, r *http.Request) {
 		h.writeHTTPError(w, r, http.StatusInternalServerError, err)
 		return
 	}
-	if r.Method != http.MethodPost {
-		h.writeHTTPError(w, r, http.StatusMethodNotAllowed, ErrMethodNotAllowed)
-		return
-	}
-	if err := parseRequestForm(r, h.options.RequestLimits); err != nil {
-		status := statusFromError(err)
-		h.writeHTTPError(w, r, status, err)
-		return
-	}
-	// Keep exchange proofs out of URLs, including POST query strings. 兑换证明不得出现在 URL 中，包括 POST 查询串。
-	if _, exists := r.URL.Query()[h.options.Params.CodeVerifier]; exists {
-		h.writeHTTPError(w, r, http.StatusBadRequest, ErrInvalidPKCE)
-		return
-	}
-	values := r.Form
-	if err := h.verifyRequest(r.Context(), values, ActionToken, true); err != nil {
-		status := statusFromError(err)
-		h.writeHTTPError(w, r, status, err)
-		return
-	}
-	result, err := h.exchangeCredential(r, values)
+	result, err := h.exchangeRequest(r)
 	if err != nil {
 		h.writeHTTPError(w, r, statusFromError(err), err)
 		return
 	}
-	writeJSON(w, http.StatusOK, OKResponse(result))
+	h.writeHTTPResponse(w, r, http.StatusOK, OKResponse(result))
 }
 
 // HandleIntrospect checks a credential without consuming it when possible. HandleIntrospect 尽量在不消费凭证的情况下检查凭证。
@@ -475,7 +455,7 @@ func (h *HTTPServer) HandleIntrospect(w http.ResponseWriter, r *http.Request) {
 		h.writeHTTPError(w, r, statusFromError(err), err)
 		return
 	}
-	writeJSON(w, http.StatusOK, OKResponse(info))
+	h.writeHTTPResponse(w, r, http.StatusOK, OKResponse(info))
 }
 
 // HandleUserInfo returns user info for a valid credential. HandleUserInfo 返回有效凭证对应的用户信息。
@@ -517,7 +497,7 @@ func (h *HTTPServer) HandleUserInfo(w http.ResponseWriter, r *http.Request) {
 		h.writeHTTPError(w, r, http.StatusUnauthorized, errors.New("inactive credential"))
 		return
 	}
-	writeJSON(w, http.StatusOK, OKResponse(map[string]any{
+	h.writeHTTPResponse(w, r, http.StatusOK, OKResponse(map[string]any{
 		"active":    info.Active,
 		"mode":      info.Mode,
 		"loginId":   info.LoginID,
@@ -557,7 +537,7 @@ func (h *HTTPServer) HandleRevoke(w http.ResponseWriter, r *http.Request) {
 		h.writeHTTPError(w, r, statusFromError(err), err)
 		return
 	}
-	writeJSON(w, http.StatusOK, OKResponse(map[string]string{"result": ResultOK}))
+	h.writeHTTPResponse(w, r, http.StatusOK, OKResponse(map[string]string{"result": ResultOK}))
 }
 
 // authenticateClient validates the registered client and its optional secret. authenticateClient 校验已注册客户端及其可选密钥。
@@ -578,7 +558,7 @@ func (h *HTTPServer) authenticateClient(ctx context.Context, values url.Values) 
 }
 
 // exchangeCredential dispatches credential exchange by mode. exchangeCredential 按模式分发凭证交换。
-func (h *HTTPServer) exchangeCredential(r *http.Request, values url.Values) (any, error) {
+func (h *HTTPServer) exchangeCredential(r *http.Request, values url.Values) (*TicketExchangeResult, error) {
 	params := h.options.ServerOptions.Params
 	mode := Mode(values.Get(params.Mode))
 	codeValue := values.Get(params.Code)
@@ -1089,8 +1069,23 @@ func (h *HTTPServer) redirectToLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, target.String(), http.StatusFound)
 }
 
-// writeJSON writes a protocol JSON response. writeJSON 写入协议 JSON 响应。
+// writeJSON encodes the entire response before committing HTTP headers. writeJSON 在提交 HTTP 响应头前编码完整响应。
 func writeJSON(w http.ResponseWriter, status int, response Response) {
+	status, payload, _ := prepareJSON(status, response)
+	writeJSONBytes(w, status, payload)
+}
+
+// prepareJSON replaces an unencodable response with a fixed error without exposing partial data. prepareJSON 用固定错误替换无法编码的响应，不暴露部分数据。
+func prepareJSON(status int, response Response) (int, []byte, error) {
+	payload, err := json.Marshal(response)
+	if err != nil {
+		return http.StatusInternalServerError, []byte("{\"code\":500,\"message\":\"SSO response encoding failed\"}\n"), fmt.Errorf("%w: %w", ErrSerializeFailed, err)
+	}
+	return status, append(payload, '\n'), nil
+}
+
+// writeJSONBytes writes one prepared response; transport failure cannot change a committed status or undo business effects. writeJSONBytes 写入已准备的响应，传输故障不能改变已提交状态或撤销业务副作用。
+func writeJSONBytes(w http.ResponseWriter, status int, payload []byte) {
 	// Keep identity, credential status, and logout responses out of caches. 避免缓存身份、凭证状态及注销响应。
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Pragma", "no-cache")
@@ -1098,7 +1093,7 @@ func writeJSON(w http.ResponseWriter, status int, response Response) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(response)
+	_, _ = w.Write(payload)
 }
 
 // parseScopes parses a space-delimited scope string. parseScopes 解析空格分隔的 Scope 字符串。

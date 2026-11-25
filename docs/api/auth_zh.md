@@ -34,7 +34,7 @@ Build / MustBuild 自动注册，同名 Build 返回 errors.ErrManagerAlreadyReg
 | Session 查询与持久化 | `auth.GetSession` / `auth.SetSessionValue` / `auth.GetSessionValue` |
 | 刷新令牌 | `auth.LoginWithRefreshToken` / `auth.LoginWithRefreshTokenOptions` / `auth.RefreshToken` |
 
-实例方法使用自身认证体系；选项中的 `AuthType` 不会让实例切换到其他引擎。要使用另一个认证体系，可调用另一个 Auth，或通过 dtoken.AuthType(name) 选择。该选项字段仅为旧 global 的选项入口保留。
+实例方法使用自身认证体系；选项中的 `AuthType` 不会让实例切换到其他引擎。要使用另一个认证体系，可调用另一个 Auth，或通过 dtoken.AuthType(name) 选择。该选项字段为源码兼容保留，不参与体系选择。
 
 ## 登录与权限示例
 
@@ -61,18 +61,11 @@ if err := auth.CheckPermission(ctx, dtoken.PermissionOptions{
 }
 ```
 
-## 与旧 global API 的区别
+## 根包与实例调用
 
-`global` 使用注册表查找实例，并在许多函数末尾接受可选 `authType`。实例 API 的名称或参数不一定与全局 API 相同，不能直接替换调用前缀。
+根包函数与实例方法使用相同的业务签名。默认体系使用 `dt.Login(ctx, dt.LoginOptions{LoginID: "10001"})`，指定体系使用 `dt.AuthType("user").Login(ctx, dt.LoginOptions{LoginID: "10001"})`，固定实例使用 `auth.Login(ctx, dt.LoginOptions{LoginID: "10001"})`。这里 dt 表示根包。原 global 包已移除，位置参数调用需要迁移到这些签名。详见[根包 API 参考](dtoken_zh.md)。
 
-| 全局调用 | 对应实例调用 |
-| --- | --- |
-| `global.Login(ctx, id, device, deviceID, authType)` | `auth.Login(ctx, dtoken.LoginOptions{LoginID: id, Device: device, DeviceID: deviceID})` |
-| `global.Logout(ctx, token)` | `auth.LogoutByToken(ctx, token)` |
-| `global.AddPermissions(ctx, id, values)` | `auth.AddPermissions(ctx, dtoken.PermissionOptions{LoginID: id, Permissions: values})` |
-| `global.CheckPermission(ctx, id, value)` | `auth.CheckPermission(ctx, dtoken.PermissionOptions{LoginID: id, Permission: value})` |
-
-全局调用详见[全局 API](dtoken_zh.md)。HTTP 中间件通过 `WithAuth(auth)` 使用实例；请求上下文的分组 API 使用底层 Manager 的选项类型，需要选项时注意根 `LoginOptions` 与 `ManagerLoginOptions` 的区别。
+HTTP 通过 WithAuth(auth) 或显式 WithManagerResolver(dt.GetManager) 接入。请求上下文的分组 API 使用 Manager 选项类型，注意区分根 LoginOptions 与 ManagerLoginOptions。
 
 ## 生命周期与扩展
 

@@ -162,7 +162,7 @@ func WithManager(mgr *manager.Manager) AuthOption {
 	}
 }
 
-// WithManagerResolver selects a registry, such as global.GetManager. WithManagerResolver 选择注册表，例如 global.GetManager。
+// WithManagerResolver selects a registry, such as dtoken.GetManager. WithManagerResolver 选择注册表，例如 dtoken.GetManager。
 func WithManagerResolver(resolver authcheck.ManagerResolver) AuthOption {
 	return func(o *AuthOptions) {
 		o.ManagerResolver = resolver

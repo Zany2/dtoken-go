@@ -3,7 +3,6 @@ package hertz
 import (
 	"context"
 	"errors"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	"net/http"
 	"testing"
 
@@ -16,8 +15,8 @@ import (
 
 // TestHertzRegisterContextMiddlewareStopsAfterManagerFailure verifies manager resolution failures abort the request. TestHertzRegisterContextMiddlewareStopsAfterManagerFailure 验证 Manager 解析失败时请求会中断。
 func TestHertzRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	requestContext := hertzapp.NewContext(0)
 	var gotErr error
@@ -37,8 +36,8 @@ func TestHertzRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
 
 // TestHertzAnnotationHandlerControlFlow verifies annotation success and failure callbacks. TestHertzAnnotationHandlerControlFlow 验证注解成功路径与失败回调。
 func TestHertzAnnotationHandlerControlFlow(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
 	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
@@ -108,8 +107,8 @@ func TestHertzTypedNilContextIsSafe(t *testing.T) {
 
 // TestHertzContextFacadeUsesCachedManager verifies request-context facade operations use the cached manager. TestHertzContextFacadeUsesCachedManager 验证请求上下文门面会复用缓存的 Manager。
 func TestHertzContextFacadeUsesCachedManager(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
 	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()

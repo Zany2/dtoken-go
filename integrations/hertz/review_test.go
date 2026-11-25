@@ -6,8 +6,8 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"github.com/Zany2/dtoken-go"
 	adapter "github.com/Zany2/dtoken-go/contract"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
 	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
@@ -101,8 +101,8 @@ func (s *hertzReviewStorage) Get(c context.Context, key string) (any, error) {
 
 // TestHertzReviewRequestContext verifies values, deadlines and cancellation reach checks, hooks and facades. TestHertzReviewRequestContext 验证值、截止时间及取消信号传入鉴权、钩子和门面。
 func TestHertzReviewRequestContext(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	for _, check := range hertzReviewChecks {
 		t.Run(check.name, func(t *testing.T) {
 			storage := &hertzReviewStorage{Storage: memory.NewStorage()}
@@ -211,13 +211,13 @@ func TestHertzReviewContextScopes(t *testing.T) {
 
 // TestHertzReviewManagerSelection verifies precedence and invalid cached manager handling. TestHertzReviewManagerSelection 验证 Manager 优先级和无效缓存处理。
 func TestHertzReviewManagerSelection(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	global := newHertzReviewManager(t, "", nil)
 	selected := newHertzReviewManager(t, "hertz-selected", nil)
 	local := newHertzReviewManager(t, "hertz-local", nil)
-	dtglobal.SetManager(global)
-	dtglobal.SetManager(selected)
+	dtoken.SetManager(global)
+	dtoken.SetManager(selected)
 	ctx := hertzapp.NewContext(0)
 	getDTokenContext(ctx, local)
 	for _, tc := range []struct {
@@ -227,7 +227,7 @@ func TestHertzReviewManagerSelection(t *testing.T) {
 	}{
 		{nil, "", local}, {nil, "hertz-selected", selected}, {local, "missing", local},
 	} {
-		if got, err := resolveRequestManager(ctx, tc.explicit, tc.authType, dtglobal.GetManager); err != nil || got != tc.want {
+		if got, err := resolveRequestManager(ctx, tc.explicit, tc.authType, dtoken.GetManager); err != nil || got != tc.want {
 			t.Fatalf("manager=%p,%v want=%p", got, err, tc.want)
 		}
 	}
@@ -259,8 +259,8 @@ func TestHertzReviewManagerSelection(t *testing.T) {
 
 // TestHertzReviewFailureStopsNext verifies failure callbacks cannot enter business handlers. TestHertzReviewFailureStopsNext 验证失败回调无法继续进入业务处理器。
 func TestHertzReviewFailureStopsNext(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	mgr := newHertzReviewManager(t, "hertz-fail", nil)
 	for _, check := range hertzReviewChecks {
 		for _, missingManager := range []bool{false, true} {
@@ -404,11 +404,11 @@ func TestHertzReviewAnnotationsAndAbortedEntry(t *testing.T) {
 
 // TestHertzReviewRenewalIsolation keeps renewal within the cached manager's namespace. TestHertzReviewRenewalIsolation 验证续期保持在缓存 Manager 的命名空间内。
 func TestHertzReviewRenewalIsolation(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	global := newHertzReviewManager(t, "", nil)
 	local := newHertzReviewManager(t, "hertz-renew", nil)
-	dtglobal.SetManager(global)
+	dtoken.SetManager(global)
 	const token = "same-token"
 	hertzReviewLogin(t, global, token)
 	hertzReviewLogin(t, local, token)

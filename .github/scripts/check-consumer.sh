@@ -56,14 +56,13 @@ import (
 	"testing"
 
 	dtoken "github.com/Zany2/dtoken-go"
-	"github.com/Zany2/dtoken-go/global"
 	requestcontext "github.com/Zany2/dtoken-go/httpauth/context"
 	"github.com/Zany2/dtoken-go/nonce"
 	gindt "github.com/Zany2/dtoken-go/integrations/gin"
 	"github.com/gin-gonic/gin"
 )
 
-func TestConsumerInstanceGlobalAndCapabilities(t *testing.T) {
+func TestConsumerInstanceRegistryAndCapabilities(t *testing.T) {
 	ctx := context.Background()
 	var strategy *dtoken.Strategy = dtoken.DefaultStrategy()
 	var option dtoken.ManagerOption = dtoken.WithStrategy(strategy)
@@ -84,7 +83,7 @@ func TestConsumerInstanceGlobalAndCapabilities(t *testing.T) {
 	if err := dtoken.AuthType("consumer").CheckLogin(ctx, token); err != nil {
 		t.Fatal(err)
 	}
-	if err := global.CheckLogin(ctx, token, "consumer"); err != nil {
+	if err := dtoken.New(auth.Manager()).CheckLogin(ctx, token); err != nil {
 		t.Fatal(err)
 	}
 

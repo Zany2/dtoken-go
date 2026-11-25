@@ -4,9 +4,9 @@
 
 ## 概览
 
-根包提供实例 API、默认体系函数及 AuthType 选择器，global 保留兼容入口。NewBuilder().Build() 自动注册并返回实例；框架通过 WithAuth(auth) 或 WithManager(auth.Manager()) 显式注入。独立服务通过 WithCapabilities 显式接入请求。
+根包提供实例 API、默认体系函数及 AuthType 选择器。NewBuilder().Build() 自动注册并返回实例；框架通过 WithAuth(auth) 或 WithManager(auth.Manager()) 显式注入。独立服务通过 WithCapabilities 显式接入请求。
 
-框架只提供 HTTP 适配、中间件和请求快捷方法。框架 NewBuilder() 与根包一致，Build() 自动注册并返回 Auth，BuildInstance() 不注册。根包提供注册表调用；旧位置参数 API 从 global 导入；Redis、MsgPack 等组件从各自包导入。
+框架只提供 HTTP 适配、中间件和请求快捷方法。框架 NewBuilder() 与根包一致，Build() 自动注册并返回 Auth，BuildInstance() 不注册。根包提供注册表调用；Redis、MsgPack 等组件从各自包导入。
 
 实例选择顺序：显式 WithAuth/WithManager；已有请求实例；显式配置的 ManagerResolver。WithAuthType 通过配置的解析器切换认证类型，未配置解析器时只能匹配当前请求的认证类型。请求未绑定实例且未配置解析器时返回 ErrManagerNotFound。未指定覆盖的中间件保留请求实例与能力绑定；切换实例时清空能力绑定。
 
@@ -33,7 +33,7 @@ go get github.com/Zany2/dtoken-go/integrations/beego
 
 以下片段使用已构建的实例，省略服务启动与业务凭据验证。完整示例中的演示账号应在真实应用中替换为经过验证的身份。
 
-框架包提供中间件、请求上下文助手及共享 HTTP 类型，`NewBuilder` 转发根包构建器。实例 API 从根包导入，全局 API 从 `global` 导入。下面的示例显式绑定实例，完整可运行示例位于 `examples/`。
+框架包提供中间件、请求上下文助手及共享 HTTP 类型，`NewBuilder` 转发根包构建器。实例、默认体系和 AuthType 选择 API 均从根包导入。下面的示例显式绑定实例，完整可运行示例位于 `examples/`。
 
 ### GoFrame
 

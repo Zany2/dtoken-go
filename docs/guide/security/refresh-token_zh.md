@@ -158,7 +158,7 @@ func (c *AuthController) Refresh(r *ghttp.Request) {
 
 ## OAuth2 中的 Refresh Token
 
-OAuth2 刷新通过独立 OAuth2 Service 调用。下例的 service 由 oauth2.NewService(server, auth) 创建，初始化见 OAuth2 指南；它不属于 Auth 或 global API：
+OAuth2 刷新通过独立 OAuth2 Service 调用。下例的 service 由 oauth2.NewService(server, auth) 创建，初始化见 OAuth2 指南；这是能力服务方法：
 
 ```go
 newToken, err := service.RefreshOAuth2AccessToken(

@@ -216,6 +216,17 @@ func (c ClientConfig) Validate() error {
 	if !validSSOMode(c.Mode) {
 		return configError("Mode", "unsupported client mode", ErrModeUnsupported)
 	}
+	if c.SharedStoreServer != nil && !c.UseHTTPCheck {
+		if c.Mode != ModeTicket && c.Mode != ModeOAuth2 {
+			return configError("SharedStoreServer", "requires Ticket or OAuth2 code mode", ErrModeUnsupported)
+		}
+		if err := c.SharedStoreServer.initializationError(); err != nil {
+			return configError("SharedStoreServer", "local protocol service is not initialized", err)
+		}
+		if c.Params != c.SharedStoreServer.options.Params {
+			return configError("SharedStoreServer", "protocol parameter names must match", ErrInvalidRequest)
+		}
+	}
 	if err := c.Params.Validate(); err != nil {
 		return err
 	}

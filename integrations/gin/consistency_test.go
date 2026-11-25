@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	dtglobal "github.com/Zany2/dtoken-go/global"
+	"github.com/Zany2/dtoken-go"
 	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
 	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
@@ -119,18 +119,18 @@ func TestGinReplacedRequestTokenSources(t *testing.T) {
 
 // TestGinRepeatedRegistration preserves request ownership unless a later registration explicitly overrides it. TestGinRepeatedRegistration 验证重复注册保留请求归属，除非后续注册显式覆盖。
 func TestGinRepeatedRegistration(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	global := newGinReviewManager(t, "", nil)
 	local := newGinReviewManager(t, "gin-registration", nil)
-	dtglobal.SetManager(global)
+	dtoken.SetManager(global)
 	for _, tc := range []struct {
 		name string
 		opts []AuthOption
 		want *manager.Manager
 	}{
 		{"inherit", nil, local},
-		{"auth_type", []AuthOption{WithManagerResolver(dtglobal.GetManager), WithAuthType(global.GetConfig().AuthType)}, global},
+		{"auth_type", []AuthOption{WithManagerResolver(dtoken.GetManager), WithAuthType(global.GetConfig().AuthType)}, global},
 		{"explicit", []AuthOption{WithManager(local), WithAuthType("missing")}, local},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -156,10 +156,10 @@ func TestGinRepeatedRegistration(t *testing.T) {
 
 // TestGinInvalidManagerScopeCannotUseGlobal rejects valid global credentials when the request scope is invalid. TestGinInvalidManagerScopeCannotUseGlobal 验证请求作用域无效时不能借用全局有效凭据通过鉴权。
 func TestGinInvalidManagerScopeCannotUseGlobal(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	global := newGinReviewManager(t, "", nil)
-	dtglobal.SetManager(global)
+	dtoken.SetManager(global)
 	token, err := global.Login(context.Background(), "reader")
 	if err != nil {
 		t.Fatal(err)

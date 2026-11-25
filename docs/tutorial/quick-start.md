@@ -105,7 +105,7 @@ err = user.CheckLogin(ctx, token)
 
 The registry shares the engine returned as Auth. Missing namespaces never fall back; duplicate Build does not replace an instance. Use BuildInstance for isolated instances and close them through their owner. For explicit replacement, use BuildInstance followed by SetAuth.
 
-HTTP registry lookup requires `WithManagerResolver(dtoken.GetManager)`; WithAuth binds a fixed engine. Legacy global calls share the same registry, but their positional signatures differ from root typed option calls.
+HTTP registry lookup requires `WithManagerResolver(dtoken.GetManager)`; WithAuth binds a fixed engine. Root calls and Auth methods share typed option signatures.
 
 On shutdown, stop accepting and drain requests before dtoken.CloseAll. It excludes unregistered instances. The library does not install signal handlers; see the [application lifecycle example](../design/api-lifecycle.md).
 

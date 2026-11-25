@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/Zany2/dtoken-go"
 	adapter "github.com/Zany2/dtoken-go/contract"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
 	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
@@ -70,13 +70,13 @@ func chiReviewLogin(t *testing.T, mgr *manager.Manager, id string) string {
 
 // TestChiReviewManagerSelection verifies inheritance, explicit overrides and registry fallback. TestChiReviewManagerSelection 验证请求 Manager 继承、显式覆盖与注册表回退。
 func TestChiReviewManagerSelection(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	cached := newChiReviewManager(t, "chi-cached")
 	global := newChiReviewManager(t, "")
 	selected := newChiReviewManager(t, "chi-selected")
-	dtglobal.SetManager(global)
-	dtglobal.SetManager(selected)
+	dtoken.SetManager(global)
+	dtoken.SetManager(selected)
 	cachedToken := chiReviewLogin(t, cached, "cached-user")
 	globalToken := chiReviewLogin(t, global, "global-user")
 	selectedToken := chiReviewLogin(t, selected, "selected-user")
@@ -90,10 +90,10 @@ func TestChiReviewManagerSelection(t *testing.T) {
 			want     *manager.Manager
 		}{
 			{"cached", true, nil, cachedToken, cached},
-			{"auth_type", true, []AuthOption{WithManagerResolver(dtglobal.GetManager), WithAuthType("chi-selected")}, selectedToken, selected},
+			{"auth_type", true, []AuthOption{WithManagerResolver(dtoken.GetManager), WithAuthType("chi-selected")}, selectedToken, selected},
 			{"explicit", true, []AuthOption{WithManager(selected), WithAuthType("missing")}, selectedToken, selected},
 			{"missing_type", true, []AuthOption{WithAuthType("missing")}, cachedToken, nil},
-			{"global", false, []AuthOption{WithManagerResolver(dtglobal.GetManager)}, globalToken, global},
+			{"global", false, []AuthOption{WithManagerResolver(dtoken.GetManager)}, globalToken, global},
 		} {
 			t.Run(check.name+"/"+tc.name, func(t *testing.T) {
 				router := chiRouter.NewRouter()
@@ -378,10 +378,10 @@ func TestChiReviewInvalidContextManager(t *testing.T) {
 
 // TestChiReviewClosedRequestManager prevents fallback to an unrelated global manager. TestChiReviewClosedRequestManager 验证请求 Manager 关闭后不会回退到无关的全局实例。
 func TestChiReviewClosedRequestManager(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	global := newChiReviewManager(t, "")
-	dtglobal.SetManager(global)
+	dtoken.SetManager(global)
 	token := chiReviewLogin(t, global, "global-user")
 	closed := newChiReviewManager(t, "chi-closed-request")
 	closed.CloseManager()

@@ -17,8 +17,7 @@ The root module contains core, facade, default wiring, basic components, and sha
 
 | Directory / 目录 | Responsibility / 职责 |
 | --- | --- |
-| Root package / 根包 | Instance facade, builder, extension types / 实例门面、构建器和扩展类型 |
-| global | Global facade and registry / 全局门面与注册表 |
+| Root package / 根包 | Instance/default APIs, AuthType selectors, registry, builder, and extension types / 实例与默认 API、AuthType 选择器、注册表、构建器和扩展类型 |
 | internal/engine, internal/builder, internal/defaults | Authentication and default wiring / 认证实现与默认装配 |
 | contract, config, errors, event | Public contracts, configuration, events / 公共契约、配置与事件 |
 | nonce, oauth2, ticket, shortkey | Explicit capability services / 显式组合的能力服务 |
@@ -46,7 +45,7 @@ The `codec/jsonv2` module requires `GOEXPERIMENT=jsonv2`. Enable it for that mod
 
 - Keep changes focused and respect the module boundaries above. 保持改动聚焦，遵循模块职责边界。
 - Reuse existing helpers and preserve public API compatibility unless a change explicitly requires otherwise. 复用现有逻辑，按需求明确处理公开 API 兼容性。
-- Keep instance APIs in the root and registry APIs in global; compose capabilities outside the engine. 实例 API 放在根包，注册表 API 放在 global，能力在引擎之外组合。
+- Keep instance, default, AuthType, and registry APIs in the root; compose capabilities outside the engine. 实例、默认、AuthType 与注册表 API 统一放在根包，能力在引擎之外组合。
 - Use root `dtoken.NewBuilder().Build()` and explicit `WithAuth` injection in new application examples. 新应用示例使用根包构建器和显式实例注入。
 - Add optional components in their own packages. Frameworks expose HTTP integration APIs; shared export updates use the generator in `integrations/gin`. 可选组件在各自包中扩展，框架只提供 HTTP 集成 API，共用导出更新通过 `integrations/gin` 中的生成器同步。
 - Add concise bilingual Go comments using `// English 中文` for exported APIs and non-obvious logic. 公开 API 和关键逻辑使用简洁的双语注释。

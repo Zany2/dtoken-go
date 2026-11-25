@@ -4,24 +4,24 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Zany2/dtoken-go"
 	derror "github.com/Zany2/dtoken-go/errors"
-	"github.com/Zany2/dtoken-go/global"
 	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
 )
 
 // TestResolutionRequiresExplicitRegistry prevents global state from authorizing an unbound request. TestResolutionRequiresExplicitRegistry 防止全局状态为未绑定的请求提供认证实例。
 func TestResolutionRequiresExplicitRegistry(t *testing.T) {
-	global.DeleteAllManager()
-	t.Cleanup(global.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	mgr := newAuthcheckTestManager(t)
-	global.SetManager(mgr)
+	dtoken.SetManager(mgr)
 	var typedNil *corecontext.DTokenContext
 	for _, cached := range []any{nil, typedNil} {
 		if got, err := ResolveManagerFromContext("", cached); got != nil || !errors.Is(err, derror.ErrManagerNotFound) {
 			t.Fatalf("implicit lookup = %p, %v", got, err)
 		}
-		if got, err := ResolveManagerFromContext("", cached, global.GetManager); err != nil || got != mgr {
+		if got, err := ResolveManagerFromContext("", cached, dtoken.GetManager); err != nil || got != mgr {
 			t.Fatalf("explicit lookup = %p, %v", got, err)
 		}
 	}

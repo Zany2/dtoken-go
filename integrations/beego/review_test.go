@@ -6,8 +6,8 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"github.com/Zany2/dtoken-go"
 	adapter "github.com/Zany2/dtoken-go/contract"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
 	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
@@ -111,8 +111,8 @@ func beegoReviewRouter(t *testing.T, handler web.FilterFunc, filters ...web.Filt
 
 // TestBeegoReviewRequestContext verifies request values, deadlines and cancellation reach checks and hooks. TestBeegoReviewRequestContext 验证请求值、截止时间及取消信号传入鉴权和钩子。
 func TestBeegoReviewRequestContext(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	for _, check := range beegoReviewChecks {
 		t.Run(check.name, func(t *testing.T) {
 			storage := &beegoReviewStorage{Storage: memory.NewStorage()}
@@ -170,8 +170,8 @@ func TestBeegoReviewRequestContext(t *testing.T) {
 
 // TestBeegoReviewFailureStopsNativeChain verifies even silent failure callbacks prevent controller execution. TestBeegoReviewFailureStopsNativeChain 验证失败回调即使不输出也会阻止控制器执行。
 func TestBeegoReviewFailureStopsNativeChain(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	mgr := newBeegoReviewManager(t, "beego-failure", nil)
 	for _, check := range beegoReviewChecks {
 		for _, missingManager := range []bool{false, true} {
@@ -306,13 +306,13 @@ func TestBeegoReviewHookControlFlow(t *testing.T) {
 
 // TestBeegoReviewManagerIsolation verifies priority, invalid managers and manager-local renewal. TestBeegoReviewManagerIsolation 验证选择优先级、无效 Manager 及实例内续期。
 func TestBeegoReviewManagerIsolation(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	global := newBeegoReviewManager(t, "", nil)
 	local := newBeegoReviewManager(t, "beego-local", nil)
 	selected := newBeegoReviewManager(t, "beego-selected", nil)
-	dtglobal.SetManager(global)
-	dtglobal.SetManager(selected)
+	dtoken.SetManager(global)
+	dtoken.SetManager(selected)
 	beegoReviewLogin(t, global, "same-token")
 	beegoReviewLogin(t, local, "same-token")
 	c, _ := newBeegoBehaviorContext(http.MethodGet, "/review", local.GetConfig().TokenName, "same-token")
@@ -324,7 +324,7 @@ func TestBeegoReviewManagerIsolation(t *testing.T) {
 	}{
 		{nil, "", local}, {nil, "beego-selected", selected}, {local, "missing", local},
 	} {
-		if got, err := resolveRequestManager(c, tc.explicit, tc.authType, dtglobal.GetManager); err != nil || got != tc.want {
+		if got, err := resolveRequestManager(c, tc.explicit, tc.authType, dtoken.GetManager); err != nil || got != tc.want {
 			t.Fatalf("manager=%p,%v want=%p", got, err, tc.want)
 		}
 	}

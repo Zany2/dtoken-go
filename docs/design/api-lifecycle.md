@@ -18,7 +18,6 @@ Type aliases exposed through root engine_api.go and their exported methods remai
 | Manager, Strategy, ManagerLoginOptions, RefreshTokenPair, and other advanced types | internal/engine, aliased by root engine_api.go | Applications name these types through the root, not the implementation path |
 | Component factories, Components, ComponentFactories | internal/builder, aliased by root engine_api.go | Support custom component assembly |
 | Capability service interfaces and data types | contract/nonce, contract/oauth2, contract/ticket, contract/shortkey | HTTP depends on contracts; implementations reuse their data types |
-| global.Auth, global.Builder, and operation options | Root package, aliased by global/types.go | Global entry points reuse instance types rather than defining another model |
 | Framework DTokenContext and Capabilities | httpauth/context, aliased by framework export.go | Frameworks retain native request entry points while sharing request types |
 
 Root LoginOptions and ManagerLoginOptions serve different API levels and are not aliases of one type. Advanced results such as RefreshTokenPair are not basic models declared in contract/model.go either. Follow actual aliases when organizing types; similar names alone do not justify copying, merging, or moving declarations.
@@ -66,7 +65,7 @@ Auth.Close stops maintenance, waits for accepted asynchronous work, and releases
 
 ## Global registration
 
-The root owns one registry; legacy `global` entry points delegate to it. Build no longer needs a separate SetAuth:
+The root owns the manager registry. Build registers automatically and needs no separate SetAuth:
 
 ```go
 userAuth, err := dtoken.NewBuilder().AuthType("user").Build()
@@ -80,13 +79,13 @@ err = dtoken.AuthType("user").CheckLogin(ctx, token)
 
 - A builder without AuthType registers the default `auth:` namespace. Package functions such as `dtoken.Login` and `dtoken.IsLogin` always use that namespace and match the Auth method signatures.
 - `dtoken.AuthType("user")` is a selector that resolves the registry on every operation, including after explicit replacement. Missing names return ErrManagerNotFound or false for boolean checks; they never fall back to the default.
-- Root and Auth operations ignore the AuthType option field for routing. That field remains for legacy `global.*WithOptions` calls.
+- Root and Auth operations ignore the AuthType option field for routing. That field is retained for source compatibility; select the engine through AuthType(name) or a fixed Auth instance.
 - Duplicate Build calls return `errors.ErrManagerAlreadyRegistered` and preserve the original instance. Only one concurrent build wins; a losing assembled candidate closes its owned resources. Mark shared components as caller-owned.
-- For explicit replacement, use BuildInstance followed by dtoken.SetAuth. Legacy global.SetAuth, SetManager and BuildAndSetManager retain their replacement behavior and close the old engine. Setting the same instance again does not close it.
+- For explicit replacement, use BuildInstance followed by dtoken.SetAuth. SetAuth, SetManager and BuildAndSetManager perform explicit replacement and close the old engine. Setting the same instance again does not close it.
 - Instance Close immediately removes entries still pointing to its engine before closing it. Closing an old instance cannot remove its replacement.
 - `dtoken.Close()` closes the default namespace; `dtoken.AuthType("user").Close()` closes the current user namespace; `dtoken.CloseAll()` closes all current registered instances. Repeated calls are safe. CloseAll excludes unregistered instances and does not prevent later builds.
 
-WithAuth binds a concrete engine and does not follow replacement. WithManagerResolver(dtoken.GetManager) selects through the registry per request; legacy global.GetManager also works. An established request scope retains its original engine. Coordinate routing and drain requests before closing the old engine.
+WithAuth binds a concrete engine and does not follow replacement. WithManagerResolver(dtoken.GetManager) selects through the registry per request. An established request scope retains its original engine. Coordinate routing and drain requests before closing the old engine.
 
 Migration: remove redundant SetAuth after Build; change builds that require independent instances with the same namespace to BuildInstance. Obtain the advanced Manager with auth.Manager(). Closing instances and the registry follows shared ownership; individual Close calls do not require an additional CloseAll.
 
@@ -94,7 +93,7 @@ The library does not install signal handlers or call os.Exit. The application ha
 
 ## Capability contracts
 
-contract/nonce, contract/oauth2, contract/ticket, and contract/shortkey define service interfaces and data types. HTTP contexts and framework adapters depend on these contracts, not on concrete capability implementations or global.
+contract/nonce, contract/oauth2, contract/ticket, and contract/shortkey define service interfaces and data types. HTTP contexts and framework adapters depend on these contracts, not on concrete capability implementations.
 
 The bundled capability packages implement these interfaces with compile-time assertions. Their existing public data names alias the contract types, preserving source compatibility and serialized fields.
 

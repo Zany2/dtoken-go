@@ -184,7 +184,7 @@ func (b *BrowserClient) BeginLogin(w http.ResponseWriter, r *http.Request, retur
 	return nil
 }
 
-// CompleteLogin consumes valid browser state before contacting the center; failures require a new login flow. CompleteLogin 在联系中心前消费有效浏览器状态，失败后必须重新发起登录。
+// CompleteLogin consumes valid browser state before HTTP or shared-store exchange; failures require a new login flow. CompleteLogin 在 HTTP 或共享存储兑换前消费有效浏览器状态，失败后必须重新发起登录。
 func (b *BrowserClient) CompleteLogin(w http.ResponseWriter, r *http.Request) (*BrowserLoginResult, error) {
 	browserHeaders(w)
 	if err := r.Context().Err(); err != nil {

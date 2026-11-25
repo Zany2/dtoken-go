@@ -28,8 +28,10 @@ type ClientConfig struct {
 	LoginURL string
 	// LogoutCallbackURL stores current client logout callback URL. LogoutCallbackURL 存储当前客户端注销回调地址。
 	LogoutCallbackURL string
-	// UseHTTPCheck enables remote ticket validation mode. UseHTTPCheck 启用远程 Ticket 校验模式。
+	// UseHTTPCheck forces HTTP exchange even when SharedStoreServer is configured. UseHTTPCheck 即使配置 SharedStoreServer 也强制通过 HTTP 兑换。
 	UseHTTPCheck bool
+	// SharedStoreServer borrows a local protocol service over the center's shared storage for Ticket/code exchange; nil preserves HTTP exchange. SharedStoreServer 借用连接中心共享存储的本地协议服务兑换 Ticket 或授权码，nil 保持 HTTP 兑换。
+	SharedStoreServer *HTTPServer
 	// EnableSLO enables single logout. EnableSLO 启用单点注销。
 	EnableSLO bool
 	// RegisterCallback sends the logout callback URL during authorization and credential exchange. RegisterCallback 在授权和凭证兑换时发送注销回调地址。
@@ -240,8 +242,16 @@ func (c *ClientApp) ExchangeCredential(ctx context.Context, req CredentialReques
 		values.Set(c.config.Params.Callback, c.config.LogoutCallbackURL)
 	}
 	var result TicketExchangeResult
-	if err := c.postForm(ctx, c.config.Endpoints.Token, ActionToken, values, &result); err != nil {
-		return nil, err
+	if c.config.SharedStoreServer != nil && !c.config.UseHTTPCheck {
+		shared, err := c.exchangeSharedStore(ctx, values)
+		if err != nil {
+			return nil, err
+		}
+		result = *shared
+	} else {
+		if err := c.postForm(ctx, c.config.Endpoints.Token, ActionToken, values, &result); err != nil {
+			return nil, err
+		}
 	}
 	if result.LoginID == "" {
 		return nil, errors.New("sso exchange response is missing loginId")

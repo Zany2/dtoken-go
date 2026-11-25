@@ -8,7 +8,6 @@ import (
 
 	"github.com/Zany2/dtoken-go"
 	derror "github.com/Zany2/dtoken-go/errors"
-	"github.com/Zany2/dtoken-go/global"
 	"github.com/Zany2/dtoken-go/storage/memory"
 )
 
@@ -25,8 +24,8 @@ func (s *lifecycleStorage) Close() error {
 
 // TestRegistryReplacementPreservesCallerOwnedStorage verifies the public ownership contract across two Auth instances. TestRegistryReplacementPreservesCallerOwnedStorage 验证两个 Auth 实例间的公开资源所有权契约。
 func TestRegistryReplacementPreservesCallerOwnedStorage(t *testing.T) {
-	global.DeleteAllManager()
-	t.Cleanup(global.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	shared := &lifecycleStorage{Storage: memory.NewStorage()}
 	t.Cleanup(func() { _ = shared.Close() })
 	build := func() *dtoken.Auth {
@@ -46,12 +45,12 @@ func TestRegistryReplacementPreservesCallerOwnedStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	global.SetAuth(first)
-	global.SetAuth(first)
+	dtoken.SetAuth(first)
+	dtoken.SetAuth(first)
 	if first.IsClosed() {
 		t.Fatal("duplicate registration closed the instance")
 	}
-	global.SetAuth(second)
+	dtoken.SetAuth(second)
 	if !first.IsClosed() || !alias.IsClosed() || second.IsClosed() {
 		t.Fatal("replacement did not preserve shared engine lifecycle")
 	}
@@ -66,7 +65,7 @@ func TestRegistryReplacementPreservesCallerOwnedStorage(t *testing.T) {
 	}
 	first.Close()
 	alias.Close()
-	if err := global.DeleteManager("shared-lifecycle"); err != nil {
+	if err := dtoken.DeleteManager("shared-lifecycle"); err != nil {
 		t.Fatal(err)
 	}
 	second.Close()
@@ -93,6 +92,6 @@ func TestAuthOwnsStorageOnce(t *testing.T) {
 	if !missing.IsClosed() || !(&dtoken.Auth{}).IsClosed() {
 		t.Fatal("empty Auth should be unavailable")
 	}
-	global.SetAuth(missing)
-	global.SetAuth(auth)
+	dtoken.SetAuth(missing)
+	dtoken.SetAuth(auth)
 }

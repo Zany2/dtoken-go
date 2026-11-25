@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Zany2/dtoken-go"
 	adapter "github.com/Zany2/dtoken-go/contract"
 	derror "github.com/Zany2/dtoken-go/errors"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	"github.com/Zany2/dtoken-go/internal/defaults"
 	"github.com/gin-gonic/gin"
 	"net/http"
@@ -16,10 +16,10 @@ import (
 
 // TestProductionConfiguration validates the configuration used by main, not a separate test builder. TestProductionConfiguration 校验 main 实际使用的配置，避免独立测试配置掩盖问题。
 func TestProductionConfiguration(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
-	dtglobal.SetAuth(initDToken())
-	mgr, err := dtglobal.GetManager()
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+	initDToken()
+	mgr, err := dtoken.GetManager()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,20 +55,20 @@ func TestProductionRouteFailures(t *testing.T) {
 		check(http.MethodGet, path, "", "", http.StatusUnauthorized)
 	}
 	ctx := context.Background()
-	token, err := dtglobal.Login(ctx, "reader", "web")
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "reader", Device: "web"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := dtglobal.DisableDevice(ctx, "reader", "web", time.Hour); err != nil {
+	if err := dtoken.DisableDevice(ctx, dtoken.DeviceDisableOptions{LoginID: "reader", Device: "web", Duration: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
 	check(http.MethodGet, "/me", "", token, http.StatusForbidden)
-	if err := dtglobal.Disable(ctx, "blocked", time.Hour, ""); err != nil {
+	if err := dtoken.Disable(ctx, dtoken.DisableOptions{LoginID: "blocked", Duration: time.Hour, Reason: ""}); err != nil {
 		t.Fatal(err)
 	}
 	check(http.MethodPost, "/login", `{"username":"blocked","password":"123456"}`, "", http.StatusForbidden)
 
-	dtglobal.DeleteAllManager()
+	dtoken.DeleteAllManager()
 	check(http.MethodGet, "/me", "", token, http.StatusInternalServerError)
 	base, err := defaults.NewBuilder().AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).Build()
 	if err != nil {
@@ -80,7 +80,7 @@ func TestProductionRouteFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dtglobal.SetManager(mgr)
+	dtoken.SetManager(mgr)
 	router = gin.New()
 	registerTestRoutes(router)
 	check(http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "", http.StatusInternalServerError)
@@ -105,7 +105,7 @@ func TestLoginRejectsTrailingJSON(t *testing.T) {
 			t.Fatalf("invalid input accepted: %d %s", rec.Code, rec.Body.String())
 		}
 	}
-	if _, err := dtglobal.GetSession(context.Background(), "alice"); !errors.Is(err, derror.ErrSessionNotFound) {
+	if _, err := dtoken.GetSession(context.Background(), "alice"); !errors.Is(err, derror.ErrSessionNotFound) {
 		t.Fatalf("invalid input created a session: %v", err)
 	}
 	rec := requestQuickStart(t, router, http.MethodPost, "/login", valid+"\n\t", "")

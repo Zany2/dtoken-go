@@ -2,7 +2,7 @@
 
 [English](../security/jwt.md) | 中文文档
 
-本文 dt 表示根包，global 表示旧版兼容包，adapter 表示 contract，dgenerator 表示 generator/dgenerator。Build 自动注册；可使用 auth.Login(ctx, dt.LoginOptions{...})、dt.LoginID 或 dt.AuthType(name) 调用。以下示例保留 global 的位置参数接口。
+本文 dt 表示根包，adapter 表示 contract，dgenerator 表示 generator/dgenerator。Build 自动注册；使用 auth.Login(ctx, dt.LoginOptions{...})、dt.LoginID 或 dt.AuthType(name) 调用。
 
 ## 概览
 
@@ -60,7 +60,6 @@ package main
 
 import (
     dt "github.com/Zany2/dtoken-go"
-    global "github.com/Zany2/dtoken-go/global"
     "context"
 
     "github.com/Zany2/dtoken-go/storage/memory"
@@ -84,7 +83,7 @@ func main() {
     defer dt.CloseAll()
 
     ctx := context.Background()
-    token, _ := global.Login(ctx, "10001", "web", "chrome-mac")
+    token, _ := dt.Login(ctx, dt.LoginOptions{LoginID: "10001", Device: "web", DeviceID: "chrome-mac"})
     _ = token
 }
 ```
@@ -110,12 +109,12 @@ defer auth.Close()
 ```go
 ctx := context.Background()
 
-token, err := global.Login(ctx, "10001", "web")
+token, err := dt.Login(ctx, dt.LoginOptions{LoginID: "10001", Device: "web"})
 
-isLogin := global.IsLogin(ctx, token)
-loginID, err := global.GetLoginID(ctx, token)
-info, err := global.GetTokenInfo(ctx, token)
-ttl, err := global.GetTokenTTL(ctx, token)
+isLogin := dt.IsLogin(ctx, token)
+loginID, err := dt.GetLoginID(ctx, token)
+info, err := dt.GetTokenInfo(ctx, token)
+ttl, err := dt.GetTokenTTL(ctx, token)
 ```
 
 这些 API 和普通 UUID Token 的用法一致。

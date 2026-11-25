@@ -1,37 +1,33 @@
-# 全局 API 速查
+# 根包 API 速查
 
-代码片段的导入别名：global = github.com/Zany2/dtoken-go/global.
-
-本页整理 `global` API 的常用调用方式，适合在已经完成 Manager 初始化后快速查阅。
-
-本页保留旧 global 调用速查。Build 自动注册，退出时先排空请求再关闭实例或调用 dtoken.CloseAll；BuildInstance 不自动注册。新应用的实例入口及签名对照见 [Auth API](../../api/auth_zh.md)；global.Login 的位置参数不能直接用于 auth.Login。
+代码片段中，dt = github.com/Zany2/dtoken-go。Build 自动注册，默认体系使用 dt 包级函数，其他体系使用 dt.AuthType(name)，业务方法签名与 Auth 实例一致。关闭前先排空请求；未注册实例使用 BuildInstance 创建并单独关闭。完整参数见 [Auth API](../../api/auth_zh.md)。
 
 ## 登录认证
 
 ```go
-token, err := global.Login(ctx, "user-1001")
-token, err = global.Login(ctx, "user-1001", "web", "browser-001")
+token, err := dt.Login(ctx, dt.LoginOptions{LoginID: "user-1001"})
+token, err = dt.Login(ctx, dt.LoginOptions{LoginID: "user-1001", Device: "web", DeviceID: "browser-001"})
 
-isLogin := global.IsLogin(ctx, token)
-loginID, err := global.GetLoginID(ctx, token)
-tokenInfo, err := global.GetTokenInfo(ctx, token)
-ttl, err := global.GetTokenTTL(ctx, token)
+isLogin := dt.IsLogin(ctx, token)
+loginID, err := dt.GetLoginID(ctx, token)
+tokenInfo, err := dt.GetTokenInfo(ctx, token)
+ttl, err := dt.GetTokenTTL(ctx, token)
 
-err = global.RenewTimeout(ctx, token, 2*time.Hour)
-err = global.Logout(ctx, token)
-err = global.LogoutByLoginID(ctx, "user-1001")
+err = dt.RenewTimeout(ctx, token, 2*time.Hour)
+err = dt.LogoutByToken(ctx, token)
+err = dt.LogoutByLoginID(ctx, "user-1001")
 ```
 
 ## 角色权限
 
 ```go
-_ = global.AddRoles(ctx, "user-1001", []string{"admin", "auditor"})
-_ = global.AddPermissions(ctx, "user-1001", []string{"order:read", "order:*"})
+_ = dt.AddRoles(ctx, dt.RoleOptions{LoginID: "user-1001", Roles: []string{"admin", "auditor"}})
+_ = dt.AddPermissions(ctx, dt.PermissionOptions{LoginID: "user-1001", Permissions: []string{"order:read", "order:*"}})
 
-hasRole := global.HasRole(ctx, "user-1001", "admin")
-hasAnyRole := global.HasRolesOr(ctx, "user-1001", []string{"admin", "owner"})
-hasPermission := global.HasPermission(ctx, "user-1001", "order:read")
-hasAllPermission := global.HasPermissionsAnd(ctx, "user-1001", []string{"order:read", "order:write"})
+hasRole := dt.HasRole(ctx, "user-1001", "admin")
+hasAnyRole := dt.HasRolesOr(ctx, "user-1001", []string{"admin", "owner"})
+hasPermission := dt.HasPermission(ctx, "user-1001", "order:read")
+hasAllPermission := dt.HasPermissionsAnd(ctx, "user-1001", []string{"order:read", "order:write"})
 
 _, _, _, _ = hasRole, hasAnyRole, hasPermission, hasAllPermission
 ```
@@ -39,19 +35,19 @@ _, _, _, _ = hasRole, hasAnyRole, hasPermission, hasAllPermission
 ## 在线状态控制
 
 ```go
-_ = global.Kickout(ctx, token)
-_ = global.KickoutByLoginID(ctx, "user-1001")
-_ = global.Replace(ctx, token)
-_ = global.ReplaceByLoginID(ctx, "user-1001")
+_ = dt.KickoutByToken(ctx, token)
+_ = dt.KickoutByLoginID(ctx, "user-1001")
+_ = dt.ReplaceByToken(ctx, token)
+_ = dt.ReplaceByLoginID(ctx, "user-1001")
 ```
 
 ## 封禁控制
 
 ```go
-_ = global.Disable(ctx, "user-1001", time.Hour, "risk_control")
-disabled := global.IsDisable(ctx, "user-1001")
-disableInfo, err := global.GetDisableInfo(ctx, "user-1001")
-_ = global.Untie(ctx, "user-1001")
+_ = dt.Disable(ctx, dt.DisableOptions{LoginID: "user-1001", Duration: time.Hour, Reason: "risk_control"})
+disabled := dt.IsDisable(ctx, "user-1001")
+disableInfo, err := dt.GetDisableInfo(ctx, "user-1001")
+_ = dt.Untie(ctx, "user-1001")
 
 _, _ = disabled, disableInfo
 ```

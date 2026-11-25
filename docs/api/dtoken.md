@@ -1,642 +1,208 @@
-English | [中文文档](dtoken_zh.md)
+[中文文档](dtoken_zh.md) | English
 
-# Legacy global API Reference
+# Root API Reference
 
-## Overview
+Here dt names `github.com/Zany2/dtoken-go`. Root functions use the default namespace auth:. Select another system with dt.AuthType(name); its business signatures match root functions and Auth methods. See [Auth API](auth.md) for options and instance details.
 
-This reference uses global as an import alias for github.com/Zany2/dtoken-go/global. The root exposes instance methods, default namespace functions, and AuthType selectors; Nonce, OAuth2, Ticket, and ShortKey are called through independent services. `dt` refers to the root package `github.com/Zany2/dtoken-go` for public models and engine extension types.
+The global package has been removed. Signatures below belong to the root; login, permission mutations, and disable operations use typed options and do not accept a trailing legacy authType argument.
 
-In the current version, `global` uses `context.Context` as the unified entry, and different auth systems can be selected through the optional `authType` parameter.
+## Initialization And Namespace Selection
 
-New applications use the root [unified facade API](auth.md). Build registers automatically, and legacy global shares the root registry. Function signatures on this page belong to global; typed options are declared in the root package, aliased as dt in examples.
-
-## Initialization
-
-<!-- dtoken-compile: global-registration -->
+<!-- dtoken-compile: root-registration -->
 ```go
 package main
 
 import (
-	"context"
-	"fmt"
+    "context"
+    "fmt"
 
-	dt "github.com/Zany2/dtoken-go"
-	global "github.com/Zany2/dtoken-go/global"
+    dt "github.com/Zany2/dtoken-go"
 )
 
 func main() {
-	auth, err := dt.NewBuilder().IsPrintBanner(false).Build()
-	if err != nil {
-		panic(err)
-	}
-	defer auth.Close()
-	token, err := global.Login(context.Background(), "alice")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(token)
+    defer dt.CloseAll()
+    dt.NewBuilder().IsPrintBanner(false).MustBuild()
+    dt.NewBuilder().AuthType("user").IsPrintBanner(false).MustBuild()
+    ctx := context.Background()
+    token, err := dt.AuthType("user").Login(ctx, dt.LoginOptions{LoginID: "10001", Device: "web"})
+    if err != nil {
+        panic(err)
+    }
+    if err := dt.AuthType("user").CheckLogin(ctx, token); err != nil {
+        panic(err)
+    }
+    fmt.Println(dt.AuthType("user").IsLogin(ctx, token))
 }
 ```
 
-## Authentication API
+Build registers and returns Auth; duplicate names return ErrManagerAlreadyRegistered. BuildInstance does not register and must be closed by its owner. AuthType selectors resolve each operation; a missing system returns ErrManagerNotFound, or false for boolean checks, without falling back. Fixed instances do not follow replacement. The declarations below are a signature index: use root types, the current request context, and time.Duration for duration parameters, distinct from builder settings measured in seconds.
 
-### Login
-
-Login and return a token.
-
-**Signature**:
-```go
-func Login(ctx context.Context, loginID string, params ...string) (string, error)
-```
-
-**Parameters**:
-- `ctx` - Request context
-- `loginID` - Login ID
-- `params` - Optional parameters in order: `[device, deviceID, authType]`
-
-**Returns**:
-- `string` - Token value
-- `error` - Error information
-
-**Example**:
-```go
-token, _ := global.Login(ctx, "1000")
-token, _ := global.Login(ctx, "1000", "mobile")
-token, _ := global.Login(ctx, "1000", "mobile", "device-001", "user")
-```
-
-### LoginWithRefreshToken
-
-Login and return an access token plus a refresh token.
-
-**Signature**:
-```go
-func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*dt.RefreshTokenPair, error)
-func LoginWithRefreshTokenOptions(ctx context.Context, opts dt.RefreshTokenOptions, authType ...string) (*dt.RefreshTokenPair, error)
-```
-
-**Example**:
-```go
-pair, err := global.LoginWithRefreshToken(ctx, "1000", "web", "browser-001")
-if err != nil {
-    return err
-}
-
-fmt.Println(pair.AccessToken)
-fmt.Println(pair.RefreshToken)
-```
-
-### RefreshToken
-
-Rotate a refresh token and return a new token pair.
-
-**Signature**:
-```go
-func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*dt.RefreshTokenPair, error)
-func RevokeRefreshToken(ctx context.Context, refreshToken string, authType ...string) error
-func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...string) (int64, error)
-```
-
-**Example**:
-```go
-nextPair, err := global.RefreshToken(ctx, pair.RefreshToken)
-if err != nil {
-    return err
-}
-
-ttl, err := global.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
-if err != nil {
-    return err
-}
-fmt.Println(ttl)
-
-if err := global.RevokeRefreshToken(ctx, nextPair.RefreshToken); err != nil {
-    return err
-}
-```
-
-### IntrospectToken
-
-Inspect token validity and ownership information without renewal side effects.
-
-**Signature**:
-```go
-func IntrospectToken(ctx context.Context, tokenValue string, authType ...string) (*dt.TokenIntrospection, error)
-```
-
-**Example**:
-```go
-info, err := global.IntrospectToken(ctx, token)
-if err != nil {
-    return err
-}
-if !info.Active {
-    // token is inactive
-}
-```
-
-### IsLogin
-
-Check whether a token is logged in.
-
-**Signature**:
-```go
-func IsLogin(ctx context.Context, tokenValue string, authType ...string) bool
-```
-
-**Example**:
-```go
-if global.IsLogin(ctx, token) {
-    // logged in
-}
-```
-
-### GetLoginID
-
-Get the login ID by token.
-
-**Signature**:
-```go
-func GetLoginID(ctx context.Context, tokenValue string, authType ...string) (string, error)
-```
-
-**Example**:
-```go
-loginID, err := global.GetLoginID(ctx, token)
-```
-
-### Logout
-
-Logout by token.
-
-**Signature**:
-```go
-func Logout(ctx context.Context, tokenValue string, authType ...string) error
-```
-
-**Example**:
-```go
-_ = global.Logout(ctx, token)
-```
-
-### Kickout
-
-Kick a user offline by token.
-
-**Signature**:
-```go
-func Kickout(ctx context.Context, tokenValue string, authType ...string) error
-```
-
-**Example**:
-```go
-_ = global.Kickout(ctx, token)
-```
-
-### Common Extended Methods
+## Login and token lifecycle
 
 ```go
-func LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration, params ...string) (string, error)
-func LoginWithRefreshToken(ctx context.Context, loginID string, params ...string) (*dt.RefreshTokenPair, error)
-func LoginWithRefreshTokenOptions(ctx context.Context, opts dt.RefreshTokenOptions, authType ...string) (*dt.RefreshTokenPair, error)
-func RefreshToken(ctx context.Context, refreshToken string, authType ...string) (*dt.RefreshTokenPair, error)
-func RevokeRefreshToken(ctx context.Context, refreshToken string, authType ...string) error
-func GetRefreshTokenTTL(ctx context.Context, refreshToken string, authType ...string) (int64, error)
-func IntrospectToken(ctx context.Context, tokenValue string, authType ...string) (*dt.TokenIntrospection, error)
-func LoginByToken(ctx context.Context, tokenValue string, authType ...string) error
-func CheckLogin(ctx context.Context, tokenValue string, authType ...string) error
-func LogoutByDevice(ctx context.Context, loginID string, device string, authType ...string) error
-func LogoutByDeviceAndDeviceID(ctx context.Context, loginID string, params ...string) error
-func LogoutByLoginID(ctx context.Context, loginID string, authType ...string) error
-func KickoutByDevice(ctx context.Context, loginID string, device string, authType ...string) error
-func KickoutByDeviceAndDeviceID(ctx context.Context, loginID string, params ...string) error
-func KickoutByLoginID(ctx context.Context, loginID string, authType ...string) error
-func Replace(ctx context.Context, tokenValue string, authType ...string) error
-func ReplaceByDevice(ctx context.Context, loginID string, device string, authType ...string) error
-func ReplaceByDeviceAndDeviceID(ctx context.Context, loginID string, params ...string) error
-func ReplaceByLoginID(ctx context.Context, loginID string, authType ...string) error
-func GetTokenInfo(ctx context.Context, tokenValue string, authType ...string) (*dt.TokenInfo, error)
-func GetDevice(ctx context.Context, tokenValue string, authType ...string) (string, error)
-func GetDeviceID(ctx context.Context, tokenValue string, authType ...string) (string, error)
-func GetTokenCreateTime(ctx context.Context, tokenValue string, authType ...string) (int64, error)
-func GetTokenTTL(ctx context.Context, tokenValue string, authType ...string) (int64, error)
-func RenewTimeout(ctx context.Context, tokenValue string, timeout time.Duration, authType ...string) error
+func Login(ctx context.Context, opts dt.LoginOptions) (string, error)
+func LoginID(ctx context.Context, loginID string) (string, error)
+func LoginWithTimeout(ctx context.Context, loginID string, timeout time.Duration) (string, error)
+func LoginWithRefreshToken(ctx context.Context, loginID string) (*dt.RefreshTokenPair, error)
+func LoginWithRefreshTokenOptions(ctx context.Context, opts dt.RefreshTokenOptions) (*dt.RefreshTokenPair, error)
+func RefreshToken(ctx context.Context, refreshToken string) (*dt.RefreshTokenPair, error)
+func RevokeRefreshToken(ctx context.Context, refreshToken string) error
+func GetRefreshTokenTTL(ctx context.Context, refreshToken string) (int64, error)
+func IntrospectToken(ctx context.Context, token string) (*dt.TokenIntrospection, error)
+func LoginByToken(ctx context.Context, token string) error
+func LogoutByToken(ctx context.Context, token string) error
+func LogoutByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) error
+func LogoutByDevice(ctx context.Context, loginID, device string) error
+func LogoutByLoginID(ctx context.Context, loginID string) error
+func Logout(ctx context.Context, opts dt.LogoutOptions) error
+func KickoutByToken(ctx context.Context, token string) error
+func KickoutByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) error
+func KickoutByDevice(ctx context.Context, loginID, device string) error
+func KickoutByLoginID(ctx context.Context, loginID string) error
+func Kickout(ctx context.Context, opts dt.LogoutOptions) error
+func ReplaceByToken(ctx context.Context, token string) error
+func ReplaceByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) error
+func ReplaceByDevice(ctx context.Context, loginID, device string) error
+func ReplaceByLoginID(ctx context.Context, loginID string) error
+func Replace(ctx context.Context, opts dt.LogoutOptions) error
+func IsLogin(ctx context.Context, token string) bool
+func CheckLogin(ctx context.Context, token string) error
+func GetLoginID(ctx context.Context, token string) (string, error)
+func GetTokenInfo(ctx context.Context, token string) (*dt.TokenInfo, error)
+func GetDevice(ctx context.Context, token string) (string, error)
+func GetDeviceAndDeviceID(ctx context.Context, token string) (string, string, error)
+func GetDeviceID(ctx context.Context, token string) (string, error)
+func GetTokenCreateTime(ctx context.Context, token string) (int64, error)
+func GetTokenTTL(ctx context.Context, token string) (int64, error)
+func RenewTimeout(ctx context.Context, token string, timeout time.Duration) error
 ```
 
-## Permission API
-
-### AddPermissions
-
-Add permissions for a specified account.
-
-**Signature**:
-```go
-func AddPermissions(ctx context.Context, loginID string, permissions []string, authType ...string) error
-```
-
-**Example**:
-```go
-_ = global.AddPermissions(ctx, "1000", []string{
-    "user:read",
-    "user:write",
-    "admin:*",
-})
-```
-
-### HasPermission
-
-Check whether the account has a specified permission.
-
-**Signature**:
-```go
-func HasPermission(ctx context.Context, loginID string, permission string, authType ...string) bool
-```
-
-**Example**:
-```go
-if global.HasPermission(ctx, "1000", "user:read") {
-    // has permission
-}
-```
-
-### HasPermissionsAnd
-
-Check whether the account has all permissions (AND logic).
-
-**Signature**:
-```go
-func HasPermissionsAnd(ctx context.Context, loginID string, permissions []string, authType ...string) bool
-```
-
-### HasPermissionsOr
-
-Check whether the account has any permission (OR logic).
-
-**Signature**:
-```go
-func HasPermissionsOr(ctx context.Context, loginID string, permissions []string, authType ...string) bool
-```
-
-### Common Extended Methods
+## Sessions and terminals
 
 ```go
-func AddPermissionsByToken(ctx context.Context, tokenValue string, permissions []string, authType ...string) error
-func RemovePermissions(ctx context.Context, loginID string, permissions []string, authType ...string) error
-func RemovePermissionsByToken(ctx context.Context, tokenValue string, permissions []string, authType ...string) error
-func GetPermissions(ctx context.Context, loginID string, authType ...string) ([]string, error)
-func GetPermissionsByToken(ctx context.Context, tokenValue string, authType ...string) ([]string, error)
-func HasPermissionByToken(ctx context.Context, tokenValue string, permission string, authType ...string) bool
-func HasPermissionsAndByToken(ctx context.Context, tokenValue string, permissions []string, authType ...string) bool
-func HasPermissionsOrByToken(ctx context.Context, tokenValue string, permissions []string, authType ...string) bool
-func CheckPermission(ctx context.Context, loginID string, permission string, authType ...string) error
-func CheckPermissionAnd(ctx context.Context, loginID string, permissions []string, authType ...string) error
-func CheckPermissionOr(ctx context.Context, loginID string, permissions []string, authType ...string) error
+func GetOnlineTerminalCount(ctx context.Context, loginID string) (int, error)
+func GetOnlineTerminalCountByDevice(ctx context.Context, loginID, device string) (int, error)
+func GetOnlineTerminalCountByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) (int, error)
+func ForEachTerminal(ctx context.Context, loginID string, visitor dt.TerminalVisitor) error
+func ForEachTerminalByDevice(ctx context.Context, loginID, device string, visitor dt.TerminalVisitor) error
+func GetSession(ctx context.Context, loginID string) (*dt.Session, error)
+func GetSessionByToken(ctx context.Context, token string) (*dt.Session, error)
+func GetTokenValueListByLoginID(ctx context.Context, loginID string, checkAlive bool) ([]string, error)
+func GetTokenValueListByDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string, checkAlive bool) ([]string, error)
+func GetTokenValueListByDevice(ctx context.Context, loginID, device string, checkAlive bool) ([]string, error)
+func GetTerminalListByLoginID(ctx context.Context, loginID string) ([]dt.TerminalInfo, error)
+func GetTerminalListByLoginIDAndDevice(ctx context.Context, loginID, device string) ([]dt.TerminalInfo, error)
+func GetTerminalInfoByToken(ctx context.Context, token string) (*dt.TerminalInfo, error)
+func SetSessionValue(ctx context.Context, loginID, key string, value any) error
+func GetSessionValue(ctx context.Context, loginID, key string) (any, bool, error)
+func DeleteSessionValue(ctx context.Context, loginID, key string) error
+func SetSessionValueByToken(ctx context.Context, token, key string, value any) error
+func GetSessionValueByToken(ctx context.Context, token, key string) (any, bool, error)
+func DeleteSessionValueByToken(ctx context.Context, token, key string) error
+func GetTokenValueByLoginID(ctx context.Context, loginID string) (string, error)
+func GetTokenValueByLoginIDAndDevice(ctx context.Context, loginID, device string) (string, error)
+func SearchTokenValue(ctx context.Context, keyword string, start, size int) ([]string, error)
+func SearchSessionId(ctx context.Context, keyword string, start, size int) ([]string, error)
 ```
 
-## Role Management API
-
-### AddRoles
-
-Add roles for a specified account.
-
-**Signature**:
-```go
-func AddRoles(ctx context.Context, loginID string, roles []string, authType ...string) error
-```
-
-**Example**:
-```go
-_ = global.AddRoles(ctx, "1000", []string{"admin", "manager"})
-```
-
-### HasRole
-
-Check whether the account has a specified role.
-
-**Signature**:
-```go
-func HasRole(ctx context.Context, loginID string, role string, authType ...string) bool
-```
-
-**Example**:
-```go
-if global.HasRole(ctx, "1000", "admin") {
-    // has admin role
-}
-```
-
-### HasRolesAnd / HasRolesOr
-
-Multiple role checks.
-
-**Example**:
-```go
-global.HasRolesAnd(ctx, "1000", []string{"admin", "manager"})
-global.HasRolesOr(ctx, "1000", []string{"admin", "super-admin"})
-```
-
-### Common Extended Methods
+## Permissions
 
 ```go
-func AddRolesByToken(ctx context.Context, tokenValue string, roles []string, authType ...string) error
-func RemoveRoles(ctx context.Context, loginID string, roles []string, authType ...string) error
-func RemoveRolesByToken(ctx context.Context, tokenValue string, roles []string, authType ...string) error
-func GetRoles(ctx context.Context, loginID string, authType ...string) ([]string, error)
-func GetRolesByToken(ctx context.Context, tokenValue string, authType ...string) ([]string, error)
-func HasRoleByToken(ctx context.Context, tokenValue string, role string, authType ...string) bool
-func HasRolesAndByToken(ctx context.Context, tokenValue string, roles []string, authType ...string) bool
-func HasRolesOrByToken(ctx context.Context, tokenValue string, roles []string, authType ...string) bool
-func CheckRole(ctx context.Context, loginID string, role string, authType ...string) error
-func CheckRoleAnd(ctx context.Context, loginID string, roles []string, authType ...string) error
-func CheckRoleOr(ctx context.Context, loginID string, roles []string, authType ...string) error
+func CheckPermission(ctx context.Context, opts dt.PermissionOptions) error
+func CheckPermissionsAnd(ctx context.Context, opts dt.PermissionOptions) error
+func CheckPermissionsOr(ctx context.Context, opts dt.PermissionOptions) error
+func AddPermissions(ctx context.Context, opts dt.PermissionOptions) error
+func AddPermissionsByToken(ctx context.Context, token string, permissions []string) error
+func RemovePermissions(ctx context.Context, opts dt.PermissionOptions) error
+func RemovePermissionsByToken(ctx context.Context, token string, permissions []string) error
+func GetPermissions(ctx context.Context, loginID string) ([]string, error)
+func GetPermissionsByToken(ctx context.Context, token string) ([]string, error)
+func HasPermission(ctx context.Context, loginID, permission string) bool
+func HasPermissionByToken(ctx context.Context, token, permission string) bool
+func HasPermissionsAnd(ctx context.Context, loginID string, permissions []string) bool
+func HasPermissionsAndByToken(ctx context.Context, token string, permissions []string) bool
+func HasPermissionsOr(ctx context.Context, loginID string, permissions []string) bool
+func HasPermissionsOrByToken(ctx context.Context, token string, permissions []string) bool
+func CheckPermissionByToken(ctx context.Context, token, permission string) error
+func CheckPermissionAnd(ctx context.Context, loginID string, permissions []string) error
+func CheckPermissionAndByToken(ctx context.Context, token string, permissions []string) error
+func CheckPermissionOr(ctx context.Context, loginID string, permissions []string) error
+func CheckPermissionOrByToken(ctx context.Context, token string, permissions []string) error
 ```
 
-## Account Disable API
-
-### Disable
-
-Disable an account.
-
-**Signature**:
-```go
-func Disable(ctx context.Context, loginID string, duration time.Duration, reason string, authType ...string) error
-```
-
-**Parameters**:
-- `loginID` - Login ID
-- `duration` - Disable duration
-- `reason` - Disable reason
-
-**Example**:
-```go
-_ = global.Disable(ctx, "1000", 1*time.Hour, "manual disable")
-```
-
-### IsDisable
-
-Check whether an account is disabled.
-
-**Signature**:
-```go
-func IsDisable(ctx context.Context, loginID string, authType ...string) bool
-```
-
-### Untie
-
-Restore a disabled account.
-
-**Signature**:
-```go
-func Untie(ctx context.Context, loginID string, authType ...string) error
-```
-
-### GetDisableTTL
-
-Get the remaining disable time.
-
-**Signature**:
-```go
-func GetDisableTTL(ctx context.Context, loginID string, authType ...string) (int64, error)
-```
-
-### Common Extended Methods
+## Roles
 
 ```go
-func GetDisableInfo(ctx context.Context, loginID string, authType ...string) (*dt.DisableInfo, error)
-func CheckDisable(ctx context.Context, loginID string, authType ...string) error
-func DisableService(ctx context.Context, loginID, service string, duration time.Duration, authType ...string) error
-func DisableServiceWithReason(ctx context.Context, loginID, service string, duration time.Duration, reason string, authType ...string) error
-func DisableServiceLevel(ctx context.Context, loginID, service string, level int, duration time.Duration, authType ...string) error
-func DisableServiceLevelWithReason(ctx context.Context, loginID, service string, level int, duration time.Duration, reason string, authType ...string) error
-func UntieService(ctx context.Context, loginID, service string, authType ...string) error
-func IsDisableService(ctx context.Context, loginID, service string, authType ...string) bool
-func IsDisableServiceLevel(ctx context.Context, loginID, service string, level int, authType ...string) bool
-func CheckDisableService(ctx context.Context, loginID string, services []string, authType ...string) error
-func CheckDisableServiceLevel(ctx context.Context, loginID, service string, level int, authType ...string) error
-func GetDisableServiceInfo(ctx context.Context, loginID, service string, authType ...string) (*dt.ServiceDisableInfo, error)
-func GetDisableServiceTTL(ctx context.Context, loginID, service string, authType ...string) (int64, error)
+func CheckRole(ctx context.Context, opts dt.RoleOptions) error
+func CheckRolesAnd(ctx context.Context, opts dt.RoleOptions) error
+func CheckRolesOr(ctx context.Context, opts dt.RoleOptions) error
+func AddRoles(ctx context.Context, opts dt.RoleOptions) error
+func AddRolesByToken(ctx context.Context, token string, roles []string) error
+func RemoveRoles(ctx context.Context, opts dt.RoleOptions) error
+func RemoveRolesByToken(ctx context.Context, token string, roles []string) error
+func GetRoles(ctx context.Context, loginID string) ([]string, error)
+func GetRolesByToken(ctx context.Context, token string) ([]string, error)
+func HasRole(ctx context.Context, loginID, role string) bool
+func HasRoleByToken(ctx context.Context, token, role string) bool
+func HasRolesAnd(ctx context.Context, loginID string, roles []string) bool
+func HasRolesAndByToken(ctx context.Context, token string, roles []string) bool
+func HasRolesOr(ctx context.Context, loginID string, roles []string) bool
+func HasRolesOrByToken(ctx context.Context, token string, roles []string) bool
+func CheckRoleByToken(ctx context.Context, token, role string) error
+func CheckRoleAnd(ctx context.Context, loginID string, roles []string) error
+func CheckRoleAndByToken(ctx context.Context, token string, roles []string) error
+func CheckRoleOr(ctx context.Context, loginID string, roles []string) error
+func CheckRoleOrByToken(ctx context.Context, token string, roles []string) error
 ```
 
-## Session Management API
-
-### GetSession
-
-Get session by login ID.
-
-**Signature**:
-```go
-func GetSession(ctx context.Context, loginID string, authType ...string) (*dt.Session, error)
-```
-
-### GetSessionByToken
-
-Get session by token.
-
-**Signature**:
-```go
-func GetSessionByToken(ctx context.Context, tokenValue string, authType ...string) (*dt.Session, error)
-```
-
-**Example**:
-```go
-if err := global.SetSessionValue(ctx, "1000", "nickname", "John"); err != nil {
-    return err
-}
-nickname, found, err := global.GetSessionValue(ctx, "1000", "nickname")
-if err != nil {
-    return err
-}
-fmt.Println(nickname, found)
-```
-
-`GetSession` and `GetSessionByToken` return decoded snapshots. Changing `sess.Data` only changes that local value. Use `SetSessionValue` or `SetSessionValueByToken` to persist account data while preserving the Session lifetime.
-
-### Common Extended Methods
+## Disable state
 
 ```go
-func GetOnlineTerminalCount(ctx context.Context, loginID string, authType ...string) (int, error)
-func GetOnlineTerminalCountByDevice(ctx context.Context, loginID string, device string, authType ...string) (int, error)
-func GetOnlineTerminalCountByDeviceAndDeviceID(ctx context.Context, loginID string, device string, deviceID string, authType ...string) (int, error)
-func ForEachTerminal(ctx context.Context, loginID string, visitor dt.TerminalVisitor, authType ...string) error
-func ForEachTerminalByDevice(ctx context.Context, loginID, device string, visitor dt.TerminalVisitor, authType ...string) error
-func GetTokenValueListByLoginID(ctx context.Context, loginID string, checkAlive bool, authType ...string) ([]string, error)
-func GetTokenValueListByDeviceAndDeviceID(ctx context.Context, loginID string, device string, deviceID string, checkAlive bool, authType ...string) ([]string, error)
-func GetTokenValueListByDevice(ctx context.Context, loginID string, device string, checkAlive bool, authType ...string) ([]string, error)
-func GetTerminalListByLoginID(ctx context.Context, loginID string, authType ...string) ([]dt.TerminalInfo, error)
-func GetTerminalListByLoginIDAndDevice(ctx context.Context, loginID string, device string, authType ...string) ([]dt.TerminalInfo, error)
-func GetTerminalInfoByToken(ctx context.Context, tokenValue string, authType ...string) (*dt.TerminalInfo, error)
-func GetTokenValueByLoginID(ctx context.Context, loginID string, authType ...string) (string, error)
-func GetTokenValueByLoginIDAndDevice(ctx context.Context, loginID string, device string, authType ...string) (string, error)
-func SearchTokenValue(ctx context.Context, keyword string, start, size int, authType ...string) ([]string, error)
-func SearchSessionId(ctx context.Context, keyword string, start, size int, authType ...string) ([]string, error)
+func Disable(ctx context.Context, opts dt.DisableOptions) error
+func Untie(ctx context.Context, loginID string) error
+func IsDisable(ctx context.Context, loginID string) bool
+func CheckDisable(ctx context.Context, loginID string) error
+func GetDisableInfo(ctx context.Context, loginID string) (*dt.DisableInfo, error)
+func GetDisableTTL(ctx context.Context, loginID string) (int64, error)
+func DisableService(ctx context.Context, opts dt.ServiceDisableOptions) error
+func DisableServiceWithReason(ctx context.Context, loginID, service string, duration time.Duration, reason string) error
+func DisableServiceLevel(ctx context.Context, loginID, service string, level int, duration time.Duration) error
+func DisableServiceLevelWithReason(ctx context.Context, loginID, service string, level int, duration time.Duration, reason string) error
+func DisableDevice(ctx context.Context, opts dt.DeviceDisableOptions) error
+func DisableDeviceWithReason(ctx context.Context, loginID, device string, duration time.Duration, reason string) error
+func DisableDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string, duration time.Duration) error
+func DisableDeviceAndDeviceIDWithReason(ctx context.Context, loginID, device, deviceID string, duration time.Duration, reason string) error
+func UntieService(ctx context.Context, loginID, service string) error
+func IsDisableService(ctx context.Context, loginID, service string) bool
+func IsDisableServiceLevel(ctx context.Context, loginID, service string, level int) bool
+func CheckDisableService(ctx context.Context, loginID string, services ...string) error
+func CheckDisableServiceLevel(ctx context.Context, loginID, service string, level int) error
+func GetDisableServiceInfo(ctx context.Context, loginID, service string) (*dt.ServiceDisableInfo, error)
+func GetDisableServiceTTL(ctx context.Context, loginID, service string) (int64, error)
+func UntieDevice(ctx context.Context, loginID, device string) error
+func UntieDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) error
+func IsDisableDevice(ctx context.Context, loginID, device string) bool
+func IsDisableDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) bool
+func CheckDisableDevice(ctx context.Context, loginID, device string) error
+func CheckDisableDeviceAndDeviceID(ctx context.Context, loginID, device, deviceID string) error
+func GetDisableDeviceInfo(ctx context.Context, loginID, device string) (*dt.DeviceDisableInfo, error)
+func GetDisableDeviceAndDeviceIDInfo(ctx context.Context, loginID, device, deviceID string) (*dt.DeviceDisableInfo, error)
+func GetDisableDeviceTTL(ctx context.Context, loginID, device string) (int64, error)
+func GetDisableDeviceAndDeviceIDTTL(ctx context.Context, loginID, device, deviceID string) (int64, error)
 ```
 
-## Advanced API
+## Registration And Shutdown
 
-### GetTokenInfo
+| API | Behavior |
+| --- | --- |
+| `NewBuilder().Build()` | Register and return Auth |
+| `NewBuilder().BuildInstance()` | Create an unregistered instance |
+| `GetManager(authType...)` | Look up the current Manager; omission selects the default |
+| `GetEventManager(authType...)` | Get the selected event manager |
+| `SetAuth(auth) / SetManager(mgr)` | Explicitly register or replace, closing the old engine |
+| `BuildAndSetManager(builder, authType...)` | Advanced build-and-register entry point with explicit replacement |
+| `Close() / AuthType(name).Close()` | Close the default or selected current system |
+| `CloseAll() / DeleteAllManager()` | Close all current registrations |
+| `DeleteManager(authType...)` | Remove and close the selected Manager, reporting lookup errors |
 
-Get detailed token information.
-
-**Signature**:
-```go
-func GetTokenInfo(ctx context.Context, tokenValue string, authType ...string) (*dt.TokenInfo, error)
-```
-
-**Returns**:
-```go
-type TokenInfo struct {
-    AuthType      string         `json:"authType"`
-    LoginID       string         `json:"loginId"`
-    Device        string         `json:"device"`
-    DeviceID      string         `json:"deviceId"`
-    CreateTime    int64          `json:"createTime"`
-    Timeout       int64          `json:"timeout"`
-    ActiveTimeout int64          `json:"activeTimeout,omitempty"`
-    Extra         map[string]any `json:"extra,omitempty"`
-}
-```
-
-### Independent capabilities
-
-Nonce and OAuth2 are provided by their package Services, outside the global API. See [Nonce](../guide/security/nonce.md), [OAuth2](../guide/security/oauth2.md), and [Ticket and ShortKey](../guide/security/advanced-features.md).
-
-### Manager Lifecycle API
-
-```go
-func SetAuth(auth *dt.Auth)
-func Default() (*dt.Auth, error)
-func SetManager(mgr *dt.Manager)
-func GetManager(authType ...string) (*dt.Manager, error)
-func DeleteManager(authType ...string) error
-func DeleteAllManager()
-```
-
-Applications should register instances with `SetAuth`; `Default` returns the default auth facade. `SetManager` supports advanced adapters and shares the same registry and ownership rules as `SetAuth`.
-
-`SetManager` replaces and immediately closes the previous manager for the same auth type. Runtime replacement should begin only after the old manager has no new or in-flight work; callers must not register a manager again after it has been replaced or closed. `DeleteManager` and `DeleteAllManager` remove managers from the registry before releasing their resources. When managers share Storage, Logger, or Pool components, use `dt.WithComponentOwnership` to mark those shared components as caller-owned.
-
-## Common Method Index
-
-### Manager Lifecycle
-- `SetAuth`
-- `Default`
-- `SetManager`
-- `GetManager`
-- `DeleteManager`
-- `DeleteAllManager`
-
-### Authentication
-- `Login`
-- `LoginWithTimeout`
-- `LoginWithRefreshToken`
-- `LoginWithRefreshTokenOptions`
-- `RefreshToken`
-- `RevokeRefreshToken`
-- `GetRefreshTokenTTL`
-- `IntrospectToken`
-- `LoginByToken`
-- `Logout`
-- `LogoutByDeviceAndDeviceID`
-- `LogoutByDevice`
-- `LogoutByLoginID`
-- `Kickout`
-- `Replace`
-- `KickoutByDeviceAndDeviceID`
-- `KickoutByDevice`
-- `KickoutByLoginID`
-- `ReplaceByDeviceAndDeviceID`
-- `ReplaceByDevice`
-- `ReplaceByLoginID`
-- `IsLogin`
-- `CheckLogin`
-- `GetLoginID`
-- `GetTokenInfo`
-- `GetDevice`
-- `GetDeviceID`
-- `GetTokenCreateTime`
-- `GetTokenTTL`
-- `RenewTimeout`
-
-### Online Terminals / Session
-- `GetOnlineTerminalCount`
-- `GetOnlineTerminalCountByDevice`
-- `GetOnlineTerminalCountByDeviceAndDeviceID`
-- `ForEachTerminal`
-- `ForEachTerminalByDevice`
-- `GetSession`
-- `GetSessionByToken`
-- `SetSessionValue`
-- `GetSessionValue`
-- `DeleteSessionValue`
-- `SetSessionValueByToken`
-- `GetSessionValueByToken`
-- `DeleteSessionValueByToken`
-- `GetTokenValueListByLoginID`
-- `GetTokenValueListByDeviceAndDeviceID`
-- `GetTokenValueListByDevice`
-- `GetTerminalListByLoginID`
-- `GetTerminalListByLoginIDAndDevice`
-- `GetTerminalInfoByToken`
-- `GetTokenValueByLoginID`
-- `GetTokenValueByLoginIDAndDevice`
-- `SearchTokenValue`
-- `SearchSessionId`
-
-### Account Disable
-- `Disable`
-- `Untie`
-- `IsDisable`
-- `GetDisableInfo`
-- `GetDisableTTL`
-- `DisableService`
-- `DisableServiceWithReason`
-- `DisableServiceLevel`
-- `DisableServiceLevelWithReason`
-- `UntieService`
-- `IsDisableService`
-- `IsDisableServiceLevel`
-- `CheckDisableService`
-- `CheckDisableServiceLevel`
-- `GetDisableServiceInfo`
-- `GetDisableServiceTTL`
-- `CheckDisable`
-
-### Permission
-- `AddPermissions`
-- `AddPermissionsByToken`
-- `RemovePermissions`
-- `RemovePermissionsByToken`
-- `GetPermissions`
-- `GetPermissionsByToken`
-- `HasPermission`
-- `HasPermissionByToken`
-- `HasPermissionsAnd`
-- `HasPermissionsAndByToken`
-- `HasPermissionsOr`
-- `HasPermissionsOrByToken`
-- `CheckPermission`
-- `CheckPermissionAnd`
-- `CheckPermissionOr`
-
-### Role Management
-- `AddRoles`
-- `AddRolesByToken`
-- `RemoveRoles`
-- `RemoveRolesByToken`
-- `GetRoles`
-- `GetRolesByToken`
-- `HasRole`
-- `HasRoleByToken`
-- `HasRolesAnd`
-- `HasRolesAndByToken`
-- `HasRolesOr`
-- `HasRolesOrByToken`
-- `CheckRole`
-- `CheckRoleAnd`
-- `CheckRoleOr`
-
-## Next Steps
-
-- [Authentication Guide](../guide/core/authentication.md)
-- [Permission Guide](../guide/core/permission.md)
-- [OAuth2 Guide](../guide/security/oauth2.md)
+Drain requests before closing or replacing engines. Registered and returned instances share an engine; declare shared components caller-owned with WithComponentOwnership. See [API and lifecycle](../design/api-lifecycle.md). Nonce, OAuth2, Ticket, and ShortKey use their own [services](../guide/security/advanced-features.md), rather than root auth methods.

@@ -2,7 +2,7 @@ package chi
 
 import (
 	"context"
-	dtglobal "github.com/Zany2/dtoken-go/global"
+	"github.com/Zany2/dtoken-go"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
 	"github.com/Zany2/dtoken-go/nonce"
 	"net/http"
@@ -12,18 +12,18 @@ import (
 
 // TestChiRepeatedRegistration preserves request ownership unless explicitly overridden. TestChiRepeatedRegistration 验证重复注册保留请求归属，除非显式覆盖。
 func TestChiRepeatedRegistration(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	global := newChiReviewManager(t, "")
 	local := newChiReviewManager(t, "chi-registration")
-	dtglobal.SetManager(global)
+	dtoken.SetManager(global)
 	for _, tc := range []struct {
 		name string
 		opts []AuthOption
 		want *manager.Manager
 	}{
 		{"inherit", nil, local},
-		{"auth_type", []AuthOption{WithManagerResolver(dtglobal.GetManager), WithAuthType(global.GetConfig().AuthType)}, global},
+		{"auth_type", []AuthOption{WithManagerResolver(dtoken.GetManager), WithAuthType(global.GetConfig().AuthType)}, global},
 		{"explicit", []AuthOption{WithManager(local), WithAuthType("missing")}, local},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

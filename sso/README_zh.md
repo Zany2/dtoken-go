@@ -1,5 +1,7 @@
 # SSO 单点登录
 
+SSO 部署方式分为共享 Cookie／认证存储、跨域共享认证存储、跨域独立存储三类；它们与 Ticket 等凭证类型不同。跨域共享存储可通过 `ClientConfig.SharedStoreServer` 直接兑换，并复用现有浏览器登录与退出接入；默认仍走 HTTP。配置、模式一的当前边界及模式二完整流程见[三种部署方式](DEPLOYMENT_MODES_zh.md)。
+
 入站查询串与表单默认受大小限制，覆盖中心六个接口、注销回调和浏览器回调。配置、413 响应及中间件兼容说明见[HTTP 请求大小限制](REQUEST_LIMITS_zh.md)。
 
 [完整接入示例](../examples/sso_deployment/README_zh.md) 将中心与多子应用的签名、防重放、PKCE、共享 Auth 会话和注销串联起来；Redis、HTTPS 代理、副本和故障处理见[部署与运维](DEPLOYMENT_zh.md)。

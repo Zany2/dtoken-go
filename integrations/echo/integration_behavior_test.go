@@ -3,7 +3,6 @@ package echo
 import (
 	"context"
 	"errors"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,8 +13,8 @@ import (
 
 // TestRegisterContextMiddlewareStopsAfterManagerFailure verifies manager resolution failures stop Echo chains. TestRegisterContextMiddlewareStopsAfterManagerFailure 验证 Manager 解析失败时 Echo 链路会停止。
 func TestRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	e := echo4.New()
 	downstreamCalled := false
@@ -37,8 +36,8 @@ func TestRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
 
 // TestAuthMiddlewareSuccessAndFailure verifies authenticated and rejected requests. TestAuthMiddlewareSuccessAndFailure 验证认证成功与失败请求。
 func TestAuthMiddlewareSuccessAndFailure(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
 	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
@@ -77,8 +76,8 @@ func TestAuthMiddlewareSuccessAndFailure(t *testing.T) {
 
 // TestAnnotationHandlerControlFlow verifies Echo annotation success and failure paths. TestAnnotationHandlerControlFlow 验证 Echo 注解处理器成功与失败路径。
 func TestAnnotationHandlerControlFlow(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
 	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).AuthType("echo-annotation").BuildInstance()
@@ -86,7 +85,7 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtglobal.SetManager(mgr)
+	dtoken.SetManager(mgr)
 	token, err := mgr.Login(ctx, "echo-annotation-user")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)

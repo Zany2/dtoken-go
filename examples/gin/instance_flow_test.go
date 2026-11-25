@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -16,8 +15,8 @@ import (
 
 // TestInjectedInstanceOwnsLoginAndRefresh verifies complete flows without global registration. TestInjectedInstanceOwnsLoginAndRefresh 验证无需全局注册的完整实例流程。
 func TestInjectedInstanceOwnsLoginAndRefresh(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	ctx := context.Background()
 	for _, name := range []string{"tenant-a", "tenant-b"} {
 		t.Run(name, func(t *testing.T) {
@@ -33,7 +32,7 @@ func TestInjectedInstanceOwnsLoginAndRefresh(t *testing.T) {
 					t.Fatal(err)
 				}
 				t.Cleanup(global.Close)
-				dtglobal.SetManager(global.Manager())
+				dtoken.SetManager(global.Manager())
 			}
 			router := gin.New()
 			registerRoutes(router, auth)

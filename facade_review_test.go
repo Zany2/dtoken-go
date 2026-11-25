@@ -1,4 +1,4 @@
-package global
+package dtoken
 
 import (
 	"context"
@@ -63,13 +63,13 @@ func TestFacadeRejectsClosedManager(t *testing.T) {
 			if got, err := GetManager("closed-facade"); got != nil || !errors.Is(err, derror.ErrManagerNotFound) {
 				t.Fatalf("closed GetManager() = %v, %v", got, err)
 			}
-			if got, err := NewByAuthType("closed-facade"); got != nil || !errors.Is(err, derror.ErrManagerNotFound) {
-				t.Fatalf("closed NewByAuthType() = %v, %v", got, err)
+			if !AuthType("closed-facade").IsClosed() {
+				t.Fatal("selector reports a removed or closed engine as available")
 			}
 			if got, err := GetEventManager("closed-facade"); got != nil || !errors.Is(err, derror.ErrManagerNotFound) {
 				t.Fatalf("closed GetEventManager() = %v, %v", got, err)
 			}
-			if err := CheckLogin(ctx, "token", "closed-facade"); !errors.Is(err, derror.ErrManagerNotFound) {
+			if err := AuthType("closed-facade").CheckLogin(ctx, "token"); !errors.Is(err, derror.ErrManagerNotFound) {
 				t.Fatalf("closed CheckLogin() error = %v", err)
 			}
 		})
@@ -95,8 +95,8 @@ func TestDisableFacadePreservesValidation(t *testing.T) {
 		{"instance-options", func(level int) error {
 			return auth.DisableService(ctx, ServiceDisableOptions{LoginID: "user", Service: "service", Level: level, Duration: time.Minute})
 		}},
-		{"global-options", func(level int) error {
-			return DisableServiceWithOptions(ctx, ServiceDisableOptions{AuthType: "disable-validation", LoginID: "user", Service: "service", Level: level, Duration: time.Minute})
+		{"root-options", func(level int) error {
+			return AuthType("disable-validation").DisableService(ctx, ServiceDisableOptions{LoginID: "user", Service: "service", Level: level, Duration: time.Minute})
 		}},
 		{"instance-level", func(level int) error {
 			return auth.DisableServiceLevel(ctx, "user", "service", level, time.Minute)

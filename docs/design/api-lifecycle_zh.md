@@ -18,7 +18,6 @@
 | Manager、Strategy、ManagerLoginOptions、RefreshTokenPair 等高级类型 | internal/engine，根 engine_api.go 提供别名 | 应用从根包命名这些类型，不导入实现路径 |
 | 组件工厂类型、Components、ComponentFactories | internal/builder，根 engine_api.go 提供别名 | 供自定义组件装配使用 |
 | 能力服务接口和数据类型 | contract/nonce、contract/oauth2、contract/ticket、contract/shortkey | HTTP 依赖契约；能力实现包复用对应数据类型 |
-| global.Auth、global.Builder 及操作选项 | 根包，global/types.go 提供别名 | 全局入口复用实例类型，不建立第二套模型 |
 | 框架 DTokenContext、Capabilities | httpauth/context，框架 export.go 提供别名 | 框架保留原生请求入口，公共请求类型保持同源 |
 
 根 LoginOptions 与 ManagerLoginOptions 服务于不同调用层次，不是同一个类型的两种名称；RefreshTokenPair 等高级结果也不是 contract/model.go 中的基础模型。类型整理应以实际别名关系为准，不因名称相近而复制、合并或迁移声明。
@@ -68,7 +67,7 @@ Auth.Close() 停止引擎维护任务、等待已接收的异步工作并释放�
 
 ## 全局注册表
 
-根包持有唯一注册表；`global` 保留兼容入口并转发到该注册表。普通构建不再需要 `SetAuth`：
+根包持有 Manager 注册表，Build 自动注册，无需额外调用 `SetAuth`：
 
 ```go
 userAuth, err := dtoken.NewBuilder().AuthType("user").Build()
@@ -83,13 +82,13 @@ err = dtoken.AuthType("user").CheckLogin(ctx, token)
 
 - 不设置 AuthType 的 Builder 注册默认体系 `auth:`。`dtoken.Login`、`dtoken.IsLogin` 等包级方法始终使用默认体系，签名与 Auth 方法一致。
 - `dtoken.AuthType("user")` 返回动态选择器，每次业务操作查注册表；缓存选择器也会跟随显式替换。缺失体系返回 `ErrManagerNotFound`，布尔校验返回 false，不回退到默认体系。
-- Auth 方法和根包方法不使用选项结构体中的 AuthType 字段路由；该字段仅为旧 `global.*WithOptions` 保留。
+- Auth 方法和根包方法不使用选项结构体中的 AuthType 字段路由；该字段为源码兼容保留，通过 AuthType(name) 或固定 Auth 实例选择引擎。
 - `Build()` 同名注册返回 `errors.ErrManagerAlreadyRegistered`，保留原实例。并发构建仅一个成功；竞争失败时关闭已装配候选的自有资源。共享组件须显式声明为调用方所有。
-- 需要显式替换时，先 `BuildInstance()`，再 `dtoken.SetAuth(auth)`；旧 `global.SetAuth`、`SetManager`、`BuildAndSetManager` 保留替换行为，关闭旧引擎。同一实例重复 Set 不会关闭它。
+- 需要显式替换时，先 `BuildInstance()`，再 `dtoken.SetAuth(auth)`；`dtoken.SetAuth`、`SetManager`、`BuildAndSetManager` 执行显式替换，关闭旧引擎。同一实例重复 Set 不会关闭它。
 - 实例 `auth.Close()` 立即注销仍指向自身的注册项，再关闭共享引擎；旧实例关闭不会移除替换后的新实例。
 - `dtoken.Close()` 关闭默认体系，`dtoken.AuthType("user").Close()` 关闭当前 user 体系，`dtoken.CloseAll()` 关闭所有当前注册实例；重复调用安全。CloseAll 不关闭未注册的独立实例，也不禁止应用随后重新构建。
 
-`WithAuth(auth)` 绑定具体引擎，不跟随注册表替换。需要每次请求从注册表选择时，显式传入 `WithManagerResolver(dtoken.GetManager)`；旧 `global.GetManager` 同样可用。已经建立的请求作用域保持原实例。应用应先协调路由切换并排空请求，再关闭旧引擎。
+`WithAuth(auth)` 绑定具体引擎，不跟随注册表替换。需要每次请求从注册表选择时，显式传入 `WithManagerResolver(dtoken.GetManager)`。已经建立的请求作用域保持原实例。应用应先协调路由切换并排空请求，再关闭旧引擎。
 
 迁移已有应用时：删除 Build 后冗余的 SetAuth；将依赖“同名但独立”行为的构建改为 BuildInstance；需要直接使用底层 Manager 时调用返回实例的 Manager()。关闭入口共享资源所有权，不需要逐个关闭后再额外 CloseAll。
 
@@ -97,7 +96,7 @@ err = dtoken.AuthType("user").CheckLogin(ctx, token)
 
 ## 能力契约
 
-contract/nonce、contract/oauth2、contract/ticket、contract/shortkey 定义服务接口和数据类型。HTTP 上下文及框架适配器只依赖这些契约，不导入能力实现或 global。
+contract/nonce、contract/oauth2、contract/ticket、contract/shortkey 定义服务接口和数据类型。HTTP 上下文及框架适配器只依赖这些契约，不导入能力实现。
 
 nonce、oauth2、ticket、shortkey 提供内置实现，通过编译期断言验证满足契约。原能力包中的公开数据类型保留为契约类型的别名，现有结构体字面量、方法签名和序列化字段保持一致。
 

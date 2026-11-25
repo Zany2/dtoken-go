@@ -6,7 +6,7 @@
 
 | 职责 | 包 |
 | --- | --- |
-| 应用入口 | 根实例/默认门面与共享注册表、global 兼容门面 |
+| 应用入口 | 根实例/默认门面、AuthType 选择器与共享注册表 |
 | 公共契约与配置 | contract、config、errors |
 | 事件服务 | event：发布契约及监听分发实现 |
 | 内部实现与装配 | internal/engine、internal/builder、internal/defaults |
@@ -19,12 +19,12 @@
 ## 依赖规则
 
 - 核心引擎依赖 contract、config、errors、event 和内部基础工具，不依赖框架、独立能力或具体组件实现。
-- 能力实现依赖公共契约及基础工具，通过构造器接收组件和可选事件发布器，不反向依赖根门面、global 或核心引擎。
+- 能力实现依赖公共契约及基础工具，通过构造器接收组件和可选事件发布器，不反向依赖根门面或核心引擎。
 - contract 保持共享接口和数据类型，不导入能力实现、框架或默认装配。event 自身包含运行时实现。
 - config 可依赖 contract 和 errors；contract 不反向依赖 config。errors 与内部基础工具不依赖上层运行时，event 不依赖引擎或装配层。
-- 根包通过内部构建器和默认工厂装配基础组件，Build 自动注册，BuildInstance 不注册。根包持有共享注册表，global 转发到根包。
+- 根包通过内部构建器和默认工厂装配基础组件，Build 自动注册，BuildInstance 不注册。根包持有共享注册表。
 - internal/builder 依赖引擎和组件契约，不直接选择组件实现。internal/defaults 明确选择内置 JSON、生成器、日志、池和内存存储；更换内置默认组件时同步更新装配依赖白名单。
-- HTTP 公共层调用引擎和能力服务契约，不导入能力实现或 global。注册表查找通过显式 ManagerResolver 注入。
+- HTTP 公共层调用引擎和能力服务契约，不导入能力实现。注册表查找通过显式 ManagerResolver 注入。
 - 框架适配器调用 HTTP 公共层，处理原生请求、响应和处理链。框架 Builder 转发根构建器并返回 Auth，不转导出全局 API 或可选组件构造器。
 - 框架适配器可以引用自身目录下的辅助子包，不直接导入具体组件、内部构建器、其他框架适配器、SSO 或示例与测试应用。根 Builder 的默认组件依赖属于有意的间接装配关系。
 - 组件实现可依赖自身组件目录、公共契约、配置、错误和内部基础工具，不反向依赖引擎、HTTP 或装配层。contract/storagetest 仅用于测试，不作为运行时依赖。
@@ -36,7 +36,7 @@
 
 | 发布单元 | 目录范围 | 拆分目的 |
 | --- | --- | --- |
-| 根模块 | 根门面、global、internal、contract、config、errors、event、四个能力包、httpauth，以及下列子模块之外的基础组件 | 保持认证核心及基础能力的统一版本 |
+| 根模块 | 根门面、internal、contract、config、errors、event、四个能力包、httpauth，以及下列子模块之外的基础组件 | 保持认证核心及基础能力的统一版本 |
 | 可选组件 | codec/jsonv2、codec/msgpack、logging/gf、storage/redis | 隔离可选依赖或工具链要求 |
 | 框架集成 | integrations 下的八个框架目录 | 隔离框架依赖并单独发布 |
 | SSO | sso、sso/storage/redis | 独立子系统和存储扩展 |

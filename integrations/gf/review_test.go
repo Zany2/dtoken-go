@@ -5,8 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Zany2/dtoken-go"
 	adapter "github.com/Zany2/dtoken-go/contract"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
 	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
@@ -126,8 +126,8 @@ func (s *gfReviewStorage) Get(ctx context.Context, key string) (any, error) {
 
 // TestGFReviewRequestContextAndManager verifies inheritance, cancellation and request values through real routing. TestGFReviewRequestContextAndManager 通过真实路由验证 Manager 继承、取消信号与请求上下文值。
 func TestGFReviewRequestContextAndManager(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	for _, check := range gfReviewChecks {
 		t.Run(check.name, func(t *testing.T) {
 			storage := &gfReviewStorage{Storage: memory.NewStorage()}
@@ -185,13 +185,13 @@ func TestGFReviewRequestContextAndManager(t *testing.T) {
 
 // TestGFReviewManagerSelection verifies explicit selection and closed-manager rejection. TestGFReviewManagerSelection 验证显式实例选择和关闭实例的拒绝行为。
 func TestGFReviewManagerSelection(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	global := newGFReviewManager(t, "", nil)
 	selected := newGFReviewManager(t, "gf-selected", nil)
 	local := newGFReviewManager(t, "gf-local", nil)
-	dtglobal.SetManager(global)
-	dtglobal.SetManager(selected)
+	dtoken.SetManager(global)
+	dtoken.SetManager(selected)
 	r := &ghttp.Request{Request: httptest.NewRequest(http.MethodGet, "/", nil)}
 	getDContext(r, local)
 	for _, tc := range []struct {
@@ -201,7 +201,7 @@ func TestGFReviewManagerSelection(t *testing.T) {
 	}{
 		{nil, "", local}, {nil, "gf-selected", selected}, {local, "missing", local},
 	} {
-		if got, err := resolveRequestManager(r, tc.explicit, tc.authType, dtglobal.GetManager); err != nil || got != tc.want {
+		if got, err := resolveRequestManager(r, tc.explicit, tc.authType, dtoken.GetManager); err != nil || got != tc.want {
 			t.Fatalf("manager=%p,%v want %p", got, err, tc.want)
 		}
 	}
@@ -216,11 +216,11 @@ func TestGFReviewManagerSelection(t *testing.T) {
 
 // TestGFReviewRenewalAndInvalidCache verifies namespace isolation and invalid cached managers. TestGFReviewRenewalAndInvalidCache 验证续期命名空间隔离以及无效缓存实例。
 func TestGFReviewRenewalAndInvalidCache(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	global := newGFReviewManager(t, "", nil)
 	local := newGFReviewManager(t, "gf-renew", nil)
-	dtglobal.SetManager(global)
+	dtoken.SetManager(global)
 	const token = "shared-token"
 	gfReviewLogin(t, global, token)
 	gfReviewLogin(t, local, token)

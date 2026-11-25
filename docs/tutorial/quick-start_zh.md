@@ -105,7 +105,7 @@ err = user.CheckLogin(ctx, token)
 
 注册表与构建返回的 Auth 共用引擎。缺失体系不回退默认体系；重复 Build 不替换已有实例。需要独立实例时使用 BuildInstance，并由持有者 Close；需要显式替换时使用 BuildInstance 后 SetAuth。
 
-HTTP 注册表查找须显式配置 `WithManagerResolver(dtoken.GetManager)`；WithAuth 绑定固定引擎。旧 global 包继续共用该注册表，但其位置参数接口与根包的类型化选项接口有区别。
+HTTP 注册表查找须显式配置 `WithManagerResolver(dtoken.GetManager)`；WithAuth 绑定固定引擎。根包调用与 Auth 方法使用一致的类型化选项签名。
 
 退出时先停止接收并排空请求，再调用 `dtoken.CloseAll()`；这不会关闭未注册实例。框架不监听进程信号，应用处理方式见[生命周期示例](../design/api-lifecycle_zh.md)。
 

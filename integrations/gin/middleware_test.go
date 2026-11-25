@@ -3,7 +3,6 @@ package gin
 import (
 	"context"
 	"errors"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -138,8 +137,8 @@ func TestFailFuncOption(t *testing.T) {
 // TestRegisterContextMiddlewareStopsAfterManagerFailure verifies manager resolution failures abort Gin chains. TestRegisterContextMiddlewareStopsAfterManagerFailure 验证 Manager 解析失败时 Gin 链路会中止。
 func TestRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	router := gin.New()
 	downstreamCalled := false
@@ -162,8 +161,8 @@ func TestRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
 // TestAuthMiddlewareSuccessAndFailure verifies authenticated and rejected requests. TestAuthMiddlewareSuccessAndFailure 验证认证成功与失败请求。
 func TestAuthMiddlewareSuccessAndFailure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
 	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()

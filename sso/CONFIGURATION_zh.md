@@ -2,6 +2,8 @@
 
 [English](CONFIGURATION.md)
 
+`ClientConfig.SharedStoreServer` 可显式启用 Ticket／Code 的共享存储兑换；`UseHTTPCheck=true` 强制 HTTP。未配置本地服务时保持历史 HTTP 行为。校验包含本地服务初始化状态、凭证模式及参数名一致性，不探测共享 Redis，详见[部署方式](DEPLOYMENT_MODES_zh.md)。
+
 中心 HTTP 失败统一使用固定公开消息，并通过可选 `OnHTTPError` 观察钩子保留私有诊断。六个端点的状态兼容性及回调规则见 [HTTP 错误与诊断](HTTP_ERRORS_zh.md)。
 
 应用组装时优先使用带校验的构造入口，让配置错误在 HTTP 监听前返回。这些检查只在本地进行，不访问认证中心、不探测存储可用性，也不验证两端密钥是否一致。

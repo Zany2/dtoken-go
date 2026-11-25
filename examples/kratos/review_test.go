@@ -4,7 +4,6 @@ import (
 	dtoken "github.com/Zany2/dtoken-go"
 	dt1 "github.com/Zany2/dtoken-go/contract"
 	dterror "github.com/Zany2/dtoken-go/errors"
-	dt3 "github.com/Zany2/dtoken-go/global"
 	dt2 "github.com/Zany2/dtoken-go/storage/memory"
 
 	"context"
@@ -26,7 +25,7 @@ import (
 // TestInitDTokenConfiguration verifies the actual example uses a valid renewal threshold. TestInitDTokenConfiguration 验证示例实际使用的续期阈值合法。
 func TestInitDTokenConfiguration(t *testing.T) {
 	setupKratosManager(t)
-	mgr, err := dt3.GetManager()
+	mgr, err := dtoken.GetManager()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,20 +70,20 @@ func TestLoginRejectsMalformedBodies(t *testing.T) {
 func TestAccountAndDeviceRestrictions(t *testing.T) {
 	setupKratosManager(t)
 	ctx := context.Background()
-	if err := dt3.Disable(ctx, "blocked", time.Hour, ""); err != nil {
+	if err := dtoken.Disable(ctx, dtoken.DisableOptions{LoginID: "blocked", Duration: time.Hour, Reason: ""}); err != nil {
 		t.Fatal(err)
 	}
 	srv := newKratosExampleServer(registeredAuth())
 	assertKratosResponse(t, requestKratos(t, srv, http.MethodPost, "/login", `{"username":"blocked","password":"123456"}`, ""), http.StatusForbidden, dterror.CodeAccountDisabled)
-	token, err := dt3.Login(ctx, "alice", "web")
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "alice", Device: "web"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := dt3.DisableDevice(ctx, "alice", "web", time.Hour); err != nil {
+	if err := dtoken.DisableDevice(ctx, dtoken.DeviceDisableOptions{LoginID: "alice", Device: "web", Duration: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
 	assertKratosResponse(t, requestKratos(t, srv, http.MethodGet, "/me", "", token), http.StatusForbidden, dterror.CodeAccountDisabled)
-	if err := dt3.UntieDevice(ctx, "alice", "web"); err != nil {
+	if err := dtoken.UntieDevice(ctx, "alice", "web"); err != nil {
 		t.Fatal(err)
 	}
 	assertKratosResponse(t, requestKratos(t, srv, http.MethodGet, "/me", "", token), http.StatusOK, dterror.CodeSuccess)
@@ -92,8 +91,8 @@ func TestAccountAndDeviceRestrictions(t *testing.T) {
 
 // TestStorageErrorsUseUnifiedResponse covers raw handler errors and wrapped middleware failures. TestStorageErrorsUseUnifiedResponse 覆盖处理器原始错误和中间件包装错误。
 func TestStorageErrorsUseUnifiedResponse(t *testing.T) {
-	dt3.DeleteAllManager()
-	t.Cleanup(dt3.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	storage := &failingKratosStorage{Storage: dt2.NewStorage()}
 	builtAuth1, err := dtoken.NewBuilder().Storage(storage).
 		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
@@ -102,7 +101,7 @@ func TestStorageErrorsUseUnifiedResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dt3.SetManager(mgr)
+	dtoken.SetManager(mgr)
 	for _, withAuth := range []bool{false, true} {
 		t.Run(fmt.Sprintf("withAuth=%t", withAuth), func(t *testing.T) {
 			handlerCalls := 0

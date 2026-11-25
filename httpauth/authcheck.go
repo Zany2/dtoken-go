@@ -45,7 +45,7 @@ type Result struct {
 	LoginID string
 }
 
-// ManagerResolver selects a manager from an explicitly configured registry; pass global.GetManager to opt into the global registry. ManagerResolver 从显式配置的注册表选择管理器，传入 global.GetManager 可显式启用全局注册表。
+// ManagerResolver selects a manager from an explicitly configured registry; pass dtoken.GetManager to opt into the global registry. ManagerResolver 从显式配置的注册表选择管理器，传入 dtoken.GetManager 可显式启用全局注册表。
 type ManagerResolver = func(authType ...string) (*manager.Manager, error)
 
 // ResolveManager validates an explicitly selected manager. ResolveManager 验证显式选择的管理器。

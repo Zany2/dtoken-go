@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	hertzdt "github.com/Zany2/dtoken-go/integrations/hertz"
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
@@ -23,7 +22,7 @@ import (
 // TestInitDTokenConfiguration verifies that automatic renewal fits the token timeout. TestInitDTokenConfiguration 验证自动续期配置与 Token 有效期兼容。
 func TestInitDTokenConfiguration(t *testing.T) {
 	setupHertzManager(t)
-	mgr, err := dtglobal.GetManager()
+	mgr, err := dtoken.GetManager()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,10 +71,10 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 		t.Fatal(err)
 	}
 	token := result.Token
-	if id, err := dtglobal.GetLoginID(ctx, token); err != nil || id != "alice" {
+	if id, err := dtoken.GetLoginID(ctx, token); err != nil || id != "alice" {
 		t.Fatalf("returned token login ID=%q error=%v", id, err)
 	}
-	if !dtglobal.HasRole(ctx, "alice", "admin") || !dtglobal.HasPermission(ctx, "alice", "article:read") {
+	if !dtoken.HasRole(ctx, "alice", "admin") || !dtoken.HasPermission(ctx, "alice", "article:read") {
 		t.Fatal("login did not seed the demo authorization data")
 	}
 
@@ -108,7 +107,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 			assertHertzResponse(t, requestHertz(h, method, path, "", invalidToken), http.StatusUnauthorized, dterror.CodeNotLogin)
 		}
 	}
-	bobToken, err := dtglobal.Login(ctx, "bob")
+	bobToken, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "bob"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +116,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 	}
 	assertHertzResponse(t, requestHertz(h, http.MethodPost, "/logout", "", token), http.StatusOK, dterror.CodeSuccess)
 	assertHertzResponse(t, requestHertz(h, http.MethodGet, "/me", "", token), http.StatusUnauthorized, dterror.CodeNotLogin)
-	if dtglobal.IsLogin(ctx, token) {
+	if dtoken.IsLogin(ctx, token) {
 		t.Fatal("token remains logged in after logout")
 	}
 }
@@ -125,7 +124,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 // TestDisabledAccountLogin verifies a blocked account receives an access restriction response. TestDisabledAccountLogin 验证封禁账号登录返回访问限制响应。
 func TestDisabledAccountLogin(t *testing.T) {
 	setupHertzManager(t)
-	if err := dtglobal.Disable(context.Background(), "alice", time.Hour, ""); err != nil {
+	if err := dtoken.Disable(context.Background(), dtoken.DisableOptions{LoginID: "alice", Duration: time.Hour, Reason: ""}); err != nil {
 		t.Fatal(err)
 	}
 	h := server.Default()
@@ -135,8 +134,8 @@ func TestDisabledAccountLogin(t *testing.T) {
 
 // TestStorageFailuresStayServerErrors verifies handlers and middleware preserve backend failures without leaking details. TestStorageFailuresStayServerErrors 验证处理器和中间件正确报告后端故障且不泄露详情。
 func TestStorageFailuresStayServerErrors(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	builtAuth1, err := dtoken.NewBuilder().Storage(&failingHertzStorage{Storage: dt2.NewStorage()}).
 		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
 	mgr := builtAuth1.Manager()
@@ -144,7 +143,7 @@ func TestStorageFailuresStayServerErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dtglobal.SetManager(mgr)
+	dtoken.SetManager(mgr)
 	for _, withAuth := range []bool{false, true} {
 		t.Run(fmt.Sprintf("withAuth=%t", withAuth), func(t *testing.T) {
 			h := server.Default()
@@ -182,9 +181,9 @@ func (*failingHertzStorage) Get(context.Context, string) (any, error) {
 
 func setupHertzManager(t *testing.T) {
 	t.Helper()
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
-	dtglobal.SetAuth(initDToken())
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+	initDToken()
 }
 
 func hertzRequestWithBody(body string) *hertzapp.RequestContext {
@@ -227,20 +226,20 @@ func assertHertzResponse(t *testing.T, ctx *hertzapp.RequestContext, status, cod
 
 // registeredAuth returns the explicitly registered test fixture. registeredAuth 返回显式注册的测试夹具。
 func registeredAuth() *dtoken.Auth {
-	auth, err := dtglobal.Default()
+	mgr, err := dtoken.GetManager()
 	if err != nil {
 		panic(err)
 	}
-	return auth
+	return dtoken.New(mgr)
 }
 
 // registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
 func registerTestRoutes(h *server.Hertz) { registerRoutes(h, registeredAuth()) }
 
-// TestInjectedLoginWithoutGlobal verifies login and access grants use the injected instance. TestInjectedLoginWithoutGlobal 验证登录与授权使用注入实例且无需全局注册。
-func TestInjectedLoginWithoutGlobal(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+// TestInjectedLoginUsesBuiltInstance verifies routes and the registry share the built engine. TestInjectedLoginUsesBuiltInstance 验证路由与注册表共用构建返回的引擎。
+func TestInjectedLoginUsesBuiltInstance(t *testing.T) {
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	auth := initDToken()
 	t.Cleanup(auth.Close)
 	h := server.Default()
@@ -256,7 +255,7 @@ func TestInjectedLoginWithoutGlobal(t *testing.T) {
 	if !auth.HasRole(ctx, "alice", "admin") || !auth.HasPermission(ctx, "alice", "article:read") {
 		t.Fatal("access grants missing from injected instance")
 	}
-	if _, err := dtglobal.GetManager(); err == nil {
-		t.Fatal("example unexpectedly registered a global manager")
+	if mgr, err := dtoken.GetManager(); err != nil || mgr != auth.Manager() {
+		t.Fatalf("Build registration differs from injected instance: %v", err)
 	}
 }

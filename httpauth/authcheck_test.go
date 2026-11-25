@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Zany2/dtoken-go"
 	"github.com/Zany2/dtoken-go/config"
 	adapter "github.com/Zany2/dtoken-go/contract"
 	derror "github.com/Zany2/dtoken-go/errors"
-	dtoken "github.com/Zany2/dtoken-go/global"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
 )
 

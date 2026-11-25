@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/Zany2/dtoken-go"
 	adapter "github.com/Zany2/dtoken-go/contract"
 	derror "github.com/Zany2/dtoken-go/errors"
-	dtoken "github.com/Zany2/dtoken-go/global"
 	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
 )

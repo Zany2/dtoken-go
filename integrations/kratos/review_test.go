@@ -5,8 +5,8 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"github.com/Zany2/dtoken-go"
 	adapter "github.com/Zany2/dtoken-go/contract"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
 	"github.com/Zany2/dtoken-go/internal/defaults"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
@@ -136,8 +136,8 @@ var kratosReviewChecks = []struct {
 
 // TestKratosReviewRequestContext verifies both transports inherit the registered manager and preserve request context. TestKratosReviewRequestContext 验证两种传输继承请求 Manager 并保留请求上下文。
 func TestKratosReviewRequestContext(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	for _, kind := range []transport.Kind{transport.KindHTTP, transport.KindGRPC} {
 		for _, check := range kratosReviewChecks {
 			t.Run(string(kind)+"/"+check.name, func(t *testing.T) {
@@ -204,13 +204,13 @@ func TestKratosReviewRequestContext(t *testing.T) {
 
 // TestKratosReviewManagerSelection verifies selection priority, invalid caches and renewal isolation. TestKratosReviewManagerSelection 验证选择优先级、无效缓存及续期隔离。
 func TestKratosReviewManagerSelection(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	global := newKratosReviewManager(t, "", nil)
 	local := newKratosReviewManager(t, "kratos-local", nil)
 	selected := newKratosReviewManager(t, "kratos-selected", nil)
-	dtglobal.SetManager(global)
-	dtglobal.SetManager(selected)
+	dtoken.SetManager(global)
+	dtoken.SetManager(selected)
 	for _, mgr := range []*manager.Manager{global, local} {
 		if _, err := mgr.LoginWithOptions(context.Background(), manager.LoginOptions{LoginID: "reader", Token: "same-token"}); err != nil {
 			t.Fatal(err)
@@ -226,7 +226,7 @@ func TestKratosReviewManagerSelection(t *testing.T) {
 	}{
 		{nil, "", local}, {nil, "kratos-selected", selected}, {local, "missing", local},
 	} {
-		if got, err := resolveRequestManager(ctx, tc.explicit, tc.authType, dtglobal.GetManager); err != nil || got != tc.want {
+		if got, err := resolveRequestManager(ctx, tc.explicit, tc.authType, dtoken.GetManager); err != nil || got != tc.want {
 			t.Fatalf("manager=%p,%v want=%p", got, err, tc.want)
 		}
 	}
@@ -336,8 +336,8 @@ func TestKratosReviewAbortedEntry(t *testing.T) {
 
 // TestKratosReviewFailureAndAnnotations verifies rejection, default AND logic and immutable annotation configuration. TestKratosReviewFailureAndAnnotations 验证失败拒绝、默认 AND 及不修改共享注解配置。
 func TestKratosReviewFailureAndAnnotations(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	mgr := newKratosReviewManager(t, "kratos-annotation", nil)
 	for _, check := range kratosReviewChecks {
 		for _, registered := range []bool{false, true} {

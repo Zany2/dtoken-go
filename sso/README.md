@@ -1,5 +1,7 @@
 # SSO
 
+Deployment patterns distinguish shared cookies/authentication storage, cross-domain shared authentication storage, and cross-domain independent storage; they are separate from credential types such as Ticket. `ClientConfig.SharedStoreServer` enables direct exchange using shared storage with the existing browser login/logout integration. HTTP remains the default. See [three deployment patterns](DEPLOYMENT_MODES.md) for configuration, the current pattern-one boundary, and the complete pattern-two flow.
+
 Inbound query and form limits cover all six center endpoints, logout callbacks and browser callbacks. See [HTTP request limits](REQUEST_LIMITS.md) for configuration, 413 responses and middleware compatibility.
 
 The [complete integration example](../examples/sso_deployment/README.md) combines a center and multiple applications with signing, replay protection, PKCE, shared Auth sessions, and logout. See [deployment and operations](DEPLOYMENT.md) for Redis, HTTPS proxies, replicas, and failure handling.

@@ -10,7 +10,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	echodt "github.com/Zany2/dtoken-go/integrations/echo"
 	echo4 "github.com/labstack/echo/v4"
 	"net/http"
@@ -22,7 +21,7 @@ import (
 // TestInitDTokenConfiguration verifies that the example can initialize with a valid renewal threshold. TestInitDTokenConfiguration 验证示例能使用有效的续期阈值完成初始化。
 func TestInitDTokenConfiguration(t *testing.T) {
 	setupEchoManager(t)
-	mgr, err := dtglobal.GetManager()
+	mgr, err := dtoken.GetManager()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,13 +71,13 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	if envelope.Data.Token == "" {
 		t.Fatalf("login response data = %#v, want token", envelope.Data)
 	}
-	if loginID, err := dtglobal.GetLoginID(context.Background(), envelope.Data.Token); err != nil || loginID != "alice" {
+	if loginID, err := dtoken.GetLoginID(context.Background(), envelope.Data.Token); err != nil || loginID != "alice" {
 		t.Fatalf("returned token login ID = %q, error = %v, want alice", loginID, err)
 	}
-	if !dtglobal.HasRole(context.Background(), "alice", "admin") {
+	if !dtoken.HasRole(context.Background(), "alice", "admin") {
 		t.Fatal("login did not seed admin role")
 	}
-	if !dtglobal.HasPermission(context.Background(), "alice", "article:read") {
+	if !dtoken.HasPermission(context.Background(), "alice", "article:read") {
 		t.Fatal("login did not seed article permission")
 	}
 }
@@ -86,14 +85,14 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 func TestProtectedRoutesAndLogout(t *testing.T) {
 	setupEchoManager(t)
 	ctx := context.Background()
-	token, err := dtglobal.Login(ctx, "alice")
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "alice"})
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
-	if err = dtglobal.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
+	if err = dtoken.AddRoles(ctx, dtoken.RoleOptions{LoginID: "alice", Roles: []string{"admin"}}); err != nil {
 		t.Fatalf("AddRoles() error = %v", err)
 	}
-	if err = dtglobal.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
+	if err = dtoken.AddPermissions(ctx, dtoken.PermissionOptions{LoginID: "alice", Permissions: []string{"article:read"}}); err != nil {
 		t.Fatalf("AddPermissions() error = %v", err)
 	}
 
@@ -121,7 +120,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 		}
 	}
 
-	bobToken, err := dtglobal.Login(ctx, "bob")
+	bobToken, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "bob"})
 	if err != nil {
 		t.Fatalf("Login(bob) error = %v", err)
 	}
@@ -173,7 +172,7 @@ func TestLoginRejectsInvalidJSON(t *testing.T) {
 			}
 		})
 	}
-	if _, err := dtglobal.GetSession(context.Background(), "alice"); !errors.Is(err, dterror.ErrSessionNotFound) {
+	if _, err := dtoken.GetSession(context.Background(), "alice"); !errors.Is(err, dterror.ErrSessionNotFound) {
 		t.Fatalf("invalid JSON created a session: error = %v", err)
 	}
 }
@@ -204,7 +203,7 @@ func TestLoginBindingCompatibility(t *testing.T) {
 			if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 				t.Fatal(err)
 			}
-			loginID, err := dtglobal.GetLoginID(context.Background(), response.Data.Token)
+			loginID, err := dtoken.GetLoginID(context.Background(), response.Data.Token)
 			if rec.Code != http.StatusOK || err != nil || loginID != "alice" {
 				t.Fatalf("login status=%d loginID=%q error=%v", rec.Code, loginID, err)
 			}
@@ -215,7 +214,7 @@ func TestLoginBindingCompatibility(t *testing.T) {
 // TestLoginRejectsDisabledAccount verifies an account restriction returns forbidden without issuing a token. TestLoginRejectsDisabledAccount 验证账号封禁返回禁止访问且不签发 Token。
 func TestLoginRejectsDisabledAccount(t *testing.T) {
 	setupEchoManager(t)
-	if err := dtglobal.Disable(context.Background(), "alice", time.Hour, ""); err != nil {
+	if err := dtoken.Disable(context.Background(), dtoken.DisableOptions{LoginID: "alice", Duration: time.Hour, Reason: ""}); err != nil {
 		t.Fatal(err)
 	}
 	e := echo4.New()
@@ -233,8 +232,8 @@ func TestLoginRejectsDisabledAccount(t *testing.T) {
 
 // TestHandlersReportStorageFailures verifies backend errors remain server errors and expose no internal details. TestHandlersReportStorageFailures 验证后端故障返回服务端错误且不暴露内部详情。
 func TestHandlersReportStorageFailures(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	builtAuth1, err := dtoken.NewBuilder().
 		Storage(&echoFailingStorage{Storage: dt2.NewStorage()}).
 		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).
@@ -244,7 +243,7 @@ func TestHandlersReportStorageFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dtglobal.SetManager(mgr)
+	dtoken.SetManager(mgr)
 
 	// Register only request context to exercise each handler's own failure path. 仅注册请求上下文，以覆盖各处理器自身的错误分支。
 	e := echo4.New()
@@ -286,9 +285,9 @@ func (s *echoFailingStorage) Get(context.Context, string) (any, error) {
 
 func setupEchoManager(t *testing.T) {
 	t.Helper()
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
-	dtglobal.SetAuth(initDToken())
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+	initDToken()
 }
 
 func requestEcho(t *testing.T, e *echo4.Echo, method, path, body, token string) *httptest.ResponseRecorder {
@@ -305,20 +304,20 @@ func requestEcho(t *testing.T, e *echo4.Echo, method, path, body, token string) 
 
 // registeredAuth returns the explicitly registered test fixture. registeredAuth 返回显式注册的测试夹具。
 func registeredAuth() *dtoken.Auth {
-	auth, err := dtglobal.Default()
+	mgr, err := dtoken.GetManager()
 	if err != nil {
 		panic(err)
 	}
-	return auth
+	return dtoken.New(mgr)
 }
 
 // registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
 func registerTestRoutes(e *echo4.Echo) { registerRoutes(e, registeredAuth()) }
 
-// TestInjectedLoginWithoutGlobal verifies login and access grants use the injected instance. TestInjectedLoginWithoutGlobal 验证登录与授权使用注入实例且无需全局注册。
-func TestInjectedLoginWithoutGlobal(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+// TestInjectedLoginUsesBuiltInstance verifies routes and the registry share the built engine. TestInjectedLoginUsesBuiltInstance 验证路由与注册表共用构建返回的引擎。
+func TestInjectedLoginUsesBuiltInstance(t *testing.T) {
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 	auth := initDToken()
 	t.Cleanup(auth.Close)
 	e := echo4.New()
@@ -334,7 +333,7 @@ func TestInjectedLoginWithoutGlobal(t *testing.T) {
 	if !auth.HasRole(ctx, "alice", "admin") || !auth.HasPermission(ctx, "alice", "article:read") {
 		t.Fatal("access grants missing from injected instance")
 	}
-	if _, err := dtglobal.GetManager(); err == nil {
-		t.Fatal("example unexpectedly registered a global manager")
+	if mgr, err := dtoken.GetManager(); err != nil || mgr != auth.Manager() {
+		t.Fatalf("Build registration differs from injected instance: %v", err)
 	}
 }

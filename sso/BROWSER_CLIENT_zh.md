@@ -1,5 +1,7 @@
 # 浏览器客户端完整接入
 
+同一套浏览器处理器支持跨域 HTTP 兑换和共享存储兑换：配置 `ClientApp` 的 `SharedStoreServer` 选择本地兑换，`UseHTTPCheck=true` 强制 HTTP。两种路径共用 state、PKCE、本地会话钩子及退出流程，见[部署方式](DEPLOYMENT_MODES_zh.md)。
+
 `BrowserClient` 在 `ClientApp` 上组合登录发起、浏览器状态绑定、回调校验、凭证兑换／查询、会话期限计算和退出处理器。应用仍管理本地会话，可接入根包 `dtoken.Auth` 或已有会话系统，无需全局注册。已有 `ClientApp` 接口不变，浏览器组件为可选接入。
 
 ## 组装与路由

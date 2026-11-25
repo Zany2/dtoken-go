@@ -3,7 +3,6 @@ package chi
 import (
 	"context"
 	"errors"
-	dtglobal "github.com/Zany2/dtoken-go/global"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,8 +16,8 @@ import (
 
 // TestChiRegisterContextMiddlewareStopsAfterManagerFailure verifies manager resolution failures stop the HTTP chain. TestChiRegisterContextMiddlewareStopsAfterManagerFailure 验证 Manager 解析失败时 HTTP 链路会停止。
 func TestChiRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	router := chiRouter.NewRouter()
 	downstreamCalled := false
@@ -40,8 +39,8 @@ func TestChiRegisterContextMiddlewareStopsAfterManagerFailure(t *testing.T) {
 
 // TestChiMiddlewareSuccessAndFailure verifies the authenticated HTTP chain. TestChiMiddlewareSuccessAndFailure 验证认证 HTTP 链路的成功与失败。
 func TestChiMiddlewareSuccessAndFailure(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
 	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
@@ -84,8 +83,8 @@ func TestChiMiddlewareSuccessAndFailure(t *testing.T) {
 
 // TestChiPermissionPathMiddleware verifies path permissions are appended and enforced. TestChiPermissionPathMiddleware 验证路径权限会被追加并执行校验。
 func TestChiPermissionPathMiddleware(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
 	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
@@ -118,8 +117,8 @@ func TestChiPermissionPathMiddleware(t *testing.T) {
 
 // TestChiAnnotationHandlers verifies annotation helpers and missing context behavior. TestChiAnnotationHandlers 验证注解处理器与缺失上下文行为。
 func TestChiAnnotationHandlers(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
 	builtAuth3, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
@@ -127,7 +126,7 @@ func TestChiAnnotationHandlers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtglobal.SetManager(mgr)
+	dtoken.SetManager(mgr)
 	token, err := mgr.Login(ctx, "chi-annotation-user")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
@@ -136,7 +135,7 @@ func TestChiAnnotationHandlers(t *testing.T) {
 	called := false
 	successReq := httptest.NewRequest(http.MethodGet, "/annotated", nil)
 	successReq.Header.Set(mgr.GetConfig().TokenName, token)
-	GetHandler(func(http.ResponseWriter, *http.Request) { called = true }, &Annotation{CheckLogin: true, ManagerResolver: dtglobal.GetManager})(httptest.NewRecorder(), successReq)
+	GetHandler(func(http.ResponseWriter, *http.Request) { called = true }, &Annotation{CheckLogin: true, ManagerResolver: dtoken.GetManager})(httptest.NewRecorder(), successReq)
 	if !called {
 		t.Fatal("GetHandler() did not run handler for valid token")
 	}
@@ -175,8 +174,8 @@ func TestChiTypedNilContextIsSafe(t *testing.T) {
 
 // TestChiContextFacadeUsesCachedManager verifies request-context facade operations use the cached manager. TestChiContextFacadeUsesCachedManager 验证请求上下文门面会复用缓存的 Manager。
 func TestChiContextFacadeUsesCachedManager(t *testing.T) {
-	dtglobal.DeleteAllManager()
-	t.Cleanup(dtglobal.DeleteAllManager)
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
 	builtAuth4, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()

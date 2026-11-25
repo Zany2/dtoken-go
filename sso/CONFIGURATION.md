@@ -2,6 +2,8 @@
 
 [中文](CONFIGURATION_zh.md)
 
+`ClientConfig.SharedStoreServer` explicitly enables shared-store Ticket/code exchange; `UseHTTPCheck=true` forces HTTP. Without a local service, historical HTTP behavior is preserved. Validation checks local initialization, credential mode, and parameter-name equality without probing Redis. See [deployment patterns](DEPLOYMENT_MODES.md).
+
 Center HTTP failures use fixed public messages and the optional `OnHTTPError` observer for private diagnostics. See [HTTP errors and diagnostics](HTTP_ERRORS.md) for all six endpoints, status compatibility and callback rules.
 
 Use checked constructors when assembling an application so configuration failures are returned before HTTP listening starts. These checks are local: they do not contact the center, probe storage availability, or verify that client and server secrets match.

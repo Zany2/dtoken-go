@@ -2,7 +2,7 @@
 
 [中文文档](../core/authentication_zh.md) | English
 
-This page retains positional examples for the legacy `global` API; `dt` names the root package. Build automatically registers and returns Auth, so SetAuth is unnecessary. An omitted namespace selects `auth:`. New calls may use dt package functions or dt.AuthType("user"); their business signatures match Auth methods, not legacy global positional signatures. See [Auth API](../../api/auth.md).
+Here `dt` names the root package. `Build()` registers automatically; use `dt.XXX()` for the default namespace or `dt.AuthType("user").XXX()` for another namespace. Business method signatures match Auth methods. See [Auth API](../../api/auth.md).
 
 ## Basic Login
 
@@ -14,7 +14,6 @@ package main
 
 import (
     dt "github.com/Zany2/dtoken-go"
-    global "github.com/Zany2/dtoken-go/global"
     "context"
 
     "github.com/Zany2/dtoken-go/storage/memory"
@@ -34,7 +33,7 @@ func main() {
     defer dt.CloseAll()
 
     ctx := context.Background()
-    token, _ := global.Login(ctx, "10001")
+    token, _ := dt.Login(ctx, dt.LoginOptions{LoginID: "10001"})
     _ = token
 }
 ```
@@ -45,13 +44,13 @@ func main() {
 ctx := context.Background()
 
 // Default login
-token, err := global.Login(ctx, "10001")
+token, err := dt.Login(ctx, dt.LoginOptions{LoginID: "10001"})
 
 // Login with device type
-token, err = global.Login(ctx, "10001", "web")
+token, err = dt.Login(ctx, dt.LoginOptions{LoginID: "10001", Device: "web"})
 
 // Login with device type and device ID
-token, err = global.Login(ctx, "10001", "app", "ios-iphone-15")
+token, err = dt.Login(ctx, dt.LoginOptions{LoginID: "10001", Device: "app", DeviceID: "ios-iphone-15"})
 ```
 
 ### Login With Custom Timeout
@@ -60,10 +59,10 @@ token, err = global.Login(ctx, "10001", "app", "ios-iphone-15")
 ctx := context.Background()
 
 // Set a dedicated 2-hour TTL for the current token
-token, err := global.LoginWithTimeout(ctx, "10001", 2*time.Hour)
+token, err := dt.Login(ctx, dt.LoginOptions{LoginID: "10001", Timeout: 2*time.Hour})
 
 // Combine timeout with device type and device ID
-token, err = global.LoginWithTimeout(ctx, "10001", 2*time.Hour, "web", "chrome-mac")
+token, err = dt.Login(ctx, dt.LoginOptions{LoginID: "10001", Timeout: 2*time.Hour, Device: "web", DeviceID: "chrome-mac"})
 ```
 
 ### Renew Login By Existing Token
@@ -71,7 +70,7 @@ token, err = global.LoginWithTimeout(ctx, "10001", 2*time.Hour, "web", "chrome-m
 ```go
 ctx := context.Background()
 
-err := global.LoginByToken(ctx, token)
+err := dt.LoginByToken(ctx, token)
 ```
 
 `LoginByToken()` renews token, session, and activity metadata asynchronously when the token is still valid.
@@ -84,10 +83,10 @@ Automatic renewal compares the storage TTL against its threshold without roundin
 ctx := context.Background()
 
 // Boolean check
-isLogin := global.IsLogin(ctx, token)
+isLogin := dt.IsLogin(ctx, token)
 
 // Returns an error if the token is invalid
-err := global.CheckLogin(ctx, token)
+err := dt.CheckLogin(ctx, token)
 ```
 
 ## Get Login Information
@@ -97,19 +96,19 @@ err := global.CheckLogin(ctx, token)
 ```go
 ctx := context.Background()
 
-loginID, err := global.GetLoginID(ctx, token)
+loginID, err := dt.GetLoginID(ctx, token)
 ```
 
 ### Get Token Info
 
 `GetTokenInfo` reads stored metadata; success does not prove the token is logged in. It does not check account/device bans, inactivity timeout, or session validity. Use `IsLogin` or `CheckLogin` for ordinary login validation. These methods and identity queries such as `GetLoginID` validate the token and current restrictions without reading or decoding the account Session on the normal path. Token records still require decoding; storage TTL determines their expiry. Renewal eligibility is checked by background maintenance.
 
-Session queries, permission/role checks, and `IntrospectToken` still require a valid account Session. Inactive-timeout cleanup also loads the Session. Deleting or corrupting a Session alone no longer revokes a token for ordinary login checks; use logout or kickout APIs to revoke credentials. Background maintenance does not renew or persist activity if the Session is invalid.
+Session queries, token-based permission/role checks, and `IntrospectToken` still require a valid account Session. Account-based access queries may use AccessProvider directly; a nil provider result falls back to Session. Inactive-timeout cleanup also loads the Session. Deleting or corrupting a Session alone no longer revokes a token for ordinary login checks; use logout or kickout APIs to revoke credentials. Background maintenance does not renew or persist activity if the Session is invalid.
 
 ```go
 ctx := context.Background()
 
-info, err := global.GetTokenInfo(ctx, token)
+info, err := dt.GetTokenInfo(ctx, token)
 if err == nil {
     fmt.Println("Auth Type:", info.AuthType)
     fmt.Println("Login ID:", info.LoginID)
@@ -138,10 +137,10 @@ Current `TokenInfo` includes:
 ```go
 ctx := context.Background()
 
-device, err := global.GetDevice(ctx, token)
-deviceID, err := global.GetDeviceID(ctx, token)
-createTime, err := global.GetTokenCreateTime(ctx, token)
-ttl, err := global.GetTokenTTL(ctx, token)
+device, err := dt.GetDevice(ctx, token)
+deviceID, err := dt.GetDeviceID(ctx, token)
+createTime, err := dt.GetTokenCreateTime(ctx, token)
+ttl, err := dt.GetTokenTTL(ctx, token)
 ```
 
 ## Logout
@@ -151,7 +150,7 @@ ttl, err := global.GetTokenTTL(ctx, token)
 ```go
 ctx := context.Background()
 
-err := global.Logout(ctx, token)
+err := dt.LogoutByToken(ctx, token)
 ```
 
 ### Logout By Account Dimension
@@ -160,13 +159,13 @@ err := global.Logout(ctx, token)
 ctx := context.Background()
 
 // Logout all terminals of one account
-err := global.LogoutByLoginID(ctx, "10001")
+err := dt.LogoutByLoginID(ctx, "10001")
 
 // Logout all terminals of one device type
-err = global.LogoutByDevice(ctx, "10001", "web")
+err = dt.LogoutByDevice(ctx, "10001", "web")
 
 // Logout a single terminal by device type + device ID
-err = global.LogoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
+err = dt.LogoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ## Kickout
@@ -176,7 +175,7 @@ err = global.LogoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```go
 ctx := context.Background()
 
-err := global.Kickout(ctx, token)
+err := dt.KickoutByToken(ctx, token)
 ```
 
 ### Kickout By Account Dimension
@@ -184,9 +183,9 @@ err := global.Kickout(ctx, token)
 ```go
 ctx := context.Background()
 
-err := global.KickoutByLoginID(ctx, "10001")
-err = global.KickoutByDevice(ctx, "10001", "web")
-err = global.KickoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
+err := dt.KickoutByLoginID(ctx, "10001")
+err = dt.KickoutByDevice(ctx, "10001", "web")
+err = dt.KickoutByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 Kicked tokens are not deleted immediately. They are marked with the `kickout` state and will fail later checks with the corresponding error.
@@ -198,7 +197,7 @@ Kicked tokens are not deleted immediately. They are marked with the `kickout` st
 ```go
 ctx := context.Background()
 
-err := global.Replace(ctx, token)
+err := dt.ReplaceByToken(ctx, token)
 ```
 
 ### Replace By Account Dimension
@@ -206,9 +205,9 @@ err := global.Replace(ctx, token)
 ```go
 ctx := context.Background()
 
-err := global.ReplaceByLoginID(ctx, "10001")
-err = global.ReplaceByDevice(ctx, "10001", "web")
-err = global.ReplaceByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
+err := dt.ReplaceByLoginID(ctx, "10001")
+err = dt.ReplaceByDevice(ctx, "10001", "web")
+err = dt.ReplaceByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 Replaced tokens are marked with the `replaced` state, which is useful for "new login overrides old login" scenarios.
@@ -218,9 +217,9 @@ Replaced tokens are marked with the `replaced` state, which is useful for "new l
 ```go
 ctx := context.Background()
 
-count, err := global.GetOnlineTerminalCount(ctx, "10001")
-webCount, err := global.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
-singleCount, err := global.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
+count, err := dt.GetOnlineTerminalCount(ctx, "10001")
+webCount, err := dt.GetOnlineTerminalCountByDevice(ctx, "10001", "web")
+singleCount, err := dt.GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 ```
 
 ## Login Configuration
