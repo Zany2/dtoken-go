@@ -1,15 +1,54 @@
 # Advanced Features
 
+English | [中文文档](advanced-features_zh.md)
+
 This page lists advanced DToken-Go capabilities that can be used on top of the normal login, logout, permission, and role APIs.
 
-Examples assume a registered Manager. Nonce, Ticket, and ShortKey are optional: enable the required modules with `EnableNonce()`, `EnableTicket()`, and `EnableShortKey()` on the Builder before `Build()`. See [Optional Modules](../reference/configuration.md#optional-modules). Token Introspection and business Refresh Token do not require these switches.
+The following are topic-specific fragments. ctx is the current context.Context; place fragments returning errors in an error-returning function. dt names the root package, listener names event, and the SSO fragment additionally imports the independent sso module. Auth introspection and refresh-token APIs are separate from capability services.
+
+## Explicit composition
+
+These examples use Auth and independent capability services. Build registers Auth automatically; compose capabilities through constructors and inject them with WithCapabilities, without separately registering capability services. Use BuildInstance for an unregistered Auth.
+
+```go
+import (
+    dt "github.com/Zany2/dtoken-go"
+    "github.com/Zany2/dtoken-go/nonce"
+    "github.com/Zany2/dtoken-go/ticket"
+    "github.com/Zany2/dtoken-go/shortkey"
+)
+
+auth, err := dt.NewBuilder().Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
+cfg := auth.Config()
+nonceManager, err := nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage())
+if err != nil {
+	return err
+}
+nonceService := nonce.NewService(nonceManager, auth)
+ticketManager, err := ticket.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+if err != nil {
+	return err
+}
+ticketService := ticket.NewService(ticketManager, auth)
+shortKeyManager, err := shortkey.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+if err != nil {
+	return err
+}
+shortKeyService := shortkey.NewService(shortKeyManager, auth)
+```
+
+Service interfaces live in contract/nonce, contract/ticket, and contract/shortkey. HTTP binds these interfaces through WithCapabilities and supports custom implementations. Services borrow Auth components and do not close them; stop using those components when Auth closes.
 
 ## Token Introspection
 
 Token introspection checks whether a token is currently active without renewing it. It returns ownership information, TTL, permissions, roles, token extra data, and an inactive reason.
 
 ```go
-info, err := dtoken.IntrospectToken(ctx, token)
+info, err := auth.IntrospectToken(ctx, token)
 if err != nil {
 	return err
 }
@@ -20,7 +59,7 @@ if !info.Active {
 fmt.Println(info.LoginID, info.ExpiresIn, info.Permissions, info.Roles)
 ```
 
-Framework packages re-export the same API, so a GoFrame project can call `gfdt.IntrospectToken(...)` after importing `github.com/Zany2/dtoken-go/integrations/gf`.
+Use the request context from GetDTokenContext(r) for IntrospectToken. Default and named-system calls live in the root package; frameworks do not re-export them.
 
 ## Refresh Token
 
@@ -33,23 +72,23 @@ New reverse indexes from access tokens to refresh tokens use the refresh lifetim
 Consumption prefers `AtomicStorage.GetAndDelete`. Basic storage is serialized by the account lock within one Manager, without atomic consumption guarantees across instances or processes.
 
 ```go
-pair, err := dtoken.LoginWithRefreshToken(ctx, "user-1001")
+pair, err := auth.LoginWithRefreshToken(ctx, "user-1001")
 if err != nil {
 	return err
 }
 
-nextPair, err := dtoken.RefreshToken(ctx, pair.RefreshToken)
+nextPair, err := auth.RefreshToken(ctx, pair.RefreshToken)
 if err != nil {
 	return err
 }
 
-ttl, err := dtoken.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
+ttl, err := auth.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
 if err != nil {
 	return err
 }
 fmt.Println(ttl)
 
-_ = dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
+_ = auth.RevokeRefreshToken(ctx, nextPair.RefreshToken)
 ```
 
 The default refresh-token TTL is `30` days. You can override it globally with `RefreshTokenTimeout(...)` or per login with `LoginWithRefreshTokenOptions(...)`.
@@ -60,15 +99,15 @@ For one-time tickets, temporary authorization, and system-to-system ticket excha
 
 Ticket validation and state updates use the precise `ExpiresAt` deadline. `CreateTime` remains a Unix timestamp in seconds and `ExpiresIn` remains the TTL rounded up to seconds. Stored tickets without `ExpiresAt` retain their previous whole-second expiration behavior.
 
-Consumption prefers `adapter.AtomicStorage`. With plain `Storage`, consumption and revocation are serialized within one Ticket manager instance; this fallback does not provide atomic consumption across manager instances or processes. Use atomic storage when multiple instances share tickets.
+Consumption prefers `contract.AtomicStorage`. With plain `Storage`, consumption and revocation are serialized within one Ticket manager instance; this fallback does not provide atomic consumption across manager instances or processes. Use atomic storage when multiple instances share tickets.
 
 ```go
-createdTicket, err := dtoken.CreateTicket(ctx, "user-1001")
+createdTicket, err := ticketService.CreateTicket(ctx, ticket.CreateOptions{LoginID: "user-1001"})
 if err != nil {
 	return err
 }
 
-result, err := dtoken.ConsumeTicket(ctx, createdTicket.Ticket)
+result, err := ticketService.ConsumeTicket(ctx, createdTicket.Ticket)
 if err != nil {
 	return err
 }
@@ -81,20 +120,20 @@ For short-link access, QR confirmation, temporary authorization, and system-to-s
 
 Short keys use the precise `ExpiresAt` deadline for validation and state updates. `CreateTime`, `UpdateTime`, and `ExpiresIn` retain their second-based units; stored keys without `ExpiresAt` retain the previous expiration rules.
 
-Creation writes, confirmation, consumption, and revocation are serialized within each ShortKey manager instance. Creation and consumption prefer `adapter.AtomicStorage`; plain `Storage` supports a local fallback. This instance lock does not coordinate separate managers or processes, and atomic create/consume operations do not make cross-instance confirmation and revocation transactional.
+Creation writes, confirmation, consumption, and revocation are serialized within each ShortKey manager instance. Creation and consumption prefer `contract.AtomicStorage`; plain `Storage` supports a local fallback. This instance lock does not coordinate separate managers or processes, and atomic create/consume operations do not make cross-instance confirmation and revocation transactional.
 
 ```go
-createdKey, err := dtoken.CreateShortKey(ctx)
+createdKey, err := shortKeyService.CreateShortKey(ctx, shortkey.CreateOptions{})
 if err != nil {
 	return err
 }
 
-confirmedKey, err := dtoken.ConfirmShortKey(ctx, createdKey.Key, "user-1001")
+confirmedKey, err := shortKeyService.ConfirmShortKey(ctx, createdKey.Key, shortkey.ConfirmOptions{LoginID: "user-1001"})
 if err != nil {
 	return err
 }
 
-result, err := dtoken.ConsumeShortKey(ctx, confirmedKey.Key)
+result, err := shortKeyService.ConsumeShortKey(ctx, confirmedKey.Key)
 if err != nil {
 	return err
 }
@@ -107,6 +146,7 @@ For unified login, ticket exchange, cross-system login-state sharing, and unifie
 
 ```go
 server := sso.NewServer()
+defer server.Close()
 err := server.RegisterClient(&sso.Client{
 	ClientID:     "app-a",
 	ClientSecret: "secret-a",
@@ -149,12 +189,12 @@ fmt.Println(info.LoginID)
 One-time random value generation, verification, and consumption to prevent replay attacks.
 
 ```go
-nonce, err := dtoken.GenerateNonce(ctx)
+nonce, err := nonceService.GenerateNonce(ctx)
 if err != nil {
 	return err
 }
 
-err = dtoken.VerifyAndConsumeNonce(ctx, nonce)
+err = nonceService.VerifyAndConsumeNonce(ctx, nonce)
 ```
 
 ## Event Listener
@@ -162,8 +202,14 @@ err = dtoken.VerifyAndConsumeNonce(ctx, nonce)
 The event system can listen to login, logout, renewal, permission, role, ban, unban, and other core lifecycle events.
 
 ```go
-eventMgr := mgr.GetEventManager()
+eventMgr := auth.EventManager()
 eventMgr.RegisterFunc(listener.EventAll, func(data *listener.EventData) {
 	fmt.Println(data.Event, data.LoginID, data.Token)
 })
 ```
+
+## Related Documentation
+
+- [Auth instance API](../../api/auth.md)
+- [Lifecycle](../../design/api-lifecycle.md)
+- [SSO Redis storage](../../../sso/storage/redis/README.md)

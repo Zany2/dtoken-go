@@ -7,11 +7,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 )
 
@@ -248,7 +248,9 @@ func TestKratosContextLookupHandlesNilAndTypedNil(t *testing.T) {
 	}
 
 	mgr := newKratosBehaviorManager(t)
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	t.Cleanup(dtoken.DeleteAllManager)
 	if _, err := GetLoginIDByCtx(nil); !errors.Is(err, derror.ErrNotLogin) {
 		t.Fatalf("GetLoginIDByCtx(nil) error = %v, want ErrNotLogin", err)
@@ -266,7 +268,8 @@ func TestKratosContextLookupHandlesNilAndTypedNil(t *testing.T) {
 
 func newKratosBehaviorManager(t *testing.T) *manager.Manager {
 	t.Helper()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
+	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -316,11 +319,13 @@ func (c *kratosBehaviorRequestContext) GetUserAgent() string             { retur
 func (c *kratosBehaviorRequestContext) SetCookieWithOptions(*adapter.CookieOptions) {
 }
 func (c *kratosBehaviorRequestContext) GetString(string) string { return "" }
-func (c *kratosBehaviorRequestContext) MustGet(string) any      { return nil }
-func (c *kratosBehaviorRequestContext) Abort()                  {}
-func (c *kratosBehaviorRequestContext) IsAborted() bool         { return false }
-func (c *kratosBehaviorRequestContext) IsTLS() bool             { return false }
-func (c *kratosBehaviorRequestContext) SetStatusCode(int)       {}
+func (c *kratosBehaviorRequestContext) GetRequired(string) (any, error) {
+	return nil, derror.ErrKeyNotFound
+}
+func (c *kratosBehaviorRequestContext) Abort()            {}
+func (c *kratosBehaviorRequestContext) IsAborted() bool   { return false }
+func (c *kratosBehaviorRequestContext) IsTLS() bool       { return false }
+func (c *kratosBehaviorRequestContext) SetStatusCode(int) {}
 func (c *kratosBehaviorRequestContext) Write(data []byte) (int, error) {
 	return len(data), nil
 }

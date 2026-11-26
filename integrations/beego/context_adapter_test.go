@@ -1,12 +1,14 @@
 package beego
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
 	beegocontext "github.com/beego/beego/v2/server/web/context"
 )
 
@@ -62,8 +64,8 @@ func TestBeegoContextAdapterRequestAndResponse(t *testing.T) {
 	if got := ctx.GetString("name"); got != "dtoken" {
 		t.Fatalf("GetString(name) = %q, want dtoken", got)
 	}
-	if got := ctx.MustGet("name"); got != "dtoken" {
-		t.Fatalf("MustGet(name) = %v, want dtoken", got)
+	if got, err := ctx.GetRequired("name"); err != nil || got != "dtoken" {
+		t.Fatalf("GetRequired(name) = %v, want dtoken", got)
 	}
 
 	ctx.SetHeader("X-Result", "ok")
@@ -86,16 +88,13 @@ func TestBeegoContextAdapterRequestAndResponse(t *testing.T) {
 	}
 }
 
-// TestBeegoContextMustGetPanicsWhenMissing verifies missing values panic. TestBeegoContextMustGetPanicsWhenMissing 验证缺失值会触发 panic。
-func TestBeegoContextMustGetPanicsWhenMissing(t *testing.T) {
+// TestBeegoContextGetRequiredReturnsErrorWhenMissing verifies missing values return an error. TestBeegoContextGetRequiredReturnsErrorWhenMissing 验证缺失值返回错误。
+func TestBeegoContextGetRequiredReturnsErrorWhenMissing(t *testing.T) {
 	beegoCtx := beegocontext.NewContext()
 	beegoCtx.Reset(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
 	ctx := NewBeegoContext(beegoCtx)
 
-	defer func() {
-		if recover() == nil {
-			t.Fatal("MustGet(missing) should panic")
-		}
-	}()
-	ctx.MustGet("missing")
+	if value, err := ctx.GetRequired("missing"); value != nil || !errors.Is(err, derror.ErrKeyNotFound) {
+		t.Fatalf("GetRequired(missing) = (%v, %v), want ErrKeyNotFound", value, err)
+	}
 }

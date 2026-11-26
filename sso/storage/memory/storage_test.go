@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
-	"github.com/Zany2/dtoken-go/core/derror"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
 )
 
 // TestStorageBasicSemantics verifies the Storage Basic Semantics scenario. TestStorageBasicSemantics 验证对应的内存存储场景。

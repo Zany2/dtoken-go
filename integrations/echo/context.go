@@ -3,10 +3,12 @@ package echo
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
 	echo4 "github.com/labstack/echo/v4"
 )
 
@@ -174,13 +176,13 @@ func (e *EchoContext) GetString(key string) string {
 	return value
 }
 
-// MustGet implements adapter.RequestContext MustGet 实现 adapter.RequestContext 接口
-func (e *EchoContext) MustGet(key string) any {
-	value := e.c.Get(key)
-	if value == nil {
-		panic("key not found: " + key)
+// GetRequired returns a context value or ErrKeyNotFound when missing. GetRequired 返回上下文值，不存在时返回 ErrKeyNotFound。
+func (e *EchoContext) GetRequired(key string) (any, error) {
+	value, ok := e.Get(key)
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", derror.ErrKeyNotFound, key)
 	}
-	return value
+	return value, nil
 }
 
 // Abort implements adapter.RequestContext Abort 实现 adapter.RequestContext 接口

@@ -1,324 +1,63 @@
+# Modular design
+
 English | [中文文档](modular_zh.md)
 
-# Modular Design
-
-## Design Goals
-
-Split the project into multiple independent modules in order to achieve:
-
-- on-demand imports
-- minimal dependencies
-- independent multi-module maintenance
-- clear separation of responsibilities
-- easier extension for new components and framework integrations
-
-## Module Division
-
-### Core Module (core)
-
-```text
-github.com/Zany2/dtoken-go/core
-```
-
-**Responsibilities**:
-- config, context, manager, builder
-- core logic for permissions, roles, disable, session
-- listener, nonce, and OAuth2 capability
-
-**Features**:
-- no web framework dependency
-- no concrete storage dependency
-- component abstraction through `adapter`
-
-### Global Utility Module (dtoken)
-
-```text
-github.com/Zany2/dtoken-go/dtoken
-```
-
-**Responsibilities**:
-- expose global convenience APIs
-- manage the global `Manager`
-- provide unified `context.Context`-based calling style
-
-### SSO Modules
-
-```text
-github.com/Zany2/dtoken-go/sso
-github.com/Zany2/dtoken-go/sso/storage/redis
-```
-
-**Responsibilities**:
-- coordinate server and client single sign-on flows
-- issue and consume one-time Ticket and OAuth2 Code values
-- isolate SSO storage ownership from the core manager
-
-The Redis submodule adds a production storage constructor without making Redis a dependency of the base `sso` module.
-
-### Storage Modules
-
-#### Memory Storage
-
-```text
-github.com/Zany2/dtoken-go/com/storage/memory
-```
-
-**Features**:
-- in-process storage with no external service requirement
-- suitable for development and testing
-
-#### Redis Storage
-
-```text
-github.com/Zany2/dtoken-go/com/storage/redis
-```
-
-**Features**:
-- suitable for production
-- supports distributed deployment
-- depends on `github.com/redis/go-redis/v9`
-
-### Component Modules
-
-Besides storage, the current repository also splits out these replaceable components:
-
-- `com/codec/base64`
-- `com/codec/json`
-- `com/codec/jsonv2` - JSON v2 codec backed by Go 1.27 `encoding/json/v2` (requires `GOEXPERIMENT=jsonv2`)
-- `com/codec/msgpack`
-- `com/generator/dgenerator`
-- `com/log/gf`
-- `com/log/nop`
-- `com/log/dlog`
-- `com/pool/ants`
-
-### Framework Integration Modules
-
-The current repository provides these independent integrations:
-
-- `integrations/gin`
-- `integrations/gf`
-- `integrations/echo`
-- `integrations/fiber`
-- `integrations/chi`
-- `integrations/hertz`
-- `integrations/kratos`
-- `integrations/beego`
-
-Each integration module is responsible for:
-
-- request context adaptation
-- `DTokenContext` injection
-- middleware wrappers
-- annotation-style check wrappers
-- unified export layer in `export.go`
-
-Beego follows the same module boundary but maps annotation rules to Beego filters through `RouteAccessHandlerFromAnnotations`.
-
-### Integration Component Export Maintenance
-
-The framework packages intentionally expose the same bundled component aliases, constructors, typed APIs, errors, and facade operations. The Gin versions of `component_export.go`, `api_export.go`, `error_export.go`, and `facade_export.go` are their canonical sources; the corresponding files in the other integration packages are generated from them. GoFrame-specific logger exports are injected only while generating `component_export.go`.
-
-After changing the canonical export list, regenerate the other framework files from `integrations/gin`:
-
-```bash
-go generate
-```
-
-Generated export files should not be edited directly.
-If the export list introduces a new component module, update the affected integration `go.mod` files separately.
-
-`export.go` remains independently maintained for now: all integration packages expose the same symbols, but some group operations by domain while others use one consolidated declaration. Keeping both layouts avoids a large formatting-only rewrite.
-
-## Dependency Relationships
-
-```text
-Application Code
-  ↓
-Framework Integration (integrations/*)    or    dtoken    or    sso
-  ↓
-core
-
-defaults -> com/* implementations -> core/adapter contracts
-```
-
-`defaults` wires concrete components into the core Builder. The core does not import `com/*` implementations; applications may inject their own adapters.
-
-## On-Demand Imports
-
-### Scenario 1: Core Capability Only
-
-```bash
-go get github.com/Zany2/dtoken-go/core
-go get github.com/Zany2/dtoken-go/dtoken
-go get github.com/Zany2/dtoken-go/com/storage/memory
-```
-
-**Suitable for**:
-- non-web usage
-- custom request/context integration
-- full control over initialization
-
-### Scenario 2: Using a Framework Integration Package
-
-```bash
-go get github.com/Zany2/dtoken-go/integrations/gin
-go get github.com/Zany2/dtoken-go/com/storage/redis
-```
-
-**Suitable for**:
-- direct integration with Gin / Echo / Fiber / Chi / GoFrame / Hertz / Kratos / Beego
-- using the integration package as the unified export surface
-
-### Scenario 3: Replacing Components
-
-```bash
-go get github.com/Zany2/dtoken-go/core
-go get github.com/Zany2/dtoken-go/dtoken
-go get github.com/Zany2/dtoken-go/com/storage/redis
-go get github.com/Zany2/dtoken-go/com/log/dlog
-go get github.com/Zany2/dtoken-go/com/pool/ants
-```
-
-**Suitable for**:
-- production environments
-- replacing logging, storage, pool, or other components
-
-## Module Independence
-
-### Each Module Has Its Own go.mod
-
-Core, SSO, component, integration, and example modules all have independent `go.mod` files where they are published separately.
-
-For example:
-
-```text
-core/go.mod
-dtoken/go.mod
-com/storage/memory/go.mod
-com/storage/redis/go.mod
-com/codec/json/go.mod
-integrations/gin/go.mod
-integrations/gf/go.mod
-integrations/beego/go.mod
-examples/quick_start/go.mod
-sso/go.mod
-sso/storage/redis/go.mod
-```
-
-### Local Development Is Unified by go.work
-
-The current repository uses `go.work` to connect all modules.
-
-```go
-go 1.27.0
-
-use (
-    ./com/codec/base64
-    ./com/codec/json
-    ./com/codec/jsonv2
-    ./com/codec/msgpack
-    ./com/generator/dgenerator
-    ./com/log/dlog
-    ./com/log/gf
-    ./com/log/nop
-    ./com/pool/ants
-    ./com/storage/memory
-    ./com/storage/redis
-    ./core
-    ./defaults
-    ./dtoken
-    ./examples/beego
-    ./examples/chi
-    ./examples/echo
-    ./examples/fiber
-    ./examples/gf
-    ./examples/gin
-    ./examples/hertz
-    ./examples/kratos
-    ./examples/quick_start
-    ./examples/sso_client
-    ./examples/sso_gin_client
-    ./examples/sso_gin_server
-    ./examples/sso_server
-    ./integrations/authcheck
-    ./integrations/beego
-    ./integrations/chi
-    ./integrations/echo
-    ./integrations/fiber
-    ./integrations/gf
-    ./integrations/gin
-    ./integrations/hertz
-    ./integrations/kratos
-    ./sso
-    ./sso/storage/redis
-    ./tests/gin_core_app
-    ./tests/gin_core_flow
-)
-```
-
-**Advantages**:
-- seamless local debugging
-- direct linkage between modules
-- no need to publish versions for local integration testing
-
-## Version Management
-
-### Version Synchronization Principle
-
-For a multi-module repository, public versions should stay aligned as much as possible across:
-
-- `core`
-- `dtoken`
-- `com/storage/*`
-- `integrations/*`
-
-Using the same released version helps reduce cross-module compatibility issues.
-
-### Compatibility Guarantee
-
-- core interface changes should be propagated to related modules
-- integration exports should stay aligned with `dtoken` and `core`
-- docs, examples, and export layers should be updated together
-
-## Extending New Modules
-
-### Add a New Storage Module
-
-1. Create directory: `com/storage/mysql/`
-2. Create `go.mod`
-3. Implement `adapter.Storage`
-4. Add it to `go.work`
-5. Write documentation and examples
-
-### Add a New Framework Integration
-
-1. Create directory: `integrations/iris/`
-2. Create `go.mod`
-3. Implement context adaptation
-4. Add middleware, annotation wrappers, and `export.go`
-5. Add it to `go.work`
-6. Write examples and documentation
-
-### Add a New Component
-
-1. Create directory: `com/log/xxx/` or `com/codec/xxx/`
-2. Implement the corresponding `adapter` interface
-3. Add it to `go.work`
-4. Write tests and docs
-
-## Advantages Summary
-
-| Feature | Monolithic Style | Current Modular Design | Benefit |
-|---------|------------------|------------------------|---------|
-| Dependency control | Weak | Strong | On-demand import |
-| Framework isolation | Weak | Strong | Integrations do not affect each other |
-| Component replacement | Average | Strong | Storage / Codec / Log / Pool / Generator are replaceable |
-| Local integration | Average | Strong | Unified by `go.work` |
-| Extensibility | Average | Strong | Easier to add components and integrations |
-
-## Next Steps
-
-- [Architecture Design](architecture.md)
-- [Auto-Renew Design](auto-renew.md)
-- [DToken API Documentation](../api/dtoken.md)
+This document defines package dependencies and Go module release boundaries. See [architecture](architecture.md) for layers, [source layout](source-layout.md) for directories and file responsibilities, and the [migration guide](module-migration.md) for upgrade steps.
+
+| Layer | Packages |
+| --- | --- |
+| Application entry | Root instance/default facades and shared registry |
+| Public contracts and configuration | contract, config, errors |
+| Event services | event: emitter contracts and listener dispatch implementation |
+| Implementation | internal/engine, internal/builder |
+| Independent capabilities | nonce, oauth2, ticket, shortkey |
+| Shared HTTP | httpauth, httpauth/context |
+| Framework adapters | integrations/<framework> |
+| Components | codec, generator, logging, pool, storage |
+| Single sign-on | sso, sso/storage/redis |
+
+## Dependency rules
+
+- The engine depends on contract, config, errors, event, and internal primitives, not frameworks, capabilities, or concrete component implementations.
+- Capabilities depend on public contracts and shared primitives. They receive components and optional event emitters through constructors, without depending on the root facade or engine.
+- contract contains shared interfaces and data types, without importing capabilities, frameworks, or default wiring. event includes runtime implementation.
+- config may depend on contract and errors; contract does not depend back on config. errors and internal primitives do not depend on upper runtime layers, and event does not depend on the engine or assembly.
+- The root assembles basic components through stateless assembly and default factories. Build automatically registers; BuildInstance opts out. The root owns the shared registry.
+- internal/builder provides stateless assembly and selects bundled JSON, generator, logger, pool, and memory storage implementations in defaults.go. Only the assembly package depends on these concrete defaults; the engine continues to depend on contracts. Update the assembly import allow-list when changing bundled defaults.
+- Shared HTTP code calls the engine and capability service contracts. It imports neither concrete capabilities. Registry lookup requires an explicit ManagerResolver.
+- Framework adapters use shared HTTP code and handle native requests, responses, and handler chains. Their builders forward to the root and return Auth; they do not re-export global calls or optional component constructors.
+- Framework adapters may use helper subpackages within their own directory. They do not directly import concrete components, internal assembly packages, peer adapters, SSO, or example/test applications. The root Builder's default components remain an intentional indirect assembly dependency.
+- Components may depend on their own component directory, contracts, configuration, errors, and internal primitives, not the engine, HTTP, or assembly layers. contract/storagetest is for tests rather than runtime dependencies.
+- Add components through their packages. Gin canonical sources and the generator maintain export.go and error_export.go; other adapter code is maintained per framework.
+
+These rules distinguish implementation dependencies from assembly: the root Builder deliberately selects bundled components, while the engine stays independent of concrete components.
+
+## Go module boundaries
+
+| Release unit | Directory scope | Reason for separation |
+| --- | --- | --- |
+| Root module | Root facade, internal, contract, config, errors, event, four capability packages, httpauth, and basic components outside the submodules below | Version the authentication core and basic capabilities together |
+| Optional components | codec/jsonv2, codec/msgpack, logging/gf, storage/redis | Isolate optional dependencies or toolchain requirements |
+| Framework integrations | Eight framework directories under integrations | Isolate framework dependencies and release independently |
+| SSO | sso, sso/storage/redis | Independent subsystem and storage extension |
+| Examples and application tests | Applications under examples, tests/gin_core_app, tests/gin_core_flow | Isolate application dependencies from the core runtime |
+
+Each go.mod defines an actual module boundary; go.work only combines modules for local development. nonce, oauth2, ticket, and shortkey are independently composed packages released with the root module. Their service contracts also share that release.
+
+Prefer an existing module for new directories. Add go.mod only to isolate dependencies, toolchains, or release cadence, and update the workspace, CI, examples, and release documentation together. Moving a public package changes consumer imports and is not merely directory housekeeping.
+
+## Releases and ownership
+
+See the [migration guide](module-migration.md) for tag naming, dependency release order, and consumer verification. Source version declarations do not establish that a release is available remotely.
+
+Runtime ownership is independent of module releases: engines close their owned components, capability services borrow components, and the registry shares engines with Auth. See [API and lifecycle](api-lifecycle.md) for the complete contract.
+
+## Existing structural checks
+
+- Root architecture_test.go uses direct repository import allow-lists for contracts, configuration, errors, events, internal primitives, the engine, capabilities, shared HTTP, components, and internal/builder assembly code. HTTP and frameworks also have forbidden-dependency rules.
+- Checks scan non-_test.go Go files, including separate component and framework submodules present in the checkout. Published root modules skip framework scanning when integrations is absent; component parent directories still cover their bundled implementations.
+- architecture_integrations_test.go checks framework request operation name coverage; it does not replace signature or behavior verification.
+- The Gin export generator synchronizes two shared export files and grouped request forwarding for seven sibling frameworks. Gin remains the canonical source; native adapters, middleware, context resolution and namespace-aware queries remain handwritten. After extending the generator, run generation once before `-check`; check mode reports unmigrated or stale forwarding without changing files. See the [generator guide](../../integrations/gin/internal/integrationexportgen/README.md).
+- Standalone module and external consumer CI checks cover dependency resolution and public use outside the workspace.
+
+Import checks do not analyze transitive third-party dependencies or replace public API, compilation, or behavior verification. Functional verification is performed separately for each module.

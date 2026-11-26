@@ -23,10 +23,11 @@ Using `integrations/gin` as the example, the current `Annotation` struct support
 | Field | Description |
 |------|------|
 | `AuthType` | target auth system |
+| `ManagerResolver` | Explicit instance resolver; may reuse the request-bound resolver |
 | `CheckLogin` | whether login is required |
 | `CheckRole` | required roles |
 | `CheckPermission` | required permissions |
-| `CheckDisable` | whether account disable should be checked |
+| `CheckDisable` | whether account, device type, and concrete device restrictions should be checked |
 | `Ignore` | skip auth entirely |
 | `LogicType` | `OR` or `AND` for multi-role and multi-permission checks |
 
@@ -36,12 +37,19 @@ Using `integrations/gin` as the example, the current `Annotation` struct support
 
 ```go
 ctx := context.Background()
+auth, err := gindt.NewBuilder().Build()
+if err != nil { panic(err) }
+defer auth.Close()
 
 r := gin.Default()
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
+authOption1, authErr := gindt.WithAuth(auth)
+if authErr != nil {
+    return authErr
+}
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, authOption1))
 ```
 
-The annotation middleware then reuses the cached `DTokenContext` on the request. If that context was created with `WithManager`, annotations with an empty `AuthType` use the same explicit manager; an annotation that sets `AuthType` keeps the global multi-auth lookup behavior.
+Here dt names the root package github.com/Zany2/dtoken-go. Annotations reuse the bound request instance. Switching AuthType requires an explicit ManagerResolver, such as WithManagerResolver(dt.GetManager) on registration middleware. Missing bindings or resolvers return ErrManagerNotFound.
 
 Passing an explicit nil annotation pointer to Gin's `GetHandler` returns an invalid-parameter error and aborts the request. Use `IgnoreMiddleware` or `Ignore: true` when authentication should be skipped.
 
@@ -65,7 +73,7 @@ r.GET("/user/info",
     gindt.CheckLoginMiddleware(ctx, nil, nil),
     func(c *gin.Context) {
         dCtx, _ := gindt.GetDTokenContext(c)
-        loginID, _ := dCtx.Auth().GetLoginID(ctx)
+        loginID, _ := dCtx.Auth().GetLoginID(c.Request.Context())
         c.JSON(200, gin.H{"loginId": loginID})
     },
 )
@@ -102,7 +110,7 @@ r.GET("/comment/send",
 
 ### OR Logic
 
-`OR` is the default behavior.
+An empty LogicType in a Gin annotation uses OR; ordinary AuthOptions default to AND. LogicType applies separately to the role and permission lists. When both are configured, both checks must pass. Set LogicOr or LogicAnd explicitly.
 
 ```go
 r.GET("/reports",

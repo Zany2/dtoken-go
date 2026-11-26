@@ -19,6 +19,17 @@ gincoreapp.NewApp(cfg)
 httptest.NewServer(app.Router())
 ```
 
+## Relationship To The Current Architecture
+
+| Location | Verification responsibility |
+| --- | --- |
+| `tests/gin_core_app` | Independent application module: builds Auth through the root Builder, explicitly composes Nonce and OAuth2 services, and exposes HTTP routes |
+| `tests/gin_core_flow` | Independent flow-test module: calls the test app and checks HTTP responses and stored lifecycle results |
+| Package-local `*_test.go` files | Component, engine, and framework-adapter behavior |
+| Root `architecture*_test.go` files | Package dependency rules and framework facade coverage |
+
+Run the commands below from the repository root with `go.work` enabled; the workspace requires Go 1.27+. Running `go test ./...` in the root module does not recursively test every independent submodule. This suite primarily verifies the composed application; middleware and request-adapter behavior across all eight frameworks also needs the corresponding integration tests. The coverage list describes existing scenarios, not tests executed during this documentation revision.
+
 ## Running
 
 From the repository root:
@@ -91,7 +102,7 @@ The suite covers:
 The test only deletes keys under its own randomly generated prefix. It does not delete other prefixes, for example:
 
 ```text
-dtoken:gin-core-flow:oauth2:client:demo-client
+dtoken:gin-core-flow:v2:oauth2:client:demo-client
 ```
 
 That kind of key usually comes from manually running the example server or from older test runs.
@@ -112,6 +123,8 @@ Automated flow tests do not need a separately started server.
 
 ## Related Documentation
 
+- [Non-SSO acceptance record and commands (Chinese)](../../design/performance-acceptance_zh.md)
+- [Public Auth API benchmarks](../../../tests/gin_core_flow/README.md)
 - [Redis Storage](../integration/redis-storage.md)
 - [Authentication](../core/authentication.md)
 - [Concurrent Login Policy](../core/concurrency-login.md)

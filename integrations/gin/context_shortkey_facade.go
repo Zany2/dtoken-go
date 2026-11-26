@@ -4,7 +4,7 @@ package gin
 import (
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/shortkey"
+	"github.com/Zany2/dtoken-go/contract/shortkey"
 	"github.com/gin-gonic/gin"
 )
 

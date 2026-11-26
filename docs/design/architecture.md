@@ -1,319 +1,106 @@
+# Architecture
+
 English | [中文文档](architecture_zh.md)
 
-# Architecture Design
+DToken-Go centers on a stateful authentication engine. Public contracts support replaceable components, independent services compose capabilities, and HTTP adapters integrate frameworks. This document describes responsibilities and connections; see [source layout](source-layout.md) for code locations.
 
-## Overall Architecture
+## Responsibilities
 
-```text
-┌──────────────────────────────────────────────┐
-│              Application Layer               │
-└──────────────────────┬───────────────────────┘
-                       │
-        ┌──────────────┴──────────────┐
-        │                             │
-        ↓                             ↓
-┌──────────────────┐         ┌──────────────────┐
-│ Framework Layer   │         │ Global Utility   │
-│ integrations/*    │         │ dtoken          │
-└────────┬─────────┘         └────────┬─────────┘
-         │                             │
-         └──────────────┬──────────────┘
-                        ↓
-┌──────────────────────────────────────────────┐
-│                 Core Layer (core/*)          │
-│ Manager / Context / Config / Listener /      │
-│ Nonce / OAuth2 / Builder                     │
-└──────────────────────┬───────────────────────┘
-                       │
-        ┌──────────────┴──────────────┐
-        │                             │
-        ↓                             ↓
-┌──────────────────┐         ┌──────────────────┐
-│ Component Layer   │         │ Docs & Examples  │
-│ com/*             │         │ docs / examples  │
-└──────────────────┘         └──────────────────┘
+| Area | Location | Responsibility |
+| --- | --- | --- |
+| Application entry | Root dtoken package | Auth instance APIs, application Builder, public options and types |
+| Registry access | Root registry.go and default_*.go | Automatic registration, AuthType selection and default calls |
+| Core authentication | internal/engine | Authentication state, Session, terminals, and core lifecycle |
+| Assembly | internal/builder | Generic component assembly and bundled default factories |
+| Public foundations | contract, config, errors, event | Contracts, shared models, configuration, errors, and event services |
+| Independent capabilities | nonce, oauth2, ticket, shortkey | Explicitly composed implementations and service wrappers |
+| HTTP integration | httpauth, httpauth/context, integrations | Common checks, request scope, and framework adapters |
+| Components | storage, codec, generator, logging, pool | Replaceable infrastructure implementations |
+
+SSO retains its own modules and lifecycle. See the [SSO documentation](../../sso/README.md) for its internal design.
+
+## Dependency direction
+
+This diagram shows primary dependencies, omitting some configuration, error, and utility dependencies. Solid arrows indicate use; dotted arrows indicate contract implementation. Applications establish runtime service bindings.
+
+```mermaid
+flowchart TD
+    App["Application"] --> Auth["Root Auth"]
+    App --> Registry["Root registry / AuthType / default APIs"]
+    Registry --> Engine
+    Auth --> Engine["internal/engine"]
+    App --> Framework["integrations"]
+    Framework --> HTTP["httpauth / httpauth/context"]
+    HTTP --> Engine
+    HTTP --> CapabilityContracts["contract capability interfaces"]
+    App --> Services["nonce / oauth2 / ticket / shortkey"]
+    Services -.-> CapabilityContracts
+    Services --> Contracts["Component contracts and shared models"]
+    Engine --> Contracts
+    Components["storage / codec / generator / logging / pool"] -.-> Contracts
 ```
 
-## Module Division
+- The engine depends on contracts, not concrete components, capabilities, or frameworks.
+- Shared HTTP code depends on capability service interfaces, without importing implementations.
+- The root owns the shared registry; Build registers automatically, BuildInstance remains isolated,.
+- The root Builder is an assembly entry and can select bundled components. Component selection stays outside engine operations.
 
-### 1. Core Layer (core/)
+See [modular design](modular.md) for complete dependency rules and Go module releases. These layers describe responsibilities, not a requirement for one Go module per layer.
 
-**Responsibilities**: provide core authentication and authorization capability.
+## Assembly path
 
-**Main components**:
-- `manager` - core authentication manager implementation
-- `context` - `DTokenContext` wrapper
-- `config` - config definitions and defaults
-- `builder` - builder
-- `listener` - event listener system
-- `nonce` - nonce anti-replay capability
-- `oauth2` - OAuth2 implementation
-- `derror` - error definitions
+1. Applications configure instances through the root NewBuilder, choosing components, factories, and engine options.
+2. The root Builder owns mutable configuration and component selections. Missing factories use functions from internal/builder/defaults.go; internal/builder.Build validates a configuration snapshot, resolves components, and constructs Manager.
+3. Build registers and returns Auth; BuildInstance returns an unregistered Auth. Applications use instance operations, AuthType selectors, or default package functions; custom integrations may access Manager.
+4. Applications separately create capability Managers or Servers and their Services. Bundled services can use an Auth configuration snapshot, Storage, Codec, and event emitter.
+5. HTTP applications inject engines through WithAuth or WithManager and bind services through WithCapabilities. Registry lookup requires an explicit WithManagerResolver.
 
-**Dependency characteristics**:
-- no dependency on any web framework
-- no dependency on any concrete storage implementation
-- Storage, Codec, Log, Pool, and Generator are abstracted through `adapter`
+Only the root package defines a fluent Builder. internal/builder contains the stateless assembly function and bundled factories in defaults.go, without maintaining another Builder. Core configuration is validated once during assembly. Each factory still receives its own configuration copy so user callbacks cannot mutate sibling components or the running engine. Independent capabilities are not reintroduced into the core as Builder switches.
 
-### 2. Global Utility Layer (dtoken/)
+## Request and capability calls
 
-**Responsibilities**: expose a unified global entry for application code.
+| Call style | Main path |
+| --- | --- |
+| Instance operation | Application → Auth → engine → component contracts |
+| Global operation | Application → root default/selected facade → shared registry → registered engine |
+| HTTP core authentication | Framework adapter → shared HTTP checks or request context → engine |
+| HTTP capability operation | Framework request entry → bound capability interface → service implementation |
+| Direct capability operation | Application → explicitly constructed service → borrowed components |
 
-**Main capabilities**:
-- login, logout, kickout, replace
-- permissions, roles, disable, session operations
-- nonce and OAuth2 support
-- multi-auth-system support via `authType`
+Service interfaces isolate HTTP from implementations; they do not imply automatic discovery, construction, or ownership. Event emitters connect notifications from the engine and capabilities. Listener dispatch lives in event.
 
-**Features**:
-- uses `context.Context` as the unified entry
-- manages different auth systems through the global manager registry
+Manager organizes account coordination, Token maintenance, and runtime shutdown state within one implementation package. See the [engine file index](source-layout.md#engine-file-index). Correctness of concurrency, storage operations, and business flows is verified separately during feature reviews.
 
-### 3. SSO Layer (sso/)
+## Token storage and validation
 
-**Responsibilities**: provide cross-service single sign-on flows without coupling the core manager to a web framework.
+Permissions and roles are resolved on demand. Token authorization validates credentials and builds `AccessSubject` before consulting the provider, without preloading Session. Session is read only when the provider is absent or returns nil; combined checks share that read and skip roles after permission rejection. Full introspection retains its separate Session validation.
 
-**Main capabilities**:
-- server-issued login tickets and one-time OAuth2 codes
-- client registration and single logout callbacks
-- pluggable storage, with Redis support for multi-instance deployments
+New tokens use the engine-private `dtk:2:` primary format for identity, state, lifecycle ID, timeout settings, and terminal association, without embedding Extra. Storage TTL determines absolute expiration. Base checks read and parse small fields without the general Codec, Extra reads, or Session reads on the normal path. With inactivity timeout disabled, base login validation performs one foreground Token GET. Explicit access checks enforce restrictions synchronously; inactivity checks, permission queries, and background maintenance have separate costs.
 
-**Dependency characteristics**:
-- depends on core auth contracts and storage adapters
-- keeps SSO lifecycle and storage ownership inside `sso.Server`
+Non-nil Extra creates a separate `token-extra:<accessID>` record using the configured Codec; empty maps are preserved. Token details, introspection, and refresh issuance load it when needed. Renewal maintains its lifetime, and logout, kickout, replacement, and refresh revocation remove it. Missing or corrupt extensions cause detail reads to fail without independently invalidating the primary credential or blocking logout. Account disabling retains its existing revoked-credential metadata behavior.
 
-### 4. Component Layer (com/)
+Sessions, refresh credentials, and capability objects still use Codec. Manager, Nonce, OAuth2, Ticket, and ShortKey share `{encoded KeyPrefix}{encoded AuthType}v2:` without falling back to unversioned storage. Upgrade using [PrepareAuthUpgrade](namespace-copy.md) during a stopped-writer window. Runtime access credentials accept only compact records with an explicit AuthType and AccessID; legacy Token Codec decoding and anonymous writes have been removed. Restrictions now read only their canonical key and require explicit ownership and kind; legacy key interpretation is confined to offline migration. Terminal pruning follows policy scopes and count thresholds, avoiding unconditional token probes during login; Session reads and writes remain. See the [implementation plan (Chinese)](performance-refactor-plan_zh.md) for progress.
 
-**Responsibilities**: provide replaceable component implementations.
+## Independent capability operations
 
-**Current modules**:
-- `com/storage/*` - storage implementations
-- `com/codec/*` - codec implementations
-- `com/generator/dgenerator` - token generator
-- `com/log/*` - log implementations
-- `com/pool/ants` - renew task pool implementation
+Independent capabilities coordinate writes only for the credential involved: ShortKey serializes creation, confirmation, consumption, and revocation per key; Ticket does the same for ordinary-storage consumption and revocation. Lock entries are reclaimed after holders and waiters leave. This coordination is local to one Manager and does not replace cross-instance atomic storage capabilities.
 
-### 5. Framework Integration Layer (integrations/)
+Ticket, ShortKey, and OAuth2 Service revocation reuse the record processed by the internal operation to emit events, avoiding extra credential reads and decoding. Each normal revocation reads once; pending ShortKeys retain their existing event fields. OAuth2 combines access-token and refresh-token removal into one Delete call without requiring multi-key transactions. Public APIs and one-time consumption checks remain unchanged.
 
-**Responsibilities**: provide web framework adapters.
+## Public API and lifecycle boundaries
 
-**Current integrations**:
-- `gin`
-- `gf`
-- `echo`
-- `fiber`
-- `chi`
-- `hertz`
-- `kratos`
-- `beego`
+Applications prefer Auth; Manager is a supported advanced API. Engine type aliases exposed by the root remain public APIs, with compatibility obligations even when their implementation path is internal. Shared models such as TokenInfo, Session, and TerminalInfo are declared in contract.
 
-**Main features**:
-- request context adaptation
-- `DTokenContext` injection
-- middleware wrappers
-- annotation-style checking middleware wrappers
+Auth facades, registry registration, and framework bindings may share one engine. Capability services borrow components, and event bindings do not transfer ownership. [API and lifecycle](api-lifecycle.md) is the source for construction, sharing, replacement, and shutdown contracts.
 
-## Design Patterns
+## Documentation responsibilities
 
-### 1. Builder Pattern
+| Document | Maintained content |
+| --- | --- |
+| This document | Responsibilities, dependencies, and assembly paths |
+| [Source layout](source-layout.md) | Directories, file responsibilities, and code placement rules |
+| [Modular design](modular.md) | Dependency constraints, Go module boundaries, and structural checks |
+| [API and lifecycle](api-lifecycle.md) | Public APIs, component ownership, instance sharing, and shutdown |
+| [Migration guide](module-migration.md) | Old-path migration, release ordering, and consumer verification |
 
-```go
-mgr, err := defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
-    TokenName("Authorization").
-    Timeout(86400).
-    Build()
-if err != nil {
-    panic(err)
-}
-```
-
-**Advantages**:
-- fluent and readable configuration
-- flexible optional parameters
-- easy to extend with new config items
-
-### 2. Adapter Pattern
-
-```go
-type Storage interface {
-    Set(ctx context.Context, key string, value any, expiration time.Duration) error
-    Get(ctx context.Context, key string) (any, error)
-    Delete(ctx context.Context, keys ...string) error
-    Exists(ctx context.Context, key string) bool
-    Expire(ctx context.Context, key string, expiration time.Duration) error
-    TTL(ctx context.Context, key string) (time.Duration, error)
-    Ping(ctx context.Context) error
-}
-```
-
-**Advantages**:
-- decouples concrete implementations
-- makes storage, logging, codec, pool, and generator replaceable
-- keeps the core layer implementation-agnostic
-
-### 3. Middleware / Annotation-Style Composition
-
-```go
-annotation.GET("/profile",
-    gindt.CheckLoginMiddleware(ctx, handleProfile, handleAuthFail))
-```
-
-**Advantages**:
-- unified integration style across frameworks
-- reusable login, permission, and role checks
-- closer to real business routing style
-
-### 4. Global Manager Registry Pattern
-
-```go
-dtoken.SetManager(mgr)
-mgr, err := dtoken.GetManager()
-```
-
-**Advantages**:
-- supports global access
-- supports multiple auth systems
-- avoids passing manager objects throughout business code
-
-## Data Flow
-
-### Login Flow
-
-```text
-Request
-  ↓
-dtoken.Login(ctx, loginID, ...)
-  ↓
-1. Parse device / deviceID / authType
-  ↓
-2. Generate token
-  ↓
-3. Save Session without shortening its existing TTL
-  ↓
-4. Save TokenInfo
-  ↓
-5. Initialize renew / active state
-  ↓
-6. Return token
-```
-
-### Token Validation Flow
-
-```text
-Request
-  ↓
-dtoken.IsLogin(ctx, token)
-  ↓
-1. Validate TokenInfo and its Session / terminal binding
-  ↓
-2. Check account and device disable state
-  ↓
-3. Check ActiveTimeout
-  ↓
-4. Schedule combined renewal / activity maintenance as needed
-  ↓
-5. Worker rechecks lifecycle before writing; activity uses request time
-  ↓
-6. Return validation result
-```
-
-### Permission Validation Flow
-
-```text
-Request
-  ↓
-CheckPermissionMiddleware / HasPermission
-  ↓
-1. Get token or loginID
-  ↓
-2. Middleware and token-based APIs validate login state
-  ↓
-3. Load permission list
-  ↓
-4. Match permissions (with wildcard support)
-  ↓
-5. Trigger permission-check event
-  ↓
-6. Return result
-```
-
-Account-based `HasPermission(ctx, loginID, ...)` resolves permissions by account, including through an AccessProvider, and does not prove possession of a valid login token. Protect request handlers with authentication middleware or a token-based check.
-
-## Auto-Renew Design
-
-### Core Idea
-
-The current version does not simply renew on every `IsLogin()` call. Instead it:
-
-- checks the current token TTL first
-- only renews when the token is close enough to expiry
-- throttles renew operations through `RenewInterval`
-- prefers submitting renew work to an async pool
-
-### Current Implementation Highlights
-
-- `AutoRenew` controls whether auto-renew is enabled
-- `RenewMaxRefresh` controls when renew should trigger
-- `RenewInterval` controls the minimum renew interval for the same token
-- `ActiveTimeout` controls the maximum inactive duration
-- `com/pool/ants` provides the default renew task pool
-
-See: [Auto-Renew Design](auto-renew.md)
-
-## Data Storage Structure
-
-### Storage Key Structure
-
-Current keys are composed as:
-
-`encoded KeyPrefix + encoded AuthType + businessPrefix + businessID`
-
-Namespace components escape internal separators independently. See [Namespace Rules](../guide/reference/configuration.md#namespace-rules) before interpreting keys with internal colons or backslashes.
-
-With default values, common key examples are:
-
-```text
-dtoken:auth:token:{tokenValue}                   -> TokenInfo
-dtoken:auth:session:{loginID}                   -> Session
-dtoken:auth:renew:{tokenValue}                  -> renew throttle marker
-dtoken:auth:active:{tokenValue}                 -> last active timestamp
-dtoken:auth:disable:{loginID}                   -> account disable info
-dtoken:auth:disable:service:{loginID}:{service} -> service disable info
-```
-
-### TokenInfo Structure
-
-```go
-type TokenInfo struct {
-    AuthType      string
-    LoginID       string
-    Device        string
-    DeviceID      string
-    CreateTime    int64
-    Timeout       int64
-    ActiveTimeout int64
-    Extra         map[string]any
-}
-```
-
-### Session Structure
-
-```go
-type Session struct {
-    AuthType             string
-    LoginID              string
-    CreateTime           int64
-    TerminalInfos        []TerminalInfo
-    Permissions          []string
-    Roles                []string
-    Data                 map[string]any
-    HistoryTerminalCount int64
-}
-```
-
-## Next Steps
-
-- [Auto-Renew Design](auto-renew.md)
-- [Modular Design](modular.md)
-- [DToken API Documentation](../api/dtoken.md)
+Feature details live in [authentication](../guide/core/authentication.md), [Session and terminals](../guide/core/session-terminal.md), [permissions and roles](../guide/core/permission.md), [refresh tokens](../guide/security/refresh-token.md), and [auto-renewal design](auto-renew.md). [contract/model.go](../../contract/model.go) defines public shared models; [internal_token_record.go](../../internal/engine/internal_token_record.go) defines the private token primary format. Storage namespaces are described in the [configuration guide](../guide/reference/configuration.md).

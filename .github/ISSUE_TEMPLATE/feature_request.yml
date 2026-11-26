@@ -1,0 +1,35 @@
+name: Feature request / 功能建议
+description: Propose an improvement to DToken-Go. 提出功能或设计改进建议。
+title: "[Feature] "
+body:
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting / 提交前检查
+      options:
+        - label: I searched existing issues and the documentation. 我已搜索现有 Issue 和文档。
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and use case / 问题与使用场景
+      description: Explain the concrete problem and who encounters it. 说明具体问题及受影响的使用场景。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior / 期望的功能
+      description: Describe the desired behavior, with an API usage example if helpful. 描述期望行为，可附 API 使用示例。
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered / 已考虑的方案
+      description: Explain existing approaches and their limitations. 说明已有方案及其局限。
+  - type: textarea
+    id: scope
+    attributes:
+      label: Affected modules and compatibility / 影响模块与兼容性
+      description: Mention relevant modules, framework integrations, storage requirements, or API compatibility concerns. 补充涉及的模块、框架集成、存储要求或 API 兼容性影响。

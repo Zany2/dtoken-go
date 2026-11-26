@@ -1,6 +1,11 @@
 package main
 
 import (
+	dtoken "github.com/Zany2/dtoken-go"
+	dt1 "github.com/Zany2/dtoken-go/contract"
+	dterror "github.com/Zany2/dtoken-go/errors"
+	dt2 "github.com/Zany2/dtoken-go/storage/memory"
+
 	"bytes"
 	"context"
 	"errors"
@@ -9,18 +14,20 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/iotest"
 	"time"
 
 	beegodt "github.com/Zany2/dtoken-go/integrations/beego"
 	web "github.com/beego/beego/v2/server/web"
+	beegocontext "github.com/beego/beego/v2/server/web/context"
 )
 
 // TestInitDTokenConfiguration verifies the actual example's renewal configuration. TestInitDTokenConfiguration 验证实际示例的续期配置。
 func TestInitDTokenConfiguration(t *testing.T) {
 	setupBeegoManager(t)
-	mgr, err := beegodt.GetManager()
+	mgr, err := dtoken.GetManager()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +43,7 @@ func TestInitDTokenConfiguration(t *testing.T) {
 // TestLoginParsing covers partial form results and errors before Beego's automatic parser. TestLoginParsing 覆盖表单部分解析结果，以及 Beego 自动解析前的错误分支。
 func TestLoginParsing(t *testing.T) {
 	setupBeegoManager(t)
-	router := newBeegoExampleRouter()
+	router := newBeegoExampleRouter(t)
 	for _, tc := range []struct{ path, body string }{
 		{"/login", ""},
 		{"/login", "username=alice"},
@@ -46,7 +53,7 @@ func TestLoginParsing(t *testing.T) {
 		{"/login?username=alice&password=123456", "bad=%zz"},
 	} {
 		t.Run(tc.path+tc.body, func(t *testing.T) {
-			assertBeegoResponse(t, requestBeego(router, http.MethodPost, tc.path, tc.body, ""), http.StatusBadRequest, beegodt.CodeBadRequest)
+			assertBeegoResponse(t, requestBeego(router, http.MethodPost, tc.path, tc.body, ""), http.StatusBadRequest, dterror.CodeBadRequest)
 		})
 	}
 	for _, req := range []*http.Request{
@@ -59,14 +66,14 @@ func TestLoginParsing(t *testing.T) {
 		}
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, req)
-		assertBeegoResponse(t, rec, http.StatusBadRequest, beegodt.CodeBadRequest)
+		assertBeegoResponse(t, rec, http.StatusBadRequest, dterror.CodeBadRequest)
 		if strings.Contains(rec.Body.String(), "private") {
 			t.Fatal("body read error leaked")
 		}
 	}
 
 	// Keep native form precedence and multipart support compatible with Input.Query. 保持 Input.Query 原有的表单优先级及 multipart 支持。
-	assertBeegoResponse(t, requestBeego(router, http.MethodPost, "/login?username=alice&password=123456", "password=bad", ""), http.StatusUnauthorized, beegodt.CodeNotLogin)
+	assertBeegoResponse(t, requestBeego(router, http.MethodPost, "/login?username=alice&password=123456", "password=bad", ""), http.StatusUnauthorized, dterror.CodeNotLogin)
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
 	if err := w.WriteField("username", "alice"); err != nil {
@@ -85,7 +92,7 @@ func TestLoginParsing(t *testing.T) {
 	if req.MultipartForm != nil {
 		t.Cleanup(func() { _ = req.MultipartForm.RemoveAll() })
 	}
-	assertBeegoResponse(t, rec, http.StatusOK, beegodt.CodeSuccess)
+	assertBeegoResponse(t, rec, http.StatusOK, dterror.CodeSuccess)
 }
 
 // TestLoginBodyLimit ensures the early parser retains Beego's request size bound. TestLoginBodyLimit 确保前置解析保留 Beego 的请求体大小限制。
@@ -94,8 +101,8 @@ func TestLoginBodyLimit(t *testing.T) {
 	previous := web.BConfig.MaxMemory
 	web.BConfig.MaxMemory = 32
 	t.Cleanup(func() { web.BConfig.MaxMemory = previous })
-	rec := requestBeego(newBeegoExampleRouter(), http.MethodPost, "/login?username=alice&password=123456", "padding="+strings.Repeat("x", 64), "")
-	assertBeegoResponse(t, rec, http.StatusBadRequest, beegodt.CodeBadRequest)
+	rec := requestBeego(newBeegoExampleRouter(t), http.MethodPost, "/login?username=alice&password=123456", "padding="+strings.Repeat("x", 64), "")
+	assertBeegoResponse(t, rec, http.StatusBadRequest, dterror.CodeBadRequest)
 
 	previousUpload := web.BConfig.MaxUploadSize
 	web.BConfig.MaxUploadSize = 32
@@ -117,15 +124,15 @@ func TestLoginBodyLimit(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(encoded))
 		req.Header.Set("Content-Type", w.FormDataContentType())
 		rec := httptest.NewRecorder()
-		newBeegoExampleRouter().ServeHTTP(rec, req)
+		newBeegoExampleRouter(t).ServeHTTP(rec, req)
 		if req.MultipartForm != nil {
 			_ = req.MultipartForm.RemoveAll()
 		}
 		if limit == 32 {
-			assertBeegoResponse(t, rec, http.StatusBadRequest, beegodt.CodeBadRequest)
+			assertBeegoResponse(t, rec, http.StatusBadRequest, dterror.CodeBadRequest)
 		} else {
 			// Multipart input may exceed MaxMemory while fitting MaxUploadSize. multipart 请求可超过 MaxMemory，但必须符合 MaxUploadSize。
-			assertBeegoResponse(t, rec, http.StatusOK, beegodt.CodeSuccess)
+			assertBeegoResponse(t, rec, http.StatusOK, dterror.CodeSuccess)
 		}
 	}
 }
@@ -134,56 +141,80 @@ func TestLoginBodyLimit(t *testing.T) {
 func TestAccountAndDeviceRestrictions(t *testing.T) {
 	setupBeegoManager(t)
 	ctx := context.Background()
-	if err := beegodt.Disable(ctx, "blocked", time.Hour, ""); err != nil {
+	if err := dtoken.Disable(ctx, dtoken.DisableOptions{LoginID: "blocked", Duration: time.Hour, Reason: ""}); err != nil {
 		t.Fatal(err)
 	}
-	router := newBeegoExampleRouter()
-	assertBeegoResponse(t, requestBeego(router, http.MethodPost, "/login", "username=blocked&password=123456", ""), http.StatusForbidden, beegodt.CodeAccountDisabled)
-	token, err := beegodt.Login(ctx, "alice", "web")
+	router := newBeegoExampleRouter(t)
+	assertBeegoResponse(t, requestBeego(router, http.MethodPost, "/login", "username=blocked&password=123456", ""), http.StatusForbidden, dterror.CodeAccountDisabled)
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "alice", Device: "web"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := beegodt.DisableDevice(ctx, "alice", "web", time.Hour); err != nil {
+	if err := dtoken.DisableDevice(ctx, dtoken.DeviceDisableOptions{LoginID: "alice", Device: "web", Duration: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
-	assertBeegoResponse(t, requestBeego(router, http.MethodGet, "/me", "", token), http.StatusForbidden, beegodt.CodeAccountDisabled)
-	if err := beegodt.UntieDevice(ctx, "alice", "web"); err != nil {
+	assertBeegoResponse(t, requestBeego(router, http.MethodGet, "/me", "", token), http.StatusForbidden, dterror.CodeAccountDisabled)
+	if err := dtoken.UntieDevice(ctx, "alice", "web"); err != nil {
 		t.Fatal(err)
 	}
-	assertBeegoResponse(t, requestBeego(router, http.MethodGet, "/me", "", token), http.StatusOK, beegodt.CodeSuccess)
+	assertBeegoResponse(t, requestBeego(router, http.MethodGet, "/me", "", token), http.StatusOK, dterror.CodeSuccess)
 }
 
 // TestStorageErrorsUseUnifiedResponse verifies both handler and filter failures are sanitized. TestStorageErrorsUseUnifiedResponse 验证处理器与过滤器的故障响应均隐藏内部详情。
 func TestStorageErrorsUseUnifiedResponse(t *testing.T) {
-	beegodt.DeleteAllManager()
-	t.Cleanup(beegodt.DeleteAllManager)
-	mgr, err := beegodt.NewBuilder().SetStorage(&failingBeegoStorage{Storage: beegodt.NewMemoryStorage()}).
-		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).Build()
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+	storage := &failingBeegoStorage{Storage: dt2.NewStorage()}
+	builtAuth1, err := dtoken.NewBuilder().Storage(storage).
+		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
+	mgr := builtAuth1.Manager()
+
 	if err != nil {
 		t.Fatal(err)
 	}
-	beegodt.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, withAuth := range []bool{false, true} {
 		t.Run(fmt.Sprintf("withAuth=%t", withAuth), func(t *testing.T) {
+			handlerCalls := 0
 			router := web.NewControllerRegister()
 			if withAuth {
-				registerRoutes(router)
+				registerTestRoutes(t, router)
 			} else {
 				// Reach handler errors independently of the authentication filter. 独立覆盖处理器中的错误分支，避免被认证过滤器提前拦截。
-				if err := router.InsertFilter("/*", web.BeforeRouter, beegodt.RegisterDTokenContextMiddleware(context.Background(), beegodt.WithFailFunc(writeAuthError))); err != nil {
+				authOption1, authErr := beegodt.WithAuth(builtAuth1)
+				if authErr != nil {
+					t.Fatal(authErr)
+				}
+				if err := router.InsertFilter("/*", web.BeforeRouter, beegodt.RegisterDTokenContextMiddleware(context.Background(), authOption1, beegodt.WithFailFunc(writeAuthError))); err != nil {
 					t.Fatal(err)
 				}
-				router.Post("/login", handleLogin)
-				router.Get("/me", handleMe)
-				router.Post("/logout", handleLogout)
+				counted := func(handler func(*beegocontext.Context)) func(*beegocontext.Context) {
+					return func(c *beegocontext.Context) {
+						handlerCalls++
+						handler(c)
+					}
+				}
+				router.Post("/login", counted(handleLogin))
+				router.Get("/me", counted(handleMe))
+				router.Post("/logout", counted(handleLogout))
 			}
 			for _, tc := range []struct{ method, path, body string }{
 				{http.MethodPost, "/login", "username=alice&password=123456"},
 				{http.MethodGet, "/me", ""},
 				{http.MethodPost, "/logout", ""},
 			} {
+				beforeStorage, beforeHandlers := storage.calls.Load(), handlerCalls
 				rec := requestBeego(router, tc.method, tc.path, tc.body, "some-token")
-				assertBeegoResponse(t, rec, http.StatusInternalServerError, beegodt.CodeServerError)
+				if storage.calls.Load() <= beforeStorage {
+					t.Fatalf("%s never reached storage", tc.path)
+				}
+				if !withAuth && handlerCalls != beforeHandlers+1 {
+					t.Fatalf("%s never reached its handler", tc.path)
+				}
+
+				assertBeegoResponse(t, rec, http.StatusInternalServerError, dterror.CodeServerError)
 				if strings.Contains(rec.Body.String(), "private storage") || !strings.Contains(rec.Body.String(), "internal server error") {
 					t.Fatalf("unsafe server response: %s", rec.Body.String())
 				}
@@ -192,19 +223,20 @@ func TestStorageErrorsUseUnifiedResponse(t *testing.T) {
 	}
 }
 
-// TestMissingManagerStopsHandlers verifies context-registration failure stops native routing. TestMissingManagerStopsHandlers 验证上下文注册失败后原生路由不会继续处理请求。
-func TestMissingManagerStopsHandlers(t *testing.T) {
-	beegodt.DeleteAllManager()
-	t.Cleanup(beegodt.DeleteAllManager)
-	router := newBeegoExampleRouter()
-	for _, path := range []string{"/login?username=alice&password=123456", "/logout"} {
-		assertBeegoResponse(t, requestBeego(router, http.MethodPost, path, "", ""), http.StatusInternalServerError, beegodt.CodeServerError)
+// TestMissingAuthRejectedAtSetup verifies missing instances fail before accepting requests. TestMissingAuthRejectedAtSetup 验证缺失实例在接收请求前被拒绝。
+func TestMissingAuthRejectedAtSetup(t *testing.T) {
+	if err := registerRoutes(web.NewControllerRegister(), nil); !errors.Is(err, dterror.ErrManagerNotFound) {
+		t.Fatalf("setup error = %v, want ErrManagerNotFound", err)
 	}
 }
 
-type failingBeegoStorage struct{ beegodt.Storage }
+type failingBeegoStorage struct {
+	dt1.Storage
+	calls atomic.Int64
+}
 
 // Get simulates a backend failure containing private details. Get 模拟包含私有详情的后端故障。
-func (*failingBeegoStorage) Get(context.Context, string) (any, error) {
+func (s *failingBeegoStorage) Get(context.Context, string) (any, error) {
+	s.calls.Add(1)
 	return nil, errors.New("private storage connection details")
 }

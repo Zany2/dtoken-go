@@ -1,27 +1,10 @@
 go 1.27.0
 
 use (
-	./com/codec/base64
-	./com/codec/json
-	./com/codec/jsonv2
-	./com/codec/msgpack
-
-	./com/generator/dgenerator
-
-	./com/log/dlog
-	./com/log/gf
-	./com/log/nop
-
-	./com/pool/ants
-
-	./com/storage/memory
-	./com/storage/redis
-
-	./core
-	./defaults
-	./dtoken
+	.
+	./codec/jsonv2
+	./codec/msgpack
 	./examples/beego
-
 	./examples/chi
 	./examples/echo
 	./examples/fiber
@@ -31,12 +14,11 @@ use (
 	./examples/kratos
 	./examples/quick_start
 	./examples/sso_client
+	./examples/sso_deployment
 	./examples/sso_gin_client
 	./examples/sso_gin_server
 	./examples/sso_server
-	./integrations/authcheck
 	./integrations/beego
-
 	./integrations/chi
 	./integrations/echo
 	./integrations/fiber
@@ -44,9 +26,28 @@ use (
 	./integrations/gin
 	./integrations/hertz
 	./integrations/kratos
+	./logging/gf
 	./sso
 	./sso/storage/redis
+	./storage/redis
 	./tests/gin_core_app
-
 	./tests/gin_core_flow
+)
+
+replace (
+	github.com/Zany2/dtoken-go v0.0.1 => .
+	github.com/Zany2/dtoken-go/codec/jsonv2 v0.0.1 => ./codec/jsonv2
+	github.com/Zany2/dtoken-go/codec/msgpack v0.0.1 => ./codec/msgpack
+	github.com/Zany2/dtoken-go/integrations/beego v0.0.1 => ./integrations/beego
+	github.com/Zany2/dtoken-go/integrations/chi v0.0.1 => ./integrations/chi
+	github.com/Zany2/dtoken-go/integrations/echo v0.0.1 => ./integrations/echo
+	github.com/Zany2/dtoken-go/integrations/fiber v0.0.1 => ./integrations/fiber
+	github.com/Zany2/dtoken-go/integrations/gf v0.0.1 => ./integrations/gf
+	github.com/Zany2/dtoken-go/integrations/gin v0.0.1 => ./integrations/gin
+	github.com/Zany2/dtoken-go/integrations/hertz v0.0.1 => ./integrations/hertz
+	github.com/Zany2/dtoken-go/integrations/kratos v0.0.1 => ./integrations/kratos
+	github.com/Zany2/dtoken-go/logging/gf v0.0.1 => ./logging/gf
+	github.com/Zany2/dtoken-go/sso v0.0.1 => ./sso
+	github.com/Zany2/dtoken-go/storage/redis v0.0.1 => ./storage/redis
+	github.com/Zany2/dtoken-go/tests/gin_core_app v0.0.1 => ./tests/gin_core_app
 )

@@ -1,0 +1,578 @@
+package dtoken
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	djson "github.com/Zany2/dtoken-go/codec/json"
+	"github.com/Zany2/dtoken-go/config"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
+	"github.com/Zany2/dtoken-go/generator/dgenerator"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
+
+	"github.com/Zany2/dtoken-go/storage/memory"
+)
+
+// TestBuilderCustomFactoriesReceiveConfig verifies custom factories take precedence and see normalized config. TestBuilderCustomFactoriesReceiveConfig 验证自定义工厂优先级及收到规范化配置。
+func TestBuilderCustomFactoriesReceiveConfig(t *testing.T) {
+	var generatorCalls, storageCalls, codecCalls, logCalls, poolCalls int
+	var seenAuthType string
+	customStorage := memory.NewStorage()
+	customCodec := djson.NewJSONSerializer()
+	customGenerator := dgenerator.NewGenerator(60, "factory-secret", adapter.TokenStyleUUID)
+	customLogger := &registryTestLogger{NopLogger: adapter.NewNopLogger()}
+	customPool := &registryTestPool{}
+
+	mgr, err := buildTestManager(NewBuilder().
+		IsPrintBanner(false).
+		IsLog(true).
+		AutoRenew(true).
+		AuthType("factory").
+		SetGeneratorFactory(func(cfg *config.Config) (adapter.Generator, error) {
+			generatorCalls++
+			seenAuthType = cfg.AuthType
+			return customGenerator, nil
+		}).
+		SetStorageFactory(func(cfg *config.Config) (adapter.Storage, error) {
+			storageCalls++
+			seenAuthType = cfg.AuthType
+			return customStorage, nil
+		}).
+		SetCodecFactory(func(cfg *config.Config) (adapter.Codec, error) {
+			codecCalls++
+			seenAuthType = cfg.AuthType
+			return customCodec, nil
+		}).
+		SetLogFactory(func(cfg *config.Config) (adapter.Log, error) {
+			logCalls++
+			seenAuthType = cfg.AuthType
+			return customLogger, nil
+		}).
+		SetPoolFactory(func(cfg *config.Config) (adapter.Pool, error) {
+			poolCalls++
+			seenAuthType = cfg.AuthType
+			return customPool, nil
+		}),
+	)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if generatorCalls != 1 || storageCalls != 1 || codecCalls != 1 || logCalls != 1 || poolCalls != 1 {
+		t.Fatalf("factory calls = generator:%d storage:%d codec:%d log:%d pool:%d, want one each", generatorCalls, storageCalls, codecCalls, logCalls, poolCalls)
+	}
+	if seenAuthType != "factory:" {
+		t.Fatalf("factory auth type = %q, want factory:", seenAuthType)
+	}
+	if mgr.GetGenerator() != customGenerator || mgr.GetStorage() != customStorage || mgr.GetSerializer() != customCodec || mgr.GetLogger() != customLogger || mgr.GetPool() != customPool {
+		t.Fatal("custom factory components were not wired into manager")
+	}
+	mgr.CloseManager()
+	if customPool.stops() != 1 || customLogger.closes() != 1 {
+		t.Fatalf("factory component close counts = pool:%d logger:%d, want one each", customPool.stops(), customLogger.closes())
+	}
+}
+
+// TestRegistryDefaultAndBuild verifies default lookup and builder registration. TestRegistryDefaultAndBuild 验证默认查找和 Builder 注册。
+func TestRegistryDefaultAndBuild(t *testing.T) {
+	DeleteAllManager()
+	t.Cleanup(DeleteAllManager)
+
+	core := NewBuilder().IsPrintBanner(false).AutoRenew(false)
+	auth, err := core.AuthType("core-override").Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	mgr := auth.Manager()
+	if mgr.GetConfig().AuthType != "core-override:" {
+		t.Fatalf("core builder auth type = %q, want core-override:", mgr.GetConfig().AuthType)
+	}
+	if got, err := GetManager(); got != nil || !errors.Is(err, derror.ErrManagerNotFound) {
+		t.Fatalf("GetManager() = %v, %v, want default manager not found", got, err)
+	}
+	if got, err := GetManager("core-override"); err != nil || got != mgr {
+		t.Fatalf("GetManager(core-override) = %v, %v", got, err)
+	}
+	if err := DeleteManager("core-override"); err != nil {
+		t.Fatalf("DeleteManager() error = %v", err)
+	}
+	if err := DeleteManager("core-override"); !errors.Is(err, derror.ErrManagerNotFound) {
+		t.Fatalf("second DeleteManager() error = %v, want ErrManagerNotFound", err)
+	}
+}
+
+// TestRootSessionFacades verifies global session, token metadata, search, and terminal iteration helpers. TestRootSessionFacades 验证全局会话、Token 元数据、搜索和终端遍历门面。
+func TestRootSessionFacades(t *testing.T) {
+	DeleteAllManager()
+	t.Cleanup(DeleteAllManager)
+
+	ctx := context.Background()
+	mgr, err := buildTestManager(NewBuilder().IsPrintBanner(false).AutoRenew(false).IsShare(false).AuthType("session-facade"))
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if err := SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
+
+	token1, err := AuthType("session-facade").Login(ctx, LoginOptions{LoginID: "session-user", Device: "web", DeviceID: "browser-1"})
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	token2, err := AuthType("session-facade").Login(ctx, LoginOptions{LoginID: "session-user", Timeout: 2 * time.Minute, Device: "mobile", DeviceID: "phone-1"})
+	if err != nil {
+		t.Fatalf("LoginWithTimeout() error = %v", err)
+	}
+	if token1 == token2 || !AuthType("session-facade").IsLogin(ctx, token1) || !AuthType("session-facade").IsLogin(ctx, token2) {
+		t.Fatal("expected two distinct active tokens")
+	}
+	if err = AuthType("session-facade").LoginByToken(ctx, token1); err != nil {
+		t.Fatalf("LoginByToken() error = %v", err)
+	}
+	if err = AuthType("session-facade").CheckLogin(ctx, token1); err != nil {
+		t.Fatalf("CheckLogin() error = %v", err)
+	}
+
+	info, err := AuthType("session-facade").GetTokenInfo(ctx, token1)
+	if err != nil || info.LoginID != "session-user" || info.Device != "web" || info.DeviceID != "browser-1" {
+		t.Fatalf("GetTokenInfo() = %+v, %v", info, err)
+	}
+	if loginID, err := AuthType("session-facade").GetLoginID(ctx, token1); err != nil || loginID != "session-user" {
+		t.Fatalf("GetLoginID() = %q, %v", loginID, err)
+	}
+	if deviceID, err := AuthType("session-facade").GetDeviceID(ctx, token1); err != nil || deviceID != "browser-1" {
+		t.Fatalf("GetDeviceID() = %q, %v", deviceID, err)
+	}
+	if createTime, err := AuthType("session-facade").GetTokenCreateTime(ctx, token1); err != nil || createTime <= 0 {
+		t.Fatalf("GetTokenCreateTime() = %d, %v", createTime, err)
+	}
+	if ttl, err := AuthType("session-facade").GetTokenTTL(ctx, token1); err != nil || ttl <= 0 {
+		t.Fatalf("GetTokenTTL() = %d, %v", ttl, err)
+	}
+	if err = AuthType("session-facade").RenewTimeout(ctx, token1, time.Minute); err != nil {
+		t.Fatalf("RenewTimeout() error = %v", err)
+	}
+	if introspection, err := AuthType("session-facade").IntrospectToken(ctx, token1); err != nil || !introspection.Active {
+		t.Fatalf("IntrospectToken() = %+v, %v", introspection, err)
+	}
+
+	if count, err := AuthType("session-facade").GetOnlineTerminalCount(ctx, "session-user"); err != nil || count != 2 {
+		t.Fatalf("GetOnlineTerminalCount() = %d, %v", count, err)
+	}
+	if count, err := AuthType("session-facade").GetOnlineTerminalCountByDevice(ctx, "session-user", "web"); err != nil || count != 1 {
+		t.Fatalf("GetOnlineTerminalCountByDevice() = %d, %v", count, err)
+	}
+	if count, err := AuthType("session-facade").GetOnlineTerminalCountByDeviceAndDeviceID(ctx, "session-user", "web", "browser-1"); err != nil || count != 1 {
+		t.Fatalf("GetOnlineTerminalCountByDeviceAndDeviceID() = %d, %v", count, err)
+	}
+	if values, err := AuthType("session-facade").GetTokenValueListByLoginID(ctx, "session-user", true); err != nil || len(values) != 2 {
+		t.Fatalf("GetTokenValueListByLoginID() = %v, %v", values, err)
+	}
+	if values, err := AuthType("session-facade").GetTokenValueListByDevice(ctx, "session-user", "web", true); err != nil || len(values) != 1 || values[0] != token1 {
+		t.Fatalf("GetTokenValueListByDevice() = %v, %v", values, err)
+	}
+	if values, err := AuthType("session-facade").GetTokenValueListByDeviceAndDeviceID(ctx, "session-user", "mobile", "phone-1", true); err != nil || len(values) != 1 || values[0] != token2 {
+		t.Fatalf("GetTokenValueListByDeviceAndDeviceID() = %v, %v", values, err)
+	}
+
+	sess, err := AuthType("session-facade").GetSession(ctx, "session-user")
+	if err != nil || sess.LoginID != "session-user" || len(sess.TerminalInfos) != 2 {
+		t.Fatalf("GetSession() = %+v, %v", sess, err)
+	}
+	byToken, err := AuthType("session-facade").GetSessionByToken(ctx, token1)
+	if err != nil || byToken.LoginID != sess.LoginID {
+		t.Fatalf("GetSessionByToken() = %+v, %v", byToken, err)
+	}
+	terminals, err := AuthType("session-facade").GetTerminalListByLoginID(ctx, "session-user")
+	if err != nil || len(terminals) != 2 {
+		t.Fatalf("GetTerminalListByLoginID() = %v, %v", terminals, err)
+	}
+	filtered, err := AuthType("session-facade").GetTerminalListByLoginIDAndDevice(ctx, "session-user", "mobile")
+	if err != nil || len(filtered) != 1 || filtered[0].Token != token2 {
+		t.Fatalf("GetTerminalListByLoginIDAndDevice() = %v, %v", filtered, err)
+	}
+	terminal, err := AuthType("session-facade").GetTerminalInfoByToken(ctx, token1)
+	if err != nil || terminal.DeviceID != "browser-1" {
+		t.Fatalf("GetTerminalInfoByToken() = %+v, %v", terminal, err)
+	}
+
+	visited := 0
+	if err = AuthType("session-facade").ForEachTerminal(ctx, "session-user", func(_ manager.TerminalInfo) bool {
+		visited++
+		return visited < 2
+	}); err != nil || visited != 2 {
+		t.Fatalf("ForEachTerminal() visited = %d, %v", visited, err)
+	}
+	deviceVisited := 0
+	if err = AuthType("session-facade").ForEachTerminalByDevice(ctx, "session-user", "web", func(_ manager.TerminalInfo) bool {
+		deviceVisited++
+		return true
+	}); err != nil || deviceVisited != 1 {
+		t.Fatalf("ForEachTerminalByDevice() visited = %d, %v", deviceVisited, err)
+	}
+
+	if err = AuthType("session-facade").SetSessionValue(ctx, "session-user", " trace ", "value"); err != nil {
+		t.Fatalf("SetSessionValue() error = %v", err)
+	}
+	if value, ok, err := AuthType("session-facade").GetSessionValue(ctx, "session-user", "trace"); err != nil || !ok || value != "value" {
+		t.Fatalf("GetSessionValue() = %#v/%v, %v", value, ok, err)
+	}
+	if err = AuthType("session-facade").DeleteSessionValue(ctx, "session-user", "trace"); err != nil {
+		t.Fatalf("DeleteSessionValue() error = %v", err)
+	}
+	if _, ok, err := AuthType("session-facade").GetSessionValue(ctx, "session-user", "trace"); err != nil || ok {
+		t.Fatalf("GetSessionValue(after delete) = ok:%v, err:%v", ok, err)
+	}
+	if latest, err := AuthType("session-facade").GetTokenValueByLoginID(ctx, "session-user"); err != nil || latest != token2 {
+		t.Fatalf("GetTokenValueByLoginID() = %q, %v", latest, err)
+	}
+	if latest, err := AuthType("session-facade").GetTokenValueByLoginIDAndDevice(ctx, "session-user", "web"); err != nil || latest != token1 {
+		t.Fatalf("GetTokenValueByLoginIDAndDevice() = %q, %v", latest, err)
+	}
+	if values, err := AuthType("session-facade").SearchTokenValue(ctx, token1, 0, -1); err != nil || !dtokenContains(values, token1) {
+		t.Fatalf("SearchTokenValue() = %v, %v", values, err)
+	}
+	if values, err := AuthType("session-facade").SearchSessionId(ctx, "session-user", 0, -1); err != nil || !dtokenContains(values, "session-user") {
+		t.Fatalf("SearchSessionId() = %v, %v", values, err)
+	}
+
+	pair, err := AuthType("session-facade").LoginWithRefreshTokenOptions(ctx, RefreshTokenOptions{LoginOptions: LoginOptions{LoginID: "refresh-options"}, RefreshTimeout: time.Minute})
+	if err != nil || pair == nil || pair.AccessToken == "" || pair.RefreshToken == "" {
+		t.Fatalf("LoginWithRefreshTokenOptions() = %+v, %v", pair, err)
+	}
+	if err = AuthType("session-facade").RevokeRefreshToken(ctx, pair.RefreshToken); err != nil {
+		t.Fatalf("RevokeRefreshToken() error = %v", err)
+	}
+}
+
+// TestRootPermissionAndRoleFacades verifies every global permission and role operation family. TestRootPermissionAndRoleFacades 验证全局权限和角色操作族。
+func TestRootPermissionAndRoleFacades(t *testing.T) {
+	DeleteAllManager()
+	t.Cleanup(DeleteAllManager)
+	ctx := context.Background()
+	mgr, err := buildTestManager(NewBuilder().IsPrintBanner(false).AutoRenew(false).AuthType("access-facade"))
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if err := SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
+	token, err := AuthType("access-facade").Login(ctx, LoginOptions{LoginID: "access-user", Device: "web", DeviceID: "browser"})
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+
+	if err = AuthType("access-facade").AddPermissions(ctx, PermissionOptions{LoginID: "access-user", Permissions: []string{"read", "write"}}); err != nil {
+		t.Fatalf("AddPermissions() error = %v", err)
+	}
+	if err = AuthType("access-facade").AddPermissionsByToken(ctx, token, []string{"delete"}); err != nil {
+		t.Fatalf("AddPermissionsByToken() error = %v", err)
+	}
+	if permissions, err := AuthType("access-facade").GetPermissions(ctx, "access-user"); err != nil || !dtokenContains(permissions, "read") || !dtokenContains(permissions, "delete") {
+		t.Fatalf("GetPermissions() = %v, %v", permissions, err)
+	}
+	if permissions, err := AuthType("access-facade").GetPermissionsByToken(ctx, token); err != nil || !dtokenContains(permissions, "write") {
+		t.Fatalf("GetPermissionsByToken() = %v, %v", permissions, err)
+	}
+	if !AuthType("access-facade").HasPermission(ctx, "access-user", "read") || !AuthType("access-facade").HasPermissionByToken(ctx, token, "delete") || !AuthType("access-facade").HasPermissionsAnd(ctx, "access-user", []string{"read", "write"}) || !AuthType("access-facade").HasPermissionsAndByToken(ctx, token, []string{"read", "delete"}) || !AuthType("access-facade").HasPermissionsOr(ctx, "access-user", []string{"missing", "write"}) || !AuthType("access-facade").HasPermissionsOrByToken(ctx, token, []string{"missing", "delete"}) {
+		t.Fatal("permission predicates returned an unexpected result")
+	}
+	for _, check := range []func() error{
+		func() error {
+			return AuthType("access-facade").CheckPermission(ctx, PermissionOptions{LoginID: "access-user", Permission: "read"})
+		},
+		func() error { return AuthType("access-facade").CheckPermissionByToken(ctx, token, "delete") },
+		func() error {
+			return AuthType("access-facade").CheckPermissionAnd(ctx, "access-user", []string{"read", "write"})
+		},
+		func() error {
+			return AuthType("access-facade").CheckPermissionAndByToken(ctx, token, []string{"read", "delete"})
+		},
+		func() error {
+			return AuthType("access-facade").CheckPermissionOr(ctx, "access-user", []string{"missing", "write"})
+		},
+		func() error {
+			return AuthType("access-facade").CheckPermissionOrByToken(ctx, token, []string{"missing", "delete"})
+		},
+	} {
+		if err := check(); err != nil {
+			t.Fatalf("permission check error = %v", err)
+		}
+	}
+	if err = AuthType("access-facade").RemovePermissionsByToken(ctx, token, []string{"delete"}); err != nil {
+		t.Fatalf("RemovePermissionsByToken() error = %v", err)
+	}
+	if err = AuthType("access-facade").RemovePermissions(ctx, PermissionOptions{LoginID: "access-user", Permissions: []string{"write"}}); err != nil {
+		t.Fatalf("RemovePermissions() error = %v", err)
+	}
+	if AuthType("access-facade").HasPermission(ctx, "access-user", "write") || AuthType("access-facade").HasPermissionByToken(ctx, token, "delete") {
+		t.Fatal("removed permissions are still visible")
+	}
+
+	if err = AuthType("access-facade").AddRoles(ctx, RoleOptions{LoginID: "access-user", Roles: []string{"reader", "operator"}}); err != nil {
+		t.Fatalf("AddRoles() error = %v", err)
+	}
+	if err = AuthType("access-facade").AddRolesByToken(ctx, token, []string{"admin"}); err != nil {
+		t.Fatalf("AddRolesByToken() error = %v", err)
+	}
+	if roles, err := AuthType("access-facade").GetRoles(ctx, "access-user"); err != nil || !dtokenContains(roles, "reader") || !dtokenContains(roles, "admin") {
+		t.Fatalf("GetRoles() = %v, %v", roles, err)
+	}
+	if roles, err := AuthType("access-facade").GetRolesByToken(ctx, token); err != nil || !dtokenContains(roles, "operator") {
+		t.Fatalf("GetRolesByToken() = %v, %v", roles, err)
+	}
+	if !AuthType("access-facade").HasRole(ctx, "access-user", "reader") || !AuthType("access-facade").HasRoleByToken(ctx, token, "admin") || !AuthType("access-facade").HasRolesAnd(ctx, "access-user", []string{"reader", "operator"}) || !AuthType("access-facade").HasRolesAndByToken(ctx, token, []string{"reader", "admin"}) || !AuthType("access-facade").HasRolesOr(ctx, "access-user", []string{"missing", "operator"}) || !AuthType("access-facade").HasRolesOrByToken(ctx, token, []string{"missing", "admin"}) {
+		t.Fatal("role predicates returned an unexpected result")
+	}
+	for _, check := range []func() error{
+		func() error {
+			return AuthType("access-facade").CheckRole(ctx, RoleOptions{LoginID: "access-user", Role: "reader"})
+		},
+		func() error { return AuthType("access-facade").CheckRoleByToken(ctx, token, "admin") },
+		func() error {
+			return AuthType("access-facade").CheckRoleAnd(ctx, "access-user", []string{"reader", "operator"})
+		},
+		func() error {
+			return AuthType("access-facade").CheckRoleAndByToken(ctx, token, []string{"reader", "admin"})
+		},
+		func() error {
+			return AuthType("access-facade").CheckRoleOr(ctx, "access-user", []string{"missing", "operator"})
+		},
+		func() error {
+			return AuthType("access-facade").CheckRoleOrByToken(ctx, token, []string{"missing", "admin"})
+		},
+	} {
+		if err := check(); err != nil {
+			t.Fatalf("role check error = %v", err)
+		}
+	}
+	if err = AuthType("access-facade").RemoveRolesByToken(ctx, token, []string{"admin"}); err != nil {
+		t.Fatalf("RemoveRolesByToken() error = %v", err)
+	}
+	if err = AuthType("access-facade").RemoveRoles(ctx, RoleOptions{LoginID: "access-user", Roles: []string{"operator"}}); err != nil {
+		t.Fatalf("RemoveRoles() error = %v", err)
+	}
+	if AuthType("access-facade").HasRole(ctx, "access-user", "operator") || AuthType("access-facade").HasRoleByToken(ctx, token, "admin") {
+		t.Fatal("removed roles are still visible")
+	}
+}
+
+// TestRootTypedTerminationAndAccessOptions verifies typed global helpers dispatch all option branches. TestRootTypedTerminationAndAccessOptions 验证全局类型化选项入口覆盖所有分支。
+func TestRootTypedTerminationAndAccessOptions(t *testing.T) {
+	DeleteAllManager()
+	t.Cleanup(DeleteAllManager)
+	ctx := context.Background()
+	mgr, err := buildTestManager(NewBuilder().IsPrintBanner(false).AutoRenew(false).AuthType("typed-complete"))
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if err := SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
+
+	token, err := AuthType("typed-complete").Login(ctx, LoginOptions{LoginID: "typed-termination", Device: "web", DeviceID: "browser"})
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if err = AuthType("typed-complete").Kickout(ctx, LogoutOptions{Token: token}); err != nil || AuthType("typed-complete").IsLogin(ctx, token) {
+		t.Fatalf("Kickout() error = %v, logged in = %v", err, AuthType("typed-complete").IsLogin(ctx, token))
+	}
+	token, err = AuthType("typed-complete").Login(ctx, LoginOptions{LoginID: "typed-termination", Device: "web", DeviceID: "browser"})
+	if err != nil {
+		t.Fatalf("second Login() error = %v", err)
+	}
+	if err = AuthType("typed-complete").Replace(ctx, LogoutOptions{Token: token}); err != nil || AuthType("typed-complete").IsLogin(ctx, token) {
+		t.Fatalf("Replace() error = %v, logged in = %v", err, AuthType("typed-complete").IsLogin(ctx, token))
+	}
+
+	if err = AuthType("typed-complete").Disable(ctx, DisableOptions{LoginID: "typed-disabled", Duration: time.Minute, Reason: "risk"}); err != nil {
+		t.Fatalf("Disable() error = %v", err)
+	}
+	if !AuthType("typed-complete").IsDisable(ctx, "typed-disabled") {
+		t.Fatal("Disable() did not disable the account")
+	}
+	if err = AuthType("typed-complete").Untie(ctx, "typed-disabled"); err != nil {
+		t.Fatalf("Untie() error = %v", err)
+	}
+
+	accessToken, err := AuthType("typed-complete").Login(ctx, LoginOptions{LoginID: "typed-access"})
+	if err != nil {
+		t.Fatalf("access Login() error = %v", err)
+	}
+	if err = AuthType("typed-complete").AddPermissions(ctx, PermissionOptions{Token: accessToken, Permissions: []string{"read", "write"}}); err != nil {
+		t.Fatalf("AddPermissions() error = %v", err)
+	}
+	if err = AuthType("typed-complete").CheckPermissionsAnd(ctx, PermissionOptions{Token: accessToken, Permissions: []string{"read", "write"}}); err != nil {
+		t.Fatalf("CheckPermissionsAnd() error = %v", err)
+	}
+	if err = AuthType("typed-complete").CheckPermissionsOr(ctx, PermissionOptions{LoginID: "typed-access", Permissions: []string{"missing", "read"}}); err != nil {
+		t.Fatalf("CheckPermissionsOr() error = %v", err)
+	}
+	if err = AuthType("typed-complete").RemovePermissions(ctx, PermissionOptions{LoginID: "typed-access", Permissions: []string{"write"}}); err != nil {
+		t.Fatalf("RemovePermissions() error = %v", err)
+	}
+	if err = AuthType("typed-complete").AddRoles(ctx, RoleOptions{LoginID: "typed-access", Roles: []string{"reader", "operator"}}); err != nil {
+		t.Fatalf("AddRoles() error = %v", err)
+	}
+	if err = AuthType("typed-complete").CheckRole(ctx, RoleOptions{Token: accessToken, Role: "reader"}); err != nil {
+		t.Fatalf("CheckRole() error = %v", err)
+	}
+	if err = AuthType("typed-complete").CheckRolesAnd(ctx, RoleOptions{Token: accessToken, Roles: []string{"reader", "operator"}}); err != nil {
+		t.Fatalf("CheckRolesAnd() error = %v", err)
+	}
+	if err = AuthType("typed-complete").CheckRolesOr(ctx, RoleOptions{LoginID: "typed-access", Roles: []string{"missing", "reader"}}); err != nil {
+		t.Fatalf("CheckRolesOr() error = %v", err)
+	}
+	if err = AuthType("typed-complete").RemoveRoles(ctx, RoleOptions{Token: accessToken, Roles: []string{"operator"}}); err != nil {
+		t.Fatalf("RemoveRoles() error = %v", err)
+	}
+
+	if err = AuthType("typed-complete").DisableService(ctx, ServiceDisableOptions{LoginID: "typed-access", Service: "billing", Level: 2, Duration: time.Minute}); err != nil {
+		t.Fatalf("DisableService() error = %v", err)
+	}
+	if err = AuthType("typed-complete").DisableDevice(ctx, DeviceDisableOptions{LoginID: "typed-access", Device: "web", DeviceID: "browser", Duration: time.Minute}); err != nil {
+		t.Fatalf("DisableDevice() error = %v", err)
+	}
+}
+
+// TestRootDisableFacades verifies account, service, and device disable wrappers. TestRootDisableFacades 验证账号、服务和设备封禁门面。
+func TestRootDisableFacades(t *testing.T) {
+	DeleteAllManager()
+	t.Cleanup(DeleteAllManager)
+	ctx := context.Background()
+	mgr, err := buildTestManager(NewBuilder().IsPrintBanner(false).AutoRenew(false).AuthType("disable-facade"))
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if err := SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
+
+	if err = AuthType("disable-facade").Disable(ctx, DisableOptions{LoginID: "account-user", Duration: time.Minute, Reason: "account-risk"}); err != nil {
+		t.Fatalf("Disable() error = %v", err)
+	}
+	if !AuthType("disable-facade").IsDisable(ctx, "account-user") {
+		t.Fatal("IsDisable() = false, want true")
+	}
+	if err = AuthType("disable-facade").CheckDisable(ctx, "account-user"); !errors.Is(err, derror.ErrAccountDisabled) {
+		t.Fatalf("CheckDisable() error = %v, want ErrAccountDisabled", err)
+	}
+	if info, err := AuthType("disable-facade").GetDisableInfo(ctx, "account-user"); err != nil || info.DisableReason != "account-risk" {
+		t.Fatalf("GetDisableInfo() = %+v, %v", info, err)
+	}
+	if ttl, err := AuthType("disable-facade").GetDisableTTL(ctx, "account-user"); err != nil || ttl <= 0 {
+		t.Fatalf("GetDisableTTL() = %d, %v", ttl, err)
+	}
+	if err = AuthType("disable-facade").Untie(ctx, "account-user"); err != nil || AuthType("disable-facade").IsDisable(ctx, "account-user") {
+		t.Fatalf("Untie() error = %v, disabled = %v", err, AuthType("disable-facade").IsDisable(ctx, "account-user"))
+	}
+
+	if err = AuthType("disable-facade").DisableService(ctx, ServiceDisableOptions{LoginID: "service-user", Service: "billing", Duration: time.Minute}); err != nil {
+		t.Fatalf("DisableService() error = %v", err)
+	}
+	if err = AuthType("disable-facade").UntieService(ctx, "service-user", "billing"); err != nil {
+		t.Fatalf("UntieService() error = %v", err)
+	}
+	if err = AuthType("disable-facade").DisableServiceWithReason(ctx, "service-user", "billing", time.Minute, "service-risk"); err != nil {
+		t.Fatalf("DisableServiceWithReason() error = %v", err)
+	}
+	if err = AuthType("disable-facade").DisableServiceLevel(ctx, "service-user", "reports", 3, time.Minute); err != nil {
+		t.Fatalf("DisableServiceLevel() error = %v", err)
+	}
+	if err = AuthType("disable-facade").DisableServiceLevelWithReason(ctx, "service-user", "payments", 4, time.Minute, "level-risk"); err != nil {
+		t.Fatalf("DisableServiceLevelWithReason() error = %v", err)
+	}
+	if !AuthType("disable-facade").IsDisableService(ctx, "service-user", "billing") || !AuthType("disable-facade").IsDisableServiceLevel(ctx, "service-user", "reports", 2) || AuthType("disable-facade").IsDisableServiceLevel(ctx, "service-user", "reports", 4) {
+		t.Fatal("service disable predicates returned unexpected results")
+	}
+	if err = AuthType("disable-facade").CheckDisableService(ctx, "service-user", "missing", "billing"); !errors.Is(err, derror.ErrServiceDisabled) {
+		t.Fatalf("CheckDisableService() error = %v, want ErrServiceDisabled", err)
+	}
+	if err = AuthType("disable-facade").CheckDisableServiceLevel(ctx, "service-user", "reports", 2); !errors.Is(err, derror.ErrServiceDisabled) {
+		t.Fatalf("CheckDisableServiceLevel() error = %v, want ErrServiceDisabled", err)
+	}
+	if info, err := AuthType("disable-facade").GetDisableServiceInfo(ctx, "service-user", "billing"); err != nil || info.DisableReason != "service-risk" {
+		t.Fatalf("GetDisableServiceInfo() = %+v, %v", info, err)
+	}
+	if ttl, err := AuthType("disable-facade").GetDisableServiceTTL(ctx, "service-user", "billing"); err != nil || ttl <= 0 {
+		t.Fatalf("GetDisableServiceTTL() = %d, %v", ttl, err)
+	}
+	if err = AuthType("disable-facade").UntieService(ctx, "service-user", "billing"); err != nil || AuthType("disable-facade").IsDisableService(ctx, "service-user", "billing") {
+		t.Fatalf("UntieService(reason) error = %v, disabled = %v", err, AuthType("disable-facade").IsDisableService(ctx, "service-user", "billing"))
+	}
+
+	if err = AuthType("disable-facade").DisableDevice(ctx, DeviceDisableOptions{LoginID: "device-user", Device: "web", Duration: time.Minute}); err != nil {
+		t.Fatalf("DisableDevice() error = %v", err)
+	}
+	if err = AuthType("disable-facade").DisableDeviceWithReason(ctx, "device-user", "mobile", time.Minute, "device-risk"); err != nil {
+		t.Fatalf("DisableDeviceWithReason() error = %v", err)
+	}
+	if err = AuthType("disable-facade").DisableDeviceAndDeviceID(ctx, "device-user", "tablet", "tablet-1", time.Minute); err != nil {
+		t.Fatalf("DisableDeviceAndDeviceID() error = %v", err)
+	}
+	if err = AuthType("disable-facade").DisableDeviceAndDeviceIDWithReason(ctx, "device-user", "desktop", "desktop-1", time.Minute, "concrete-risk"); err != nil {
+		t.Fatalf("DisableDeviceAndDeviceIDWithReason() error = %v", err)
+	}
+	if !AuthType("disable-facade").IsDisableDevice(ctx, "device-user", "web") || !AuthType("disable-facade").IsDisableDeviceAndDeviceID(ctx, "device-user", "tablet", "tablet-1") {
+		t.Fatal("device disable predicates returned false")
+	}
+	if err = AuthType("disable-facade").CheckDisableDevice(ctx, "device-user", "web"); !errors.Is(err, derror.ErrDeviceDisabled) {
+		t.Fatalf("CheckDisableDevice() error = %v, want ErrDeviceDisabled", err)
+	}
+	if err = AuthType("disable-facade").CheckDisableDeviceAndDeviceID(ctx, "device-user", "tablet", "tablet-1"); !errors.Is(err, derror.ErrDeviceDisabled) {
+		t.Fatalf("CheckDisableDeviceAndDeviceID() error = %v, want ErrDeviceDisabled", err)
+	}
+	if info, err := AuthType("disable-facade").GetDisableDeviceInfo(ctx, "device-user", "mobile"); err != nil || info.DisableReason != "device-risk" {
+		t.Fatalf("GetDisableDeviceInfo() = %+v, %v", info, err)
+	}
+	if info, err := AuthType("disable-facade").GetDisableDeviceAndDeviceIDInfo(ctx, "device-user", "desktop", "desktop-1"); err != nil || info.DisableReason != "concrete-risk" {
+		t.Fatalf("GetDisableDeviceAndDeviceIDInfo() = %+v, %v", info, err)
+	}
+	if ttl, err := AuthType("disable-facade").GetDisableDeviceTTL(ctx, "device-user", "web"); err != nil || ttl <= 0 {
+		t.Fatalf("GetDisableDeviceTTL() = %d, %v", ttl, err)
+	}
+	if ttl, err := AuthType("disable-facade").GetDisableDeviceAndDeviceIDTTL(ctx, "device-user", "desktop", "desktop-1"); err != nil || ttl <= 0 {
+		t.Fatalf("GetDisableDeviceAndDeviceIDTTL() = %d, %v", ttl, err)
+	}
+	if err = AuthType("disable-facade").UntieDevice(ctx, "device-user", "web"); err != nil || AuthType("disable-facade").IsDisableDevice(ctx, "device-user", "web") {
+		t.Fatalf("UntieDevice() error = %v, disabled = %v", err, AuthType("disable-facade").IsDisableDevice(ctx, "device-user", "web"))
+	}
+	if err = AuthType("disable-facade").UntieDeviceAndDeviceID(ctx, "device-user", "tablet", "tablet-1"); err != nil || AuthType("disable-facade").IsDisableDeviceAndDeviceID(ctx, "device-user", "tablet", "tablet-1") {
+		t.Fatalf("UntieDeviceAndDeviceID() error = %v, disabled = %v", err, AuthType("disable-facade").IsDisableDeviceAndDeviceID(ctx, "device-user", "tablet", "tablet-1"))
+	}
+}
+
+// TestInstanceDisableBranchSelection verifies typed instance options select level and concrete-device operations. TestInstanceDisableBranchSelection 验证实例选项会选择等级和具体设备分支。
+func TestInstanceDisableBranchSelection(t *testing.T) {
+	ctx := context.Background()
+	mgr, err := buildTestManager(NewBuilder().IsPrintBanner(false).AutoRenew(false).AuthType("instance-disable"))
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	auth := New(mgr)
+	t.Cleanup(auth.Close)
+
+	if err = auth.DisableService(ctx, ServiceDisableOptions{LoginID: "instance-user", Service: "billing", Duration: time.Minute, Reason: "risk"}); err != nil {
+		t.Fatalf("Auth.DisableService() error = %v", err)
+	}
+	if err = auth.DisableServiceLevelWithReason(ctx, "instance-user", "reports", 2, time.Minute, "level-risk"); err != nil || !auth.IsDisableServiceLevel(ctx, "instance-user", "reports", 1) {
+		t.Fatalf("Auth.DisableServiceLevelWithReason() error = %v, disabled = %v", err, auth.IsDisableServiceLevel(ctx, "instance-user", "reports", 1))
+	}
+	if err = auth.DisableDevice(ctx, DeviceDisableOptions{LoginID: "instance-user", Device: "web", Duration: time.Minute, Reason: "device-risk"}); err != nil {
+		t.Fatalf("Auth.DisableDevice(type) error = %v", err)
+	}
+	if err = auth.DisableDeviceAndDeviceIDWithReason(ctx, "instance-user", "mobile", "phone", time.Minute, "concrete-risk"); err != nil || !auth.IsDisableDeviceAndDeviceID(ctx, "instance-user", "mobile", "phone") {
+		t.Fatalf("Auth.DisableDeviceAndDeviceIDWithReason() error = %v, disabled = %v", err, auth.IsDisableDeviceAndDeviceID(ctx, "instance-user", "mobile", "phone"))
+	}
+}
+
+func dtokenContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}

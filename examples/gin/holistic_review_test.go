@@ -1,15 +1,17 @@
 package main
 
 import (
+	dtoken "github.com/Zany2/dtoken-go"
+	dterror "github.com/Zany2/dtoken-go/errors"
+	dt1 "github.com/Zany2/dtoken-go/storage/memory"
+
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"testing"
 	"time"
-
-	gindt "github.com/Zany2/dtoken-go/integrations/gin"
-	"github.com/gin-gonic/gin"
 )
 
 // TestProductionRouteFailures covers the actual registration, authentication and access failure callbacks. TestProductionRouteFailures 覆盖实际注册、认证和权限过滤器的失败回调。
@@ -17,7 +19,7 @@ func TestProductionRouteFailures(t *testing.T) {
 	setupGinManager(t)
 	ctx := context.Background()
 	router := gin.New()
-	registerRoutes(router)
+	registerTestRoutes(t, router)
 	check := func(method, path, body, token string, wantStatus, wantCode int) {
 		t.Helper()
 		rec := requestGin(t, router, method, path, body, token)
@@ -38,37 +40,40 @@ func TestProductionRouteFailures(t *testing.T) {
 		if path == "/logout" {
 			method = http.MethodPost
 		}
-		check(method, path, "", "", http.StatusUnauthorized, gindt.CodeNotLogin)
-		check(method, path, "", "invalid-token", http.StatusUnauthorized, gindt.CodeNotLogin)
+		check(method, path, "", "", http.StatusUnauthorized, dterror.CodeNotLogin)
+		check(method, path, "", "invalid-token", http.StatusUnauthorized, dterror.CodeNotLogin)
 	}
-	token, err := gindt.Login(ctx, "reader", "web")
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "reader", Device: "web"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/admin", "/articles"} {
-		check(http.MethodGet, path, "", token, http.StatusForbidden, gindt.CodePermissionDenied)
+		check(http.MethodGet, path, "", token, http.StatusForbidden, dterror.CodePermissionDenied)
 	}
-	if err := gindt.DisableDevice(ctx, "reader", "web", time.Hour); err != nil {
+	if err := dtoken.DisableDevice(ctx, dtoken.DeviceDisableOptions{LoginID: "reader", Device: "web", Duration: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
-	check(http.MethodGet, "/me", "", token, http.StatusForbidden, gindt.CodeAccountDisabled)
+	check(http.MethodGet, "/me", "", token, http.StatusForbidden, dterror.CodeAccountDisabled)
 
-	gindt.DeleteAllManager()
-	check(http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "", http.StatusInternalServerError, gindt.CodeServerError)
-	check(http.MethodGet, "/admin", "", "", http.StatusInternalServerError, gindt.CodeServerError)
+	dtoken.DeleteAllManager()
+	check(http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "", http.StatusInternalServerError, dterror.CodeServerError)
+	check(http.MethodGet, "/admin", "", "", http.StatusInternalServerError, dterror.CodeServerError)
+	builtAuth1, err := dtoken.NewBuilder().Storage(&ginFailingStorage{Storage: dt1.NewStorage()}).
+		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
+	mgr := builtAuth1.Manager()
 
-	mgr, err := gindt.NewBuilder().SetStorage(&ginFailingStorage{Storage: gindt.NewMemoryStorage()}).
-		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).Build()
 	if err != nil {
 		t.Fatal(err)
 	}
-	gindt.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, path := range []string{"/me", "/admin", "/articles", "/logout"} {
 		method := http.MethodGet
 		if path == "/logout" {
 			method = http.MethodPost
 		}
-		check(method, path, "", "some-token", http.StatusInternalServerError, gindt.CodeServerError)
+		check(method, path, "", "some-token", http.StatusInternalServerError, dterror.CodeServerError)
 	}
 }
 
@@ -76,7 +81,7 @@ func TestProductionRouteFailures(t *testing.T) {
 func TestJSONValidationPrecedesTokenMutation(t *testing.T) {
 	setupGinManager(t)
 	router := gin.New()
-	registerRoutes(router)
+	registerTestRoutes(t, router)
 	valid := `{"username":"alice","password":"123456"}`
 	for _, suffix := range []string{" {}", " null", " trailing"} {
 		rec := requestGin(t, router, http.MethodPost, "/login", valid+suffix, "")
@@ -84,13 +89,13 @@ func TestJSONValidationPrecedesTokenMutation(t *testing.T) {
 			t.Fatalf("invalid login accepted: %d %s", rec.Code, rec.Body.String())
 		}
 	}
-	if _, err := gindt.GetSession(context.Background(), "alice"); !errors.Is(err, gindt.ErrSessionNotFound) {
+	if _, err := dtoken.GetSession(context.Background(), "alice"); !errors.Is(err, dterror.ErrSessionNotFound) {
 		t.Fatalf("invalid input created a session: %v", err)
 	}
 	if rec := requestGin(t, router, http.MethodPost, "/login", valid+"\n\t", ""); rec.Code != http.StatusOK {
 		t.Fatalf("valid login rejected: %d %s", rec.Code, rec.Body.String())
 	}
-	pair, err := gindt.LoginWithRefreshToken(context.Background(), "reader")
+	pair, err := dtoken.LoginWithRefreshTokenOptions(context.Background(), dtoken.RefreshTokenOptions{LoginOptions: dtoken.LoginOptions{LoginID: "reader"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +109,7 @@ func TestJSONValidationPrecedesTokenMutation(t *testing.T) {
 			t.Fatalf("invalid refresh accepted: %d %s", rec.Code, rec.Body.String())
 		}
 	}
-	if err := gindt.CheckLogin(context.Background(), pair.AccessToken); err != nil {
+	if err := dtoken.CheckLogin(context.Background(), pair.AccessToken); err != nil {
 		t.Fatalf("invalid input revoked access: %v", err)
 	}
 	rec := requestGin(t, router, http.MethodPost, "/refresh", string(body)+"\n\t", "")

@@ -2,36 +2,35 @@
 
 [English](../core/permission.md) | 中文文档
 
+本文 `dt` 表示根包。`Build()` 自动注册；默认体系使用 `dt.XXX()`，其他体系使用 `dt.AuthType("user").XXX()`，业务方法签名与实例一致。见 [Auth API](../../api/auth_zh.md)。
+
 ## 概览
 
-当前版本的权限与角色数据主要有两种来源：
+权限和角色来自 Session 或 `SetAccessProvider` 注入的业务提供器。配置 Provider 时，其非 nil 结果优先；nil 回退到 Session，空切片表示没有权限或角色。Provider 错误由 Check/Get 方法返回，Has 方法返回 false。
 
-1. `Session` 中维护的 `Permissions`、`Roles`
-2. 通过 `defaults.NewBuilder()` 注入的自定义回调
+按 Token 授权先校验凭据，再解析 Provider；正常路径只有回退时才读取、解码 Session。HTTP 组合权限与角色检查共享按需加载的 Session，不跨请求缓存。Provider 接管时不要求 Session 存在，详见 [AccessProvider](access-provider_zh.md)。
 
-优先级方面：
+按账号查询提供认证体系和 loginID；按 Token 查询还包含设备与 Token 信息。旧 CustomPermissionList/CustomRoleList 回调入口已移除，使用 AccessProviderFunc 迁移。
 
-- 按 `loginID` 查询时：`CustomPermissionListFunc` / `CustomRoleListFunc` 优先于 Session
-- 按 `token` 查询时：`CustomPermissionListExtFunc` / `CustomRoleListExtFunc` 优先，其次普通回调，最后才是 Session
+默认权限匹配直接逐段比较，通配比较时不再分配两份拆分切片。原规则保持：单独的 `*` 匹配任意权限；其他模式中，整段 `*` 匹配一个分段（包括空段），分段数量必须一致。模式包含 `/` 时以 `/` 分段，否则以 `:` 分段；`user*` 等部分星号仍按字面量比较。默认角色匹配仍为精确匹配，自定义 Strategy 匹配器的行为和调用顺序保持不变。
 
 ## 初始化
 
+<!-- dtoken-compile: complete-example -->
 ```go
 package main
 
 import (
-    "context"
+    dt "github.com/Zany2/dtoken-go"
 
-    "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/defaults"
-    "github.com/Zany2/dtoken-go/dtoken"
+    "github.com/Zany2/dtoken-go/storage/memory"
 )
 
 func initDToken() {
-    if _, err := dtoken.BuildAndSetManager(
-        defaults.NewBuilder().
-            SetStorage(memory.NewStorage()),
-    ); err != nil {
+    _, err := dt.NewBuilder().
+        Storage(memory.NewStorage()).
+        Build()
+    if err != nil {
         panic(err)
     }
 }
@@ -39,22 +38,24 @@ func initDToken() {
 
 ## 权限管理
 
-按 Token 添加或删除权限、角色时，即使列表为 `nil`、空列表或仅含空字符串，也会校验 Token 的完整登录态。无效、封禁或活跃超时的 Token 会返回对应错误；有效登录的空变更不写入 Session、不触发变更事件，也不安排续期或活跃维护任务。
+按 Token 添加或删除权限、角色时，即使列表为 `nil`、空列表或仅含空字符串，也会校验凭据有效性。无效、已废弃或活跃超时的 Token 会返回对应错误；可解除的设备封禁需要入口显式检查。有效凭据的空变更不写入 Session、不触发变更事件，也不安排续期或活跃维护任务。
+
+权限和角色删除使用按请求值构造的集合单次筛选原列表，不再额外构造整份账号已有值集合。保留项保持原顺序；变更事件按请求首次出现顺序列出实际删除值，每个值只报告一次。未命中时复用原列表，不写回 Session、不发布变更事件。这些优化减少本地处理成本，存储读取及认证校验不变。
 
 ### 添加权限
 
 ```go
 ctx := context.Background()
 
-token, _ := dtoken.Login(ctx, "10001")
+token, _ := dt.Login(ctx, dt.LoginOptions{LoginID: "10001"})
 
-_ = dtoken.AddPermissions(ctx, "10001", []string{
+_ = dt.AddPermissions(ctx, dt.PermissionOptions{LoginID: "10001", Permissions: []string{
     "user:read",
     "user:write",
     "admin:*",
-})
+}})
 
-_ = dtoken.AddPermissionsByToken(ctx, token, []string{
+_ = dt.AddPermissionsByToken(ctx, token, []string{
     "article:publish",
 })
 ```
@@ -64,8 +65,8 @@ _ = dtoken.AddPermissionsByToken(ctx, token, []string{
 ```go
 ctx := context.Background()
 
-_ = dtoken.RemovePermissions(ctx, "10001", []string{"user:write"})
-_ = dtoken.RemovePermissionsByToken(ctx, token, []string{"article:publish"})
+_ = dt.RemovePermissions(ctx, dt.PermissionOptions{LoginID: "10001", Permissions: []string{"user:write"}})
+_ = dt.RemovePermissionsByToken(ctx, token, []string{"article:publish"})
 ```
 
 ### 查询权限
@@ -73,8 +74,8 @@ _ = dtoken.RemovePermissionsByToken(ctx, token, []string{"article:publish"})
 ```go
 ctx := context.Background()
 
-permissions, err := dtoken.GetPermissions(ctx, "10001")
-permissionsByToken, err := dtoken.GetPermissionsByToken(ctx, token)
+permissions, err := dt.GetPermissions(ctx, "10001")
+permissionsByToken, err := dt.GetPermissionsByToken(ctx, token)
 ```
 
 ## 权限校验
@@ -84,10 +85,10 @@ permissionsByToken, err := dtoken.GetPermissionsByToken(ctx, token)
 ```go
 ctx := context.Background()
 
-hasPermission := dtoken.HasPermission(ctx, "10001", "user:read")
-hasPermissionByToken := dtoken.HasPermissionByToken(ctx, token, "user:read")
+hasPermission := dt.HasPermission(ctx, "10001", "user:read")
+hasPermissionByToken := dt.HasPermissionByToken(ctx, token, "user:read")
 
-err := dtoken.CheckPermission(ctx, "10001", "user:read")
+err := dt.CheckPermission(ctx, dt.PermissionOptions{LoginID: "10001", Permission: "user:read"})
 ```
 
 ### 多权限 AND
@@ -95,12 +96,12 @@ err := dtoken.CheckPermission(ctx, "10001", "user:read")
 ```go
 ctx := context.Background()
 
-hasAll := dtoken.HasPermissionsAnd(ctx, "10001", []string{
+hasAll := dt.HasPermissionsAnd(ctx, "10001", []string{
     "user:read",
     "user:write",
 })
 
-err := dtoken.CheckPermissionAnd(ctx, "10001", []string{
+err := dt.CheckPermissionAnd(ctx, "10001", []string{
     "user:read",
     "user:write",
 })
@@ -111,12 +112,12 @@ err := dtoken.CheckPermissionAnd(ctx, "10001", []string{
 ```go
 ctx := context.Background()
 
-hasAny := dtoken.HasPermissionsOr(ctx, "10001", []string{
+hasAny := dt.HasPermissionsOr(ctx, "10001", []string{
     "admin:read",
     "report:read",
 })
 
-err := dtoken.CheckPermissionOr(ctx, "10001", []string{
+err := dt.CheckPermissionOr(ctx, "10001", []string{
     "admin:read",
     "report:read",
 })
@@ -141,15 +142,15 @@ err := dtoken.CheckPermissionOr(ctx, "10001", []string{
 ```go
 ctx := context.Background()
 
-_ = dtoken.AddPermissions(ctx, "10001", []string{
+_ = dt.AddPermissions(ctx, dt.PermissionOptions{LoginID: "10001", Permissions: []string{
     "admin:*",
     "user:*:view",
-})
+}})
 
-dtoken.HasPermission(ctx, "10001", "admin:read")        // true
-dtoken.HasPermission(ctx, "10001", "admin:delete")      // true
-dtoken.HasPermission(ctx, "10001", "user:profile:view") // true
-dtoken.HasPermission(ctx, "10001", "user:view")         // false
+dt.HasPermission(ctx, "10001", "admin:read")        // true
+dt.HasPermission(ctx, "10001", "admin:delete")      // true
+dt.HasPermission(ctx, "10001", "user:profile:view") // true
+dt.HasPermission(ctx, "10001", "user:view")         // false
 ```
 
 ## 角色管理
@@ -157,22 +158,22 @@ dtoken.HasPermission(ctx, "10001", "user:view")         // false
 ```go
 ctx := context.Background()
 
-_ = dtoken.AddRoles(ctx, "10001", []string{"admin", "editor"})
-_ = dtoken.AddRolesByToken(ctx, token, []string{"reviewer"})
+_ = dt.AddRoles(ctx, dt.RoleOptions{LoginID: "10001", Roles: []string{"admin", "editor"}})
+_ = dt.AddRolesByToken(ctx, token, []string{"reviewer"})
 
-_ = dtoken.RemoveRoles(ctx, "10001", []string{"editor"})
-_ = dtoken.RemoveRolesByToken(ctx, token, []string{"reviewer"})
+_ = dt.RemoveRoles(ctx, dt.RoleOptions{LoginID: "10001", Roles: []string{"editor"}})
+_ = dt.RemoveRolesByToken(ctx, token, []string{"reviewer"})
 
-roles, err := dtoken.GetRoles(ctx, "10001")
-rolesByToken, err := dtoken.GetRolesByToken(ctx, token)
+roles, err := dt.GetRoles(ctx, "10001")
+rolesByToken, err := dt.GetRolesByToken(ctx, token)
 
-hasRole := dtoken.HasRole(ctx, "10001", "admin")
-hasAnyRole := dtoken.HasRolesOr(ctx, "10001", []string{"admin", "manager"})
-hasAllRoles := dtoken.HasRolesAnd(ctx, "10001", []string{"admin", "editor"})
+hasRole := dt.HasRole(ctx, "10001", "admin")
+hasAnyRole := dt.HasRolesOr(ctx, "10001", []string{"admin", "manager"})
+hasAllRoles := dt.HasRolesAnd(ctx, "10001", []string{"admin", "editor"})
 
-err = dtoken.CheckRole(ctx, "10001", "admin")
-err = dtoken.CheckRoleOr(ctx, "10001", []string{"admin", "manager"})
-err = dtoken.CheckRoleAnd(ctx, "10001", []string{"admin", "editor"})
+err = dt.CheckRole(ctx, dt.RoleOptions{LoginID: "10001", Role: "admin"})
+err = dt.CheckRoleOr(ctx, "10001", []string{"admin", "manager"})
+err = dt.CheckRoleAnd(ctx, "10001", []string{"admin", "editor"})
 ```
 
 ## 封禁管理
@@ -182,15 +183,15 @@ err = dtoken.CheckRoleAnd(ctx, "10001", []string{"admin", "editor"})
 ```go
 ctx := context.Background()
 
-_ = dtoken.Disable(ctx, "10001", 2*time.Hour, "abuse")
+_ = dt.Disable(ctx, dt.DisableOptions{LoginID: "10001", Duration: 2*time.Hour, Reason: "abuse"})
 
-disabled := dtoken.IsDisable(ctx, "10001")
-err := dtoken.CheckDisable(ctx, "10001")
+disabled := dt.IsDisable(ctx, "10001")
+err := dt.CheckDisable(ctx, "10001")
 
-info, err := dtoken.GetDisableInfo(ctx, "10001")
-ttl, err := dtoken.GetDisableTTL(ctx, "10001")
+info, err := dt.GetDisableInfo(ctx, "10001")
+ttl, err := dt.GetDisableTTL(ctx, "10001")
 
-_ = dtoken.Untie(ctx, "10001")
+_ = dt.Untie(ctx, "10001")
 ```
 
 `GetDisableTTL()` 返回值约定：
@@ -204,70 +205,65 @@ _ = dtoken.Untie(ctx, "10001")
 ```go
 ctx := context.Background()
 
-_ = dtoken.DisableService(ctx, "10001", "comment", 30*time.Minute)
-_ = dtoken.DisableServiceWithReason(ctx, "10001", "comment", 30*time.Minute, "spam")
-_ = dtoken.DisableServiceLevel(ctx, "10001", "comment", 2, 30*time.Minute)
-_ = dtoken.DisableServiceLevelWithReason(ctx, "10001", "comment", 3, 30*time.Minute, "risk")
+_ = dt.DisableService(ctx, dt.ServiceDisableOptions{LoginID: "10001", Service: "comment", Duration: 30*time.Minute})
+_ = dt.DisableServiceWithReason(ctx, "10001", "comment", 30*time.Minute, "spam")
+_ = dt.DisableServiceLevel(ctx, "10001", "comment", 2, 30*time.Minute)
+_ = dt.DisableServiceLevelWithReason(ctx, "10001", "comment", 3, 30*time.Minute, "risk")
 
-serviceDisabled := dtoken.IsDisableService(ctx, "10001", "comment")
-levelDisabled := dtoken.IsDisableServiceLevel(ctx, "10001", "comment", 2)
+serviceDisabled := dt.IsDisableService(ctx, "10001", "comment")
+levelDisabled := dt.IsDisableServiceLevel(ctx, "10001", "comment", 2)
 
-err := dtoken.CheckDisableService(ctx, "10001", []string{"comment", "post"})
-err = dtoken.CheckDisableServiceLevel(ctx, "10001", "comment", 2)
+err := dt.CheckDisableService(ctx, "10001", []string{"comment", "post"})
+err = dt.CheckDisableServiceLevel(ctx, "10001", "comment", 2)
 
-serviceInfo, err := dtoken.GetDisableServiceInfo(ctx, "10001", "comment")
-serviceTTL, err := dtoken.GetDisableServiceTTL(ctx, "10001", "comment")
+serviceInfo, err := dt.GetDisableServiceInfo(ctx, "10001", "comment")
+serviceTTL, err := dt.GetDisableServiceTTL(ctx, "10001", "comment")
 
-_ = dtoken.UntieService(ctx, "10001", "comment")
+_ = dt.UntieService(ctx, "10001", "comment")
 ```
 
-## 自定义权限与角色回调
+## 自定义权限与角色提供器
+
+下面配置并注册使用自定义提供器的实例。请用它替换前面的初始化，避免重复注册默认体系。PermissionFunc 与 RoleFunc 使用同一个 AccessSubject，不再区分普通和 Ext 回调。
 
 ```go
-if _, err := dtoken.BuildAndSetManager(
-    defaults.NewBuilder().
-        SetStorage(memory.NewStorage()).
-        SetCustomPermissionListFunc(func(loginID, authType string) ([]string, error) {
-            if loginID == "10001" {
-                return []string{"user:read", "user:write"}, nil
-            }
-            return []string{"user:read"}, nil
-        }).
-        SetCustomRoleListFunc(func(loginID, authType string) ([]string, error) {
-            if loginID == "10001" {
-                return []string{"admin"}, nil
-            }
-            return []string{"user"}, nil
-        }),
-); err != nil {
-    panic(err)
-}
-```
-
-扩展回调还支持拿到 `device`、`deviceID`：
-
-```go
-defaults.NewBuilder().
-    SetCustomPermissionListExtFunc(func(loginID, device, deviceID, authType string) ([]string, error) {
-        if device == "app" {
+provider := dt.AccessProviderFunc{
+    PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
+        if subject.Device == "app" {
             return []string{"mobile:read", "mobile:write"}, nil
         }
-        return []string{"web:read"}, nil
-    }).
-    SetCustomRoleListExtFunc(func(loginID, device, deviceID, authType string) ([]string, error) {
-        if device == "app" {
-            return []string{"mobile-user"}, nil
+        return nil, nil
+    },
+    RoleFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
+        if subject.LoginID == "10001" {
+            return []string{"admin"}, nil
         }
-        return []string{"web-user"}, nil
-    })
+        return []string{}, nil
+    },
+}
+auth, err := dt.NewBuilder().SetAccessProvider(provider).Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
+
+Build 自动注册实例，前文根包调用可直接使用；用于 HTTP 时通过 WithAuth(auth) 注入同一个实例。详见 [AccessProvider](access-provider_zh.md)。
 
 ## Gin 路由中使用
 
 ```go
 ctx := context.Background()
 
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
+auth, err := dt.NewBuilder().Build()
+if err != nil { panic(err) }
+defer auth.Close()
+
+authOption1, authErr := gindt.WithAuth(auth)
+if authErr != nil {
+    return authErr
+}
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, authOption1))
 
 r.GET("/users",
     gindt.CheckPermissionMiddleware(ctx, []string{"user:read"}, nil, nil),

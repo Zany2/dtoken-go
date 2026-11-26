@@ -1,6 +1,8 @@
-﻿[English](auto-renew.md) | 中文文档
+[English](auto-renew.md) | 中文文档
 
 # 自动续签设计
+
+本文的 auth 是根包构建的 Auth，dt 表示根包；gindt 表示 Gin 适配器，memory 表示 storage/memory，adapter 表示 contract。HTTP 示例先通过 WithAuth(auth) 绑定请求。内部流程位于 internal/engine/internal_maintenance.go 和 internal_lifecycle.go；应用不直接导入 internal。
 
 ## 设计目标
 
@@ -15,21 +17,36 @@
 
 ### 异步续签策略
 
-登录校验先检查 Token 生命周期、Session、账号和设备封禁状态，以及不活跃超时，再调度维护任务。
+普通登录和身份校验（`IsLogin`、`CheckLogin`、`GetLoginID` 及设备查询）检查存储中的 Token 与启用的不活跃超时，正常路径不加载账号 Session、Extra 或封禁记录。访问凭据只解析固定字段；旧 Token 载荷必须离线转换，运行时直接拒绝，不调用 Codec 解码。未启用活跃超时时，前台只需一次 Token GET。显式 `CheckDisable` 组合检查会在维护任务提交前同步检查账号及设备限制；后台实际维护仍复核限制。依赖会话的查询、权限检查和不活跃超时清理按需加载并校验 Session。
 
-`prepareLoginMaintenance` 将同一 Token 生命周期的并发请求合并为一个待执行任务。启用活跃跟踪时会记录最近一次成功请求的时间；未启用活跃跟踪时，仅在满足自动续期条件后提交任务。
+`prepareLoginMaintenance` 将同一 Token 生命周期的并发请求合并为一个待执行任务。仅按配置决定是否调度自动续期资格检查或活跃维护；Token TTL、续期阈值和间隔检查放在工作线程中执行。启用活跃跟踪时，接收任务会记录最近一次成功请求的时间。既不满足续期条件又无需刷新活跃时间时，工作线程直接结束，不加载 Token 和 Session 记录。
 
-`submitAsync` 优先使用配置的协程池；没有池或提交失败时，回退到受 Manager 跟踪的 goroutine。Manager 关闭期间拒绝新任务。
+单独删除或损坏 Session 不再使普通 Token 校验失败。撤销凭据应使用注销或踢人 API。依赖 Session 内容的操作仍拒绝无效会话；自动续期只检查 Session key 的 TTL，不再解码内容，缺失时停止续期。仅活跃更新不依赖 Session 存在或可解码，仍复核凭据生命周期和封禁状态。
+
+只延长 Session 有效期时，不重新序列化和写回内容：已有更长或永久 TTL 保留，较短 TTL 使用 Expire，需要永久化时优先使用可选 `contract.PersistentStorage.Persist`。Memory 和 Redis 实现该能力；普通存储以读取原始值后 Set(0) 回退，不解码，但不保证跨操作原子性。缺失 Session 不会被续期创建。手动续期仍保留前置完整会话校验，共享登录仍读取终端索引，两者不再为续期写回未变化的 Session。
+
+手动 `RenewTimeout` 只修改活跃标记的有效期，不刷新活跃时间。前置校验后，有限期使用一次 `Expire`，省去再次 Get + Set；永久化优先使用 `Persist`，普通存储以原值 Get + Set(0) 回退。Token、Extra 的有效期跟随请求时长，支持缩短；Session 保留更长或永久有效期。若活跃标记在校验后消失，续期返回错误，不初始化新时间，也不发布续期成功事件；此前已完成的写入不回滚。普通存储的永久化回退不保证原子性，原生 TTL 操作不会覆盖并发更新的值。后台活跃维护仍写入已接受请求的活跃时间。
+
+不活跃超时判断取有效的持久化活跃时间与当前 Manager 内同一生命周期已接受、待写入的活跃时间中的较大值。登录校验、终端查询和过期终端清理统一遵循此规则，避免协程池排队导致已接受的活跃记录被忽略。已取消任务及其他生命周期的记录不参与判断；持久化标记缺失、损坏或读取失败时仍判定校验失败。排队活跃时间仅对当前 Manager 可见，其他实例需等待持久化后才能读取。
+
+`submitAsync` 优先使用配置的协程池。没有池或提交失败时，自动续期跳过本次任务并释放占位，后续请求可再次尝试；启用活跃超时时仅同步回退活跃更新，不顺带执行自动续期。显式 `LoginByToken` 强制维护和事件投递也同步回退。回退工作仍受 Manager 跟踪，不创建额外 goroutine；Manager 关闭期间拒绝新任务。
+
+Session 内容更新及未续期时的活跃时间更新优先使用可选 `contract.UpdateStorage.Update`，只更新已有值并保留有效期。Redis 通过一条 `SET XX KEEPTTL` 完成，缺失键返回错误。Memory 和普通自定义存储继续使用 TTL + Set 回退；该回退不保证两步之间的原子性。显式续期仍按目标有效期写入。
+
+池接收任务时，校验不等待后台维护完成，工作线程可能在调用方收到结果前启动；活跃更新同步回退时会增加当前请求耗时。`contract.Pool.Submit` 必须并发安全、非阻塞，接收后恰好异步执行一次，拒绝时返回错误且不能执行任务。自定义池不得内联执行或等待空闲容量；内置 ants 池在 `NonBlocking=false` 时返回配置错误。任务合并限制同一生命周期的并发维护，任务完成后的新请求仍可再次调度资格检查。
+
+一次 `httpauth.Check` 组合检查会复用 Token 身份，以及权限、角色检查所需的同一份 Session。正常有效路径读取并解码 Token 一次；仅检查登录或封禁不读取 Session，有权限或角色规则时读取并解码 Session 一次。封禁与启用的不活跃检查仍同步执行，不活跃超时清理可能增加读取。复用仅限本次检查，下一次调用重新读取当前状态，后台维护也独立复核。
 
 ## 工作流程
 
 ### 同步部分
 
 ```text
-1. 读取并校验 TokenInfo 和 Session
-2. 检查账号、设备封禁状态和 ActiveTimeout
-3. 为当前 Token 生命周期预留或更新维护任务
-4. 释放账号锁后提交任务，返回登录校验成功
+1. 读取主键值并解析凭据固定字段，拒绝缺失或已废弃的凭据
+2. 检查已启用的 ActiveTimeout；仅在显式要求时检查账号、设备封禁
+3. 仅在操作依赖会话或需要清理不活跃超时状态时加载 Session
+4. 为当前 Token 生命周期预留或更新维护任务
+5. 释放持有的账号锁后提交任务，返回登录校验成功
 ```
 
 ### 异步部分
@@ -37,12 +54,13 @@
 ```text
 单个维护任务
   ↓
-1. 在账号锁内复核任务代次和 Token 生命周期
+1. 在账号锁内复核任务代次，检查续期 TTL、阈值和间隔；
+   无需续期且无需刷新活跃时间时结束
   ↓
-2. 重新加载 Session，并复核封禁状态
+2. 重新加载 Token，复核生命周期和封禁状态
   ↓
 3. 满足续期条件时，按 Token 自身的有效期续期，
-   保留更长的 Session TTL，并写入续期间隔标记
+   检查并保留更长的 Session TTL，不读写 Session 内容，再写入续期间隔标记
   ↓
 4. 启用活跃跟踪时，持久化最近一次请求的活跃时间
   ↓
@@ -51,7 +69,7 @@
 
 旧任务不能维护后来复用同一 Token 值的新登录。活跃时间采用记录的请求时间，而不是工作线程实际执行时间。
 
-`LoginByToken` 校验已有登录后请求强制维护，不受 `AutoRenew`、阈值和间隔资格检查限制。它仍是异步操作；调用方需要同步续期结果时，应使用 `RenewTimeout`。
+`LoginByToken` 校验已有登录后请求强制维护，不受 `AutoRenew`、阈值和间隔资格检查限制。池接收时异步执行，无池或拒绝时同步回退；维护失败不通过此接口返回，需要同步续期结果时应使用 `RenewTimeout`。
 
 ## 续签触发条件
 
@@ -62,6 +80,8 @@
 - Token 当前 TTL 大于 0
 - `TTL <= RenewMaxRefresh`，或者 `RenewMaxRefresh <= 0`
 - 未命中 `RenewInterval` 的节流限制
+
+节流标记通常使用配置的 `RenewInterval`。当 Token 的正有效期不大于该间隔时，标记时长改为本次有效期的一半。例如 Token 有效期为 60 秒、`RenewInterval = 300` 时，实际间隔为 30 秒。首次登录、共享登录、自动或强制续期及 `RenewTimeout` 均遵循此规则；手动续期会按新有效期重设标记。计算保留时长精度，支持不足一秒的有效期。禁用间隔和无限期 Token 保留原有语义。续期仍需要在 Token 到期前有满足条件的请求，并及时执行维护任务。
 
 这意味着：
 
@@ -82,72 +102,90 @@ r.Use(gindt.AuthMiddleware(ctx))
 ### 2. 注解式登录校验
 
 ```go
-annotation.GET("/profile",
-    gindt.CheckLoginMiddleware(ctx, handleProfile, handleAuthFail))
+router.GET("/profile",
+    gindt.CheckLoginMiddleware(ctx, nil, handleAuthFail),
+    handleProfile,
+)
 ```
 
 ### 3. 手动检查登录
 
 ```go
-dtoken.IsLogin(ctx, token)
-dtoken.CheckLogin(ctx, token)
+auth.IsLogin(ctx, token)
+auth.CheckLogin(ctx, token)
 ```
 
 ### 4. 获取已校验的登录信息
 
 ```go
-dtoken.GetLoginID(ctx, token)
-dtoken.GetDevice(ctx, token)
+auth.GetLoginID(ctx, token)
+auth.GetDevice(ctx, token)
 ```
 
-`dtoken.GetTokenInfo` 只读取存储中的 Token 信息，不执行登录校验，因此不会触发自动续签。
+`auth.GetTokenInfo` 只读取存储中的 Token 信息，不执行登录校验，因此不会触发自动续签。
 
 ## 配置选项
 
 ### 启用自动续签
 
 ```go
-defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ### 指定续签触发阈值
 
 ```go
-defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
     RenewMaxRefresh(3600). // 剩余 1 小时内才触发续签
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ### 指定最小续期间隔
 
 ```go
-defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
     Timeout(86400).
     AutoRenew(true).
     RenewMaxRefresh(3600).
     RenewInterval(300). // 同一 Token 至少 5 分钟才续一次
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ### 结合最大不活跃时长
 
 ```go
-defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
     Timeout(86400).
     ActiveTimeout(1800).
     AutoRenew(true).
     RenewMaxRefresh(3600).
     RenewInterval(300).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 **效果**：
@@ -175,7 +213,7 @@ type Storage interface {
 
 默认情况下，开启自动续签时会优先使用续期协程池：
 
-- `com/pool/ants`
+- `pool/ants`
 - `adapter.Pool`
 - `Builder.SetPool(...)`
 
@@ -185,51 +223,63 @@ type Storage interface {
 
 ### 处理策略
 
-异步续签失败不会直接阻塞当前请求：
+池已接收的维护任务独立于校验结果执行。池拒绝时，活跃维护可能同步回退并增加请求耗时；该回退会跳过可选的自动续期。
 
-1. 当前登录校验结果已返回
-2. 本次续期失败只影响后续有效期延长
-3. 下一次满足条件时仍可重试续期
+1. 维护失败不追溯改变本次已经成功的校验结果
+2. 续期涉及多个键，失败时此前的 TTL 更新可能已生效，不执行回滚
+3. 后续满足条件的请求可重试；活跃写入失败可能影响之后的不活跃超时判断
 
 ### 影响范围
 
-- 不会直接让当前请求失败
-- 可能导致 Token 没有被成功延长
-- 若连续失败，Token 最终会按原始 TTL 到期
+- 剩余有效期取决于实际成功的写入；续期失败不保证各键仍保持原 TTL。
+- 自动 `EventRenew` 表示凭据/Session 续期链路成功，不保证随后的活跃写入也成功；活跃写入错误单独记录日志。
+- 手动 `RenewTimeout` 同步返回错误，仅在所需步骤完成后发布成功事件；此前已完成的写入同样不回滚。
 
 ## 最佳实践
 
 ### 生产环境建议
 
 ```go
-defaults.NewBuilder().
-    SetStorage(redisStorage).
+auth, err := dt.NewBuilder().
+    Storage(redisStorage).
     Timeout(86400).
     ActiveTimeout(1800).
     AutoRenew(true).
     RenewMaxRefresh(3600).
     RenewInterval(300).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ### 开发环境建议
 
 ```go
-defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
     Timeout(7200).
     AutoRenew(true).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ### 安全优先配置
 
 ```go
-defaults.NewBuilder().
-    SetStorage(redisStorage).
+auth, err := dt.NewBuilder().
+    Storage(redisStorage).
     Timeout(1800).
     AutoRenew(false).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ## 下一步

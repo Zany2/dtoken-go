@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
-	"github.com/Zany2/dtoken-go/core/derror"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
 )
 
 // Storage is the built-in in-memory SSO storage. Storage 是 SSO 内置内存存储。

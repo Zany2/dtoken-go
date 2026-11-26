@@ -1,15 +1,16 @@
 package main
 
 import (
+	"github.com/Zany2/dtoken-go"
 	"testing"
-
-	"github.com/Zany2/dtoken-go/dtoken"
 )
 
-func TestInitDTokenRegistersManager(t *testing.T) {
+func TestInitDTokenConfiguration(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	initDToken()
+	if _, err := initDToken(); err != nil {
+		t.Fatal(err)
+	}
 
 	mgr, err := dtoken.GetManager()
 	if err != nil {

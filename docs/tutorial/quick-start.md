@@ -1,137 +1,126 @@
-﻿# Quick Start
+# Quick Start
 
 [中文文档](quick-start_zh.md) | English
 
-## Get Started with DToken-Go in 5 Minutes
+Build Auth through the root package and explicitly inject it into HTTP middleware. Build automatically registers and returns Auth; BuildInstance creates an unregistered instance. Compose Nonce, OAuth2, Ticket, and ShortKey as independent services when needed.
 
-This page is based on the current version of the codebase and walks through the minimum steps for installation, initialization, and basic usage.
+## Installation
 
-## Step 1: Install
-
-### Option 1: Core Modules + Memory Storage
+The root module requires Go 1.25+; repository go.work development requires Go 1.27+. Add the root module, then the adapter if using Gin:
 
 ```bash
-go get github.com/Zany2/dtoken-go/defaults
-go get github.com/Zany2/dtoken-go/dtoken
-go get github.com/Zany2/dtoken-go/com/storage/memory
-```
-
-### Option 2: Use a Framework Integration Package Directly
-
-If you are already using a web framework, you can also import an integration package directly:
-
-```bash
+go get github.com/Zany2/dtoken-go
 go get github.com/Zany2/dtoken-go/integrations/gin
-go get github.com/Zany2/dtoken-go/com/storage/memory
 ```
 
-## Step 2: Initialize
+## Build And Use An Instance
 
+The default builder includes memory storage and basic components. Save the following as main.go. Applications verify passwords or other identity credentials before calling LoginID.
+
+<!-- dtoken-compile: quick-start -->
 ```go
 package main
 
 import (
     "context"
+    "fmt"
 
-    "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/defaults"
-    "github.com/Zany2/dtoken-go/dtoken"
+    "github.com/Zany2/dtoken-go"
 )
 
-var ctx = context.Background()
-
-func init() {
-    mgr, err := defaults.NewBuilder().
-        SetStorage(memory.NewStorage()).
+func main() {
+    auth, err := dtoken.NewBuilder().
         TokenName("Authorization").
         Timeout(86400).
         Build()
     if err != nil {
         panic(err)
     }
-    dtoken.SetManager(mgr)
+    defer auth.Close()
+
+    ctx := context.Background()
+    token, err := auth.LoginID(ctx, "1000")
+    if err != nil {
+        panic(err)
+    }
+    if err := auth.AddPermissions(ctx, dtoken.PermissionOptions{
+        LoginID: "1000", Permissions: []string{"user:read"},
+    }); err != nil {
+        panic(err)
+    }
+    fmt.Println(auth.IsLogin(ctx, token))
+    fmt.Println(auth.HasPermission(ctx, "1000", "user:read"))
+    if err := auth.LogoutByToken(ctx, token); err != nil {
+        panic(err)
+    }
 }
 ```
 
-### Initialization Notes
-
-- `defaults.NewBuilder()` is used to build a `Manager`
-- `SetStorage(...)` specifies the storage implementation
-- `dtoken.SetManager(...)` registers the global `Manager`
-- after that, application code can call capability directly through `dtoken`
-
-## Step 3: Use It
+## Configure The Instance
 
 ```go
-func main() {
-    // Login
-    token, _ := dtoken.Login(ctx, "1000")
-
-    // Check login state
-    isLogin := dtoken.IsLogin(ctx, token)
-
-    // Add permissions
-    _ = dtoken.AddPermissions(ctx, "1000", []string{"user:read"})
-
-    // Check permission
-    hasPermission := dtoken.HasPermission(ctx, "1000", "user:read")
-
-    // Logout
-    _ = dtoken.Logout(ctx, token)
-
-    _, _, _ = token, isLogin, hasPermission
-}
-```
-
-## Step 4: Common Configuration
-
-You can continue adjusting common settings through the Builder:
-
-```go
-mgr, err := defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
-    TokenName("token").
+auth, err := dtoken.NewBuilder().
+    AuthType("user").
+    TokenName("Authorization").
     Timeout(7200).
     ActiveTimeout(1800).
     AutoRenew(true).
     IsReadHeader(true).
-    IsPrintBanner(true).
+    IsPrintBanner(false).
     Build()
 if err != nil {
     panic(err)
 }
-
-dtoken.SetManager(mgr)
+defer auth.Close()
 ```
 
-Common config meanings:
+Build automatically registers and returns *dtoken.Auth; duplicate names are rejected. Timeout and ActiveTimeout use seconds. WithAuth selects the instance used by requests. Default memory storage is process-local; use Redis or another storage implementation for shared data. Do not mutate the underlying Manager configuration while serving requests.
 
-- `TokenName` - token name
-- `Timeout` - absolute token timeout
-- `ActiveTimeout` - maximum inactive duration
-- `AutoRenew` - whether auto-renew is enabled
-- `IsReadHeader` - whether to read token from HTTP header
-- `IsPrintBanner` - whether to print the startup banner
+## Connect Gin
 
-## Step 5: Read Complete Examples
+Place the middleware fragment in a setup function returning `error`; the caller should check that error and stop startup on failure.
 
-If you want to see more complete examples, you can directly refer to:
+Place this fragment before registering Gin routes. It assumes auth is the built instance and router is a gin.Engine. Context binds the request instance; RequireLogin validates protected routes.
 
-- [Quick Start example](../../examples/quick_start/)
-- [Gin example](../../examples/gin/)
-- [GoFrame example](../../examples/gf/)
-- [Beego example](../../examples/beego/)
-- [Echo example](../../examples/echo/)
-- [Fiber example](../../examples/fiber/)
-- [Chi example](../../examples/chi/)
-- [Hertz example](../../examples/hertz/)
-- [Kratos example](../../examples/kratos/)
+```go
+import gindt "github.com/Zany2/dtoken-go/integrations/gin"
 
-After these steps, you already understand the most basic usage of the current DToken-Go version.
+authMiddleware1, authErr := gindt.Context(auth)
+if authErr != nil {
+    return authErr
+}
+router.Use(authMiddleware1)
+users := router.Group("/user")
+users.Use(gindt.RequireLogin())
+```
+
+Send the token in the Authorization header. Register login outside the protected group. See the root README and examples/quick_start for complete server and credential-validation examples. Drain HTTP requests before closing Auth.
+
+## Default And Named Namespace Calls
+
+Build needs no SetAuth. Without a configured AuthType, call `dtoken.LoginID(ctx, "1000")` or `dtoken.CheckLogin(ctx, token)` directly. For the user namespace configured above:
+
+```go
+user := dtoken.AuthType("user")
+token, err := user.Login(ctx, dtoken.LoginOptions{LoginID: "1000"})
+if err != nil {
+    panic(err)
+}
+err = user.CheckLogin(ctx, token)
+```
+
+The registry shares the engine returned as Auth. Missing namespaces never fall back; duplicate Build does not replace an instance. Use BuildInstance for isolated instances and close them through their owner. For explicit replacement, use BuildInstance followed by SetAuth.
+
+HTTP registry lookup requires `WithManagerResolver(dtoken.GetManager)`; WithAuth binds a fixed engine. Root calls and Auth methods share typed option signatures.
+
+On shutdown, stop accepting and drain requests before dtoken.CloseAll. It excludes unregistered instances. The library does not install signal handlers; see the [application lifecycle example](../design/api-lifecycle.md).
 
 ## Next Steps
 
-- [Authentication Guide](../guide/core/authentication.md)
-- [Permission Guide](../guide/core/permission.md)
-- [Annotation Guide](../guide/integration/annotation.md)
-- [Framework Integration Guide](../guide/integration/framework-integration.md)
+- [Auth instance API](../api/auth.md)
+- [Framework integration](../guide/integration/framework-integration.md)
+- [Configuration](../guide/reference/configuration.md)
+- [Independent capabilities](../guide/security/advanced-features.md)
+- [Resource lifecycle](../design/api-lifecycle.md)
+- [Quick Start](../../examples/quick_start/)
+- [Gin](../../examples/gin/)

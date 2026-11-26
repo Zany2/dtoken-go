@@ -2,6 +2,8 @@
 
 This example shows how to use `github.com/Zany2/dtoken-go/integrations/kratos` with Kratos HTTP middleware.
 
+Build automatically registers and returns one Auth instance. The application explicitly binds that instance with `WithAuth`; login and request checks use the bound engine. Close it after draining requests. Use `BuildInstance()` for an unregistered instance.
+
 ## Run
 
 ```bash
@@ -19,7 +21,7 @@ The server listens on `http://localhost:8080`.
 - `GET /articles`: requires the `article:read` permission.
 - `POST /logout`: logs out the current token.
 
-The example uses bundled memory storage through `kratosdt.NewBuilder()`, so no Redis service is required. Login state and authorization data are lost on restart. Tokens expire after two hours; automatic renewal is enabled with a one-hour remaining-lifetime threshold. Managers are closed when the application exits.
+The example uses bundled memory storage through `dtoken.NewBuilder()`, so no Redis service is required. Login state and authorization data are lost on restart. Tokens expire after two hours; automatic renewal is enabled with a one-hour remaining-lifetime threshold. Managers are closed when the application exits.
 
 This is a demonstration credential check. Real applications must verify credentials against their own user data and load the user's actual roles and permissions. By default, repeated logins for the same user and device share a token; logging out that token also invalidates other clients using it.
 
@@ -62,12 +64,27 @@ curl -X POST http://localhost:8080/logout \
 
 ## Key APIs
 
+The middleware fragments below belong in a setup function that returns `error`; propagate binding errors to the caller and stop startup if setup fails.
+
+Build an instance first and keep it open while the server handles requests. These fragments use the handlers and error callbacks from `main.go`.
+
 ```go
+authInstance, err := dtoken.NewBuilder().TokenName("Authorization").Build()
+if err != nil { panic(err) }
+defer authInstance.Close()
+```
+
+```go
+authOption1, authErr := kratosdt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
 srv := khttp.NewServer(
 	khttp.Address(":8080"),
-	khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware()),
+	khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware(authOption1)),
 )
 
+r := srv.Route("/")
 r.GET("/admin", wrapHandler(handleAdmin, kratosdt.AuthMiddleware(), kratosdt.RoleMiddleware([]string{"admin"})))
 r.GET("/articles", wrapHandler(handleArticles, kratosdt.AuthMiddleware(), kratosdt.PermissionMiddleware([]string{"article:read"})))
 ```

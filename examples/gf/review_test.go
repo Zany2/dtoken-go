@@ -1,6 +1,12 @@
 package main
 
 import (
+	dtoken "github.com/Zany2/dtoken-go"
+	dt2 "github.com/Zany2/dtoken-go/contract"
+	dterror "github.com/Zany2/dtoken-go/errors"
+	dt1 "github.com/Zany2/dtoken-go/internal/engine"
+	dt3 "github.com/Zany2/dtoken-go/storage/memory"
+
 	"bytes"
 	"context"
 	"encoding/json"
@@ -21,24 +27,24 @@ import (
 // TestRouteAccessUsesMatchedRoute verifies normalization and route overrides retain the target's checks. TestRouteAccessUsesMatchedRoute 验证规范化和路由覆盖后仍执行目标路由的鉴权规则。
 func TestRouteAccessUsesMatchedRoute(t *testing.T) {
 	mgr := setupGFManager(t)
-	s := newGFServer(t, registerRoutes)
+	s := newGFServer(t, func(s *ghttp.Server) { registerTestRoutes(t, s) })
 	ctx := context.Background()
 	token, err := mgr.Login(ctx, "reader")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/access/public", "/access/public/", "/access//public"} {
-		assertGFResponse(t, requestGF(s, http.MethodGet, path, "", ""), http.StatusOK, gfdt.CodeSuccess)
+		assertGFResponse(t, requestGF(s, http.MethodGet, path, "", ""), http.StatusOK, dterror.CodeSuccess)
 	}
 	for _, path := range []string{"/me", "/introspect", "/admin", "/articles", "/access/me", "/access/admin", "/access/articles"} {
 		for _, invalidToken := range []string{"", "invalid-token"} {
-			assertGFResponse(t, requestGF(s, http.MethodGet, path, "", invalidToken), http.StatusUnauthorized, gfdt.CodeNotLogin)
+			assertGFResponse(t, requestGF(s, http.MethodGet, path, "", invalidToken), http.StatusUnauthorized, dterror.CodeNotLogin)
 		}
 	}
-	assertGFResponse(t, requestGF(s, http.MethodGet, "/access/me", "", token), http.StatusOK, gfdt.CodeSuccess)
-	assertGFResponse(t, requestGF(s, http.MethodPost, "/logout", "", ""), http.StatusUnauthorized, gfdt.CodeNotLogin)
+	assertGFResponse(t, requestGF(s, http.MethodGet, "/access/me", "", token), http.StatusOK, dterror.CodeSuccess)
+	assertGFResponse(t, requestGF(s, http.MethodPost, "/logout", "", ""), http.StatusUnauthorized, dterror.CodeNotLogin)
 	for _, path := range []string{"/admin", "/articles", "/access/admin", "/access/articles", "/access//admin", "/access//articles", "//access/admin/"} {
-		assertGFResponse(t, requestGF(s, http.MethodGet, path, "", token), http.StatusForbidden, gfdt.CodePermissionDenied)
+		assertGFResponse(t, requestGF(s, http.MethodGet, path, "", token), http.StatusForbidden, dterror.CodePermissionDenied)
 	}
 	for _, target := range []string{"/access/admin", "/access/articles", "/access//admin"} {
 		for _, credential := range []string{"", token} {
@@ -47,9 +53,9 @@ func TestRouteAccessUsesMatchedRoute(t *testing.T) {
 			req.Header.Set("Authorization", credential)
 			rec := httptest.NewRecorder()
 			s.ServeHTTP(rec, req)
-			status, code := http.StatusUnauthorized, gfdt.CodeNotLogin
+			status, code := http.StatusUnauthorized, dterror.CodeNotLogin
 			if credential != "" {
-				status, code = http.StatusForbidden, gfdt.CodePermissionDenied
+				status, code = http.StatusForbidden, dterror.CodePermissionDenied
 			}
 			assertGFResponse(t, rec, status, code)
 		}
@@ -61,14 +67,14 @@ func TestRouteAccessUsesMatchedRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/admin", "/articles", "/access/admin", "/access/articles", "/access//admin", "/access//articles"} {
-		assertGFResponse(t, requestGF(s, http.MethodGet, path, "", token), http.StatusOK, gfdt.CodeSuccess)
+		assertGFResponse(t, requestGF(s, http.MethodGet, path, "", token), http.StatusOK, dterror.CodeSuccess)
 	}
 }
 
 // TestLoginRefreshLogout verifies the JSON envelope and the complete token-pair lifecycle. TestLoginRefreshLogout 验证 JSON 响应及令牌对的完整生命周期。
 func TestLoginRefreshLogout(t *testing.T) {
 	setupGFManager(t)
-	s := newGFServer(t, registerRoutes)
+	s := newGFServer(t, func(s *ghttp.Server) { registerTestRoutes(t, s) })
 	pair := decodeGFPair(t, requestGF(s, http.MethodPost, "/login", "username=alice&password=123456", ""))
 	if pair.LoginID != "alice" || pair.Device != "web" || pair.DeviceID != "gf-example" {
 		t.Fatalf("unexpected login identity: %+v", pair)
@@ -79,7 +85,7 @@ func TestLoginRefreshLogout(t *testing.T) {
 			req.Header.Set(header, token)
 			rec := httptest.NewRecorder()
 			s.ServeHTTP(rec, req)
-			data := assertGFResponse(t, rec, http.StatusOK, gfdt.CodeSuccess)
+			data := assertGFResponse(t, rec, http.StatusOK, dterror.CodeSuccess)
 			var info struct {
 				LoginID     string   `json:"loginId"`
 				Roles       []string `json:"roles"`
@@ -97,25 +103,25 @@ func TestLoginRefreshLogout(t *testing.T) {
 	if rotated.AccessToken == pair.AccessToken || rotated.RefreshToken == pair.RefreshToken {
 		t.Fatal("refresh did not rotate both credentials")
 	}
-	assertGFResponse(t, requestGF(s, http.MethodGet, "/me", "", pair.AccessToken), http.StatusUnauthorized, gfdt.CodeNotLogin)
-	assertGFResponse(t, requestGF(s, http.MethodPost, "/refresh", "refreshToken="+pair.RefreshToken, ""), http.StatusUnauthorized, gfdt.CodeNotLogin)
-	data := assertGFResponse(t, requestGF(s, http.MethodGet, "/introspect", "", rotated.AccessToken), http.StatusOK, gfdt.CodeSuccess)
-	var info gfdt.TokenIntrospection
+	assertGFResponse(t, requestGF(s, http.MethodGet, "/me", "", pair.AccessToken), http.StatusUnauthorized, dterror.CodeNotLogin)
+	assertGFResponse(t, requestGF(s, http.MethodPost, "/refresh", "refreshToken="+pair.RefreshToken, ""), http.StatusUnauthorized, dterror.CodeNotLogin)
+	data := assertGFResponse(t, requestGF(s, http.MethodGet, "/introspect", "", rotated.AccessToken), http.StatusOK, dterror.CodeSuccess)
+	var info dt1.TokenIntrospection
 	if err := json.Unmarshal(data, &info); err != nil {
 		t.Fatal(err)
 	}
 	if !info.Active || info.LoginID != "alice" {
 		t.Fatalf("unexpected introspection: %+v", info)
 	}
-	assertGFResponse(t, requestGF(s, http.MethodPost, "/logout", "", rotated.AccessToken), http.StatusOK, gfdt.CodeSuccess)
-	assertGFResponse(t, requestGF(s, http.MethodGet, "/me", "", rotated.AccessToken), http.StatusUnauthorized, gfdt.CodeNotLogin)
-	assertGFResponse(t, requestGF(s, http.MethodPost, "/refresh", "refreshToken="+rotated.RefreshToken, ""), http.StatusUnauthorized, gfdt.CodeNotLogin)
+	assertGFResponse(t, requestGF(s, http.MethodPost, "/logout", "", rotated.AccessToken), http.StatusOK, dterror.CodeSuccess)
+	assertGFResponse(t, requestGF(s, http.MethodGet, "/me", "", rotated.AccessToken), http.StatusUnauthorized, dterror.CodeNotLogin)
+	assertGFResponse(t, requestGF(s, http.MethodPost, "/refresh", "refreshToken="+rotated.RefreshToken, ""), http.StatusUnauthorized, dterror.CodeNotLogin)
 }
 
 // TestCredentialBodyValidation covers malformed input and prevents query fallback. TestCredentialBodyValidation 覆盖损坏输入并防止回退到 Query 参数。
 func TestCredentialBodyValidation(t *testing.T) {
 	setupGFManager(t)
-	s := newGFServer(t, registerRoutes)
+	s := newGFServer(t, func(s *ghttp.Server) { registerTestRoutes(t, s) })
 	for _, tc := range []struct {
 		path, body, contentType string
 	}{
@@ -143,11 +149,11 @@ func TestCredentialBodyValidation(t *testing.T) {
 			req.Header.Set("Content-Type", tc.contentType)
 			rec := httptest.NewRecorder()
 			s.ServeHTTP(rec, req)
-			assertGFResponse(t, rec, http.StatusBadRequest, gfdt.CodeBadRequest)
+			assertGFResponse(t, rec, http.StatusBadRequest, dterror.CodeBadRequest)
 		})
 	}
-	assertGFResponse(t, requestGF(s, http.MethodPost, "/login", "username=alice&password=wrong", ""), http.StatusUnauthorized, gfdt.CodeNotLogin)
-	assertGFResponse(t, requestGF(s, http.MethodPost, "/refresh", "refreshToken=invalid", ""), http.StatusUnauthorized, gfdt.CodeNotLogin)
+	assertGFResponse(t, requestGF(s, http.MethodPost, "/login", "username=alice&password=wrong", ""), http.StatusUnauthorized, dterror.CodeNotLogin)
+	assertGFResponse(t, requestGF(s, http.MethodPost, "/refresh", "refreshToken=invalid", ""), http.StatusUnauthorized, dterror.CodeNotLogin)
 	jsonRequest := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(`{"username":"json-user","password":"123456"}`+"\n"))
 	jsonRequest.Header.Set("Content-Type", "application/json; charset=utf-8")
 	rec := httptest.NewRecorder()
@@ -178,18 +184,18 @@ func TestCredentialBodyValidation(t *testing.T) {
 // TestAccountAndDeviceRestrictions verifies 403 responses and retry after device unblocking. TestAccountAndDeviceRestrictions 验证封禁返回 403，设备解封后可重试刷新。
 func TestAccountAndDeviceRestrictions(t *testing.T) {
 	mgr := setupGFManager(t)
-	s := newGFServer(t, registerRoutes)
+	s := newGFServer(t, func(s *ghttp.Server) { registerTestRoutes(t, s) })
 	ctx := context.Background()
 	if err := mgr.Disable(ctx, "blocked", time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	assertGFResponse(t, requestGF(s, http.MethodPost, "/login", "username=blocked&password=123456", ""), http.StatusForbidden, gfdt.CodeAccountDisabled)
+	assertGFResponse(t, requestGF(s, http.MethodPost, "/login", "username=blocked&password=123456", ""), http.StatusForbidden, dterror.CodeAccountDisabled)
 	pair := decodeGFPair(t, requestGF(s, http.MethodPost, "/login", "username=alice&password=123456", ""))
 	if err := mgr.DisableDeviceAndDeviceID(ctx, "alice", "web", "gf-example", time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	assertGFResponse(t, requestGF(s, http.MethodPost, "/login", "username=alice&password=123456", ""), http.StatusForbidden, gfdt.CodeAccountDisabled)
-	assertGFResponse(t, requestGF(s, http.MethodPost, "/refresh", "refreshToken="+pair.RefreshToken, ""), http.StatusForbidden, gfdt.CodeAccountDisabled)
+	assertGFResponse(t, requestGF(s, http.MethodPost, "/login", "username=alice&password=123456", ""), http.StatusForbidden, dterror.CodeAccountDisabled)
+	assertGFResponse(t, requestGF(s, http.MethodPost, "/refresh", "refreshToken="+pair.RefreshToken, ""), http.StatusForbidden, dterror.CodeAccountDisabled)
 	if err := mgr.UntieDeviceAndDeviceID(ctx, "alice", "web", "gf-example"); err != nil {
 		t.Fatal(err)
 	}
@@ -198,21 +204,29 @@ func TestAccountAndDeviceRestrictions(t *testing.T) {
 
 // TestStorageFailuresStayServerErrors verifies handler and middleware failures do not leak backend details. TestStorageFailuresStayServerErrors 验证处理器和中间件均将存储故障作为服务端错误且不泄露详情。
 func TestStorageFailuresStayServerErrors(t *testing.T) {
-	gfdt.DeleteAllManager()
-	t.Cleanup(gfdt.DeleteAllManager)
-	mgr, err := gfdt.NewBuilder().SetStorage(&failingGFStorage{Storage: gfdt.NewMemoryStorage()}).
-		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).Build()
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+	builtAuth1, err := dtoken.NewBuilder().Storage(&failingGFStorage{Storage: dt3.NewStorage()}).
+		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
+	mgr := builtAuth1.Manager()
+
 	if err != nil {
 		t.Fatal(err)
 	}
-	gfdt.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, withAuth := range []bool{false, true} {
 		t.Run(map[bool]string{false: "handlers", true: "middleware"}[withAuth], func(t *testing.T) {
-			register := registerRoutes
+			register := func(s *ghttp.Server) { registerTestRoutes(t, s) }
 			if !withAuth {
 				// Reach each handler directly to verify its own error mapping. 直接到达各处理器，验证其自身的错误分类。
 				register = func(s *ghttp.Server) {
-					s.Use(gfdt.RegisterDTokenContextMiddleware(context.Background()))
+					authOption1, authErr := gfdt.WithAuth(builtAuth1)
+					if authErr != nil {
+						t.Fatal(authErr)
+					}
+					s.Use(gfdt.RegisterDTokenContextMiddleware(context.Background(), authOption1))
 					s.BindHandler("POST:/login", handleLogin)
 					s.BindHandler("POST:/refresh", handleRefresh)
 					s.BindHandler("GET:/me", handleMe)
@@ -229,7 +243,7 @@ func TestStorageFailuresStayServerErrors(t *testing.T) {
 				{http.MethodPost, "/logout", ""},
 			} {
 				rec := requestGF(s, tc.method, tc.path, tc.body, "some-token")
-				assertGFResponse(t, rec, http.StatusInternalServerError, gfdt.CodeServerError)
+				assertGFResponse(t, rec, http.StatusInternalServerError, dterror.CodeServerError)
 				if strings.Contains(rec.Body.String(), "private storage") || !strings.Contains(rec.Body.String(), "internal server error") {
 					t.Fatalf("unsafe server response: %s", rec.Body.String())
 				}
@@ -237,7 +251,7 @@ func TestStorageFailuresStayServerErrors(t *testing.T) {
 			if withAuth {
 				for _, path := range []string{"/access/me", "/access/articles", "/access/admin"} {
 					rec := requestGF(s, http.MethodGet, path, "", "some-token")
-					assertGFResponse(t, rec, http.StatusInternalServerError, gfdt.CodeServerError)
+					assertGFResponse(t, rec, http.StatusInternalServerError, dterror.CodeServerError)
 					if strings.Contains(rec.Body.String(), "private storage") {
 						t.Fatalf("unsafe access middleware response: %s", rec.Body.String())
 					}
@@ -247,19 +261,21 @@ func TestStorageFailuresStayServerErrors(t *testing.T) {
 	}
 }
 
-type failingGFStorage struct{ gfdt.Storage }
+type failingGFStorage struct{ dt2.Storage }
 
 // Get simulates a storage failure containing private connection details. Get 模拟包含私有连接详情的存储故障。
 func (*failingGFStorage) Get(context.Context, string) (any, error) {
 	return nil, errors.New("private storage connection details")
 }
 
-func setupGFManager(t *testing.T) *gfdt.Manager {
+func setupGFManager(t *testing.T) *dt1.Manager {
 	t.Helper()
-	gfdt.DeleteAllManager()
-	t.Cleanup(gfdt.DeleteAllManager)
-	initDToken()
-	mgr, err := gfdt.GetManager()
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+	if _, err := initDToken(); err != nil {
+		t.Fatal(err)
+	}
+	mgr, err := dtoken.GetManager()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,10 +330,10 @@ func assertGFResponse(t *testing.T, rec *httptest.ResponseRecorder, status, code
 	return response.Data
 }
 
-func decodeGFPair(t *testing.T, rec *httptest.ResponseRecorder) gfdt.RefreshTokenPair {
+func decodeGFPair(t *testing.T, rec *httptest.ResponseRecorder) dt1.RefreshTokenPair {
 	t.Helper()
-	data := assertGFResponse(t, rec, http.StatusOK, gfdt.CodeSuccess)
-	var pair gfdt.RefreshTokenPair
+	data := assertGFResponse(t, rec, http.StatusOK, dterror.CodeSuccess)
+	var pair dt1.RefreshTokenPair
 	if err := json.Unmarshal(data, &pair); err != nil {
 		t.Fatal(err)
 	}
@@ -325,4 +341,51 @@ func decodeGFPair(t *testing.T, rec *httptest.ResponseRecorder) gfdt.RefreshToke
 		t.Fatalf("empty token pair: %+v", pair)
 	}
 	return pair
+}
+
+// registeredAuth returns the explicitly registered test fixture. registeredAuth 返回显式注册的测试夹具。
+func registeredAuth() *dtoken.Auth {
+	mgr, err := dtoken.GetManager()
+	if err != nil {
+		panic(err)
+	}
+	return dtoken.New(mgr)
+}
+
+// registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
+func registerTestRoutes(t *testing.T, s *ghttp.Server) {
+	t.Helper()
+	if err := registerRoutes(s, registeredAuth()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestInjectedLoginUsesBuiltInstance verifies routes and the registry share the built engine. TestInjectedLoginUsesBuiltInstance 验证路由与注册表共用构建返回的引擎。
+func TestInjectedLoginUsesBuiltInstance(t *testing.T) {
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+	auth, err := initDToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(auth.Close)
+	s := newGFServer(t, func(s *ghttp.Server) {
+		if err := registerRoutes(s, auth); err != nil {
+			t.Fatal(err)
+		}
+	})
+	response := requestGF(s, http.MethodPost, "/login", "username=alice&password=123456", "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("login status = %d", response.Code)
+	}
+	ctx := context.Background()
+	if _, err := auth.GetSession(ctx, "alice"); err != nil {
+		t.Fatalf("injected session: %v", err)
+	}
+	if !auth.HasRole(ctx, "alice", "admin") || !auth.HasPermission(ctx, "alice", "article:read") {
+		t.Fatal("access grants missing from injected instance")
+	}
+	if mgr, err := dtoken.GetManager(); err != nil || mgr != auth.Manager() {
+		t.Fatalf("Build registration differs from injected instance: %v", err)
+	}
 }

@@ -3,11 +3,12 @@ package gin
 
 import (
 	"context"
+	derror "github.com/Zany2/dtoken-go/errors"
+	requestcontext "github.com/Zany2/dtoken-go/httpauth/context"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/integrations/authcheck"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	"github.com/gin-gonic/gin"
 )
 
@@ -20,7 +21,7 @@ func GetTokenValueByContext(c *gin.Context) (string, error) {
 
 	tokenValue := dCtx.GetTokenValue()
 	if tokenValue == "" {
-		return "", ErrNotLogin
+		return "", derror.ErrNotLogin
 	}
 	return tokenValue, nil
 }
@@ -449,23 +450,19 @@ func requestContext(c *gin.Context) context.Context {
 }
 
 // requireDTokenContextByContext gets required DToken context requireDTokenContextByContext 获取必需的 DToken 上下文。
-func requireDTokenContextByContext(c *gin.Context) (*DTokenContext, error) {
+func requireDTokenContextByContext(c *gin.Context) (*requestcontext.DTokenContext, error) {
 	dCtx, ok := GetDTokenContext(c)
 	if !ok {
 		if c == nil {
-			return nil, ErrNotLogin
+			return nil, derror.ErrNotLogin
 		}
-		mgr, err := authcheck.GetManager("")
-		if err != nil {
-			return nil, err
-		}
-		return getDContext(c, mgr), nil
+		return nil, derror.ErrManagerNotFound
 	}
 
 	// A cached request must not continue using a closed or missing manager. 缓存的请求上下文不能继续使用已关闭或缺失的 Manager。
 	mgr := dCtx.GetManager()
 	if mgr == nil || mgr.IsClosed() {
-		return nil, ErrManagerNotFound
+		return nil, derror.ErrManagerNotFound
 	}
 	return dCtx, nil
 }

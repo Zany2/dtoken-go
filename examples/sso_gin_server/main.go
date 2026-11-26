@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	dtoken "github.com/Zany2/dtoken-go"
 	"github.com/Zany2/dtoken-go/sso"
 	"github.com/gin-gonic/gin"
 )
@@ -26,15 +27,15 @@ const (
 var (
 	// cookie configures the demo SSO login cookie. cookie 配置示例 SSO 登录 Cookie。
 	cookie = sso.CookieOptions{
-		Name:      "dtoken_sso_gin_demo",
-		Path:      "/",
-		MaxAge:    2 * time.Hour,
-		HTTPOnly:  true,
-		SameSite:  http.SameSiteLaxMode,
-		SecretKey: rand.Text(), // Use a fresh process-local key. 使用进程独立的随机密钥。
+		Name:     "dtoken_sso_gin_demo",
+		Path:     "/",
+		MaxAge:   2 * time.Hour,
+		HTTPOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		// Use a fresh process-local key. 使用进程独立的随机密钥。
+		SecretKey: rand.Text(),
 	}
-	// loginPage stores the parsed login page template. loginPage 保存已解析的登录页模板。
-	loginPage = template.Must(template.New("login").Parse(loginHTML))
+	loginPage = template.Must(template.New("login").Parse(loginHTML)) // loginPage stores the parsed login page template. loginPage 保存已解析的登录页模板。
 )
 
 func main() {
@@ -46,9 +47,14 @@ func main() {
 
 // run owns the SSO server and closes its storage before returning an error. run 持有 SSO 服务端，并在错误返回前关闭存储。
 func run() error {
+	auth, err := newCenterAuth()
+	if err != nil {
+		return err
+	}
+	defer auth.Close()
 	server := sso.NewServer()
 	defer server.Close()
-	router, err := newDemoRouter(server)
+	router, err := newDemoRouter(server, auth)
 	if err != nil {
 		return err
 	}
@@ -57,9 +63,11 @@ func run() error {
 }
 
 // newDemoRouter shares actual Gin routes and protocol configuration with tests. newDemoRouter 与测试共用实际 Gin 路由和协议配置。
-func newDemoRouter(server *sso.Server) (*gin.Engine, error) {
+func newDemoRouter(server *sso.Server, auth *dtoken.Auth) (*gin.Engine, error) {
+	center := &demoCenter{auth: auth}
+
 	// Register the demo client accepted by the SSO server. 注册 SSO 服务端接受的示例客户端。
-	if err := server.RegisterClient(&sso.Client{
+	if err := server.RegisterClientChecked(&sso.Client{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		Name:         "Gin Demo Client",
@@ -70,29 +78,53 @@ func newDemoRouter(server *sso.Server) (*gin.Engine, error) {
 		return nil, err
 	}
 
-	// Configure protocol endpoints and cookie-based login resolution. 配置协议端点和基于 Cookie 的登录解析。
-	httpSSO := sso.NewHTTPServer(server, sso.HTTPOptions{
+	// Bind protocol issuance, exchange, and logout to the same center Auth. 将协议签发、换票和注销绑定到同一中心 Auth。
+	httpSSO, err := sso.NewHTTPServerChecked(server, sso.HTTPOptions{
 		ServerOptions: sso.ServerOptions{
-			EnableSLO:                true,
-			LogoutCallbackTimeout:    3 * time.Second,
-			LogoutCallbackBestEffort: true,
-			CheckSign:                false,
-			Endpoints:                sso.DefaultEndpoints(),
-			Params:                   sso.DefaultParamNames(),
+			EnableSLO:                 true,
+			LogoutCallbackTimeout:     3 * time.Second,
+			LogoutCallbackBestEffort:  true,
+			LogoutCallbackConcurrency: 4,
+			LogoutCallbackMaxAttempts: 1,
+			CheckSign:                 false,
+			Endpoints:                 sso.DefaultEndpoints(),
+			Params:                    sso.DefaultParamNames(),
 		},
-		LoginIDResolver: sso.LoginIDFromCookie(cookie),
-		LoginPageURL:    "http://localhost:9100/login",
-		Cookie:          cookie,
+		LoginIDResolver:       center.loginID,
+		AuthorizationExtra:    center.authorizationExtra,
+		EnrichExchangeResult:  center.enrichExchange,
+		CheckCredentialActive: center.checkCredentialActive,
+		CenterLogout:          center.logout,
+		OnLogoutResult:        observeLogoutResult,
+		LoginPageURL:          "http://localhost:9100/login",
+		Cookie:                cookie,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
 	registerSSORoutes(r, httpSSO)
-	r.GET("/", home)
+	r.GET("/", center.home)
 	r.GET("/login", loginPageHandler)
-	r.POST("/login", loginSubmit)
+	r.POST("/login", center.loginSubmit)
 
 	return r, nil
+}
+
+// observeLogoutResult logs safe callback diagnostics even when best-effort center logout succeeds. observeLogoutResult 即使尽力模式中心注销成功，也记录安全的回调诊断信息。
+func observeLogoutResult(_ *http.Request, result sso.LogoutResult) {
+	if result.Cause != nil {
+		log.Printf("SSO logout stopped at stage %s", result.Stage)
+	}
+	if result.Notifications != nil {
+		for _, target := range result.Notifications.Clients {
+			if target.Status == sso.LogoutCallbackFailed || target.Status == sso.LogoutCallbackCanceled {
+				log.Printf("SSO logout client=%q status=%s attempts=%d reason=%s", target.ClientID, target.Status, target.Attempts, target.Reason)
+			}
+		}
+	}
 }
 
 // registerSSORoutes maps standard SSO endpoints to Gin handlers. registerSSORoutes 将标准 SSO 端点映射为 Gin 处理器。
@@ -115,9 +147,9 @@ func ginWrap(handler http.HandlerFunc) gin.HandlerFunc {
 }
 
 // home renders the Gin SSO server status page. home 渲染 Gin SSO 服务端状态页。
-func home(c *gin.Context) {
+func (center *demoCenter) home(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
-	loginID, ok := sso.LoginIDFromCookie(cookie)(c.Request)
+	loginID, ok := center.loginID(c.Request)
 	if !ok {
 		loginID = "not logged in"
 	}
@@ -134,7 +166,7 @@ func loginPageHandler(c *gin.Context) {
 }
 
 // loginSubmit stores the demo login cookie and redirects back. loginSubmit 保存示例登录 Cookie 并重定向返回。
-func loginSubmit(c *gin.Context) {
+func (center *demoCenter) loginSubmit(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 
 	// Check browser origin only on the login form, leaving protocol POSTs available. 仅检查登录表单的浏览器来源，保留协议 POST 请求。
@@ -161,7 +193,10 @@ func loginSubmit(c *gin.Context) {
 	if loginID == "" {
 		loginID = "user-1001"
 	}
-	sso.SetLoginIDCookie(c.Writer, cookie, loginID)
+	if err := center.startSession(c.Writer, c.Request, loginID); err != nil {
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
 	back := safeBack(c.Request.PostForm.Get("back"))
 	c.Redirect(http.StatusFound, back)
 }

@@ -10,10 +10,11 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
 )
 
 var (
@@ -24,6 +25,7 @@ var (
 	// ErrTypeConvert indicates stored payload cannot be converted to bytes. ErrTypeConvert 表示存储载荷无法转换为字节。
 	ErrTypeConvert = errors.New("type conversion failed")
 	// ErrStorageCapabilityUnsupported is kept for compatibility; one-time credentials now fall back to ordinary Storage. ErrStorageCapabilityUnsupported 为兼容保留；一次性凭证现已支持普通 Storage 回退。
+	//
 	// Deprecated: consumption no longer requires AtomicStorage. Deprecated：消费流程不再强制要求 AtomicStorage。
 	ErrStorageCapabilityUnsupported = errors.New("storage capability unsupported")
 	// ErrServerNotInitialized indicates the SSO server is not initialized. ErrServerNotInitialized 表示 SSO 服务端未初始化。
@@ -137,28 +139,58 @@ func (c *Config) Clone() *Config {
 
 // Client defines an SSO client application registered by the login center. Client 定义统一登录中心注册的 SSO 子应用客户端。
 type Client struct {
-	ClientID     string         `json:"clientId"`               // ClientID stores the unique application id. ClientID 存储唯一应用 ID。
-	ClientSecret string         `json:"clientSecret,omitempty"` // ClientSecret stores the optional application secret. ClientSecret 存储可选的应用密钥。
-	Name         string         `json:"name,omitempty"`         // Name stores the display name for operators. Name 存储面向管理者的展示名称。
-	RedirectURIs []string       `json:"redirectUris,omitempty"` // RedirectURIs stores allowed callback URIs. RedirectURIs 存储允许的回调地址。
-	AllowOrigins []string       `json:"allowOrigins,omitempty"` // AllowOrigins stores allowed front-end origins for future browser flows. AllowOrigins 存储预留给浏览器流程的前端来源。
-	Modes        []Mode         `json:"modes,omitempty"`        // Modes stores allowed SSO modes; empty means ticket mode only. Modes 存储允许的 SSO 模式，空值表示仅允许 Ticket 模式。
-	Scopes       []string       `json:"scopes,omitempty"`       // Scopes stores allowed scopes; empty means all requested scopes are accepted. Scopes 存储允许的权限范围，空值表示接受所有请求范围。
-	Extra        map[string]any `json:"extra,omitempty"`        // Extra stores custom application metadata. Extra 存储自定义应用元数据。
+	// RequirePKCE requires S256 for issuing and using tickets/codes, including legacy records. RequirePKCE 要求签发和使用 Ticket/授权码时具备 S256 证明，包括旧记录。
+	RequirePKCE bool `json:"requirePkce,omitempty"`
+	// ClientID stores the unique application id. ClientID 存储唯一应用 ID。
+	ClientID string `json:"clientId"`
+	// ClientSecret stores the optional application secret. ClientSecret 存储可选的应用密钥。
+	ClientSecret string `json:"clientSecret,omitempty"`
+	// SecretKey overrides the server signing secret for this client's requests and logout callbacks. SecretKey 覆盖此客户端请求与注销回调使用的服务端默认签名密钥。
+	SecretKey string `json:"secretKey,omitempty"`
+	// VerificationKey accepts one additional incoming signing key during rotation; requires this client's SecretKey and is never used to sign. VerificationKey 在轮换期额外接受一把入站签名密钥；要求本客户端配置 SecretKey，且不用于出站签名。
+	VerificationKey string `json:"verificationKey,omitempty"`
+	// Name stores the display name for operators. Name 存储面向管理者的展示名称。
+	Name string `json:"name,omitempty"`
+	// RedirectURIs stores allowed callback URIs. RedirectURIs 存储允许的回调地址。
+	RedirectURIs []string `json:"redirectUris,omitempty"`
+	// AllowOrigins stores allowed front-end origins for future browser flows. AllowOrigins 存储预留给浏览器流程的前端来源。
+	AllowOrigins []string `json:"allowOrigins,omitempty"`
+	// Modes stores allowed SSO modes; empty means ticket mode only. Modes 存储允许的 SSO 模式，空值表示仅允许 Ticket 模式。
+	Modes []Mode `json:"modes,omitempty"`
+	// Scopes stores allowed scopes; empty means all requested scopes are accepted. Scopes 存储允许的权限范围，空值表示接受所有请求范围。
+	Scopes []string `json:"scopes,omitempty"`
+	// Extra stores custom application metadata. Extra 存储自定义应用元数据。
+	Extra map[string]any `json:"extra,omitempty"`
 }
 
 // Ticket defines an SSO one-time ticket exchanged between the login center and a client app. Ticket 定义统一登录中心和子应用之间交换的一次性 SSO 票据。
 type Ticket struct {
-	Ticket      string         `json:"ticket"`           // Ticket stores the random ticket value. Ticket 存储随机票据值。
-	Mode        Mode           `json:"mode"`             // Mode stores SSO mode. Mode 存储 SSO 模式。
-	LoginID     string         `json:"loginId"`          // LoginID stores logged-in subject id at the SSO center. LoginID 存储统一登录中心的登录主体 ID。
-	ClientID    string         `json:"clientId"`         // ClientID stores target client id. ClientID 存储目标客户端 ID。
-	RedirectURI string         `json:"redirectUri"`      // RedirectURI stores callback URI. RedirectURI 存储回调地址。
-	Scopes      []string       `json:"scopes,omitempty"` // Scopes stores requested scopes. Scopes 存储请求范围。
-	CreateTime  int64          `json:"createTime"`       // CreateTime stores creation unix time. CreateTime 存储创建时间戳。
-	ExpiresIn   int64          `json:"expiresIn"`        // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
-	Used        bool           `json:"used"`             // Used stores consume state after successful exchange. Used 存储成功换票后的消费状态。
-	Extra       map[string]any `json:"extra,omitempty"`  // Extra stores extension data. Extra 存储扩展数据。
+	// CodeChallenge binds redemption to the initiating flow. CodeChallenge 将兑换绑定到发起流程。
+	CodeChallenge string `json:"codeChallenge,omitempty"`
+	// CodeChallengeMethod records the S256 method for proof validation. CodeChallengeMethod 记录用于证明校验的 S256 算法。
+	CodeChallengeMethod string `json:"codeChallengeMethod,omitempty"`
+	// LogoutVersion binds this credential to an account logout generation; empty supports legacy records. LogoutVersion 将凭证绑定到账号注销版本；空值兼容旧记录。
+	LogoutVersion string `json:"logoutVersion,omitempty"`
+	// Ticket stores the random ticket value. Ticket 存储随机票据值。
+	Ticket string `json:"ticket"`
+	// Mode stores SSO mode. Mode 存储 SSO 模式。
+	Mode Mode `json:"mode"`
+	// LoginID stores logged-in subject id at the SSO center. LoginID 存储统一登录中心的登录主体 ID。
+	LoginID string `json:"loginId"`
+	// ClientID stores target client id. ClientID 存储目标客户端 ID。
+	ClientID string `json:"clientId"`
+	// RedirectURI stores callback URI. RedirectURI 存储回调地址。
+	RedirectURI string `json:"redirectUri"`
+	// Scopes stores requested scopes. Scopes 存储请求范围。
+	Scopes []string `json:"scopes,omitempty"`
+	// CreateTime stores creation unix time. CreateTime 存储创建时间戳。
+	CreateTime int64 `json:"createTime"`
+	// ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
+	ExpiresIn int64 `json:"expiresIn"`
+	// Used stores consume state after successful exchange. Used 存储成功换票后的消费状态。
+	Used bool `json:"used"`
+	// Extra stores extension data. Extra 存储扩展数据。
+	Extra map[string]any `json:"extra,omitempty"`
 
 	// ExpiresAt stores the precise deadline; zero supports legacy records. ExpiresAt 存储精确截止时间；零值兼容旧记录。
 	ExpiresAt time.Time `json:"expiresAt,omitempty"`
@@ -166,14 +198,24 @@ type Ticket struct {
 
 // SharedToken defines a reusable SSO token shared by trusted apps. SharedToken 定义可信应用间共享复用的 SSO Token。
 type SharedToken struct {
-	Token      string         `json:"token"`            // Token stores the random shared token value. Token 存储随机共享 Token 值。
-	Mode       Mode           `json:"mode"`             // Mode stores SSO mode. Mode 存储 SSO 模式。
-	LoginID    string         `json:"loginId"`          // LoginID stores logged-in subject id at the SSO center. LoginID 存储统一登录中心的登录主体 ID。
-	ClientID   string         `json:"clientId"`         // ClientID stores the client receiving the shared token. ClientID 存储接收共享 Token 的客户端 ID。
-	Scopes     []string       `json:"scopes,omitempty"` // Scopes stores granted scopes. Scopes 存储授权范围。
-	CreateTime int64          `json:"createTime"`       // CreateTime stores creation unix time. CreateTime 存储创建时间戳。
-	ExpiresIn  int64          `json:"expiresIn"`        // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
-	Extra      map[string]any `json:"extra,omitempty"`  // Extra stores extension data. Extra 存储扩展数据。
+	// LogoutVersion binds this credential to an account logout generation; empty supports legacy records. LogoutVersion 将凭证绑定到账号注销版本；空值兼容旧记录。
+	LogoutVersion string `json:"logoutVersion,omitempty"`
+	// Token stores the random shared token value. Token 存储随机共享 Token 值。
+	Token string `json:"token"`
+	// Mode stores SSO mode. Mode 存储 SSO 模式。
+	Mode Mode `json:"mode"`
+	// LoginID stores logged-in subject id at the SSO center. LoginID 存储统一登录中心的登录主体 ID。
+	LoginID string `json:"loginId"`
+	// ClientID stores the client receiving the shared token. ClientID 存储接收共享 Token 的客户端 ID。
+	ClientID string `json:"clientId"`
+	// Scopes stores granted scopes. Scopes 存储授权范围。
+	Scopes []string `json:"scopes,omitempty"`
+	// CreateTime stores creation unix time. CreateTime 存储创建时间戳。
+	CreateTime int64 `json:"createTime"`
+	// ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
+	ExpiresIn int64 `json:"expiresIn"`
+	// Extra stores extension data. Extra 存储扩展数据。
+	Extra map[string]any `json:"extra,omitempty"`
 
 	// ExpiresAt stores the precise deadline; zero supports legacy records. ExpiresAt 存储精确截止时间；零值兼容旧记录。
 	ExpiresAt time.Time `json:"expiresAt,omitempty"`
@@ -181,14 +223,24 @@ type SharedToken struct {
 
 // RemoteSession defines a centralized SSO session checked by client apps remotely. RemoteSession 定义由子应用远程校验的中心化 SSO 会话。
 type RemoteSession struct {
-	SessionID  string         `json:"sessionId"`        // SessionID stores the random remote session id. SessionID 存储随机远程会话 ID。
-	Mode       Mode           `json:"mode"`             // Mode stores SSO mode. Mode 存储 SSO 模式。
-	LoginID    string         `json:"loginId"`          // LoginID stores logged-in subject id at the SSO center. LoginID 存储统一登录中心的登录主体 ID。
-	ClientID   string         `json:"clientId"`         // ClientID stores the client that owns this remote view. ClientID 存储拥有该远程视图的客户端 ID。
-	Scopes     []string       `json:"scopes,omitempty"` // Scopes stores granted scopes. Scopes 存储授权范围。
-	CreateTime int64          `json:"createTime"`       // CreateTime stores creation unix time. CreateTime 存储创建时间戳。
-	ExpiresIn  int64          `json:"expiresIn"`        // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
-	Extra      map[string]any `json:"extra,omitempty"`  // Extra stores extension data. Extra 存储扩展数据。
+	// LogoutVersion binds this credential to an account logout generation; empty supports legacy records. LogoutVersion 将凭证绑定到账号注销版本；空值兼容旧记录。
+	LogoutVersion string `json:"logoutVersion,omitempty"`
+	// SessionID stores the random remote session id. SessionID 存储随机远程会话 ID。
+	SessionID string `json:"sessionId"`
+	// Mode stores SSO mode. Mode 存储 SSO 模式。
+	Mode Mode `json:"mode"`
+	// LoginID stores logged-in subject id at the SSO center. LoginID 存储统一登录中心的登录主体 ID。
+	LoginID string `json:"loginId"`
+	// ClientID stores the client that owns this remote view. ClientID 存储拥有该远程视图的客户端 ID。
+	ClientID string `json:"clientId"`
+	// Scopes stores granted scopes. Scopes 存储授权范围。
+	Scopes []string `json:"scopes,omitempty"`
+	// CreateTime stores creation unix time. CreateTime 存储创建时间戳。
+	CreateTime int64 `json:"createTime"`
+	// ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
+	ExpiresIn int64 `json:"expiresIn"`
+	// Extra stores extension data. Extra 存储扩展数据。
+	Extra map[string]any `json:"extra,omitempty"`
 
 	// ExpiresAt stores the precise deadline; zero supports legacy records. ExpiresAt 存储精确截止时间；零值兼容旧记录。
 	ExpiresAt time.Time `json:"expiresAt,omitempty"`
@@ -196,16 +248,32 @@ type RemoteSession struct {
 
 // OAuth2Code defines an SSO OAuth2 authorization code. OAuth2Code 定义 SSO OAuth2 授权码。
 type OAuth2Code struct {
-	Code        string         `json:"code"`             // Code stores the random authorization code. Code 存储随机授权码。
-	Mode        Mode           `json:"mode"`             // Mode stores SSO mode. Mode 存储 SSO 模式。
-	LoginID     string         `json:"loginId"`          // LoginID stores logged-in subject id at the SSO center. LoginID 存储统一登录中心的登录主体 ID。
-	ClientID    string         `json:"clientId"`         // ClientID stores target client id. ClientID 存储目标客户端 ID。
-	RedirectURI string         `json:"redirectUri"`      // RedirectURI stores callback URI. RedirectURI 存储回调地址。
-	Scopes      []string       `json:"scopes,omitempty"` // Scopes stores requested scopes. Scopes 存储请求范围。
-	CreateTime  int64          `json:"createTime"`       // CreateTime stores creation unix time. CreateTime 存储创建时间戳。
-	ExpiresIn   int64          `json:"expiresIn"`        // ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
-	Used        bool           `json:"used"`             // Used stores consume state after exchange. Used 存储换取后的消费状态。
-	Extra       map[string]any `json:"extra,omitempty"`  // Extra stores extension data. Extra 存储扩展数据。
+	// CodeChallenge binds redemption to the initiating flow. CodeChallenge 将兑换绑定到发起流程。
+	CodeChallenge string `json:"codeChallenge,omitempty"`
+	// CodeChallengeMethod records the S256 method for proof validation. CodeChallengeMethod 记录用于证明校验的 S256 算法。
+	CodeChallengeMethod string `json:"codeChallengeMethod,omitempty"`
+	// LogoutVersion binds this credential to an account logout generation; empty supports legacy records. LogoutVersion 将凭证绑定到账号注销版本；空值兼容旧记录。
+	LogoutVersion string `json:"logoutVersion,omitempty"`
+	// Code stores the random authorization code. Code 存储随机授权码。
+	Code string `json:"code"`
+	// Mode stores SSO mode. Mode 存储 SSO 模式。
+	Mode Mode `json:"mode"`
+	// LoginID stores logged-in subject id at the SSO center. LoginID 存储统一登录中心的登录主体 ID。
+	LoginID string `json:"loginId"`
+	// ClientID stores target client id. ClientID 存储目标客户端 ID。
+	ClientID string `json:"clientId"`
+	// RedirectURI stores callback URI. RedirectURI 存储回调地址。
+	RedirectURI string `json:"redirectUri"`
+	// Scopes stores requested scopes. Scopes 存储请求范围。
+	Scopes []string `json:"scopes,omitempty"`
+	// CreateTime stores creation unix time. CreateTime 存储创建时间戳。
+	CreateTime int64 `json:"createTime"`
+	// ExpiresIn stores ttl seconds. ExpiresIn 存储有效秒数。
+	ExpiresIn int64 `json:"expiresIn"`
+	// Used stores consume state after exchange. Used 存储换取后的消费状态。
+	Used bool `json:"used"`
+	// Extra stores extension data. Extra 存储扩展数据。
+	Extra map[string]any `json:"extra,omitempty"`
 
 	// ExpiresAt stores the precise deadline; zero supports legacy records. ExpiresAt 存储精确截止时间；零值兼容旧记录。
 	ExpiresAt time.Time `json:"expiresAt,omitempty"`
@@ -213,11 +281,16 @@ type OAuth2Code struct {
 
 // ClientSession stores one client login binding for single logout. ClientSession 存储用于单点注销的客户端登录绑定。
 type ClientSession struct {
-	LoginID           string `json:"loginId"`                     // LoginID stores subject id at the login center. LoginID 存储认证中心登录主体 ID。
-	ClientID          string `json:"clientId"`                    // ClientID stores client application id. ClientID 存储客户端应用 ID。
-	LogoutCallbackURL string `json:"logoutCallbackUrl,omitempty"` // LogoutCallbackURL stores client logout callback URL. LogoutCallbackURL 存储客户端注销回调地址。
-	CreateTime        int64  `json:"createTime"`                  // CreateTime stores creation unix time. CreateTime 存储创建时间戳。
-	UpdateTime        int64  `json:"updateTime"`                  // UpdateTime stores update unix time. UpdateTime 存储更新时间戳。
+	// LoginID stores subject id at the login center. LoginID 存储认证中心登录主体 ID。
+	LoginID string `json:"loginId"`
+	// ClientID stores client application id. ClientID 存储客户端应用 ID。
+	ClientID string `json:"clientId"`
+	// LogoutCallbackURL stores client logout callback URL. LogoutCallbackURL 存储客户端注销回调地址。
+	LogoutCallbackURL string `json:"logoutCallbackUrl,omitempty"`
+	// CreateTime stores creation unix time. CreateTime 存储创建时间戳。
+	CreateTime int64 `json:"createTime"`
+	// UpdateTime stores update unix time. UpdateTime 存储更新时间戳。
+	UpdateTime int64 `json:"updateTime"`
 }
 
 // Server handles SSO client registration and ticket operations. Server 处理 SSO 客户端注册与 Ticket 操作。
@@ -231,10 +304,11 @@ type Server struct {
 	storage                 adapter.Storage // storage stores clients and SSO credentials. storage 存储客户端和 SSO 凭证。
 	storageOwned            bool            // storageOwned controls whether Server closes storage. storageOwned 控制 Server 是否关闭存储。
 	serializer              adapter.Codec   // serializer encodes clients and credentials before storage. serializer 在存储前编解码客户端和凭证。
-	credentialConsumeMu     sync.Mutex      // credentialConsumeMu serializes non-atomic one-time credential consumption. credentialConsumeMu 串行化非原子存储的一次性凭证消费。
-	clientSessionMu         sync.Mutex      // clientSessionMu serializes local client-session index updates. clientSessionMu 串行化当前实例的客户端会话索引更新。
-	closeOnce               sync.Once       // closeOnce makes Server.Close idempotent. closeOnce 确保 Server.Close 幂等。
-	closeErr                error           // closeErr stores the first storage close error. closeErr 存储首次关闭存储时的错误。
+	// credentialConsumeMu serializes non-atomic one-time credential consumption. credentialConsumeMu 串行化非原子存储的一次性凭证消费。
+	credentialConsumeMu sync.Mutex
+	clientSessionMu     sync.Mutex // clientSessionMu serializes local client-session index updates. clientSessionMu 串行化当前实例的客户端会话索引更新。
+	closeOnce           sync.Once  // closeOnce makes Server.Close idempotent. closeOnce 确保 Server.Close 幂等。
+	closeErr            error      // closeErr stores the first storage close error. closeErr 存储首次关闭存储时的错误。
 }
 
 // NewDefaultServer creates SSO server with default config. NewDefaultServer 使用默认配置创建 SSO 服务端。
@@ -309,6 +383,7 @@ func (s *Server) RegisterClient(client *Client) error {
 	if client == nil || client.ClientID == "" {
 		return ErrClientOrClientIDEmpty
 	}
+
 	// Store client metadata before any ticket can be issued. 先保存客户端元数据，后续签发 Ticket 时依赖它做校验。
 	return s.saveClient(context.Background(), client)
 }
@@ -336,6 +411,12 @@ func (s *Server) GenerateTicket(ctx context.Context, clientID, loginID, redirect
 
 // GenerateTicketWithTimeout generates an SSO ticket with timeout. GenerateTicketWithTimeout 使用指定有效期生成 SSO Ticket。
 func (s *Server) GenerateTicketWithTimeout(ctx context.Context, clientID, loginID, redirectURI string, scopes []string, extra map[string]any, timeout time.Duration) (*Ticket, error) {
+	return s.GenerateTicketWithOptions(ctx, clientID, loginID, redirectURI, scopes, extra, OneTimeCredentialOptions{Timeout: timeout})
+}
+
+// GenerateTicketWithOptions issues a one-time credential with lifetime and PKCE policy. GenerateTicketWithOptions 按有效期与 PKCE 策略签发一次性凭证。
+func (s *Server) GenerateTicketWithOptions(ctx context.Context, clientID, loginID, redirectURI string, scopes []string, extra map[string]any, options OneTimeCredentialOptions) (*Ticket, error) {
+	timeout := options.Timeout
 	if loginID == "" {
 		return nil, ErrUserIDEmpty
 	}
@@ -348,17 +429,30 @@ func (s *Server) GenerateTicketWithTimeout(ctx context.Context, clientID, loginI
 	if err != nil {
 		return nil, err
 	}
+
 	// Enforce the per-client mode allow-list before issuing a ticket. 签发 Ticket 前先校验客户端允许的模式。
 	if !s.isModeAllowed(client, ModeTicket) {
 		return nil, ErrModeUnsupported
 	}
+
 	// Prevent tickets from being delivered to unregistered callback addresses. 防止 Ticket 被投递到未登记的回调地址。
 	if !s.isValidRedirectURI(client, redirectURI) {
 		return nil, ErrInvalidRedirectURI
 	}
+
 	// Keep requested scopes within the client allow-list when one is configured. 配置客户端权限范围时，限制请求范围不能越权。
 	if !s.isValidScopes(client, scopes) {
 		return nil, ErrInvalidScope
+	}
+
+	if err := validatePKCEChallenge(options.CodeChallenge, options.CodeChallengeMethod, client.RequirePKCE); err != nil {
+		return nil, err
+	}
+
+	// Capture the account generation so a later logout invalidates this credential even if persistence finishes afterward. 记录账号版本，使后续注销能够作废此凭证，即使凭证写入晚于注销完成。
+	logoutVersion, err := s.getLogoutVersion(ctx, loginID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Generate an opaque random ticket instead of exposing login data in the URL. 生成不透明随机 Ticket，避免在 URL 中暴露登录数据。
@@ -368,17 +462,20 @@ func (s *Server) GenerateTicketWithTimeout(ctx context.Context, clientID, loginI
 	}
 	now := time.Now()
 	ticket := &Ticket{
-		Ticket:      ticketValue,
-		Mode:        ModeTicket,
-		LoginID:     loginID,
-		ClientID:    clientID,
-		RedirectURI: redirectURI,
-		Scopes:      scopes,
-		CreateTime:  now.Unix(),
-		ExpiresIn:   durationSeconds(timeout),
-		ExpiresAt:   now.Add(timeout),
-		Used:        false,
-		Extra:       extra,
+		CodeChallenge:       options.CodeChallenge,
+		CodeChallengeMethod: options.CodeChallengeMethod,
+		LogoutVersion:       logoutVersion,
+		Ticket:              ticketValue,
+		Mode:                ModeTicket,
+		LoginID:             loginID,
+		ClientID:            clientID,
+		RedirectURI:         redirectURI,
+		Scopes:              scopes,
+		CreateTime:          now.Unix(),
+		ExpiresIn:           durationSeconds(timeout),
+		ExpiresAt:           now.Add(timeout),
+		Used:                false,
+		Extra:               extra,
 	}
 
 	// Persist the ticket with TTL so storage can expire unused callbacks automatically. 写入带 TTL 的 Ticket，让未使用回调自动过期。
@@ -403,6 +500,11 @@ func (s *Server) ValidateTicket(ctx context.Context, ticketValue string) (*Ticke
 
 // ConsumeTicket validates and consumes a one-time ticket. ConsumeTicket 校验并消费一次性 Ticket。
 func (s *Server) ConsumeTicket(ctx context.Context, ticketValue, clientID, clientSecret, redirectURI string) (*Ticket, error) {
+	return s.ConsumeTicketWithVerifier(ctx, ticketValue, clientID, clientSecret, redirectURI, "")
+}
+
+// ConsumeTicketWithVerifier verifies PKCE before one-time consumption; invalid proof leaves the credential intact. ConsumeTicketWithVerifier 在一次性消费前验证 PKCE，证明无效时保留凭证。
+func (s *Server) ConsumeTicketWithVerifier(ctx context.Context, ticketValue, clientID, clientSecret, redirectURI, verifier string) (*Ticket, error) {
 	// Authenticate the target client before touching ticket state. 先认证目标客户端，避免无效客户端影响 Ticket 状态。
 	client, err := s.getClient(ctx, clientID)
 	if err != nil {
@@ -420,7 +522,7 @@ func (s *Server) ConsumeTicket(ctx context.Context, ticketValue, clientID, clien
 	if err != nil {
 		return nil, err
 	}
-	if err = s.validateTicketExchange(ticket, clientID, redirectURI); err != nil {
+	if err = s.validateTicketExchange(ticket, clientID, redirectURI, verifier, client.RequirePKCE); err != nil {
 		return nil, err
 	}
 
@@ -438,7 +540,10 @@ func (s *Server) ConsumeTicket(ctx context.Context, ticketValue, clientID, clien
 		if err != nil {
 			return nil, err
 		}
-		if err = s.validateTicketExchange(ticket, clientID, redirectURI); err != nil {
+		if err = s.checkLogoutVersion(ctx, ticket.LoginID, ticket.LogoutVersion, ErrInvalidTicket); err != nil {
+			return nil, err
+		}
+		if err = s.validateTicketExchange(ticket, clientID, redirectURI, verifier, client.RequirePKCE); err != nil {
 			return nil, err
 		}
 	} else {
@@ -449,7 +554,7 @@ func (s *Server) ConsumeTicket(ctx context.Context, ticketValue, clientID, clien
 		if err != nil {
 			return nil, err
 		}
-		if err = s.validateTicketExchange(ticket, clientID, redirectURI); err != nil {
+		if err = s.validateTicketExchange(ticket, clientID, redirectURI, verifier, client.RequirePKCE); err != nil {
 			return nil, err
 		}
 		if err = s.storage.Delete(ctx, key); err != nil {
@@ -463,7 +568,7 @@ func (s *Server) ConsumeTicket(ctx context.Context, ticketValue, clientID, clien
 }
 
 // validateTicketExchange validates ticket state and client binding before consumption. validateTicketExchange 在消费前校验 Ticket 状态和客户端绑定。
-func (s *Server) validateTicketExchange(ticket *Ticket, clientID, redirectURI string) error {
+func (s *Server) validateTicketExchange(ticket *Ticket, clientID, redirectURI, verifier string, requirePKCE bool) error {
 	if err := s.checkTicketAlive(ticket); err != nil {
 		return err
 	}
@@ -473,7 +578,7 @@ func (s *Server) validateTicketExchange(ticket *Ticket, clientID, redirectURI st
 	if ticket.RedirectURI != redirectURI {
 		return ErrRedirectURIMismatch
 	}
-	return nil
+	return verifyPKCE(ticket.CodeChallenge, ticket.CodeChallengeMethod, verifier, requirePKCE)
 }
 
 // RevokeTicket revokes an SSO ticket. RevokeTicket 撤销 SSO Ticket。
@@ -481,6 +586,7 @@ func (s *Server) RevokeTicket(ctx context.Context, ticketValue string) error {
 	if ticketValue == "" {
 		return nil
 	}
+
 	// Revocation is idempotent: deleting a missing key is treated as success by storage adapters. 撤销保持幂等：删除不存在的键由存储适配器按成功处理。
 	if err := s.storage.Delete(ctx, s.getTicketKey(ticketValue)); err != nil {
 		return fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
@@ -497,6 +603,7 @@ func (s *Server) GetTicketTTL(ctx context.Context, ticketValue string) (int64, e
 	if err != nil {
 		return 0, fmt.Errorf("%w: %v", ErrStorageUnavailable, err)
 	}
+
 	// Normalize storage TTL sentinel values to Redis-like seconds. 将存储 TTL 哨兵值统一转换为类似 Redis 的秒级返回值。
 	switch {
 	case ttl == adapter.TTLNotFound:
@@ -535,21 +642,26 @@ func (s *Server) GenerateSharedTokenWithTimeout(ctx context.Context, clientID, l
 		return nil, ErrInvalidScope
 	}
 
+	logoutVersion, err := s.getLogoutVersion(ctx, loginID)
+	if err != nil {
+		return nil, err
+	}
 	tokenValue, err := s.generateRandomValue(SharedTokenLength, "SSO shared token")
 	if err != nil {
 		return nil, err
 	}
 	now := time.Now()
 	token := &SharedToken{
-		Token:      tokenValue,
-		Mode:       ModeSharedToken,
-		LoginID:    loginID,
-		ClientID:   clientID,
-		Scopes:     scopes,
-		CreateTime: now.Unix(),
-		ExpiresIn:  durationSeconds(timeout),
-		ExpiresAt:  now.Add(timeout),
-		Extra:      extra,
+		LogoutVersion: logoutVersion,
+		Token:         tokenValue,
+		Mode:          ModeSharedToken,
+		LoginID:       loginID,
+		ClientID:      clientID,
+		Scopes:        scopes,
+		CreateTime:    now.Unix(),
+		ExpiresIn:     durationSeconds(timeout),
+		ExpiresAt:     now.Add(timeout),
+		Extra:         extra,
 	}
 	if err = s.saveSharedToken(ctx, token); err != nil {
 		return nil, err
@@ -619,21 +731,26 @@ func (s *Server) CreateRemoteSessionWithTimeout(ctx context.Context, clientID, l
 		return nil, ErrInvalidScope
 	}
 
+	logoutVersion, err := s.getLogoutVersion(ctx, loginID)
+	if err != nil {
+		return nil, err
+	}
 	sessionID, err := s.generateRandomValue(RemoteSessionLength, "SSO remote session")
 	if err != nil {
 		return nil, err
 	}
 	now := time.Now()
 	session := &RemoteSession{
-		SessionID:  sessionID,
-		Mode:       ModeRemoteSession,
-		LoginID:    loginID,
-		ClientID:   clientID,
-		Scopes:     scopes,
-		CreateTime: now.Unix(),
-		ExpiresIn:  durationSeconds(timeout),
-		ExpiresAt:  now.Add(timeout),
-		Extra:      extra,
+		LogoutVersion: logoutVersion,
+		SessionID:     sessionID,
+		Mode:          ModeRemoteSession,
+		LoginID:       loginID,
+		ClientID:      clientID,
+		Scopes:        scopes,
+		CreateTime:    now.Unix(),
+		ExpiresIn:     durationSeconds(timeout),
+		ExpiresAt:     now.Add(timeout),
+		Extra:         extra,
 	}
 	if err = s.saveRemoteSession(ctx, session); err != nil {
 		return nil, err
@@ -712,6 +829,12 @@ func (s *Server) GenerateOAuth2Code(ctx context.Context, clientID, loginID, redi
 
 // GenerateOAuth2CodeWithTimeout generates an SSO OAuth2 authorization code with timeout. GenerateOAuth2CodeWithTimeout 使用指定有效期生成 SSO OAuth2 授权码。
 func (s *Server) GenerateOAuth2CodeWithTimeout(ctx context.Context, clientID, loginID, redirectURI string, scopes []string, extra map[string]any, timeout time.Duration) (*OAuth2Code, error) {
+	return s.GenerateOAuth2CodeWithOptions(ctx, clientID, loginID, redirectURI, scopes, extra, OneTimeCredentialOptions{Timeout: timeout})
+}
+
+// GenerateOAuth2CodeWithOptions issues a one-time credential with lifetime and PKCE policy. GenerateOAuth2CodeWithOptions 按有效期与 PKCE 策略签发一次性凭证。
+func (s *Server) GenerateOAuth2CodeWithOptions(ctx context.Context, clientID, loginID, redirectURI string, scopes []string, extra map[string]any, options OneTimeCredentialOptions) (*OAuth2Code, error) {
+	timeout := options.Timeout
 	if loginID == "" {
 		return nil, ErrUserIDEmpty
 	}
@@ -733,23 +856,34 @@ func (s *Server) GenerateOAuth2CodeWithTimeout(ctx context.Context, clientID, lo
 		return nil, ErrInvalidScope
 	}
 
+	if err := validatePKCEChallenge(options.CodeChallenge, options.CodeChallengeMethod, client.RequirePKCE); err != nil {
+		return nil, err
+	}
+
+	logoutVersion, err := s.getLogoutVersion(ctx, loginID)
+	if err != nil {
+		return nil, err
+	}
 	codeValue, err := s.generateRandomValue(OAuth2CodeLength, "SSO OAuth2 code")
 	if err != nil {
 		return nil, err
 	}
 	now := time.Now()
 	code := &OAuth2Code{
-		Code:        codeValue,
-		Mode:        ModeOAuth2,
-		LoginID:     loginID,
-		ClientID:    clientID,
-		RedirectURI: redirectURI,
-		Scopes:      scopes,
-		CreateTime:  now.Unix(),
-		ExpiresIn:   durationSeconds(timeout),
-		ExpiresAt:   now.Add(timeout),
-		Used:        false,
-		Extra:       extra,
+		CodeChallenge:       options.CodeChallenge,
+		CodeChallengeMethod: options.CodeChallengeMethod,
+		LogoutVersion:       logoutVersion,
+		Code:                codeValue,
+		Mode:                ModeOAuth2,
+		LoginID:             loginID,
+		ClientID:            clientID,
+		RedirectURI:         redirectURI,
+		Scopes:              scopes,
+		CreateTime:          now.Unix(),
+		ExpiresIn:           durationSeconds(timeout),
+		ExpiresAt:           now.Add(timeout),
+		Used:                false,
+		Extra:               extra,
 	}
 	if err = s.saveOAuth2Code(ctx, code); err != nil {
 		return nil, err
@@ -759,6 +893,11 @@ func (s *Server) GenerateOAuth2CodeWithTimeout(ctx context.Context, clientID, lo
 
 // ConsumeOAuth2Code validates and consumes an SSO OAuth2 authorization code. ConsumeOAuth2Code 校验并消费 SSO OAuth2 授权码。
 func (s *Server) ConsumeOAuth2Code(ctx context.Context, codeValue, clientID, clientSecret, redirectURI string) (*OAuth2Code, error) {
+	return s.ConsumeOAuth2CodeWithVerifier(ctx, codeValue, clientID, clientSecret, redirectURI, "")
+}
+
+// ConsumeOAuth2CodeWithVerifier verifies PKCE before one-time consumption; invalid proof leaves the credential intact. ConsumeOAuth2CodeWithVerifier 在一次性消费前验证 PKCE，证明无效时保留凭证。
+func (s *Server) ConsumeOAuth2CodeWithVerifier(ctx context.Context, codeValue, clientID, clientSecret, redirectURI, verifier string) (*OAuth2Code, error) {
 	client, err := s.getClient(ctx, clientID)
 	if err != nil {
 		return nil, err
@@ -775,7 +914,7 @@ func (s *Server) ConsumeOAuth2Code(ctx context.Context, codeValue, clientID, cli
 	if err != nil {
 		return nil, err
 	}
-	if err = s.validateOAuth2CodeExchange(code, clientID, redirectURI); err != nil {
+	if err = s.validateOAuth2CodeExchange(code, clientID, redirectURI, verifier, client.RequirePKCE); err != nil {
 		return nil, err
 	}
 
@@ -792,7 +931,10 @@ func (s *Server) ConsumeOAuth2Code(ctx context.Context, codeValue, clientID, cli
 		if err != nil {
 			return nil, err
 		}
-		if err = s.validateOAuth2CodeExchange(code, clientID, redirectURI); err != nil {
+		if err = s.checkLogoutVersion(ctx, code.LoginID, code.LogoutVersion, ErrInvalidOAuth2Code); err != nil {
+			return nil, err
+		}
+		if err = s.validateOAuth2CodeExchange(code, clientID, redirectURI, verifier, client.RequirePKCE); err != nil {
 			return nil, err
 		}
 	} else {
@@ -803,7 +945,7 @@ func (s *Server) ConsumeOAuth2Code(ctx context.Context, codeValue, clientID, cli
 		if err != nil {
 			return nil, err
 		}
-		if err = s.validateOAuth2CodeExchange(code, clientID, redirectURI); err != nil {
+		if err = s.validateOAuth2CodeExchange(code, clientID, redirectURI, verifier, client.RequirePKCE); err != nil {
 			return nil, err
 		}
 		if err = s.storage.Delete(ctx, key); err != nil {
@@ -815,7 +957,7 @@ func (s *Server) ConsumeOAuth2Code(ctx context.Context, codeValue, clientID, cli
 }
 
 // validateOAuth2CodeExchange validates code state and client binding before consumption. validateOAuth2CodeExchange 在消费前校验授权码状态和客户端绑定。
-func (s *Server) validateOAuth2CodeExchange(code *OAuth2Code, clientID, redirectURI string) error {
+func (s *Server) validateOAuth2CodeExchange(code *OAuth2Code, clientID, redirectURI, verifier string, requirePKCE bool) error {
 	if err := s.checkOAuth2CodeAlive(code); err != nil {
 		return err
 	}
@@ -825,7 +967,7 @@ func (s *Server) validateOAuth2CodeExchange(code *OAuth2Code, clientID, redirect
 	if code.RedirectURI != redirectURI {
 		return ErrRedirectURIMismatch
 	}
-	return nil
+	return verifyPKCE(code.CodeChallenge, code.CodeChallengeMethod, verifier, requirePKCE)
 }
 
 // RevokeOAuth2Code revokes an SSO OAuth2 authorization code. RevokeOAuth2Code 撤销 SSO OAuth2 授权码。
@@ -1068,8 +1210,7 @@ func (s *Server) saveOAuth2Code(ctx context.Context, code *OAuth2Code) error {
 	return nil
 }
 
-// saveClientSession serializes and stores a client session in the login index. saveClientSession 将客户端会话序列化并保存到登录索引。
-// Note: the server lock protects one process; concurrent registrations across server instances still need storage-level atomic merge support. 注意：Server 锁只保护单进程；跨实例并发注册仍需要存储层提供原子合并能力。
+// saveClientSession serializes and stores a client session in the login index; its lock protects one process, while concurrent cross-instance registrations require storage-level atomic merging. saveClientSession 序列化客户端会话并写入登录索引，锁仅保护单进程，跨实例并发注册需要存储层原子合并支持。
 func (s *Server) saveClientSession(ctx context.Context, session *ClientSession) error {
 	sessions, err := s.GetClientSessions(ctx, session.LoginID)
 	if err != nil {
@@ -1130,7 +1271,14 @@ func (s *Server) getTicket(ctx context.Context, ticketValue string) (*Ticket, er
 	if data == nil {
 		return nil, ErrInvalidTicket
 	}
-	return s.decodeTicket(data)
+	ticket, err := s.decodeTicket(data)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkLogoutVersion(ctx, ticket.LoginID, ticket.LogoutVersion, ErrInvalidTicket); err != nil {
+		return nil, err
+	}
+	return ticket, nil
 }
 
 // getSharedToken loads and decodes a shared token by value. getSharedToken 根据 Token 值加载并解码共享 Token。
@@ -1145,7 +1293,14 @@ func (s *Server) getSharedToken(ctx context.Context, tokenValue string) (*Shared
 	if data == nil {
 		return nil, ErrInvalidSharedToken
 	}
-	return s.decodeSharedToken(data)
+	token, err := s.decodeSharedToken(data)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkLogoutVersion(ctx, token.LoginID, token.LogoutVersion, ErrInvalidSharedToken); err != nil {
+		return nil, err
+	}
+	return token, nil
 }
 
 // getRemoteSession loads and decodes a remote session by id. getRemoteSession 根据会话 ID 加载并解码远程会话。
@@ -1160,7 +1315,14 @@ func (s *Server) getRemoteSession(ctx context.Context, sessionID string) (*Remot
 	if data == nil {
 		return nil, ErrInvalidRemoteSession
 	}
-	return s.decodeRemoteSession(data)
+	session, err := s.decodeRemoteSession(data)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkLogoutVersion(ctx, session.LoginID, session.LogoutVersion, ErrInvalidRemoteSession); err != nil {
+		return nil, err
+	}
+	return session, nil
 }
 
 // getOAuth2Code loads and decodes an OAuth2 code by value. getOAuth2Code 根据授权码值加载并解码 OAuth2 授权码。
@@ -1175,7 +1337,14 @@ func (s *Server) getOAuth2Code(ctx context.Context, codeValue string) (*OAuth2Co
 	if data == nil {
 		return nil, ErrInvalidOAuth2Code
 	}
-	return s.decodeOAuth2Code(data)
+	code, err := s.decodeOAuth2Code(data)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkLogoutVersion(ctx, code.LoginID, code.LogoutVersion, ErrInvalidOAuth2Code); err != nil {
+		return nil, err
+	}
+	return code, nil
 }
 
 // decodeTicket converts a stored payload into a Ticket object. decodeTicket 将存储载荷转换为 Ticket 对象。
@@ -1400,7 +1569,7 @@ func (s *Server) isValidLogoutCallbackURL(client *Client, callbackURL string) bo
 		return false
 	}
 	callback, err := url.Parse(callbackURL)
-	if err != nil || (callback.Scheme != "http" && callback.Scheme != "https") || callback.Hostname() == "" || callback.User != nil || callback.Fragment != "" {
+	if err != nil || !validConfigURL(callbackURL) {
 		return false
 	}
 	if s.isValidRedirectURI(client, callbackURL) {
@@ -1423,7 +1592,7 @@ func (s *Server) isValidLogoutCallbackURL(client *Client, callbackURL string) bo
 // originMatchesURL checks whether an origin matches a target URL. originMatchesURL 检查 Origin 是否匹配目标 URL。
 func originMatchesURL(origin string, target *url.URL) bool {
 	parsed, err := url.Parse(origin)
-	if err != nil {
+	if err != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.ForceQuery || strings.Contains(origin, "#") {
 		return false
 	}
 	return sameURLOrigin(parsed, target)
@@ -1431,10 +1600,8 @@ func originMatchesURL(origin string, target *url.URL) bool {
 
 // sameURLOrigin checks whether two URLs share an origin. sameURLOrigin 检查两个 URL 是否同源。
 func sameURLOrigin(a, b *url.URL) bool {
-	if a == nil || b == nil {
-		return false
-	}
-	return a.Scheme != "" && b.Scheme != "" && a.Host != "" && b.Host != "" && a.Scheme == b.Scheme && a.Host == b.Host
+	origin := normalizedHTTPOrigin(a)
+	return origin != "" && origin == normalizedHTTPOrigin(b)
 }
 
 // isValidScopes checks requested scopes against the client's allow-list. isValidScopes 根据客户端允许范围校验请求 scopes。

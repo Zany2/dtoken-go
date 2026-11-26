@@ -36,14 +36,15 @@ func TestSafeBackAllowsLocalPathsOnly(t *testing.T) {
 
 // TestHomeAndLoginFlow verifies anonymous and authenticated pages, login cookies, and redirects. TestHomeAndLoginFlow 验证匿名与已登录页面、登录 Cookie 及回跳。
 func TestHomeAndLoginFlow(t *testing.T) {
+	center := newTestCenter(t)
 	anonymous := httptest.NewRecorder()
-	home(anonymous, httptest.NewRequest(http.MethodGet, "/", nil))
+	center.home(anonymous, httptest.NewRequest(http.MethodGet, "/", nil))
 	if anonymous.Code != http.StatusOK || !strings.Contains(anonymous.Body.String(), "not logged in") {
 		t.Fatalf("anonymous home status=%d body=%q, want not logged in", anonymous.Code, anonymous.Body.String())
 	}
 
 	page := httptest.NewRecorder()
-	login(page, httptest.NewRequest(http.MethodGet, "/login?back=%2Fprotected%3Ffrom%3Dlogin", nil))
+	center.login(page, httptest.NewRequest(http.MethodGet, "/login?back=%2Fprotected%3Ffrom%3Dlogin", nil))
 	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "/protected?from=login") {
 		t.Fatalf("login page status=%d body=%q, want local back path", page.Code, page.Body.String())
 	}
@@ -52,7 +53,7 @@ func TestHomeAndLoginFlow(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	loggedIn := httptest.NewRecorder()
-	login(loggedIn, request)
+	center.login(loggedIn, request)
 	if loggedIn.Code != http.StatusFound || loggedIn.Header().Get("Location") != "/protected" {
 		t.Fatalf("login redirect status=%d location=%q, want /protected", loggedIn.Code, loggedIn.Header().Get("Location"))
 	}
@@ -65,7 +66,7 @@ func TestHomeAndLoginFlow(t *testing.T) {
 	homeRequest := httptest.NewRequest(http.MethodGet, "/", nil)
 	homeRequest.AddCookie(loginCookie)
 	authenticated := httptest.NewRecorder()
-	home(authenticated, homeRequest)
+	center.home(authenticated, homeRequest)
 	if authenticated.Code != http.StatusOK || !strings.Contains(authenticated.Body.String(), "loginId: alice") {
 		t.Fatalf("authenticated home status=%d body=%q, want alice", authenticated.Code, authenticated.Body.String())
 	}
@@ -73,7 +74,7 @@ func TestHomeAndLoginFlow(t *testing.T) {
 	unsafe := httptest.NewRecorder()
 	unsafeRequest := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("back=https%3A%2F%2Fevil.example%2F"))
 	unsafeRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	login(unsafe, unsafeRequest)
+	center.login(unsafe, unsafeRequest)
 	if unsafe.Code != http.StatusFound || unsafe.Header().Get("Location") != "/" {
 		t.Fatalf("unsafe back status=%d location=%q, want /", unsafe.Code, unsafe.Header().Get("Location"))
 	}
@@ -85,16 +86,17 @@ func TestHomeAndLoginFlow(t *testing.T) {
 
 // TestLoginRejectsMalformedFormAndUnsupportedMethod verifies login input and method errors. TestLoginRejectsMalformedFormAndUnsupportedMethod 验证登录表单错误与不支持的方法。
 func TestLoginRejectsMalformedFormAndUnsupportedMethod(t *testing.T) {
+	center := newTestCenter(t)
 	malformed := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("back=%zz"))
 	malformed.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	malformedRecorder := httptest.NewRecorder()
-	login(malformedRecorder, malformed)
+	center.login(malformedRecorder, malformed)
 	if malformedRecorder.Code != http.StatusBadRequest {
 		t.Fatalf("malformed form status = %d, want %d", malformedRecorder.Code, http.StatusBadRequest)
 	}
 
 	unsupported := httptest.NewRecorder()
-	login(unsupported, httptest.NewRequest(http.MethodPut, "/login", nil))
+	center.login(unsupported, httptest.NewRequest(http.MethodPut, "/login", nil))
 	if unsupported.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("unsupported method status = %d, want %d", unsupported.Code, http.StatusMethodNotAllowed)
 	}
@@ -104,7 +106,7 @@ func TestLoginRejectsMalformedFormAndUnsupportedMethod(t *testing.T) {
 func TestHTTPSSORoutesIssueAndExchangeTicket(t *testing.T) {
 	server := sso.NewServer()
 	defer server.Close()
-	mux, err := newDemoHandler(server)
+	mux, err := newDemoHandler(server, newTestCenter(t).auth)
 	if err != nil {
 		t.Fatal(err)
 	}

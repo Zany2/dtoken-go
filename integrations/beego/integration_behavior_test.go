@@ -7,10 +7,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
+	derror "github.com/Zany2/dtoken-go/errors"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	beegocontext "github.com/beego/beego/v2/server/web/context"
 )
 
@@ -191,7 +191,8 @@ func TestBeegoContextLookupHandlesNilAndTypedNil(t *testing.T) {
 
 func newBeegoBehaviorManager(t *testing.T) *manager.Manager {
 	t.Helper()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
+	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

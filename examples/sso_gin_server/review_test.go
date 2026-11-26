@@ -19,7 +19,8 @@ func TestGinLoginInputBoundary(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	server := sso.NewServer()
 	defer server.Close()
-	router, err := newDemoRouter(server)
+	center := newTestCenter(t)
+	router, err := newDemoRouter(server, center.auth)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +63,7 @@ func TestGinLoginInputBoundary(t *testing.T) {
 			}
 			check := httptest.NewRequest(http.MethodGet, "/", nil)
 			check.AddCookie(cookies[0])
-			if id, ok := sso.LoginIDFromCookie(cookie)(check); !ok || id != tc.wantID {
+			if id, ok := center.loginID(check); !ok || id != tc.wantID {
 				t.Fatalf("identity = %q, %v; want %q", id, ok, tc.wantID)
 			}
 		})
@@ -86,7 +87,7 @@ func TestGinLoginInputBoundary(t *testing.T) {
 	}
 	check := httptest.NewRequest(http.MethodGet, "/", nil)
 	check.AddCookie(recorder.Result().Cookies()[0])
-	if id, ok := sso.LoginIDFromCookie(cookie)(check); !ok || id != "multipart-user" {
+	if id, ok := center.loginID(check); !ok || id != "multipart-user" {
 		t.Fatalf("multipart identity = %q, %v", id, ok)
 	}
 	page := performGinRequest(router, http.MethodGet, "/login", "")
@@ -106,7 +107,8 @@ func TestGinBestEffortLogout(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	server := sso.NewServer()
 	defer server.Close()
-	router, err := newDemoRouter(server)
+	center := newTestCenter(t)
+	router, err := newDemoRouter(server, center.auth)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,6 +160,9 @@ func TestGinBestEffortLogout(t *testing.T) {
 		t.Fatal(err)
 	}
 	cleared := recorder.Result().Cookies()
+	if _, ok := center.loginID(request); ok {
+		t.Fatal("best-effort logout left copied Cookie usable")
+	}
 	if recorder.Code != http.StatusOK || calls != 1 || len(sessions) != 0 || len(cleared) != 1 || cleared[0].Name != cookie.Name || cleared[0].Path != cookie.Path || cleared[0].MaxAge != -1 {
 		t.Fatalf("best-effort logout: status=%d calls=%d sessions=%v cookies=%v", recorder.Code, calls, sessions, cleared)
 	}

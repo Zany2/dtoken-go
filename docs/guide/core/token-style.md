@@ -4,6 +4,8 @@
 
 DToken-Go uses `TokenStyle` to control how Token strings are generated. Regardless of the style, login state, Sessions, permissions, disable state, kickout, and replace still rely on server-side storage.
 
+In snippets, dt names the root package, adapter names contract, and storage is an existing storage implementation. Build returns Auth; close it after use.
+
 ## Supported Styles
 
 | Style | Constant | Characteristics | Suitable for |
@@ -21,29 +23,41 @@ DToken-Go uses `TokenStyle` to control how Token strings are generated. Regardle
 ## Basic Usage
 
 ```go
-mgr, err := defaults.NewBuilder().
+auth, err := dt.NewBuilder().
     TokenStyle(adapter.TokenStyleRandom64).
-    SetStorage(storage).
+    Storage(storage).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 JWT style requires a signing secret:
 
 ```go
-mgr, err := defaults.NewBuilder().
+auth, err := dt.NewBuilder().
     TokenStyle(adapter.TokenStyleJWT).
     JwtSecretKey("your-very-strong-secret").
-    SetStorage(storage).
+    Storage(storage).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 Shortcut:
 
 ```go
-mgr, err := defaults.NewBuilder().
+auth, err := dt.NewBuilder().
     JwtSecret("your-very-strong-secret").
-    SetStorage(storage).
+    Storage(storage).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ## JWT Is Not Fully Stateless
@@ -67,6 +81,7 @@ If built-in styles are not enough, implement `adapter.Generator`:
 
 ```go
 import (
+    dt "github.com/Zany2/dtoken-go"
     "crypto/rand"
     "encoding/hex"
 )
@@ -81,10 +96,14 @@ func (MyGenerator) Generate(loginID, device, deviceID string) (string, error) {
     return hex.EncodeToString(value[:]), nil
 }
 
-mgr, err := defaults.NewBuilder().
+auth, err := dt.NewBuilder().
     SetGenerator(MyGenerator{}).
-    SetStorage(storage).
+    Storage(storage).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 A custom generator should ensure:

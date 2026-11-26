@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
 	gofiber "github.com/gofiber/fiber/v2"
 )
 
@@ -43,7 +43,8 @@ func TestAuthMiddlewareSuccessAndFailure(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
+	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -88,11 +89,14 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).AuthType("fiber-annotation").Build()
+	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).AuthType("fiber-annotation").BuildInstance()
+	mgr := builtAuth2.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	token, err := mgr.Login(ctx, "fiber-annotation-user")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
@@ -102,6 +106,7 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	}
 
 	app := gofiber.New()
+	app.Use(RegisterDTokenContextMiddleware(ctx, WithManager(mgr)))
 	handled := false
 	app.Get("/reports", CheckPermissionMiddleware(ctx, []string{"report:read"}, func(c *gofiber.Ctx) error {
 		handled = true
@@ -119,6 +124,7 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	}
 
 	app = gofiber.New()
+	app.Use(RegisterDTokenContextMiddleware(ctx, WithManager(mgr)))
 	handled = false
 	app.Get("/reports", CheckRoleMiddleware(ctx, []string{"admin"}, func(c *gofiber.Ctx) error {
 		handled = true

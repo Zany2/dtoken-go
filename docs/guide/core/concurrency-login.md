@@ -1,6 +1,10 @@
 # Concurrent Login Policy
 
+Import aliases for code fragments: dt = github.com/Zany2/dtoken-go.
+
 [中文文档](../core/concurrency-login_zh.md) | English
+
+config names github.com/Zany2/dtoken-go/config. These settings apply when building Auth; account write locks belong to one engine and do not provide distributed cross-process coordination.
 
 ## Overview
 
@@ -20,9 +24,13 @@ Together they decide whether one account can stay online from multiple terminals
 `IsConcurrent(true)` allows multiple online terminals for the same account.
 
 ```go
-mgr, err := dtoken.NewBuilder().
+auth, err := dt.NewBuilder().
     IsConcurrent(true).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 `IsConcurrent(false)` means the same scope cannot have concurrent logins. New login is handled according to `ReplacedLoginExitMode`.
@@ -45,11 +53,15 @@ Reuse depends on the device dimension:
 `MaxLoginCount` limits how many terminals may remain online in the selected scope.
 
 ```go
-mgr, err := dtoken.NewBuilder().
+auth, err := dt.NewBuilder().
     IsConcurrent(true).
     IsShare(false).
     MaxLoginCount(2).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 When the limit is exceeded, the oldest terminal is handled by `OverflowLogoutMode`.
@@ -102,7 +114,7 @@ Shared login events use the device type and device ID of the reused terminal, ev
 ### Common Multi-Terminal Login
 
 ```go
-dtoken.NewBuilder().
+dt.NewBuilder().
     IsConcurrent(true).
     IsShare(false).
     MaxLoginCount(5).
@@ -114,7 +126,7 @@ Good for common web and app scenarios.
 ### Token Reuse On Same Device
 
 ```go
-dtoken.NewBuilder().
+dt.NewBuilder().
     IsConcurrent(true).
     IsShare(true).
     ConcurrencyScope(config.ConcurrencyScopeDevice)
@@ -125,7 +137,7 @@ Useful when repeated login from the same device should not create many tokens.
 ### New Login Replaces Old Login
 
 ```go
-dtoken.NewBuilder().
+dt.NewBuilder().
     IsConcurrent(false).
     ReplacedLoginExitMode(config.ReplacedLoginExitModeOldDevice)
 ```
@@ -135,7 +147,7 @@ Good for admin systems that allow only one active terminal.
 ### Keep Old Login And Reject New Login
 
 ```go
-dtoken.NewBuilder().
+dt.NewBuilder().
     IsConcurrent(false).
     ReplacedLoginExitMode(config.ReplacedLoginExitModeNewDevice)
 ```

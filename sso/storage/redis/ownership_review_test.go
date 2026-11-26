@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	redisstorage "github.com/Zany2/dtoken-go/com/storage/redis"
 	"github.com/Zany2/dtoken-go/sso"
+	redisstorage "github.com/Zany2/dtoken-go/storage/redis"
 	goredis "github.com/redis/go-redis/v9"
 )
 

@@ -1,33 +1,9 @@
-# API Stability
+# API boundaries and migration
 
-This project is modular, but its public surface is intended to stay predictable across patch and minor releases.
+This branch deliberately changes package paths and capability composition. Old directories and builder capability switches are not compatibility APIs. The global package has been removed; use root functions, AuthType selectors, or Auth instances. See the [migration guide](../../design/module-migration.md).
 
-## Stable Public Areas
+Public areas include root instance/default facades, AuthType selectors, the shared registry, contract, config, errors, event, capability packages, components, frameworks, and SSO. Applications do not import internal implementation packages; nameable engine extension types are exposed by the root.
 
-- `core` contains the core auth and manager logic.
-- `dtoken` exposes the main global facade.
-- `defaults` wires the default builder and bundled components.
-- `com/*` contains reusable component implementations.
-- `integrations/*` exposes framework-specific facades and middleware.
-- `sso/*` contains optional SSO-related modules.
+Consumers must select matching root and extension releases. Gin canonical sources maintain framework convenience exports. Applications prefer the root builder and explicit instance injection. Run standalone module and external consumer checks before release.
 
-## What Should Stay Compatible
-
-- Exported function names and signatures.
-- Exported types used by framework adapters and examples.
-- Error values returned by public APIs.
-- Module paths and package layout for published tags.
-
-## What May Change
-
-- Internal helpers under `internal` paths.
-- Private fields and unexported functions.
-- Example code and docs that are not part of the API contract.
-
-## Versioning Rule
-
-- Patch releases should not break existing callers.
-- Minor releases may add new APIs, but should avoid breaking existing ones.
-- Breaking changes should be introduced only with a deliberate version bump.
-
-For package-level usage details, see the [Core API Cheatsheet](core-api-cheatsheet.md).
+Manager, Strategy, and assembly types exposed as root aliases remain public compatibility commitments; their implementation under internal does not remove that obligation. Root business functions match Auth method signatures; select other namespaces through AuthType(name). See [Auth API](../../api/auth.md) and [root facade API](../../api/dtoken.md).

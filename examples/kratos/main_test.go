@@ -4,19 +4,21 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/Zany2/dtoken-go"
+	dterror "github.com/Zany2/dtoken-go/errors"
+	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/Zany2/dtoken-go/dtoken"
-	kratosdt "github.com/Zany2/dtoken-go/integrations/kratos"
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
 )
 
 // TestLoginValidationAndAuthorizationSeed verifies login validation and demo authorization data. TestLoginValidationAndAuthorizationSeed 验证登录校验与示例授权数据初始化。
 func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	setupKratosManager(t)
-	server := newKratosExampleServer()
+	server, err := newKratosExampleServer(registeredAuth())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	missing := requestKratos(t, server, http.MethodPost, "/login", `{"username":"alice"}`, "")
 	if missing.Code != http.StatusBadRequest {
@@ -40,7 +42,7 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	if err := json.Unmarshal(login.Body.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode login response: %v", err)
 	}
-	if envelope.Code != kratosdt.CodeSuccess || envelope.Data.Token == "" {
+	if envelope.Code != dterror.CodeSuccess || envelope.Data.Token == "" {
 		t.Fatalf("login envelope = %+v, want success and token", envelope)
 	}
 	if id, err := dtoken.GetLoginID(context.Background(), envelope.Data.Token); err != nil || id != "alice" {
@@ -58,18 +60,21 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 func TestProtectedRoutesAndLogout(t *testing.T) {
 	setupKratosManager(t)
 	ctx := context.Background()
-	token, err := dtoken.Login(ctx, "alice")
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "alice"})
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
-	if err = dtoken.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
+	if err = dtoken.AddRoles(ctx, dtoken.RoleOptions{LoginID: "alice", Roles: []string{"admin"}}); err != nil {
 		t.Fatalf("AddRoles() error = %v", err)
 	}
-	if err = dtoken.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
+	if err = dtoken.AddPermissions(ctx, dtoken.PermissionOptions{LoginID: "alice", Permissions: []string{"article:read"}}); err != nil {
 		t.Fatalf("AddPermissions() error = %v", err)
 	}
 
-	server := newKratosExampleServer()
+	server, err := newKratosExampleServer(registeredAuth())
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, route := range []string{"/me", "/admin", "/articles"} {
 		for _, header := range []string{"dtoken", "Authorization"} {
 			for _, value := range []string{token, "Bearer " + token} {
@@ -77,7 +82,7 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 				req.Header.Set(header, value)
 				response := httptest.NewRecorder()
 				server.ServeHTTP(response, req)
-				assertKratosResponse(t, response, http.StatusOK, kratosdt.CodeSuccess)
+				assertKratosResponse(t, response, http.StatusOK, dterror.CodeSuccess)
 			}
 		}
 	}
@@ -87,17 +92,17 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 			method = http.MethodPost
 		}
 		for _, invalidToken := range []string{"", "invalid-token"} {
-			assertKratosResponse(t, requestKratos(t, server, method, route, "", invalidToken), http.StatusUnauthorized, kratosdt.CodeNotLogin)
+			assertKratosResponse(t, requestKratos(t, server, method, route, "", invalidToken), http.StatusUnauthorized, dterror.CodeNotLogin)
 		}
 	}
 
-	bobToken, err := dtoken.Login(ctx, "bob")
+	bobToken, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "bob"})
 	if err != nil {
 		t.Fatalf("Login(bob) error = %v", err)
 	}
 	for _, route := range []string{"/admin", "/articles"} {
 		response := requestKratos(t, server, http.MethodGet, route, "", bobToken)
-		assertKratosResponse(t, response, http.StatusForbidden, kratosdt.CodePermissionDenied)
+		assertKratosResponse(t, response, http.StatusForbidden, dterror.CodePermissionDenied)
 	}
 
 	logout := requestKratos(t, server, http.MethodPost, "/logout", "", token)
@@ -114,7 +119,9 @@ func setupKratosManager(t *testing.T) {
 	t.Helper()
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	initDToken()
+	if _, err := initDToken(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func requestKratos(t *testing.T, server *khttp.Server, method, path, body, token string) *httptest.ResponseRecorder {
@@ -131,4 +138,42 @@ func requestKratos(t *testing.T, server *khttp.Server, method, path, body, token
 	recorder := httptest.NewRecorder()
 	server.ServeHTTP(recorder, req)
 	return recorder
+}
+
+// registeredAuth returns the explicitly registered test fixture. registeredAuth 返回显式注册的测试夹具。
+func registeredAuth() *dtoken.Auth {
+	mgr, err := dtoken.GetManager()
+	if err != nil {
+		panic(err)
+	}
+	return dtoken.New(mgr)
+}
+
+// TestInjectedLoginUsesBuiltInstance verifies routes and the registry share the built engine. TestInjectedLoginUsesBuiltInstance 验证路由与注册表共用构建返回的引擎。
+func TestInjectedLoginUsesBuiltInstance(t *testing.T) {
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+	auth, err := initDToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(auth.Close)
+	srv, err := newKratosExampleServer(auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := requestKratos(t, srv, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("login status = %d", response.Code)
+	}
+	ctx := context.Background()
+	if _, err := auth.GetSession(ctx, "alice"); err != nil {
+		t.Fatalf("injected session: %v", err)
+	}
+	if !auth.HasRole(ctx, "alice", "admin") || !auth.HasPermission(ctx, "alice", "article:read") {
+		t.Fatal("access grants missing from injected instance")
+	}
+	if mgr, err := dtoken.GetManager(); err != nil || mgr != auth.Manager() {
+		t.Fatalf("Build registration differs from injected instance: %v", err)
+	}
 }

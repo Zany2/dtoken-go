@@ -3,12 +3,14 @@ package chi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
 )
 
 // TestChiContextAdapterRequestAndResponse verifies request and response adaptation. TestChiContextAdapterRequestAndResponse 验证请求与响应适配。
@@ -64,8 +66,8 @@ func TestChiContextAdapterRequestAndResponse(t *testing.T) {
 	if got := ctx.GetString("name"); got != "dtoken" {
 		t.Fatalf("GetString() = %q, want dtoken", got)
 	}
-	if got := ctx.MustGet("name"); got != "dtoken" {
-		t.Fatalf("MustGet() = %v, want dtoken", got)
+	if got, err := ctx.GetRequired("name"); err != nil || got != "dtoken" {
+		t.Fatalf("GetRequired() = %v, want dtoken", got)
 	}
 	if got, ok := ctx.Get("name"); !ok || got != "dtoken" {
 		t.Fatalf("Get() = %v, %v, want dtoken,true", got, ok)
@@ -111,15 +113,12 @@ func TestChiContextAdapterRequestAndResponse(t *testing.T) {
 	}
 }
 
-// TestChiContextMustGetPanicsWhenMissing verifies missing values trigger a panic. TestChiContextMustGetPanicsWhenMissing 验证缺失值会触发 panic。
-func TestChiContextMustGetPanicsWhenMissing(t *testing.T) {
+// TestChiContextGetRequiredReturnsErrorWhenMissing verifies missing values return an error. TestChiContextGetRequiredReturnsErrorWhenMissing 验证缺失值返回错误。
+func TestChiContextGetRequiredReturnsErrorWhenMissing(t *testing.T) {
 	ctx := NewChiContext(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
-	defer func() {
-		if recover() == nil {
-			t.Fatal("MustGet(missing) should panic")
-		}
-	}()
-	ctx.MustGet("missing")
+	if value, err := ctx.GetRequired("missing"); value != nil || !errors.Is(err, derror.ErrKeyNotFound) {
+		t.Fatalf("GetRequired(missing) = (%v, %v), want ErrKeyNotFound", value, err)
+	}
 }
 
 // TestChiContextFallsBackToRemoteAddr verifies client IP fallback to RemoteAddr. TestChiContextFallsBackToRemoteAddr 验证客户端 IP 回退到 RemoteAddr。

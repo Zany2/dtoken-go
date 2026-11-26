@@ -2,10 +2,11 @@
 package gf
 
 import (
+	"fmt"
 	"net/http"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
-	"github.com/gogf/gf/v2/errors/gerror"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
@@ -115,12 +116,12 @@ func (g *GFContext) GetBody() (body []byte, err error) {
 	// Translate GoFrame's read failure without exposing its cached partial body. 转换 GoFrame 的读取异常，避免后续返回缓存的残缺请求体。
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			if readErr, ok := recovered.(*gerror.Error); ok {
+			if readErr, ok := recovered.(error); ok {
 				g.bodyErr = readErr
-				body, err = nil, readErr
-				return
+			} else {
+				g.bodyErr = fmt.Errorf("read request body failed: %v", recovered)
 			}
-			panic(recovered)
+			body, err = nil, g.bodyErr
 		}
 	}()
 	return g.c.GetBody(), nil
@@ -167,13 +168,13 @@ func (g *GFContext) GetString(key string) string {
 	return v.String()
 }
 
-// MustGet implements adapter.RequestContext 实现 adapter.RequestContext 接口
-func (g *GFContext) MustGet(key string) any {
-	v := g.c.GetCtxVar(key)
-	if v.IsNil() {
-		panic("key not found: " + key)
+// GetRequired returns a context value or ErrKeyNotFound when missing. GetRequired 返回上下文值，不存在时返回 ErrKeyNotFound。
+func (g *GFContext) GetRequired(key string) (any, error) {
+	value, ok := g.Get(key)
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", derror.ErrKeyNotFound, key)
 	}
-	return v.Val()
+	return value, nil
 }
 
 // Abort implements adapter.RequestContext 实现 adapter.RequestContext 接口

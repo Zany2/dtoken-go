@@ -6,9 +6,10 @@ English | [中文文档](../security/oauth2_zh.md)
 
 The current project includes a lightweight OAuth2 authorization server implementation under:
 
-- `core/oauth2`
-- `core/manager/feature_oauth2.go`
-- the OAuth2 wrapper functions in `dtoken`
+- `oauth2`
+- `oauth2.Service`
+
+Service interfaces and shared types live in contract/oauth2; implementations live in oauth2. Both ship with the root module. Service borrows storage and codecs and optionally publishes events through Auth; it does not own or close those components. OAuth2 access tokens use their own validation APIs and are distinct from login tokens issued by Auth.Login.
 
 ## Supported Grant Types
 
@@ -36,7 +37,57 @@ According to the current code:
 - access token: `2` hours
 - refresh token: `30` days
 
-Enable the optional module with `dtoken.NewBuilder().EnableOAuth2()` before using the global helpers. Authorization codes persist a precise `ExpiresAt` deadline; older records without it retain `CreateTime + ExpiresIn` validation.
+
+## Explicit service composition
+
+Compose an independent OAuth2 Manager and Service. auth supplies shared components and optional event publication.
+
+<!-- dtoken-compile: oauth2 -->
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/Zany2/dtoken-go"
+	"github.com/Zany2/dtoken-go/oauth2"
+)
+
+func main() {
+	auth, err := dtoken.NewBuilder().IsPrintBanner(false).Build()
+	if err != nil {
+		panic(err)
+	}
+	defer auth.Close()
+	cfg := auth.Config()
+	server, err := oauth2.NewDefaultOAuth2Server(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	service := oauth2.NewService(server, auth)
+	err = service.RegisterOAuth2Client(&oauth2.Client{
+		ClientID:     "server-app",
+		ClientSecret: "secret",
+		GrantTypes:   []oauth2.GrantType{oauth2.GrantTypeClientCredentials},
+		Scopes:       []string{"read"},
+	})
+	if err != nil {
+		panic(err)
+	}
+	token, err := service.OAuth2Token(context.Background(), &oauth2.TokenRequest{
+		GrantType:    oauth2.GrantTypeClientCredentials,
+		ClientID:     "server-app",
+		ClientSecret: "secret",
+		Scopes:       []string{"read"},
+	}, nil)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(token)
+}
+```
 
 ## Client Model
 
@@ -56,7 +107,7 @@ client := &oauth2.Client{
 ## Register Client
 
 ```go
-err := dtoken.RegisterOAuth2Client(&oauth2.Client{
+err := service.RegisterOAuth2Client(&oauth2.Client{
     ClientID:     "web-app",
     ClientSecret: "secret",
     RedirectURIs: []string{"http://localhost:3000/callback"},
@@ -70,10 +121,10 @@ err := dtoken.RegisterOAuth2Client(&oauth2.Client{
 
 ## Unified Token Entry
 
-`dtoken` provides a unified token entry:
+`oauth2.Service` provides a unified token entry:
 
 ```go
-token, err := dtoken.OAuth2Token(ctx, &oauth2.TokenRequest{
+token, err := service.OAuth2Token(ctx, &oauth2.TokenRequest{
     GrantType:    oauth2.GrantTypeClientCredentials,
     ClientID:     "server-app",
     ClientSecret: "secret",
@@ -86,7 +137,7 @@ token, err := dtoken.OAuth2Token(ctx, &oauth2.TokenRequest{
 ### Generate Authorization Code
 
 ```go
-authCode, err := dtoken.GenerateOAuth2AuthorizationCode(
+authCode, err := service.GenerateOAuth2AuthorizationCode(
     ctx,
     "web-app",
     "10001",
@@ -105,7 +156,7 @@ This validates:
 ### Exchange For Token
 
 ```go
-token, err := dtoken.ExchangeOAuth2CodeForToken(
+token, err := service.ExchangeOAuth2CodeForToken(
     ctx,
     authCode.Code,
     "web-app",
@@ -119,7 +170,7 @@ token, err := dtoken.ExchangeOAuth2CodeForToken(
 Clients can bind the authorization code to a proof key. The current implementation still requires a non-empty client secret; PKCE does not replace client authentication.
 
 ```go
-authCode, err := dtoken.GenerateOAuth2AuthorizationCodeWithPKCE(
+authCode, err := service.GenerateOAuth2AuthorizationCodeWithPKCE(
     ctx,
     "mobile-app",
     "10001",
@@ -129,7 +180,7 @@ authCode, err := dtoken.GenerateOAuth2AuthorizationCodeWithPKCE(
     oauth2.CodeChallengeMethodS256,
 )
 
-token, err := dtoken.ExchangeOAuth2CodeForTokenWithPKCE(
+token, err := service.ExchangeOAuth2CodeForTokenWithPKCE(
     ctx,
     authCode.Code,
     "mobile-app",
@@ -160,7 +211,7 @@ type AccessToken struct {
 ## Client Credentials Flow
 
 ```go
-token, err := dtoken.OAuth2ClientCredentialsToken(
+token, err := service.OAuth2ClientCredentialsToken(
     ctx,
     "server-app",
     "secret",
@@ -180,7 +231,7 @@ validateUser := func(username, password string) (string, error) {
     return "", fmt.Errorf("invalid credentials")
 }
 
-token, err := dtoken.OAuth2PasswordGrantToken(
+token, err := service.OAuth2PasswordGrantToken(
     ctx,
     "native-app",
     "secret",
@@ -196,7 +247,7 @@ The current implementation requires `validateUser`; otherwise it returns an erro
 ## Refresh Access Token
 
 ```go
-newToken, err := dtoken.RefreshOAuth2AccessToken(
+newToken, err := service.RefreshOAuth2AccessToken(
     ctx,
     "web-app",
     token.RefreshToken,
@@ -217,15 +268,15 @@ The current implementation:
 ## Validate Access Token
 
 ```go
-valid := dtoken.ValidateOAuth2AccessToken(ctx, token.Token)
+valid := service.ValidateOAuth2AccessToken(ctx, token.Token)
 
-info, err := dtoken.ValidateOAuth2AccessTokenAndGetInfo(ctx, token.Token)
+info, err := service.ValidateOAuth2AccessTokenAndGetInfo(ctx, token.Token)
 ```
 
 ## Revoke Token
 
 ```go
-err := dtoken.RevokeOAuth2Token(ctx, token.Token)
+err := service.RevokeOAuth2Token(ctx, token.Token)
 ```
 
 Revocation clears both:
@@ -239,6 +290,18 @@ The current implementation checks whether requested scopes belong to the client 
 If the client `Scopes` field is empty, scope restriction is treated as open.
 
 Authorization-code exchange and refresh also recheck the current client scope allowlist. Code exchange additionally requires the original redirect URI to remain registered. These checks apply to new issuance; they do not retroactively revoke existing access tokens.
+
+```go
+client := &oauth2.Client{
+	ClientID:     "web-app",
+	ClientSecret: "secret",
+	RedirectURIs: []string{"http://localhost:3000/callback"},
+	GrantTypes: []oauth2.GrantType{
+		oauth2.GrantTypeAuthorizationCode,
+	},
+	Scopes: []string{"read", "write", "profile"},
+}
+```
 
 ## Recommended Integration Model
 
@@ -274,3 +337,7 @@ The OAuth2 implementation is already usable for common authorization flows, with
 - [Nonce Anti-Replay](../security/nonce.md)
 - [Refresh Token Guide](../security/refresh-token.md)
 - [Authentication Guide](../core/authentication.md)
+
+## Revocation storage cost
+
+`Service.RevokeOAuth2Token` and server `RevokeToken` share one access-token read and decode; Service reuses that record for the revocation event. The access token and associated refresh token are removed in one `Storage.Delete` call, corresponding to one multi-key DEL in Redis. Revocation adds no client read and does not require every custom backend to delete multiple keys atomically. Read or delete failures return an error without emitting a success event.

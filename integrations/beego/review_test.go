@@ -6,6 +6,13 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"github.com/Zany2/dtoken-go"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
+	"github.com/Zany2/dtoken-go/storage/memory"
+	web "github.com/beego/beego/v2/server/web"
+	beegocontext "github.com/beego/beego/v2/server/web/context"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -15,14 +22,6 @@ import (
 	"testing"
 	"testing/iotest"
 	"time"
-
-	"github.com/Zany2/dtoken-go/com/storage/memory"
-	"github.com/Zany2/dtoken-go/core/adapter"
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
-	web "github.com/beego/beego/v2/server/web"
-	beegocontext "github.com/beego/beego/v2/server/web/context"
 )
 
 // beegoReviewChecks covers authentication filters and annotation-based access. beegoReviewChecks 覆盖鉴权过滤器及基于注解的访问检查。
@@ -49,17 +48,18 @@ var beegoReviewChecks = []struct {
 // newBeegoReviewManager creates an isolated manager without asynchronous work. newBeegoReviewManager 创建无异步任务的独立 Manager。
 func newBeegoReviewManager(t *testing.T, authType string, storage adapter.Storage) *manager.Manager {
 	t.Helper()
-	b := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
+	b := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
 	if authType != "" {
 		b.AuthType(authType)
 	}
 	if storage != nil {
-		b.SetStorage(storage)
+		b.Storage(storage)
 	}
-	mgr, err := b.Build()
+	mgrAuth, err := b.BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	return mgr
 }
@@ -311,8 +311,12 @@ func TestBeegoReviewManagerIsolation(t *testing.T) {
 	global := newBeegoReviewManager(t, "", nil)
 	local := newBeegoReviewManager(t, "beego-local", nil)
 	selected := newBeegoReviewManager(t, "beego-selected", nil)
-	dtoken.SetManager(global)
-	dtoken.SetManager(selected)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
+	if err := dtoken.SetManager(selected); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	beegoReviewLogin(t, global, "same-token")
 	beegoReviewLogin(t, local, "same-token")
 	c, _ := newBeegoBehaviorContext(http.MethodGet, "/review", local.GetConfig().TokenName, "same-token")
@@ -324,7 +328,7 @@ func TestBeegoReviewManagerIsolation(t *testing.T) {
 	}{
 		{nil, "", local}, {nil, "beego-selected", selected}, {local, "missing", local},
 	} {
-		if got, err := resolveRequestManager(c, tc.explicit, tc.authType); err != nil || got != tc.want {
+		if got, err := resolveRequestManager(c, tc.explicit, tc.authType, dtoken.GetManager); err != nil || got != tc.want {
 			t.Fatalf("manager=%p,%v want=%p", got, err, tc.want)
 		}
 	}
@@ -342,8 +346,8 @@ func TestBeegoReviewManagerIsolation(t *testing.T) {
 	}
 	var typedNil *DTokenContext
 	c.Input.SetData(DTokenCtxKey, typedNil)
-	if got, err := GetManagerByContext(c); err != nil || got != global {
-		t.Fatalf("typed nil fallback=%p,%v", got, err)
+	if got, err := GetManagerByContext(c); !errors.Is(err, ErrManagerNotFound) {
+		t.Fatalf("typed nil missing binding=%p,%v", got, err)
 	}
 	local.CloseManager()
 	for _, mgr := range []*manager.Manager{nil, local} {
@@ -362,12 +366,13 @@ func TestBeegoReviewManagerIsolation(t *testing.T) {
 // TestBeegoReviewTokenSources verifies Query, Body and route parameters remain separate. TestBeegoReviewTokenSources 验证 Query、Body 与路由参数保持独立。
 func TestBeegoReviewTokenSources(t *testing.T) {
 	for _, bodyOnly := range []bool{false, true} {
-		b := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+		b := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
 			IsReadHeader(false).IsReadCookie(false).IsReadQuery(!bodyOnly).IsReadBody(bodyOnly)
-		mgr, err := b.Build()
+		mgrAuth, err := b.BuildInstance()
 		if err != nil {
 			t.Fatal(err)
 		}
+		mgr := mgrAuth.Manager()
 		t.Cleanup(mgr.CloseManager)
 		key := mgr.GetConfig().TokenName
 		var multipartBody bytes.Buffer

@@ -1,14 +1,16 @@
 package main
 
 import (
+	dtoken "github.com/Zany2/dtoken-go"
+	dterror "github.com/Zany2/dtoken-go/errors"
+	dt1 "github.com/Zany2/dtoken-go/storage/memory"
+
 	"context"
 	"encoding/json"
+	"github.com/go-chi/chi/v5"
 	"net/http"
 	"testing"
 	"time"
-
-	chidt "github.com/Zany2/dtoken-go/integrations/chi"
-	"github.com/go-chi/chi/v5"
 )
 
 // TestProductionRouteFailures covers the actual registration, authentication and access failure callbacks. TestProductionRouteFailures 覆盖实际注册、认证和权限过滤器的失败回调。
@@ -16,7 +18,7 @@ func TestProductionRouteFailures(t *testing.T) {
 	setupChiManager(t)
 	ctx := context.Background()
 	router := chi.NewRouter()
-	registerRoutes(router)
+	registerTestRoutes(t, router)
 	check := func(method, path, body, token string, wantStatus, wantCode int) {
 		t.Helper()
 		rec := requestChi(t, router, method, path, body, token)
@@ -37,36 +39,39 @@ func TestProductionRouteFailures(t *testing.T) {
 		if path == "/logout" {
 			method = http.MethodPost
 		}
-		check(method, path, "", "", http.StatusUnauthorized, chidt.CodeNotLogin)
-		check(method, path, "", "invalid-token", http.StatusUnauthorized, chidt.CodeNotLogin)
+		check(method, path, "", "", http.StatusUnauthorized, dterror.CodeNotLogin)
+		check(method, path, "", "invalid-token", http.StatusUnauthorized, dterror.CodeNotLogin)
 	}
-	token, err := chidt.Login(ctx, "reader", "web")
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "reader", Device: "web"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/admin", "/articles"} {
-		check(http.MethodGet, path, "", token, http.StatusForbidden, chidt.CodePermissionDenied)
+		check(http.MethodGet, path, "", token, http.StatusForbidden, dterror.CodePermissionDenied)
 	}
-	if err := chidt.DisableDevice(ctx, "reader", "web", time.Hour); err != nil {
+	if err := dtoken.DisableDevice(ctx, dtoken.DeviceDisableOptions{LoginID: "reader", Device: "web", Duration: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
-	check(http.MethodGet, "/me", "", token, http.StatusForbidden, chidt.CodeAccountDisabled)
+	check(http.MethodGet, "/me", "", token, http.StatusForbidden, dterror.CodeAccountDisabled)
 
-	chidt.DeleteAllManager()
-	check(http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "", http.StatusInternalServerError, chidt.CodeServerError)
-	check(http.MethodGet, "/admin", "", "", http.StatusInternalServerError, chidt.CodeServerError)
+	dtoken.DeleteAllManager()
+	check(http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "", http.StatusInternalServerError, dterror.CodeServerError)
+	check(http.MethodGet, "/admin", "", "", http.StatusInternalServerError, dterror.CodeServerError)
+	builtAuth1, err := dtoken.NewBuilder().Storage(&chiFailingStorage{Storage: dt1.NewStorage()}).
+		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
+	mgr := builtAuth1.Manager()
 
-	mgr, err := chidt.NewBuilder().SetStorage(&chiFailingStorage{Storage: chidt.NewMemoryStorage()}).
-		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).Build()
 	if err != nil {
 		t.Fatal(err)
 	}
-	chidt.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, path := range []string{"/me", "/admin", "/articles", "/logout"} {
 		method := http.MethodGet
 		if path == "/logout" {
 			method = http.MethodPost
 		}
-		check(method, path, "", "some-token", http.StatusInternalServerError, chidt.CodeServerError)
+		check(method, path, "", "some-token", http.StatusInternalServerError, dterror.CodeServerError)
 	}
 }

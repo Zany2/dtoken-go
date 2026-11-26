@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"testing"
 
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
+	derror "github.com/Zany2/dtoken-go/errors"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 )
 
@@ -40,7 +40,8 @@ func TestHertzAnnotationHandlerControlFlow(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
+	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -110,7 +111,8 @@ func TestHertzContextFacadeUsesCachedManager(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
+	mgr := builtAuth2.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

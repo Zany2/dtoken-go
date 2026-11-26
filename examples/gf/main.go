@@ -2,9 +2,13 @@
 package main
 
 import (
+	dterror "github.com/Zany2/dtoken-go/errors"
+	"log"
+
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Zany2/dtoken-go"
 	"io"
 	"mime"
 	"net/http"
@@ -16,29 +20,41 @@ import (
 )
 
 func main() {
-	initDToken()
-	defer gfdt.DeleteAllManager()
+	auth, err := initDToken()
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	defer auth.Close()
 
 	s := g.Server()
-	registerRoutes(s)
+	if err := registerRoutes(s, auth); err != nil {
+		log.Print(err)
+		return
+	}
 	s.SetPort(8080)
 	if err := s.Start(); err != nil {
-		panic(err)
+		log.Print(err)
+		return
 	}
 	ghttp.Wait()
 }
 
 // registerRoutes shares the example's middleware and routes with regression tests. registerRoutes 与回归测试共用示例中间件和路由。
-func registerRoutes(s *ghttp.Server) {
+func registerRoutes(s *ghttp.Server, authInstance *dtoken.Auth) error {
+	authOption, err := gfdt.WithAuth(authInstance)
+	if err != nil {
+		return err
+	}
 	ctx := context.Background()
-	s.Use(gfdt.RegisterDTokenContextMiddleware(ctx, gfdt.WithFailFunc(handleAuthFail)))
+	s.Use(gfdt.RegisterDTokenContextMiddleware(ctx, authOption, gfdt.WithFailFunc(handleAuthFail)))
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.POST("/login", handleLogin)
 		group.POST("/refresh", handleRefresh)
 	})
 
 	s.Group("/", func(group *ghttp.RouterGroup) {
-		group.Middleware(gfdt.AuthMiddleware(ctx, gfdt.WithFailFunc(handleAuthFail)))
+		group.Middleware(gfdt.AccessMiddleware(ctx, gfdt.WithFailFunc(handleAuthFail), gfdt.WithRouteAccessHandler(resolveRouteAccess)))
 		group.GET("/me", handleMe)
 		group.GET("/introspect", handleIntrospect)
 		group.GET("/admin", gfdt.CheckRoleMiddleware(ctx, []string{"admin"}, handleAdmin, handleAuthFail))
@@ -56,21 +72,17 @@ func registerRoutes(s *ghttp.Server) {
 		group.GET("/articles", handleArticles)
 		group.GET("/admin", handleAdmin)
 	})
+	return nil
 }
 
-// initDToken initializes integration manager initDToken 初始化集成管理器
-func initDToken() {
-	mgr, err := gfdt.NewBuilder().
+// initDToken builds the Auth instance owned by the application. initDToken 构建由应用管理生命周期的 Auth 实例。
+func initDToken() (*dtoken.Auth, error) {
+	return dtoken.NewBuilder().
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		RefreshTokenTimeout(int64((30 * 24 * time.Hour).Seconds())).
 		IsPrintBanner(false).
 		Build()
-	if err != nil {
-		panic(err)
-	}
-
-	gfdt.SetManager(mgr)
 }
 
 // handleLogin logs in a demo user handleLogin 登录示例用户
@@ -78,32 +90,38 @@ func handleLogin(r *ghttp.Request) {
 	values, err := readBodyValues(r)
 	username, password := values["username"], values["password"]
 	if err != nil || username == "" || password == "" {
-		writeJSON(r, http.StatusBadRequest, gfdt.CodeBadRequest, "username and password are required", nil)
+		writeJSON(r, http.StatusBadRequest, dterror.CodeBadRequest, "username and password are required", nil)
 		return
 	}
 
 	if password != "123456" {
-		writeJSON(r, http.StatusUnauthorized, gfdt.CodeNotLogin, "invalid username or password", nil)
+		writeJSON(r, http.StatusUnauthorized, dterror.CodeNotLogin, "invalid username or password", nil)
 		return
 	}
 
-	pair, err := gfdt.LoginWithRefreshToken(r.Context(), username, "web", "gf-example")
+	mgr, err := gfdt.GetManagerByCtx(r.Context())
+	if err != nil {
+		handleAuthFail(r, err)
+		return
+	}
+
+	pair, err := mgr.LoginWithRefreshToken(r.Context(), username, "web", "gf-example")
 	if err != nil {
 		handleAuthFail(r, err)
 		return
 	}
 
 	// Grant every demo user the same role and permission; real apps must load their own access rules. 为每个演示用户授予相同角色和权限；实际应用应加载自身的授权规则。
-	if err = gfdt.AddRoles(r.Context(), username, []string{"admin"}); err != nil {
+	if err = mgr.AddRoles(r.Context(), username, []string{"admin"}); err != nil {
 		handleAuthFail(r, err)
 		return
 	}
-	if err = gfdt.AddPermissions(r.Context(), username, []string{"article:read"}); err != nil {
+	if err = mgr.AddPermissions(r.Context(), username, []string{"article:read"}); err != nil {
 		handleAuthFail(r, err)
 		return
 	}
 
-	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", pair)
+	writeJSON(r, http.StatusOK, dterror.CodeSuccess, "ok", pair)
 }
 
 // handleRefresh rotates refresh token handleRefresh 轮换刷新令牌
@@ -111,24 +129,30 @@ func handleRefresh(r *ghttp.Request) {
 	values, err := readBodyValues(r)
 	refreshToken := values["refreshToken"]
 	if err != nil || refreshToken == "" {
-		writeJSON(r, http.StatusBadRequest, gfdt.CodeBadRequest, "refreshToken is required", nil)
+		writeJSON(r, http.StatusBadRequest, dterror.CodeBadRequest, "refreshToken is required", nil)
 		return
 	}
 
-	pair, err := gfdt.RefreshToken(r.Context(), refreshToken)
+	mgr, err := gfdt.GetManagerByCtx(r.Context())
 	if err != nil {
 		handleAuthFail(r, err)
 		return
 	}
 
-	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", pair)
+	pair, err := mgr.RefreshToken(r.Context(), refreshToken)
+	if err != nil {
+		handleAuthFail(r, err)
+		return
+	}
+
+	writeJSON(r, http.StatusOK, dterror.CodeSuccess, "ok", pair)
 }
 
 // handleMe returns current login information handleMe 返回当前登录信息
 func handleMe(r *ghttp.Request) {
 	dCtx, ok := gfdt.GetDTokenContext(r)
 	if !ok {
-		writeJSON(r, http.StatusUnauthorized, gfdt.CodeNotLogin, "not logged in", nil)
+		writeJSON(r, http.StatusUnauthorized, dterror.CodeNotLogin, "not logged in", nil)
 		return
 	}
 
@@ -149,7 +173,7 @@ func handleMe(r *ghttp.Request) {
 		return
 	}
 
-	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", g.Map{
+	writeJSON(r, http.StatusOK, dterror.CodeSuccess, "ok", g.Map{
 		"loginId":     loginID,
 		"roles":       roles,
 		"permissions": permissions,
@@ -164,24 +188,24 @@ func handleIntrospect(r *ghttp.Request) {
 		return
 	}
 
-	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", info)
+	writeJSON(r, http.StatusOK, dterror.CodeSuccess, "ok", info)
 }
 
 // handleAdmin returns admin data handleAdmin 返回管理员数据
 func handleAdmin(r *ghttp.Request) {
-	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", g.Map{"scope": "admin"})
+	writeJSON(r, http.StatusOK, dterror.CodeSuccess, "ok", g.Map{"scope": "admin"})
 }
 
 // handleArticles returns protected article data handleArticles 返回受保护的文章数据
 func handleArticles(r *ghttp.Request) {
-	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", []string{"article-a", "article-b"})
+	writeJSON(r, http.StatusOK, dterror.CodeSuccess, "ok", []string{"article-a", "article-b"})
 }
 
 // handleLogout logs out current token handleLogout 注销当前 Token
 func handleLogout(r *ghttp.Request) {
 	dCtx, ok := gfdt.GetDTokenContext(r)
 	if !ok {
-		writeJSON(r, http.StatusUnauthorized, gfdt.CodeNotLogin, "not logged in", nil)
+		writeJSON(r, http.StatusUnauthorized, dterror.CodeNotLogin, "not logged in", nil)
 		return
 	}
 
@@ -190,11 +214,12 @@ func handleLogout(r *ghttp.Request) {
 		return
 	}
 
-	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", nil)
+	writeJSON(r, http.StatusOK, dterror.CodeSuccess, "ok", nil)
 }
 
 // resolveRouteAccess uses the matched route so path normalization and overrides cannot skip checks. resolveRouteAccess 根据实际匹配路由鉴权，避免路径规范化或覆盖导致漏检。
 func resolveRouteAccess(_ context.Context, r *ghttp.Request, req *gfdt.RouteAccessRequest) {
+	req.CheckDisable = true
 	handler := r.GetServeHandler()
 	if handler == nil {
 		return
@@ -213,25 +238,25 @@ func resolveRouteAccess(_ context.Context, r *ghttp.Request, req *gfdt.RouteAcce
 
 // handleAccessPublic returns public access data handleAccessPublic 返回公开访问数据
 func handleAccessPublic(r *ghttp.Request) {
-	writeJSON(r, http.StatusOK, gfdt.CodeSuccess, "ok", g.Map{"scope": "public"})
+	writeJSON(r, http.StatusOK, dterror.CodeSuccess, "ok", g.Map{"scope": "public"})
 }
 
 // handleAuthFail distinguishes credential failures, access restrictions and server failures. handleAuthFail 区分凭证无效、访问限制及服务端故障。
 func handleAuthFail(r *ghttp.Request, err error) {
 	switch {
-	case errors.Is(err, gfdt.ErrNotLogin), errors.Is(err, gfdt.ErrInvalidToken),
-		errors.Is(err, gfdt.ErrInvalidRefreshToken), errors.Is(err, gfdt.ErrInvalidAccessToken),
-		errors.Is(err, gfdt.ErrTokenExpired), errors.Is(err, gfdt.ErrActiveTimeout),
-		errors.Is(err, gfdt.ErrTokenKickout), errors.Is(err, gfdt.ErrTokenReplaced):
-		writeJSON(r, http.StatusUnauthorized, gfdt.CodeNotLogin, err.Error(), nil)
-	case errors.Is(err, gfdt.ErrAccountDisabled), errors.Is(err, gfdt.ErrDeviceDisabled):
-		writeJSON(r, http.StatusForbidden, gfdt.CodeAccountDisabled, err.Error(), nil)
-	case errors.Is(err, gfdt.ErrPermissionDenied), errors.Is(err, gfdt.ErrRoleDenied):
-		writeJSON(r, http.StatusForbidden, gfdt.CodePermissionDenied, err.Error(), nil)
+	case errors.Is(err, dterror.ErrNotLogin), errors.Is(err, dterror.ErrInvalidToken),
+		errors.Is(err, dterror.ErrInvalidRefreshToken), errors.Is(err, dterror.ErrInvalidAccessToken),
+		errors.Is(err, dterror.ErrTokenExpired), errors.Is(err, dterror.ErrActiveTimeout),
+		errors.Is(err, dterror.ErrTokenKickout), errors.Is(err, dterror.ErrTokenReplaced):
+		writeJSON(r, http.StatusUnauthorized, dterror.CodeNotLogin, err.Error(), nil)
+	case errors.Is(err, dterror.ErrAccountDisabled), errors.Is(err, dterror.ErrDeviceDisabled):
+		writeJSON(r, http.StatusForbidden, dterror.CodeAccountDisabled, err.Error(), nil)
+	case errors.Is(err, dterror.ErrPermissionDenied), errors.Is(err, dterror.ErrRoleDenied):
+		writeJSON(r, http.StatusForbidden, dterror.CodePermissionDenied, err.Error(), nil)
 	default:
 		// Keep server details in logs rather than HTTP responses. 将服务端详情保留在日志中，不在 HTTP 响应中暴露。
 		g.Log().Error(r.Context(), "dtoken request failed:", err)
-		writeJSON(r, http.StatusInternalServerError, gfdt.CodeServerError, "internal server error", nil)
+		writeJSON(r, http.StatusInternalServerError, dterror.CodeServerError, "internal server error", nil)
 	}
 }
 
@@ -258,7 +283,7 @@ func readBodyValues(r *ghttp.Request) (map[string]string, error) {
 				defer r.MultipartForm.RemoveAll()
 			}
 		} else {
-			err = r.ParseForm()
+			err = r.Request.ParseForm()
 		}
 		if err != nil {
 			return nil, err

@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
 	echo4 "github.com/labstack/echo/v4"
 )
 
@@ -40,7 +40,8 @@ func TestAuthMiddlewareSuccessAndFailure(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
+	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -79,11 +80,14 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).AuthType("echo-annotation").Build()
+	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).AuthType("echo-annotation").BuildInstance()
+	mgr := builtAuth2.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	token, err := mgr.Login(ctx, "echo-annotation-user")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
@@ -96,6 +100,7 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	successReq := httptest.NewRequest(http.MethodGet, "/reports", nil)
 	successReq.Header.Set(mgr.GetConfig().TokenName, token)
 	successCtx := engine.NewContext(successReq, httptest.NewRecorder())
+	getDTokenContext(successCtx, mgr)
 	handled := false
 	err = CheckPermissionMiddleware(ctx, []string{"report:read"}, func(c echo4.Context) error {
 		handled = true
@@ -109,6 +114,7 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	failureReq.Header.Set(mgr.GetConfig().TokenName, token)
 	failureRecorder := httptest.NewRecorder()
 	failureCtx := engine.NewContext(failureReq, failureRecorder)
+	getDTokenContext(failureCtx, mgr)
 	handled = false
 	err = CheckRoleMiddleware(ctx, []string{"admin"}, func(echo4.Context) error {
 		handled = true

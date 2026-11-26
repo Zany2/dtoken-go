@@ -4,29 +4,29 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/Zany2/dtoken-go"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
+	"github.com/Zany2/dtoken-go/storage/memory"
+	gingonic "github.com/gin-gonic/gin"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
-
-	"github.com/Zany2/dtoken-go/com/storage/memory"
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
-	gingonic "github.com/gin-gonic/gin"
 )
 
 // TestGinReplacedRequestTokenSources rejects stale credentials cached by native query and form readers. TestGinReplacedRequestTokenSources 验证请求替换后不会使用原生 Query/Form 缓存中的旧凭据。
 func TestGinReplacedRequestTokenSources(t *testing.T) {
 	for _, source := range []string{"query", "form", "multipart"} {
 		t.Run(source, func(t *testing.T) {
-			mgr, err := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
-				IsReadHeader(false).IsReadCookie(false).IsReadQuery(source == "query").IsReadBody(source != "query").Build()
+			mgrAuth, err := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+				IsReadHeader(false).IsReadCookie(false).IsReadQuery(source == "query").IsReadBody(source != "query").BuildInstance()
 			if err != nil {
 				t.Fatal(err)
 			}
+			mgr := mgrAuth.Manager()
 			t.Cleanup(mgr.CloseManager)
 			for _, id := range []string{"old", "current"} {
 				if _, err := mgr.LoginWithOptions(context.Background(), manager.LoginOptions{LoginID: id, Token: id + "-token"}); err != nil {
@@ -123,14 +123,16 @@ func TestGinRepeatedRegistration(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newGinReviewManager(t, "", nil)
 	local := newGinReviewManager(t, "gin-registration", nil)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, tc := range []struct {
 		name string
 		opts []AuthOption
 		want *manager.Manager
 	}{
 		{"inherit", nil, local},
-		{"auth_type", []AuthOption{WithAuthType(global.GetConfig().AuthType)}, global},
+		{"auth_type", []AuthOption{WithManagerResolver(dtoken.GetManager), WithAuthType(global.GetConfig().AuthType)}, global},
 		{"explicit", []AuthOption{WithManager(local), WithAuthType("missing")}, local},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -159,7 +161,9 @@ func TestGinInvalidManagerScopeCannotUseGlobal(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newGinReviewManager(t, "", nil)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	token, err := global.Login(context.Background(), "reader")
 	if err != nil {
 		t.Fatal(err)

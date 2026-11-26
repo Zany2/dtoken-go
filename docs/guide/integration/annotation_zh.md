@@ -23,10 +23,11 @@
 | 字段 | 说明 |
 |------|------|
 | `AuthType` | 指定认证体系 |
+| `ManagerResolver` | 显式解析认证实例，可沿用请求中绑定的解析器 |
 | `CheckLogin` | 是否校验登录 |
 | `CheckRole` | 角色列表 |
 | `CheckPermission` | 权限列表 |
-| `CheckDisable` | 是否校验账号封禁 |
+| `CheckDisable` | 是否校验账号、设备类型和具体设备封禁 |
 | `Ignore` | 是否忽略鉴权 |
 | `LogicType` | 多角色 / 多权限逻辑，支持 `OR`、`AND` |
 
@@ -36,12 +37,19 @@
 
 ```go
 ctx := context.Background()
+auth, err := gindt.NewBuilder().Build()
+if err != nil { panic(err) }
+defer auth.Close()
 
 r := gin.Default()
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
+authOption1, authErr := gindt.WithAuth(auth)
+if authErr != nil {
+    return authErr
+}
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, authOption1))
 ```
 
-后续注解中间件会复用请求里缓存的 `DTokenContext`。如果该上下文由 `WithManager` 创建，`AuthType` 为空的注解会继续使用同一个显式 Manager；注解显式填写 `AuthType` 时，仍保留通过全局注册表选择认证体系的行为。
+这里 dt 表示根包 github.com/Zany2/dtoken-go。注解复用请求绑定的实例。切换 AuthType 需要显式配置 ManagerResolver，例如注册中间件的 WithManagerResolver(dt.GetManager)；缺少绑定或解析器时返回 ErrManagerNotFound。
 
 Gin 的 `GetHandler` 显式收到空注解指针（`nil`）时会返回参数错误并终止请求；需要跳过检查时使用 `IgnoreMiddleware` 或 `Ignore: true`。
 
@@ -65,7 +73,7 @@ r.GET("/user/info",
     gindt.CheckLoginMiddleware(ctx, nil, nil),
     func(c *gin.Context) {
         dCtx, _ := gindt.GetDTokenContext(c)
-        loginID, _ := dCtx.Auth().GetLoginID(ctx)
+        loginID, _ := dCtx.Auth().GetLoginID(c.Request.Context())
         c.JSON(200, gin.H{"loginId": loginID})
     },
 )
@@ -102,7 +110,7 @@ r.GET("/comment/send",
 
 ### OR 逻辑
 
-默认是 `OR` 逻辑，只要满足任一角色或任一权限即可。
+Gin 注解的空 LogicType 按 OR 处理；普通 AuthOptions 默认 AND。LogicType 分别作用于角色列表和权限列表，同时配置两者时，两组检查都必须通过。建议显式填写 LogicOr 或 LogicAnd。
 
 ```go
 r.GET("/reports",

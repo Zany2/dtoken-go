@@ -1,0 +1,52 @@
+name: SSO published consumer
+
+on:
+  workflow_dispatch:
+    inputs:
+      root_version:
+        description: 'Exact published root version / 根模块精确发布版本'
+        required: true
+        type: string
+      sso_version:
+        description: 'Exact published SSO version / SSO 精确发布版本'
+        required: true
+        type: string
+      redis_version:
+        description: 'Exact published storage/redis version / 通用 Redis 存储精确发布版本'
+        required: true
+        type: string
+      sso_redis_version:
+        description: 'Exact published sso/storage/redis version / SSO Redis 精确发布版本'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  published-consumer:
+    name: SSO published dependency set
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOWORK: 'off'
+      GOTOOLCHAIN: local
+    steps:
+      - name: Check out verification sources / 检出验收源码
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up declared SSO Go / 配置 SSO 声明的 Go 版本
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: sso/go.mod
+          cache: false
+
+      - name: Verify published modules without replacements / 无源码替换验证发布模块
+        env:
+          ROOT_VERSION: ${{ inputs.root_version }}
+          SSO_VERSION: ${{ inputs.sso_version }}
+          REDIS_VERSION: ${{ inputs.redis_version }}
+          SSO_REDIS_VERSION: ${{ inputs.sso_redis_version }}
+        run: bash .github/scripts/check-sso-consumer.sh "$ROOT_VERSION" "$SSO_VERSION" "$REDIS_VERSION" "$SSO_REDIS_VERSION"

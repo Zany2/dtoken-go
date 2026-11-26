@@ -2,7 +2,9 @@
 
 [English](../core/disable.md) | 中文文档
 
-DToken-Go 的封禁体系不只支持账号封禁，还支持服务封禁、服务等级封禁、设备类型封禁和具体设备封禁。封禁状态会参与登录态校验，被封禁对象会在访问时得到对应错误。
+本文 `dt` 表示根包。`Build()` 自动注册；默认体系使用 `dt.XXX()`，其他体系使用 `dt.AuthType("user").XXX()`，业务方法签名与实例一致。见 [Auth API](../../api/auth_zh.md)。
+
+DToken-Go 支持账号、服务、服务等级、设备类型和具体设备封禁。基础登录校验只检查凭据有效性；需要限制访问的入口必须显式声明对应封禁检查。
 
 ## 封禁类型
 
@@ -16,24 +18,26 @@ DToken-Go 的封禁体系不只支持账号封禁，还支持服务封禁、服�
 
 ## 账号封禁
 
-`Disable` 会销毁账号当前的 Session，并同步使其中记录的已有终端凭证失效、清理关联刷新令牌。封禁期间这些访问 Token 返回账号封禁错误；解封或封禁到期后，它们仍然无效，需要重新登录。`Untie` 只解除封禁，不恢复已销毁的 Session。
+`Disable` 会销毁账号当前的 Session，并同步使其中记录的已有终端凭证失效、清理关联刷新令牌。基础校验对这些凭据返回 `ErrInvalidToken`；显式封禁检查在封禁期间返回账号封禁错误。解封或封禁到期后，它们仍然无效，需要重新登录。`Untie` 只解除封禁，不恢复已销毁的 Session。
 
-封禁时长为 `0` 表示永久封禁，负数无效。重新设置封禁会更新期限和原因，并移除归属匹配的旧格式记录，避免新期限结束后旧封禁再次生效；旧记录无法解码或无法确认归属时，操作会返回错误。
+终端凭据清理对每个非空 Token 主键只读取一次，直接区分键缺失、下线标记和凭据归属；无法确认归属的已有值不会被当作键缺失清理。有效凭据保留原有详情与剩余 TTL，仅标记为已废弃，不读取 Extra 内容。访问凭据已经过期时，仍检查刷新关联归属后撤销刷新凭据；归属检查与刷新删除的读取成本另计。Session 在清理成功后才删除，清理失败会返回错误并保留索引供重试。
+
+封禁时长为 `0` 表示永久封禁，负数无效。重新设置封禁只更新规范键中的期限和原因；运行时查询、写入和解封均不探测或删除旧键。切换前须通过 [PrepareAuthUpgrade](../../design/namespace-copy_zh.md) 转换旧封禁。规范键中的记录无法解码、缺少 loginId/kind 或属于其他身份时，拒绝覆盖。
 
 ```go
 ctx := context.Background()
 
 // 封禁账号 2 小时，并记录原因。
-err := dtoken.Disable(ctx, "10001", 2*time.Hour, "risk")
+err := dt.Disable(ctx, dt.DisableOptions{LoginID: "10001", Duration: 2*time.Hour, Reason: "risk"})
 
-disabled := dtoken.IsDisable(ctx, "10001")
-err = dtoken.CheckDisable(ctx, "10001")
+disabled := dt.IsDisable(ctx, "10001")
+err = dt.CheckDisable(ctx, "10001")
 
-info, err := dtoken.GetDisableInfo(ctx, "10001")
-ttl, err := dtoken.GetDisableTTL(ctx, "10001")
+info, err := dt.GetDisableInfo(ctx, "10001")
+ttl, err := dt.GetDisableTTL(ctx, "10001")
 
 // 解除账号封禁。
-err = dtoken.Untie(ctx, "10001")
+err = dt.Untie(ctx, "10001")
 ```
 
 `GetDisableTTL` 返回值：
@@ -49,16 +53,16 @@ err = dtoken.Untie(ctx, "10001")
 服务封禁适合只限制某个业务能力，而不是踢掉整个账号。
 
 ```go
-err := dtoken.DisableService(ctx, "10001", "comment", 30*time.Minute)
-err = dtoken.DisableServiceWithReason(ctx, "10001", "comment", 30*time.Minute, "spam")
+err := dt.DisableService(ctx, dt.ServiceDisableOptions{LoginID: "10001", Service: "comment", Duration: 30*time.Minute})
+err = dt.DisableServiceWithReason(ctx, "10001", "comment", 30*time.Minute, "spam")
 
-disabled := dtoken.IsDisableService(ctx, "10001", "comment")
-err = dtoken.CheckDisableService(ctx, "10001", []string{"comment", "post"})
+disabled := dt.IsDisableService(ctx, "10001", "comment")
+err = dt.CheckDisableService(ctx, "10001", []string{"comment", "post"})
 
-info, err := dtoken.GetDisableServiceInfo(ctx, "10001", "comment")
-ttl, err := dtoken.GetDisableServiceTTL(ctx, "10001", "comment")
+info, err := dt.GetDisableServiceInfo(ctx, "10001", "comment")
+ttl, err := dt.GetDisableServiceTTL(ctx, "10001", "comment")
 
-err = dtoken.UntieService(ctx, "10001", "comment")
+err = dt.UntieService(ctx, "10001", "comment")
 ```
 
 ## 服务等级封禁
@@ -66,13 +70,13 @@ err = dtoken.UntieService(ctx, "10001", "comment")
 服务等级封禁会记录一个整数等级。校验时，如果实际封禁等级大于等于目标等级，则认为命中封禁。
 
 ```go
-err := dtoken.DisableServiceLevel(ctx, "10001", "pay", 3, time.Hour)
+err := dt.DisableServiceLevel(ctx, "10001", "pay", 3, time.Hour)
 
-dtoken.IsDisableServiceLevel(ctx, "10001", "pay", 2) // true
-dtoken.IsDisableServiceLevel(ctx, "10001", "pay", 3) // true
-dtoken.IsDisableServiceLevel(ctx, "10001", "pay", 4) // false
+dt.IsDisableServiceLevel(ctx, "10001", "pay", 2) // true
+dt.IsDisableServiceLevel(ctx, "10001", "pay", 3) // true
+dt.IsDisableServiceLevel(ctx, "10001", "pay", 4) // false
 
-err = dtoken.CheckDisableServiceLevel(ctx, "10001", "pay", 3)
+err = dt.CheckDisableServiceLevel(ctx, "10001", "pay", 3)
 ```
 
 这个能力适合把同一个服务拆成多个限制层级，例如：
@@ -87,48 +91,50 @@ err = dtoken.CheckDisableServiceLevel(ctx, "10001", "pay", 3)
 
 设备封禁分为设备类型和具体设备 ID。
 
-设备封禁保留 Session 和终端凭证；解封后，只要凭证尚未过期或被注销，就可以继续使用。设备类型与具体设备的封禁独立存在，解除其中一个不会解除另一个。具体设备的 `IsDisable` / `CheckDisable` 会同时检查两层限制，而详情和 TTL 查询只返回指定层级的记录。服务封禁同样不销毁 Session；重新设置服务或设备封禁时，也会移除归属匹配的旧格式记录。
+设备封禁保留 Session 和终端凭证；解封后，只要凭证尚未过期或被注销，就可以继续使用。设备类型与具体设备的封禁独立存在，解除其中一个不会解除另一个。具体设备的 `IsDisable` / `CheckDisable` 会同时检查两层限制，而详情和 TTL 查询只返回指定层级的记录。服务封禁同样不销毁 Session；重新设置服务或设备封禁只更新对应规范键。
 
 ```go
 // 禁止账号在 app 设备类型访问。
-err := dtoken.DisableDevice(ctx, "10001", "app", time.Hour)
-disabled := dtoken.IsDisableDevice(ctx, "10001", "app")
-err = dtoken.CheckDisableDevice(ctx, "10001", "app")
-err = dtoken.UntieDevice(ctx, "10001", "app")
+err := dt.DisableDevice(ctx, dt.DeviceDisableOptions{LoginID: "10001", Device: "app", Duration: time.Hour})
+disabled := dt.IsDisableDevice(ctx, "10001", "app")
+err = dt.CheckDisableDevice(ctx, "10001", "app")
+err = dt.UntieDevice(ctx, "10001", "app")
 
 // 禁止账号在某个具体设备访问。
-err = dtoken.DisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001", time.Hour)
-disabled = dtoken.IsDisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
-err = dtoken.CheckDisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
-err = dtoken.UntieDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
+err = dt.DisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001", time.Hour)
+disabled = dt.IsDisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
+err = dt.CheckDisableDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
+err = dt.UntieDeviceAndDeviceID(ctx, "10001", "app", "iphone-001")
 ```
 
 查询封禁详情：
 
 ```go
-deviceInfo, err := dtoken.GetDisableDeviceInfo(ctx, "10001", "app")
-deviceTTL, err := dtoken.GetDisableDeviceTTL(ctx, "10001", "app")
+deviceInfo, err := dt.GetDisableDeviceInfo(ctx, "10001", "app")
+deviceTTL, err := dt.GetDisableDeviceTTL(ctx, "10001", "app")
 
-concreteInfo, err := dtoken.GetDisableDeviceAndDeviceIDInfo(ctx, "10001", "app", "iphone-001")
-concreteTTL, err := dtoken.GetDisableDeviceAndDeviceIDTTL(ctx, "10001", "app", "iphone-001")
+concreteInfo, err := dt.GetDisableDeviceAndDeviceIDInfo(ctx, "10001", "app", "iphone-001")
+concreteTTL, err := dt.GetDisableDeviceAndDeviceIDTTL(ctx, "10001", "app", "iphone-001")
 ```
 
 ## 和登录态校验的关系
 
-账号封禁和设备封禁会参与 Token 校验：
+凭据校验与访问限制分开执行：
 
-- 账号被封禁后，该账号已有 Token 会在校验时失败。
-- 设备类型被封禁后，匹配该 `device` 的 Token 会失败。
-- 具体设备被封禁后，匹配该 `device + deviceID` 的 Token 会失败。
+- 账号封禁仍废弃 Session 索引中的已有凭据，基础校验返回 `ErrInvalidToken`，解封不恢复这些凭据。索引外的凭据需要显式封禁检查才能完整受限。
+- 设备类型或具体设备封禁是可解除的访问限制，不直接废弃凭据；`CheckLogin` / `IsLogin` 可以成功。HTTP `CheckDisable: true` 检查账号、设备类型和具体设备，受限时返回相应错误。
+- 新登录、刷新签发和自省仍检查这些限制。业务层可按需调用账号及设备的 `CheckDisable*` 方法；不能只调用账号检查来代替设备检查。
 - 服务封禁不会自动阻止所有登录态，只应在对应业务入口显式调用 `CheckDisableService` 或 `CheckDisableServiceLevel`。
+
+封禁查询按作用域读取规范键：账号、单个服务或设备类型检查各一次 GET；具体设备检查先看设备类型，未命中再看具体设备，最多两次 GET。TTL 查询先读取并核对归属，存在匹配记录时再查询一次 TTL。解封复用已读取的记录，普通存储执行 Delete，支持原子能力时执行 GetAndDelete；不存在记录或删除失败不发送成功事件。封禁详情仍使用配置的 Codec 解码，普通登录校验不因此增加封禁读取。
 
 ## 多认证体系
 
 封禁 API 支持可选 `authType`：
 
 ```go
-err := dtoken.Disable(ctx, "admin-1", time.Hour, "risk", "admin")
-disabled := dtoken.IsDisable(ctx, "admin-1", "admin")
+err := dt.AuthType("admin").Disable(ctx, dt.DisableOptions{LoginID: "admin-1", Duration: time.Hour, Reason: "risk"})
+disabled := dt.AuthType("admin").IsDisable(ctx, "admin-1")
 ```
 
 不同 `AuthType` 的封禁数据互相隔离。

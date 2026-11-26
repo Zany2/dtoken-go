@@ -1,13 +1,19 @@
 # Configuration Guide
 
+Import aliases for code fragments: dt = github.com/Zany2/dtoken-go.
+
 **[中文文档](../reference/configuration_zh.md)**
 
-This page summarizes common DToken-Go configuration options, default behavior, and validation rules. Most projects can start with `defaults.NewBuilder()` and override only the options they need.
+This page summarizes common DToken-Go configuration options, default behavior, and validation rules. Most projects can start with `dt.NewBuilder()` and override only the options they need.
+
+`Build()` automatically registers and returns Auth; auth in these examples is not the underlying Manager. config names the public config package and contract the component-contract package. auth.Config() returns an independent snapshot. For runtime configuration changes, use BuildInstance followed by SetAuth to explicitly replace the same namespace after coordinating request draining; mutating the snapshot does not reconfigure the engine.
+
+Duplicate Build calls for the same AuthType return ErrManagerAlreadyRegistered. BuildInstance creates unregistered instances, including independent instances with the same name. The snippets below are independent configuration alternatives.
 
 ## Basic Example
 
 ```go
-mgr, err := defaults.NewBuilder().
+auth, err := dt.NewBuilder().
     // AuthType separates auth systems such as user, admin, and app.
     AuthType("user").
     // KeyPrefix is the shared storage key prefix for a project or environment.
@@ -38,8 +44,11 @@ mgr, err := defaults.NewBuilder().
     // Banner and logging can be adjusted for production needs.
     IsLog(false).
     IsPrintBanner(false).
-    SetStorage(storage).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 ## Common Options
@@ -61,7 +70,7 @@ mgr, err := defaults.NewBuilder().
 | `MaxLoginCount` | `int64` (count) | `12` | Maximum online terminal count |
 | `ReplacedLoginExitMode` | `config.ReplacedLoginExitMode` | `old_device` | Non-concurrent login strategy |
 | `OverflowLogoutMode` | `config.LogoutMode` | `kickout` | How old Tokens are handled when max login count overflows |
-| `TokenStyle` | `adapter.TokenStyle` | `uuid` | Token generation style |
+| `TokenStyle` | `contract.TokenStyle` | `uuid` | Token generation style |
 | `JwtSecretKey` | `string` | `dtoken-go` (placeholder) | JWT mode requires an explicitly configured secret; the default, empty, and whitespace-only keys are rejected |
 | `IsReadHeader` | `bool` | `true` | Whether to read Token from headers |
 | `IsReadCookie` | `bool` | `false` | Whether to read Token from cookies |
@@ -76,7 +85,7 @@ mgr, err := defaults.NewBuilder().
 `AuthType` and `KeyPrefix` automatically receive a trailing `:`:
 
 ```go
-defaults.NewBuilder().
+dt.NewBuilder().
     AuthType("admin").
     KeyPrefix("dtoken")
 ```
@@ -91,21 +100,21 @@ KeyPrefix = "dtoken:"
 Storage keys usually follow this structure:
 
 ```text
-{encoded KeyPrefix}{encoded AuthType}{business-prefix}{business-value}
+{encoded KeyPrefix}{encoded AuthType}v2:{business-prefix}{business-value}
 ```
 
 For example:
 
 ```text
-dtoken:admin:token:xxx
-dtoken:admin:session:10001
+dtoken:admin:v2:token:xxx
+dtoken:admin:v2:session:10001
 ```
 
-Each namespace component is encoded independently: remove one trailing separator, escape internal `\` as `\\` and `:` as `\:`, then append `:`. For example, `AuthType = "admin:token:"` becomes the storage component `admin\:token:`, distinct from Token keys under `admin:`. Ordinary names retain their key format. Manager, Nonce, OAuth2, Ticket, and ShortKey share this rule; custom storage integrations can call `utils.StorageNamespace(keyPrefix, authType)`.
+Each namespace component is encoded independently: remove one trailing separator, escape internal `\` as `\\` and `:` as `\:`, then append `:`. For example, `AuthType = "admin:token:"` becomes the storage component `admin\:token:`, distinct from Token keys under `admin:`. A fixed `v2:` segment is then appended. Manager, Nonce, OAuth2, Ticket, and ShortKey share this rule. Applications must not add the version to KeyPrefix or AuthType; components handle namespace encoding internally.
 
-Existing deployments using internal colons or backslashes in namespaces, or extension constructors previously called without trailing separators, require an explicit key migration. Ambiguous old namespaces are not read through a fallback. Stop old writers, verify ownership, migrate the related keys while preserving remaining TTLs, then start the new version. Include sessions, disable markers, and refresh credentials alongside tokens; requiring a fresh login does not remove the need to preserve existing disable policies.
+Every unversioned deployment requires explicit migration, even with ordinary AuthType and KeyPrefix names. Stop old writers, then use [PrepareAuthUpgrade](../../design/namespace-copy.md) to convert records while preserving remaining TTLs; source and target may retain the same KeyPrefix. Historical keys that did not use the current component-boundary encoding require ownership verification and preparation first. The new runtime does not fall back to unversioned storage. Include sessions, disable markers, and refresh credentials alongside tokens; requiring fresh login does not remove the need to preserve restrictions.
 
-Disable records now store internal `loginId` and `kind` fields (`account`, `service`, or `device`), without changing public return types. Account disable keys also escape the account ID. Unambiguous legacy markers remain supported. Legacy business keys containing backslashes without stored ownership cannot reliably distinguish raw and escaped account IDs: checks, metadata reads, TTL reads, and untie operations return `ErrInvalidParam`, without overwriting or deleting the marker. Verify ownership against trusted account records before adding these internal fields and moving the marker to its proper key; never infer ownership solely from the ambiguous key. Boolean queries retain their existing `false`-on-error convention; use the corresponding `Check` or `Get` method when errors must be handled.
+Disable records store internal `loginId` and `kind` fields (`account`, `service`, or `device`), without changing public return types. Account disable keys also escape the account ID. Runtime checks use only canonical keys and require both fields. Missing loginId or kind returns ErrInvalidParam from error-returning APIs; legacy records must be converted offline even when their key suffix is unchanged. Backslash-containing ownerless records cannot distinguish raw and escaped account IDs reliably. Verify ownership against trusted data before migration; never infer it solely from an ambiguous key. Boolean queries retain their existing `false`-on-error convention; use the corresponding `Check` or `Get` method when errors must be handled.
 
 `AuthType`, `KeyPrefix`, and `TokenName` must not contain whitespace and must not exceed `64` characters.
 
@@ -144,7 +153,7 @@ Auto-renew has additional rules:
 Token and refresh-token timeouts can also be configured with `time.Duration`. Positive durations are rounded up to whole seconds:
 
 ```go
-defaults.NewBuilder().
+dt.NewBuilder().
     TimeoutDuration(2 * time.Hour).
     RefreshTokenTimeoutDuration(30 * 24 * time.Hour)
 ```
@@ -156,7 +165,7 @@ Enabled sources are checked in this order: the header named by `TokenName`, `Aut
 DToken-Go must have at least one Token source enabled:
 
 ```go
-defaults.NewBuilder().
+dt.NewBuilder().
     IsReadHeader(true).
     IsReadCookie(false).
     IsReadQuery(false).
@@ -167,34 +176,14 @@ Manager construction fails if all four sources are disabled.
 
 ## Optional Modules
 
-The base manager enables core login, logout, session, permission, role, refresh token, disable, and terminal management by default. The following modules are opt-in:
-
-| Module | Default | Enable API |
-| --- | --- | --- |
-| Nonce | Disabled | `EnableNonce()`, `NonceConfig(...)`, `NonceTTL(...)`, or `SetNonceManager(...)` |
-| OAuth2 | Disabled | `EnableOAuth2()`, `OAuth2Config(...)`, `OAuth2CodeExpiration(...)`, `OAuth2TokenExpiration(...)`, `OAuth2RefreshExpiration(...)`, or `SetOAuth2Manager(...)` |
-| Ticket | Disabled | `EnableTicket()`, `TicketConfig(...)`, `TicketTTL(...)`, or `SetTicketManager(...)` |
-| ShortKey | Disabled | `EnableShortKey()`, `ShortKeyConfig(...)`, `ShortKeyTTL(...)`, `ShortKeyLength(...)`, or `SetShortKeyManager(...)` |
-| SSO | Separate module | Import and initialize `github.com/Zany2/dtoken-go/sso` explicitly |
-
-Example:
-
-```go
-mgr, err := defaults.NewBuilder().
-    EnableNonce().
-    EnableTicket().
-    ShortKeyTTL(5 * time.Minute). // also enables ShortKey
-    Build()
-```
-
-Calling a module-specific config method enables that module automatically. Refresh Token is part of the core manager and can be used through `LoginWithRefreshToken` when needed.
+Configure Nonce, OAuth2, Ticket, and ShortKey in their own packages and compose their Managers with NewService. The root builder configures authentication and basic components, with no capability switches. Services can reuse auth.Config(), auth.Storage(), and auth.Codec(), with auth as the event emitter. Inject HTTP services with WithCapabilities. See the [capability guide](../security/advanced-features.md).
 
 ## Cookie Configuration
 
 When cookie reading is enabled, cookie attributes can be configured:
 
 ```go
-mgr, err := defaults.NewBuilder().
+auth, err := dt.NewBuilder().
     IsReadHeader(false).
     IsReadCookie(true).
     CookieDomain("example.com").
@@ -203,8 +192,11 @@ mgr, err := defaults.NewBuilder().
     CookieHttpOnly(true).
     CookieSameSite(config.SameSiteNone).
     CookieMaxAge(7200).
-    SetStorage(storage).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 Cookie validation rules:

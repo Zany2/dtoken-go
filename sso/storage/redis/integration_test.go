@@ -34,6 +34,7 @@ func TestRedisSSOFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}
+
 	// Cleanup callbacks run in reverse order, so data is removed before closing Redis. 清理回调逆序执行，保证先清理数据再关闭 Redis。
 	t.Cleanup(func() {
 		if err := server.Close(); err != nil {

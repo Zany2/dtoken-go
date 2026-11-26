@@ -1,0 +1,54 @@
+goos: windows
+goarch: amd64
+pkg: github.com/Zany2/dtoken-go/internal/engine
+cpu: AMD Ryzen 7 7840HS with Radeon 780M Graphics
+BenchmarkAccessRemoval/8/batch=0/request_set-4         	 3915788	        91.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAccessRemoval/8/batch=0/request_set-4         	 3714752	        92.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAccessRemoval/8/batch=0/request_set-4         	 3747399	        93.14 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAccessRemoval/8/batch=0/previous-4            	 2735414	       129.7 ns/op	      16 B/op	       1 allocs/op
+BenchmarkAccessRemoval/8/batch=0/previous-4            	 2931643	       125.5 ns/op	      16 B/op	       1 allocs/op
+BenchmarkAccessRemoval/8/batch=0/previous-4            	 2843413	       126.4 ns/op	      16 B/op	       1 allocs/op
+BenchmarkAccessRemoval/8/batch=1/request_set-4         	 1311349	       275.2 ns/op	     160 B/op	       3 allocs/op
+BenchmarkAccessRemoval/8/batch=1/request_set-4         	 1332880	       273.8 ns/op	     160 B/op	       3 allocs/op
+BenchmarkAccessRemoval/8/batch=1/request_set-4         	 1354329	       267.1 ns/op	     160 B/op	       3 allocs/op
+BenchmarkAccessRemoval/8/batch=1/previous-4            	 1000000	       357.9 ns/op	     224 B/op	       3 allocs/op
+BenchmarkAccessRemoval/8/batch=1/previous-4            	 1000000	       353.1 ns/op	     224 B/op	       3 allocs/op
+BenchmarkAccessRemoval/8/batch=1/previous-4            	 1000000	       547.5 ns/op	     224 B/op	       3 allocs/op
+BenchmarkAccessRemoval/8/batch=2/request_set-4         	  371586	       988.1 ns/op	     352 B/op	       5 allocs/op
+BenchmarkAccessRemoval/8/batch=2/request_set-4         	  465261	       754.4 ns/op	     352 B/op	       5 allocs/op
+BenchmarkAccessRemoval/8/batch=2/request_set-4         	  545668	       674.2 ns/op	     352 B/op	       5 allocs/op
+BenchmarkAccessRemoval/8/batch=2/previous-4            	  666801	       536.3 ns/op	     128 B/op	       1 allocs/op
+BenchmarkAccessRemoval/8/batch=2/previous-4            	  703330	       552.2 ns/op	     128 B/op	       1 allocs/op
+BenchmarkAccessRemoval/8/batch=2/previous-4            	  679950	       553.1 ns/op	     128 B/op	       1 allocs/op
+BenchmarkAccessRemoval/8/batch=3/request_set-4         	   34938	     10300 ns/op	     304 B/op	       3 allocs/op
+BenchmarkAccessRemoval/8/batch=3/request_set-4         	   28156	     15722 ns/op	     304 B/op	       3 allocs/op
+BenchmarkAccessRemoval/8/batch=3/request_set-4         	   20126	     17479 ns/op	     304 B/op	       3 allocs/op
+BenchmarkAccessRemoval/8/batch=3/previous-4            	   35450	      8796 ns/op	   18432 B/op	       1 allocs/op
+BenchmarkAccessRemoval/8/batch=3/previous-4            	   61842	      5873 ns/op	   18432 B/op	       1 allocs/op
+BenchmarkAccessRemoval/8/batch=3/previous-4            	   75020	      6395 ns/op	   18432 B/op	       1 allocs/op
+BenchmarkAccessRemoval/1024/batch=0/request_set-4      	   29026	     12351 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAccessRemoval/1024/batch=0/request_set-4      	   31126	     11175 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAccessRemoval/1024/batch=0/request_set-4      	   35120	     14673 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAccessRemoval/1024/batch=0/previous-4         	    9429	     47938 ns/op	   54624 B/op	       6 allocs/op
+BenchmarkAccessRemoval/1024/batch=0/previous-4         	    9982	     41453 ns/op	   54624 B/op	       6 allocs/op
+BenchmarkAccessRemoval/1024/batch=0/previous-4         	   10000	     31420 ns/op	   54624 B/op	       6 allocs/op
+BenchmarkAccessRemoval/1024/batch=1/request_set-4      	   18453	     18463 ns/op	   16432 B/op	       3 allocs/op
+BenchmarkAccessRemoval/1024/batch=1/request_set-4      	   23811	     17466 ns/op	   16432 B/op	       3 allocs/op
+BenchmarkAccessRemoval/1024/batch=1/request_set-4      	   15944	     23248 ns/op	   16432 B/op	       3 allocs/op
+BenchmarkAccessRemoval/1024/batch=1/previous-4         	    5755	     69836 ns/op	   89776 B/op	      15 allocs/op
+BenchmarkAccessRemoval/1024/batch=1/previous-4         	    5524	     68506 ns/op	   89776 B/op	      15 allocs/op
+BenchmarkAccessRemoval/1024/batch=1/previous-4         	    7088	     56565 ns/op	   89776 B/op	      15 allocs/op
+BenchmarkAccessRemoval/1024/batch=2/request_set-4      	    3822	     95153 ns/op	  130752 B/op	      18 allocs/op
+BenchmarkAccessRemoval/1024/batch=2/request_set-4      	    3842	    112559 ns/op	  130752 B/op	      18 allocs/op
+BenchmarkAccessRemoval/1024/batch=2/request_set-4      	    3334	    155830 ns/op	  130752 B/op	      18 allocs/op
+BenchmarkAccessRemoval/1024/batch=2/previous-4         	    2666	    149325 ns/op	  127648 B/op	      11 allocs/op
+BenchmarkAccessRemoval/1024/batch=2/previous-4         	    3122	    121783 ns/op	  127648 B/op	      11 allocs/op
+BenchmarkAccessRemoval/1024/batch=2/previous-4         	    3520	    105527 ns/op	  127648 B/op	      11 allocs/op
+BenchmarkAccessRemoval/1024/batch=3/request_set-4      	    3580	    105122 ns/op	  130704 B/op	      16 allocs/op
+BenchmarkAccessRemoval/1024/batch=3/request_set-4      	    4054	    126439 ns/op	  130704 B/op	      16 allocs/op
+BenchmarkAccessRemoval/1024/batch=3/request_set-4      	    2440	    151509 ns/op	  130704 B/op	      16 allocs/op
+BenchmarkAccessRemoval/1024/batch=3/previous-4         	    2456	    142716 ns/op	  141984 B/op	      11 allocs/op
+BenchmarkAccessRemoval/1024/batch=3/previous-4         	    2305	    131498 ns/op	  141984 B/op	      11 allocs/op
+BenchmarkAccessRemoval/1024/batch=3/previous-4         	    2805	    123265 ns/op	  141984 B/op	      11 allocs/op
+PASS
+ok  	github.com/Zany2/dtoken-go/internal/engine	18.769s

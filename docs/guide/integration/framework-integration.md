@@ -4,16 +4,36 @@
 
 ## Overview
 
-DToken-Go keeps core authentication APIs and framework integrations separate. Use `dtoken` for login, logout, session, permission, role, and global manager APIs. Use `defaults` to create managers with bundled default components. Use `integrations/*` packages only for framework middleware, annotations, and request-context helpers.
+The root exposes instance APIs, default namespace functions, and AuthType selectors. NewBuilder().Build() automatically registers and returns Auth. Bind HTTP explicitly with WithAuth(auth) or WithManager(auth.Manager()). Bind independent request services with WithCapabilities.
 
-Context registration and authentication middleware across frameworks select managers in this order: explicit `WithManager`, explicit `WithAuthType`, the existing request manager, then the global default. Repeated registration without an explicit selection preserves the request manager. A missing request context, including a typed nil, permits fallback. An existing request context with a nil or closed manager returns `ErrManagerNotFound` instead of implicitly switching to the global instance. Explicit selection can still override an existing request scope.
+Frameworks provide HTTP adapters, middleware, and request helpers. Their NewBuilder() returns the root Builder and Build() automatically registers and returns Auth; BuildInstance() does not register. Use root default functions or AuthType selectors. Import Redis, MsgPack, and other components from their own packages.
+
+Selection order: explicit WithAuth/WithManager, the bound request instance, then an explicitly configured ManagerResolver. WithAuthType selects a namespace through that resolver; without one, it must match the bound instance. A request without either a binding or a resolver returns ErrManagerNotFound. Checks without an override preserve instance and capability bindings; switching instances clears capability bindings.
+
+`BeforeAuthHandler` observes the `AuthHandleRequest` metadata and controls flow: `req.Next()` skips the current DToken checks and continues downstream; `req.Exit()` ends the current DToken flow after custom handling. Returning without handling or aborting the request continues the original middleware checks. Changing `AuthType`, `CheckLogin`, `CheckDisable`, `Permissions`, `Roles`, or `LogicType` on this request does not change those rules. For dynamic rules, use `AccessMiddleware` with `WithRouteAccessHandler` and modify its `RouteAccessRequest`. This distinction applies to all eight framework integrations.
+
+## Login validation and restriction checks
+
+`AuthMiddleware` validates credentials without implicit account or device restriction reads. To enforce these restrictions, use `AccessMiddleware` and explicitly set `CheckDisable`. This checks the account, device type, and concrete device while reusing the token identity already read. Service restrictions still require service-specific business checks.
+
+This Gin example assumes an instance is already bound through `RegisterDTokenContextMiddleware`:
+
+```go
+protected := r.Group("/protected")
+protected.Use(gindt.AccessMiddleware(ctx,
+    gindt.WithRouteAccessHandler(func(_ context.Context, _ *gin.Context, req *gindt.RouteAccessRequest) {
+        req.CheckDisable = true
+    }),
+))
+```
+
+`AccessMiddleware` requires login by default; the callback adds restrictions. Other frameworks use their own callback signatures. Annotations set `CheckDisable: true`; direct shared checks set `httpauth.Request.CheckDisable`. When upgrading from implicit bans, update route declarations according to the [migration guide](../../design/module-migration.md).
 
 ## Installation
 
 ```bash
-go get github.com/Zany2/dtoken-go/defaults
+go get github.com/Zany2/dtoken-go
 go get github.com/Zany2/dtoken-go/integrations/gin
-go get github.com/Zany2/dtoken-go/com/storage/memory
 ```
 
 Other supported integration packages follow the same pattern:
@@ -28,25 +48,31 @@ go get github.com/Zany2/dtoken-go/integrations/kratos
 go get github.com/Zany2/dtoken-go/integrations/beego
 ```
 
+WithAuth returns (AuthOption, error); Context returns (middleware, error). Check binding errors before starting the server. The setup fragments below belong in functions returning error.
+
 ## Minimal Framework Examples
 
-All framework packages re-export common `dtoken` facade APIs and provide framework-specific middleware. The following snippets show the smallest login plus protected route setup. Full runnable examples live in `examples/gf`, `examples/gin`, `examples/echo`, and `examples/fiber`.
+The following examples bind an Auth instance explicitly. Full runnable examples live under examples/.
 
 ### GoFrame
 
 ```go
 ctx := context.Background()
-mgr, err := gfdt.NewBuilder().IsPrintBanner(false).Build()
+authInstance, err := gfdt.NewBuilder().IsPrintBanner(false).Build()
 if err != nil {
     panic(err)
 }
-gfdt.SetManager(mgr)
+defer authInstance.Close()
 
 s := g.Server()
-s.Use(gfdt.RegisterDTokenContextMiddleware(ctx))
+authOption1, authErr := gfdt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+s.Use(gfdt.RegisterDTokenContextMiddleware(ctx, authOption1))
 s.Group("/", func(group *ghttp.RouterGroup) {
     group.POST("/login", func(r *ghttp.Request) {
-        token, _ := gfdt.Login(r.Context(), "1000")
+        token, _ := authInstance.LoginID(r.Context(), "1000")
         r.Response.WriteJson(g.Map{"token": token})
     })
     group.Group("/", func(group *ghttp.RouterGroup) {
@@ -68,22 +94,26 @@ If a hook replaces `c.Request`, subsequent authentication checks use the replace
 
 Query and body token lookup also reads the current request instead of credentials cached by Gin before replacement. Body tokens come only from form fields, and multipart parsing continues to honor Gin's `MaxMultipartMemory` setting.
 
-After `RegisterDTokenContextMiddleware(ctx, WithManager(mgr))` injects a manager, authentication middleware without an explicit manager or `AuthType` reuses that request instance. An explicit `WithManager` takes precedence, followed by the registry entry selected by `WithAuthType`; the global default is used only when no request manager is cached. The `...ByContext` helpers also use the request manager and reject closed instances.
+After `RegisterDTokenContextMiddleware(ctx, WithManager(mgr))` injects a manager, authentication middleware without an explicit manager or `AuthType` reuses that request instance. The `...ByContext` helpers also use the request manager and reject closed instances. Registry lookup requires an explicit ManagerResolver; unbound requests never select a global instance implicitly.
 
 Authentication failures abort the Gin handler chain before invoking the failure callback, so calling `c.Next()` from that callback cannot run business handlers. If a before-auth or route-access hook calls `c.Abort()`, authentication processing stops immediately.
 
 ```go
 ctx := context.Background()
-mgr, err := gindt.NewBuilder().IsPrintBanner(false).Build()
+authInstance, err := gindt.NewBuilder().IsPrintBanner(false).Build()
 if err != nil {
     panic(err)
 }
-gindt.SetManager(mgr)
+defer authInstance.Close()
 
 r := gin.Default()
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
+authOption1, authErr := gindt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, authOption1))
 r.POST("/login", func(c *gin.Context) {
-    token, _ := gindt.Login(c.Request.Context(), "1000")
+    token, _ := authInstance.LoginID(c.Request.Context(), "1000")
     c.JSON(http.StatusOK, gin.H{"token": token})
 })
 
@@ -100,16 +130,20 @@ auth.GET("/me", func(c *gin.Context) {
 
 ```go
 ctx := context.Background()
-mgr, err := echodt.NewBuilder().IsPrintBanner(false).Build()
+authInstance, err := echodt.NewBuilder().IsPrintBanner(false).Build()
 if err != nil {
     panic(err)
 }
-echodt.SetManager(mgr)
+defer authInstance.Close()
 
 e := echo4.New()
-e.Use(echodt.RegisterDTokenContextMiddleware(ctx))
+authOption1, authErr := echodt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+e.Use(echodt.RegisterDTokenContextMiddleware(ctx, authOption1))
 e.POST("/login", func(c echo4.Context) error {
-    token, _ := echodt.Login(c.Request().Context(), "1000")
+    token, _ := authInstance.LoginID(c.Request().Context(), "1000")
     return c.JSON(http.StatusOK, echo4.Map{"token": token})
 })
 
@@ -126,16 +160,20 @@ auth.GET("/me", func(c echo4.Context) error {
 
 ```go
 ctx := context.Background()
-mgr, err := fiberdt.NewBuilder().IsPrintBanner(false).Build()
+authInstance, err := fiberdt.NewBuilder().IsPrintBanner(false).Build()
 if err != nil {
     panic(err)
 }
-fiberdt.SetManager(mgr)
+defer authInstance.Close()
 
 app := gofiber.New()
-app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx))
+authOption1, authErr := fiberdt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+app.Use(fiberdt.RegisterDTokenContextMiddleware(ctx, authOption1))
 app.Post("/login", func(c *gofiber.Ctx) error {
-    token, _ := fiberdt.Login(c.UserContext(), "1000")
+    token, _ := authInstance.LoginID(c.UserContext(), "1000")
     return c.JSON(gofiber.Map{"token": token})
 })
 
@@ -149,83 +187,84 @@ auth.Get("/me", func(c *gofiber.Ctx) error {
 ```
 ## Gin Example
 
+<!-- dtoken-compile: complete-example -->
 ```go
 package main
 
 import (
-    "context"
+    "log"
     "net/http"
 
-    "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/defaults"
-    "github.com/Zany2/dtoken-go/dtoken"
+    dt "github.com/Zany2/dtoken-go"
     gindt "github.com/Zany2/dtoken-go/integrations/gin"
     "github.com/gin-gonic/gin"
 )
 
 func main() {
-    ctx := context.Background()
-    storage := memory.NewStorage()
-
-    mgr, err := defaults.NewBuilder().
-        SetStorage(storage).
-        TokenName("token").
-        Timeout(2 * 60 * 60).
-        Build()
+    auth, err := dt.NewBuilder().TokenName("Authorization").Build()
     if err != nil {
         panic(err)
     }
-    dtoken.SetManager(mgr)
+    defer auth.Close()
 
-    r := gin.Default()
-    r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
-
-    r.POST("/login", func(c *gin.Context) {
-        token, err := dtoken.Login(ctx, "1000")
+    router := gin.Default()
+    authMiddleware1, authErr := gindt.Context(auth)
+    if authErr != nil {
+        log.Print(authErr)
+        return
+    }
+    router.Use(authMiddleware1)
+    router.POST("/login", func(c *gin.Context) {
+        token, err := auth.LoginID(c.Request.Context(), "user-1001")
         if err != nil {
-            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
             return
         }
         c.JSON(http.StatusOK, gin.H{"token": token})
     })
-
-    user := r.Group("/user")
-    user.Use(gindt.AuthMiddleware(ctx))
-    user.GET("/info", func(c *gin.Context) {
-        dCtx, _ := gindt.GetDTokenContext(c)
-        token := dCtx.GetTokenValue()
-        loginID, _ := dtoken.GetLoginID(ctx, token)
+    users := router.Group("/user")
+    users.Use(gindt.RequireLogin())
+    users.GET("/me", func(c *gin.Context) {
+        loginID, err := gindt.GetLoginIDByContext(c)
+        if err != nil {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+            return
+        }
         c.JSON(http.StatusOK, gin.H{"loginId": loginID})
     })
-
-    _ = r.Run(":8080")
+    if err := router.Run(":8080"); err != nil {
+        panic(err)
+    }
 }
 ```
 
 ## Common API Surface
 
-Core authentication APIs come from `dtoken`:
+Call core authentication through a built Auth. Below, authInstance is the instance and dt aliases the root package:
 
 ```go
-dtoken.SetManager(mgr)
-mgr, err := dtoken.GetManager()
-
-token, err := dtoken.Login(ctx, "1000")
-ok := dtoken.IsLogin(ctx, token)
-loginID, err := dtoken.GetLoginID(ctx, token)
-err = dtoken.Logout(ctx, token)
-
-err = dtoken.AddPermissions(ctx, "1000", []string{"user:read"})
-hasPermission := dtoken.HasPermission(ctx, "1000", "user:read")
-
-err = dtoken.AddRoles(ctx, "1000", []string{"admin"})
-hasRole := dtoken.HasRole(ctx, "1000", "admin")
+token, err := authInstance.LoginID(ctx, "1000")
+ok := authInstance.IsLogin(ctx, token)
+loginID, err := authInstance.GetLoginID(ctx, token)
+err = authInstance.AddPermissions(ctx, dt.PermissionOptions{
+    LoginID: "1000", Permissions: []string{"user:read"},
+})
+hasPermission := authInstance.HasPermission(ctx, "1000", "user:read")
+err = authInstance.AddRoles(ctx, dt.RoleOptions{
+    LoginID: "1000", Roles: []string{"admin"},
+})
+hasRole := authInstance.HasRole(ctx, "1000", "admin")
+err = authInstance.LogoutByToken(ctx, token)
 ```
 
 Integration packages expose framework middleware:
 
 ```go
-r.Use(gindt.RegisterDTokenContextMiddleware(ctx))
+authOption1, authErr := gindt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+r.Use(gindt.RegisterDTokenContextMiddleware(ctx, authOption1))
 r.Use(gindt.AuthMiddleware(ctx))
 r.Use(gindt.PermissionMiddleware(ctx, []string{"user:read"}))
 r.Use(gindt.RoleMiddleware(ctx, []string{"admin"}))
@@ -261,25 +300,25 @@ r.GET("/admin",
 
 ### Select Auth System
 
-In multi-auth scenarios, `WithAuthType` lets different route groups use different managers:
+After Build automatically registers user/admin instances, explicitly inject the root resolver. Here dtoken imports github.com/Zany2/dtoken-go; WithAuthType alone does not enable registry lookup:
 
 ```go
 userGroup := r.Group("/api")
-userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuthType("user")))
+userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("user")))
 
 adminGroup := r.Group("/admin")
-adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithAuthType("admin")))
-adminGroup.Use(gindt.PermissionMiddleware(ctx, []string{"admin:read"}, gindt.WithAuthType("admin")))
+adminGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("admin")))
+adminGroup.Use(gindt.PermissionMiddleware(ctx, []string{"admin:read"}, gindt.WithManagerResolver(dtoken.GetManager), gindt.WithAuthType("admin")))
 ```
 
-For applications that do not use the global manager registry, inject a manager directly with `WithManager`. The explicit manager takes precedence over `WithAuthType` and works with context, auth, access, permission, and role middleware:
+For applications that do not use a registry, inject the Manager from a root-built Auth with `WithManager`. The explicit manager takes precedence over `WithAuthType` and works with context, auth, access, permission, and role middleware:
 
 ```go
-auth.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithManager(mgr)))
-auth.Use(gindt.AuthMiddleware(ctx, gindt.WithManager(mgr)))
+userGroup.Use(gindt.RegisterDTokenContextMiddleware(ctx, gindt.WithManager(authInstance.Manager())))
+userGroup.Use(gindt.AuthMiddleware(ctx, gindt.WithManager(authInstance.Manager())))
 ```
 
-Annotation handlers with an empty `AuthType` reuse the manager already stored in the request context. An explicit annotation `AuthType` continues to resolve through the global registry for multi-auth routes.
+Annotation handlers with an empty `AuthType` reuse the manager already stored in the request context. An explicit annotation AuthType uses the configured ManagerResolver; no registry is enabled implicitly.
 
 ### Permission And Role Logic
 
@@ -309,7 +348,7 @@ r.GET("/console",
 
 ## Chi Request Handling
 
-After `RegisterDTokenContextMiddleware(WithManager(mgr))`, Chi authentication middleware without an explicit manager or auth type inherits that request manager. `WithManager` takes precedence; an explicit `WithAuthType` selects a manager from the registry. Authentication middleware and annotation handlers bind their context to the current request and response writer, including changes made by earlier middleware. Install middleware that replaces requests or wraps response writers before the DToken middleware used by your handlers.
+After `RegisterDTokenContextMiddleware(WithManager(mgr))`, Chi authentication middleware without an explicit manager or auth type inherits that request manager. `WithManager` takes precedence; an explicit `WithAuthType` selects a manager through the explicitly configured ManagerResolver. Authentication middleware and annotation handlers bind their context to the current request and response writer, including changes made by earlier middleware. Install middleware that replaces requests or wraps response writers before the DToken middleware used by your handlers.
 
 `GetPostForm` reads body fields only, so disabling `IsReadQuery` also excludes query-only tokens when `IsReadBody` is enabled. `GetClientIP` reads `RemoteAddr` and does not trust `X-Real-IP` or `X-Forwarded-For` directly. Behind a proxy, use middleware that validates trusted proxy addresses and normalizes `RemoteAddr` before DToken runs.
 
@@ -317,7 +356,7 @@ In Chi authentication hooks, `req.Next()` continues downstream at most once, and
 
 ## Echo Request Handling
 
-Echo authentication middleware, annotation handlers, and hooks use `c.Request().Context()` for request values, deadlines, and cancellation. The `ctx` argument accepted when registering handlers remains for API compatibility. After registration with `WithManager(mgr)`, authentication without an explicit manager or auth type inherits the request manager. `WithManager` takes precedence over `WithAuthType`, and an explicit auth type selects a manager from the registry. Context facade operations, including renewal, use the request manager.
+Echo authentication middleware, annotation handlers, and hooks use `c.Request().Context()` for request values, deadlines, and cancellation. The `ctx` argument accepted when registering handlers remains for API compatibility. After registration with `WithManager(mgr)`, authentication without an explicit manager or auth type inherits the request manager. `WithManager` takes precedence over `WithAuthType`, and an explicit auth type selects a manager through the explicitly configured ManagerResolver. Context facade operations, including renewal, use the request manager.
 
 Token extraction reads the current request URL after `SetRequest` and reads form fields only from the body. Disabling `IsReadQuery` excludes query-only tokens even when body reading is enabled. In hooks, `req.Next()` invokes downstream at most once and preserves its returned error; `req.Exit()` or `Abort()` on the registered request adapter stops DToken processing. An explicitly nil annotation produces an invalid-parameter failure.
 
@@ -327,13 +366,13 @@ Client IP extraction follows Echo's `IPExtractor`. Configure `e.IPExtractor = ec
 
 Fiber authentication, annotations, hooks, and context facades use `c.UserContext()`. Set a standard context with `c.SetUserContext(ctx)` in upstream middleware to propagate request values, deadlines, and cancellation. Without one, Fiber supplies `context.Background()`; client disconnects do not automatically cancel it. The registration-time `ctx` parameter remains for API compatibility. `Locals` remains accessible through the request adapter and is not merged into `UserContext`.
 
-Authentication inherits the registered request manager unless `WithManager` or `WithAuthType` explicitly selects another one; `WithManager` has precedence. Renewal through the context facade uses that same request manager. Header, query, cookie, and form token values are copied so asynchronous maintenance does not retain Fiber's reusable request buffers. Body token extraction excludes query parameters, including for multipart forms. `GetBody` returns a copy of the raw body without automatic decompression or replacement with decoding error text.
+Authentication inherits the registered request manager unless `WithManager` or `WithAuthType` explicitly selects another one through a configured resolver; `WithManager` has precedence. Renewal through the context facade uses that same request manager. Header, query, cookie, and form token values are copied so asynchronous maintenance does not retain Fiber's reusable request buffers. Body token extraction excludes query parameters, including for multipart forms. `GetBody` returns a copy of the raw body without automatic decompression or replacement with decoding error text.
 
 Use `req.Next()` in a before-auth hook to continue once and preserve downstream errors, or `req.Exit()` to stop after custom handling. `Abort()` on the registered request adapter is honored by DToken entry points and hooks. Fiber has no native chain-wide abort primitive: failure callbacks must only write the response and must not call `c.Next()`. An explicitly nil annotation invokes the invalid-parameter failure path. Client IP and proxy scheme handling continue to follow Fiber's configured proxy trust policy.
 
 ## GoFrame Request Handling
 
-GoFrame authentication middleware, annotation handlers, and hooks use the current `r.Context()`, preserving request values, deadlines, and cancellation. The registration-time `ctx` parameter remains for API compatibility. After `RegisterDTokenContextMiddleware(ctx, WithManager(mgr))`, checks without an explicit manager or auth type inherit the request manager. Explicit `WithManager` takes precedence, followed by `WithAuthType`; the global default is used when no request manager is available. Context facades, including renewal, use the request manager and reject nil or closed cached managers.
+GoFrame authentication middleware, annotation handlers, and hooks use the current `r.Context()`, preserving request values, deadlines, and cancellation. The registration-time `ctx` parameter remains for API compatibility. After `RegisterDTokenContextMiddleware(ctx, WithManager(mgr))`, checks without an explicit manager or auth type inherit the request manager. Context facades, including renewal, use the request manager and reject nil or closed cached managers. Registry lookup requires an explicit ManagerResolver; unbound requests never select a global instance implicitly.
 
 Authentication failures mark the entire GoFrame chain as exited with `ExitAll()` before invoking the failure callback. Calling `r.Middleware.Next()` from that callback cannot resume protected handlers. Default failures return JSON with the corresponding HTTP status. Hook `req.Next()` continues at most once; `req.Exit()` exits the chain. Calling `Abort()` on the registered adapter stops DToken processing, but does not itself interrupt the current Go function: return after writing your response and do not invoke the native `r.Middleware.Next()` afterward. An explicitly nil annotation is rejected as an invalid parameter.
 
@@ -343,7 +382,7 @@ Response headers are written to `r.Response`, and setting a status code does not
 
 Hertz authentication checks, annotations, and hooks use the standard `context.Context` passed to the current handler, preserving its values, deadline, and cancellation. The registration-time `ctx` argument remains for API compatibility. DToken middleware and annotations also bind that standard context for downstream `...ByContext` facades and restore the outer binding when a nested call returns. Register DToken middleware after middleware that derives the standard context. If a later handler derives a new context without entering another DToken middleware or annotation, pass it explicitly to `dCtx.Auth()` or another context facade group. Without a DToken binding, `...ByContext` retains its `context.Background()` fallback. Hertz request keys are not automatically merged into the standard context, and this binding does not create client-disconnect cancellation.
 
-After `RegisterDTokenContextMiddleware(ctx, WithManager(mgr))`, authentication without an explicit selection inherits the request manager. Explicit `WithManager` takes precedence over `WithAuthType`; the global default is used when no request manager is available. Context facades reject nil or closed cached managers. Authentication failures call `Abort()` before invoking failure callbacks, so a callback's `Next()` cannot enter protected handlers. Hook `req.Next()` continues at most once, and native or adapter `Abort()` stops DToken checks. An explicitly nil annotation returns an invalid-parameter failure.
+After `RegisterDTokenContextMiddleware(ctx, WithManager(mgr))`, authentication without an explicit selection inherits the request manager. Context facades reject nil or closed cached managers. Authentication failures call `Abort()` before invoking failure callbacks, so a callback's `Next()` cannot enter protected handlers. Hook `req.Next()` continues at most once, and native or adapter `Abort()` stops DToken checks. An explicitly nil annotation returns an invalid-parameter failure. Registry lookup requires an explicit ManagerResolver; unbound requests never select a global instance implicitly.
 
 Cookie reads decode the escaping performed by Hertz's cookie writer, allowing custom tokens containing `+`, `/`, or `%` to round-trip. Body token lookup uses form fields only, including multipart fields, without falling back to Query. `IsTLS()` checks the actual connection's Hertz TLS interface; a URL scheme or forwarding header does not prove that the connection is encrypted.
 
@@ -351,7 +390,7 @@ Client IP extraction follows Hertz's configured `ClientIP` function. Its default
 
 ## Kratos Request Handling
 
-Kratos HTTP and unary gRPC authentication middleware, annotations, hooks, and context facades use the current handler's `context.Context`, preserving values, deadlines, and cancellation. After `RegisterDTokenContextMiddleware(WithManager(mgr))`, checks without an explicit selection inherit the request manager. Explicit `WithManager` takes precedence over `WithAuthType`, followed by the cached manager and then the global default. Context facades reject nil or closed cached managers; renewal stays within the selected manager. Changing the manager preserves the request adapter's values and abort state.
+Kratos HTTP and unary gRPC authentication middleware, annotations, hooks, and context facades use the current handler's `context.Context`, preserving values, deadlines, and cancellation. After `RegisterDTokenContextMiddleware(WithManager(mgr))`, checks without an explicit selection inherit the request manager. Context facades reject nil or closed cached managers; renewal stays within the selected manager. Changing the manager preserves the request adapter's values and abort state. Registry lookup requires an explicit ManagerResolver; unbound requests never select a global instance implicitly.
 
 Hook `req.Next()` invokes the downstream handler at most once and preserves its result and error. `req.Exit()` stops after custom handling. DToken entries and hooks honor `Abort()` on the registered adapter. Failure dispatch marks that adapter aborted before calling `FailFunc`; the callback's returned error is returned to Kratos, while returning nil means the callback has handled the response. The protected handler is not invoked in either case. Default failures retain their original cause and map to Kratos HTTP/gRPC status errors. An explicitly nil annotation is rejected; an omitted annotation remains a pass-through. Default AND logic is applied to a local annotation copy, without modifying shared route configuration.
 
@@ -363,7 +402,7 @@ Streaming RPCs require a separate authentication setup: in Kratos v2.9.1, regist
 
 ## Beego Request Handling
 
-Beego authentication filters and hooks use the current `c.Request.Context()`, preserving request values, deadlines, and cancellation. The registration-time `ctx` argument remains for API compatibility. After `RegisterDTokenContextMiddleware(ctx, WithManager(mgr))`, filters without an explicit manager or auth type inherit the request manager. Explicit `WithManager` takes precedence over `WithAuthType`, followed by the request cache and global default. Context facades reject nil or closed cached managers, and renewal uses the request manager.
+Beego authentication filters and hooks use the current `c.Request.Context()`, preserving request values, deadlines, and cancellation. The registration-time `ctx` argument remains for API compatibility. After `RegisterDTokenContextMiddleware(ctx, WithManager(mgr))`, filters without an explicit manager or auth type inherit the request manager. Context facades reject nil or closed cached managers, and renewal uses the request manager. Registry lookup requires an explicit ManagerResolver; unbound requests never select a global instance implicitly.
 
 Authentication failures mark `ResponseWriter.Started` before invoking `FailFunc`. This stops the native filter chain even when the callback writes no response, while still allowing the callback to write its own status and body. Adapter `Abort()` and hook `req.Exit()` use the same native state. DToken filters also stop when an upstream hook has already written a response. Beego filters have no nested `Next` call: `req.Next()` skips the current DToken check and lets Beego dispatch subsequent filters. `Next()` and `Exit()` honor the first decision only.
 
@@ -388,9 +427,9 @@ Recommended aliases:
 | Kratos | `github.com/Zany2/dtoken-go/integrations/kratos` | `kratosdt` |
 | Beego | `github.com/Zany2/dtoken-go/integrations/beego` | `beegodt` |
 
-## When To Import Core Directly
+## Framework-Independent Applications And Extensions
 
-Use `defaults`, `core/builder`, `core/manager`, or `dtoken` for framework-agnostic infrastructure, tests, shared libraries, and business handlers. Use `core/builder` directly only when you want to inject every adapter yourself. Use the integration package only where the code needs framework-specific request handling.
+Use the root `dtoken` package for framework-agnostic applications and libraries. Extend it through public `Manager`, `ManagerOption`, and `Strategy` types, implement interfaces from `contract`, and import components from their own packages. `internal/builder` and `internal/engine` are private implementation packages. Import integrations where framework-specific request handling is needed.
 
 ## Related Documents
 
@@ -399,3 +438,5 @@ Use `defaults`, `core/builder`, `core/manager`, or `dtoken` for framework-agnost
 - [Annotation Guide](../integration/annotation.md)
 - [Multi-Auth Systems](../core/multi-auth.md)
 - [AccessProvider](../core/access-provider.md)
+
+Default responses preserve business error codes and use canonical messages. Storage, serialization and unknown failures return `internal server error`; wrapped details are omitted from both `message` and `data`. Custom failure callbacks still receive the original error for server-side logging. Custom `DTokenError.Message` values are public messages unless the code is `CodeServerError` or `CodeStorageError`.

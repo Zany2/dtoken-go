@@ -2,6 +2,8 @@
 
 This example shows how to use `github.com/Zany2/dtoken-go/integrations/beego` with Beego filters.
 
+Build automatically registers and returns one Auth instance. The application explicitly binds that instance with `WithAuth`; login and request checks use the bound engine. Close it after draining requests. Use `BuildInstance()` for an unregistered instance.
+
 ## Run
 
 ```bash
@@ -19,7 +21,7 @@ The server listens on `http://localhost:8080`.
 - `GET /articles`: requires the `article:read` permission.
 - `POST /logout`: logs out the current token.
 
-The example uses bundled memory storage through `beegodt.NewBuilder()`, so no Redis service is required. Login state and authorization data are lost on restart. Tokens expire after two hours; automatic renewal is enabled with a one-hour remaining-lifetime threshold.
+The example uses bundled memory storage through `dtoken.NewBuilder()`, so no Redis service is required. Login state and authorization data are lost on restart. Tokens expire after two hours; automatic renewal is enabled with a one-hour remaining-lifetime threshold.
 
 This is a demonstration credential check. Real applications must verify credentials against their user data and load the user's actual roles and permissions. By default, repeated logins for the same user and device share a token; logging out that token invalidates all clients using it.
 

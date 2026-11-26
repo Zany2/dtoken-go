@@ -2,10 +2,12 @@
 package gin
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -139,13 +141,13 @@ func (g *GinContext) GetString(key string) string {
 	return v
 }
 
-// MustGet implements adapter.RequestContext 实现 adapter.RequestContext 接口
-func (g *GinContext) MustGet(key string) any {
-	v, exists := g.c.Get(key)
-	if !exists {
-		panic("key not found: " + key)
+// GetRequired returns a context value or ErrKeyNotFound when missing. GetRequired 返回上下文值，不存在时返回 ErrKeyNotFound。
+func (g *GinContext) GetRequired(key string) (any, error) {
+	value, ok := g.Get(key)
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", derror.ErrKeyNotFound, key)
 	}
-	return v
+	return value, nil
 }
 
 // Abort implements adapter.RequestContext 实现 adapter.RequestContext 接口

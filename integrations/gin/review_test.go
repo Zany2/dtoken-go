@@ -4,18 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Zany2/dtoken-go"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
+	"github.com/Zany2/dtoken-go/storage/memory"
+	gingonic "github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/Zany2/dtoken-go/com/storage/memory"
-	"github.com/Zany2/dtoken-go/core/adapter"
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
-	gingonic "github.com/gin-gonic/gin"
 )
 
 // ginReviewChecks exercises every authentication entry point through real Gin handler chains. ginReviewChecks 使用真实 Gin 处理链覆盖各鉴权入口。
@@ -37,7 +36,8 @@ var ginReviewChecks = []struct {
 			opt(options)
 		}
 		return GetHandler(ctx, nil, options.FailFunc, &Annotation{
-			AuthType: options.AuthType, CheckLogin: true, CheckPermission: []string{"read"},
+			ManagerResolver: options.ManagerResolver,
+			AuthType:        options.AuthType, CheckLogin: true, CheckPermission: []string{"read"},
 		})
 	}},
 }
@@ -45,17 +45,18 @@ var ginReviewChecks = []struct {
 // newGinReviewManager creates a deterministic manager with synchronous events and no automatic renewal. newGinReviewManager 创建使用同步事件且不自动续期的测试 Manager。
 func newGinReviewManager(t *testing.T, authType string, storage adapter.Storage) *manager.Manager {
 	t.Helper()
-	b := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
+	b := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
 	if authType != "" {
 		b.AuthType(authType)
 	}
 	if storage != nil {
-		b.SetStorage(storage)
+		b.Storage(storage)
 	}
-	mgr, err := b.Build()
+	mgrAuth, err := b.BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	return mgr
 }
@@ -203,7 +204,9 @@ func TestGinReviewManagerSelection(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newGinReviewManager(t, "", nil)
 	local := newGinReviewManager(t, "local-selection", nil)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	const token = "selection-token"
 	for _, mgr := range []*manager.Manager{global, local} {
 		if _, err := mgr.LoginWithOptions(context.Background(), manager.LoginOptions{LoginID: "reader", Token: token}); err != nil {
@@ -223,7 +226,7 @@ func TestGinReviewManagerSelection(t *testing.T) {
 			want *manager.Manager
 		}{
 			{"cached", nil, local},
-			{"auth type", []AuthOption{WithAuthType(global.GetConfig().AuthType)}, global},
+			{"auth type", []AuthOption{WithManagerResolver(dtoken.GetManager), WithAuthType(global.GetConfig().AuthType)}, global},
 			{"explicit manager", []AuthOption{WithManager(global), WithAuthType("missing")}, global},
 		} {
 			if check.name == "annotation" && selection.name == "explicit manager" {
@@ -299,7 +302,9 @@ func TestGinReviewRenewalUsesRequestManager(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newGinReviewManager(t, "", nil)
 	local := newGinReviewManager(t, "local-renewal", nil)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	const token = "shared-token-value"
 	for _, mgr := range []*manager.Manager{global, local} {
 		if _, err := mgr.LoginWithOptions(context.Background(), manager.LoginOptions{LoginID: "renew", Token: token}); err != nil {
@@ -327,14 +332,16 @@ func TestGinReviewCachedContextValidation(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newGinReviewManager(t, "", nil)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	c := newGinTestContext(http.MethodGet, "/", "", "")
 	c.Set(DTokenCtxKey, (*DTokenContext)(nil))
 	if value, ok := GetDTokenContext(c); value != nil || ok {
 		t.Fatal("typed nil cache was reported as a usable context")
 	}
-	if mgr, err := GetManagerByContext(c); err != nil || mgr != global {
-		t.Fatalf("missing cache fallback = %v, %v", mgr, err)
+	if mgr, err := GetManagerByContext(c); !errors.Is(err, ErrManagerNotFound) {
+		t.Fatalf("missing cache binding = %v, %v", mgr, err)
 	}
 	for _, missing := range []bool{true, false} {
 		var mgr *manager.Manager

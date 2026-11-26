@@ -5,11 +5,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
 )
 
 // ChiContext adapts request context ChiContext 适配 Chi 请求上下文
@@ -193,13 +195,13 @@ func (c *ChiContext) GetString(key string) string {
 	return str
 }
 
-// MustGet implements adapter.RequestContext MustGet 实现 adapter.RequestContext 接口
-func (c *ChiContext) MustGet(key string) any {
-	value := c.ctx.Value(key)
-	if value == nil {
-		panic("key not found: " + key)
+// GetRequired returns a context value or ErrKeyNotFound when missing. GetRequired 返回上下文值，不存在时返回 ErrKeyNotFound。
+func (c *ChiContext) GetRequired(key string) (any, error) {
+	value, ok := c.Get(key)
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", derror.ErrKeyNotFound, key)
 	}
-	return value
+	return value, nil
 }
 
 // Abort implements adapter.RequestContext Abort 实现 adapter.RequestContext 接口

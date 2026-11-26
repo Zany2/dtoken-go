@@ -2,6 +2,10 @@ English | [中文文档](README_zh.md)
 
 # DToken-Go Documentation Center
 
+Start new applications with [quick start](tutorial/quick-start.md) and the [Auth instance API](api/auth.md). Build registers automatically; use root default functions or AuthType selectors, explicitly bind Auth for framework requests, and compose independent capabilities through Service and WithCapabilities.
+
+Documentation conventions: `dt` or `dtoken` names the root package, `auth` is a built instance, and `mgr` is its underlying Manager. Examples with package main provide complete programs or marked fragments composed together; other snippets belong in a function holding the instance and need their imports, business handlers, and error handling. The root module requires Go 1.25+; the repository workspace requires Go 1.27+.
+
 ## Navigation
 
 ### Quick Start
@@ -39,16 +43,20 @@ English | [中文文档](README_zh.md)
 
 ### Reference
 
-- [Core API Cheatsheet](guide/reference/core-api-cheatsheet.md) - Common global API calls
+- [Core API Cheatsheet](guide/reference/core-api-cheatsheet.md) - Root facade calls
 - [Configuration Example](guide/reference/configuration.md) - Common Builder configuration options
 - [API Stability](guide/reference/api-stability.md) - Public API compatibility and versioning notes
-- [DToken API](api/dtoken.md) - Complete global utility API reference
+- [Auth And Root Facade API](api/auth.md) - Instance calls, default calls, AuthType selection, and options
+- [Root API Reference](api/dtoken.md) - Business method signatures, registration, and shutdown
 
 ### Design Documentation
 
-- [Architecture Design](design/architecture.md) - System architecture and data flow
+- [Architecture Design](design/architecture.md) - Responsibilities, dependencies, and assembly paths
+- [Source Layout](design/source-layout.md) - Directory responsibilities, engine file index, and code placement
+- [Modular Design](design/modular.md) - Package dependencies, Go module boundaries, and structural checks
+- [API And Lifecycle](design/api-lifecycle.md) - Public APIs, component ownership, and instance sharing
+- [Migration Guide](design/module-migration.md) - Package upgrades, release ordering, and consumer verification
 - [Auto-Renewal Design](design/auto-renew.md) - Asynchronous renewal mechanism
-- [Modular Design](design/modular.md) - Module organization strategy
 
 ## Example Projects
 

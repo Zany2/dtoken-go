@@ -16,7 +16,8 @@ import (
 func TestDemoLoginSubmissionBoundary(t *testing.T) {
 	server := sso.NewServer()
 	defer server.Close()
-	handler, err := newDemoHandler(server)
+	center := newTestCenter(t)
+	handler, err := newDemoHandler(server, center.auth)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +56,7 @@ func TestDemoLoginSubmissionBoundary(t *testing.T) {
 			}
 			identityRequest := httptest.NewRequest(http.MethodGet, "/", nil)
 			identityRequest.AddCookie(cookies[0])
-			if id, ok := sso.LoginIDFromCookie(cookie)(identityRequest); !ok || id != tc.wantID {
+			if id, ok := center.loginID(identityRequest); !ok || id != tc.wantID {
 				t.Fatalf("cookie identity = %q, %v; want %q", id, ok, tc.wantID)
 			}
 		})
@@ -72,7 +73,8 @@ func (f demoCallbackTransport) RoundTrip(r *http.Request) (*http.Response, error
 func TestDemoLogoutRetriesFailedCallback(t *testing.T) {
 	server := sso.NewServer()
 	defer server.Close()
-	handler, err := newDemoHandler(server)
+	center := newTestCenter(t)
+	handler, err := newDemoHandler(server, center.auth)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +100,9 @@ func TestDemoLogoutRetriesFailedCallback(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"code":0}`))}, nil
 	})
 	cookieRecorder := httptest.NewRecorder()
-	sso.SetLoginIDCookie(cookieRecorder, cookie, "alice")
+	loginRequest := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("loginId=alice"))
+	loginRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handler.ServeHTTP(cookieRecorder, loginRequest)
 	loginCookie := cookieRecorder.Result().Cookies()[0]
 	for attempt := 0; attempt < 2; attempt++ {
 		request := httptest.NewRequest(http.MethodGet, "/sso/logout", nil)
@@ -110,6 +114,9 @@ func TestDemoLogoutRetriesFailedCallback(t *testing.T) {
 			t.Fatal(err)
 		}
 		if fail {
+			if id, ok := center.loginID(request); !ok || id != "alice" {
+				t.Fatal("failed callback revoked center session")
+			}
 			if recorder.Code < 400 || len(recorder.Result().Cookies()) != 0 || len(sessions) != 1 {
 				t.Fatalf("failed callback lost retry state: status=%d sessions=%v", recorder.Code, sessions)
 			}
@@ -117,6 +124,9 @@ func TestDemoLogoutRetriesFailedCallback(t *testing.T) {
 			continue
 		}
 		cookies := recorder.Result().Cookies()
+		if _, ok := center.loginID(request); ok {
+			t.Fatal("successful logout left copied Cookie usable")
+		}
 		if recorder.Code != http.StatusOK || len(sessions) != 0 || len(cookies) != 1 || cookies[0].Name != cookie.Name || cookies[0].Path != cookie.Path || cookies[0].MaxAge != -1 {
 			t.Fatalf("successful logout: status=%d sessions=%v cookies=%v", recorder.Code, sessions, cookies)
 		}

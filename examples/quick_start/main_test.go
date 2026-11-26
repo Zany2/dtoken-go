@@ -4,14 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/Zany2/dtoken-go"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"github.com/Zany2/dtoken-go/defaults"
-	"github.com/Zany2/dtoken-go/dtoken"
-	"github.com/gin-gonic/gin"
 )
 
 func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
@@ -19,7 +17,7 @@ func TestLoginValidationAndAuthorizationSeed(t *testing.T) {
 	setupQuickStartManager(t)
 
 	r := gin.New()
-	r.POST("/login", handleLogin)
+	r.POST("/login", application{auth: registeredAuth()}.handleLogin)
 
 	missing := requestQuickStart(t, r, http.MethodPost, "/login", `{"username":"alice"}`, "")
 	if missing.Code != http.StatusBadRequest {
@@ -65,19 +63,19 @@ func TestProtectedRoutesAndLogout(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupQuickStartManager(t)
 	ctx := context.Background()
-	token, err := dtoken.Login(ctx, "alice")
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "alice"})
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
-	if err = dtoken.AddRoles(ctx, "alice", []string{"admin"}); err != nil {
+	if err = dtoken.AddRoles(ctx, dtoken.RoleOptions{LoginID: "alice", Roles: []string{"admin"}}); err != nil {
 		t.Fatalf("AddRoles() error = %v", err)
 	}
-	if err = dtoken.AddPermissions(ctx, "alice", []string{"article:read"}); err != nil {
+	if err = dtoken.AddPermissions(ctx, dtoken.PermissionOptions{LoginID: "alice", Permissions: []string{"article:read"}}); err != nil {
 		t.Fatalf("AddPermissions() error = %v", err)
 	}
 
 	r := gin.New()
-	registerRoutes(r)
+	registerTestRoutes(r)
 
 	for _, route := range []string{"/me", "/admin", "/articles"} {
 		response := requestQuickStart(t, r, http.MethodGet, route, "", token)
@@ -105,23 +103,23 @@ func TestMiddlewareUsesRequestContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupQuickStartManager(t)
 	ctx := context.Background()
-	token, err := dtoken.Login(ctx, "context-user")
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "context-user"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := dtoken.AddRoles(ctx, "context-user", []string{"admin"}); err != nil {
+	if err := dtoken.AddRoles(ctx, dtoken.RoleOptions{LoginID: "context-user", Roles: []string{"admin"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := dtoken.AddPermissions(ctx, "context-user", []string{"article:read"}); err != nil {
+	if err := dtoken.AddPermissions(ctx, dtoken.PermissionOptions{LoginID: "context-user", Permissions: []string{"article:read"}}); err != nil {
 		t.Fatal(err)
 	}
 	for _, check := range []struct {
 		name    string
 		handler gin.HandlerFunc
 	}{
-		{"login", authMiddleware()},
-		{"role", roleMiddleware("admin")},
-		{"permission", permissionMiddleware("article:read")},
+		{"login", application{auth: registeredAuth()}.authMiddleware()},
+		{"role", application{auth: registeredAuth()}.roleMiddleware("admin")},
+		{"permission", application{auth: registeredAuth()}.permissionMiddleware("article:read")},
 	} {
 		for _, state := range []string{"active", "canceled", "deadline"} {
 			t.Run(check.name+"/"+state, func(t *testing.T) {
@@ -160,7 +158,7 @@ func TestMiddlewareUsesRequestContext(t *testing.T) {
 func TestAccessDenialStopsHandlers(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupQuickStartManager(t)
-	token, err := dtoken.Login(context.Background(), "unprivileged-user")
+	token, err := dtoken.Login(context.Background(), dtoken.LoginOptions{LoginID: "unprivileged-user"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,8 +166,8 @@ func TestAccessDenialStopsHandlers(t *testing.T) {
 		name    string
 		handler gin.HandlerFunc
 	}{
-		{"role", roleMiddleware("admin")},
-		{"permission", permissionMiddleware("article:read")},
+		{"role", application{auth: registeredAuth()}.roleMiddleware("admin")},
+		{"permission", application{auth: registeredAuth()}.permissionMiddleware("article:read")},
 	} {
 		for _, tc := range []struct {
 			name   string
@@ -202,17 +200,20 @@ func setupQuickStartManager(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
 
-	mgr, err := defaults.NewBuilder().
+	mgrAuth, err := dtoken.NewBuilder().
 		TokenName(tokenHeader).
 		AutoRenew(false).
 		AsyncEvent(false).
 		IsLog(false).
 		IsPrintBanner(false).
-		Build()
+		BuildInstance()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	mgr := mgrAuth.Manager()
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 }
 
 func requestQuickStart(t *testing.T, router *gin.Engine, method, path, body, token string) *httptest.ResponseRecorder {
@@ -225,4 +226,43 @@ func requestQuickStart(t *testing.T, router *gin.Engine, method, path, body, tok
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
 	return recorder
+}
+
+// registeredAuth returns the explicitly registered test fixture. registeredAuth 返回显式注册的测试夹具。
+func registeredAuth() *dtoken.Auth {
+	mgr, err := dtoken.GetManager()
+	if err != nil {
+		panic(err)
+	}
+	return dtoken.New(mgr)
+}
+
+// registerTestRoutes binds the test fixture to the production routes. registerTestRoutes 将测试夹具绑定到实际路由。
+func registerTestRoutes(r *gin.Engine) { registerRoutes(r, registeredAuth()) }
+
+// TestInjectedLoginUsesBuiltInstance verifies routes and the registry share the built engine. TestInjectedLoginUsesBuiltInstance 验证路由与注册表共用构建返回的引擎。
+func TestInjectedLoginUsesBuiltInstance(t *testing.T) {
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+	auth, err := initDToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(auth.Close)
+	router := gin.New()
+	registerRoutes(router, auth)
+	response := requestQuickStart(t, router, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("login status = %d", response.Code)
+	}
+	ctx := context.Background()
+	if _, err := auth.GetSession(ctx, "alice"); err != nil {
+		t.Fatalf("injected session: %v", err)
+	}
+	if !auth.HasRole(ctx, "alice", "admin") || !auth.HasPermission(ctx, "alice", "article:read") {
+		t.Fatal("access grants missing from injected instance")
+	}
+	if mgr, err := dtoken.GetManager(); err != nil || mgr != auth.Manager() {
+		t.Fatalf("Build registration differs from injected instance: %v", err)
+	}
 }

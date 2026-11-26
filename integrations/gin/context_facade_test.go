@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
+	derror "github.com/Zany2/dtoken-go/errors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -20,14 +20,18 @@ func TestContextFacadeUsesRegisteredManager(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().
+	builtAuth1, err := dtoken.NewBuilder().
 		IsPrintBanner(false).
 		AutoRenew(false).
-		Build()
+		BuildInstance()
+	mgr := builtAuth1.Manager()
+
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 
 	token, err := mgr.Login(ctx, "gin-user", "web", "browser")
 	if err != nil {
@@ -39,7 +43,7 @@ func TestContextFacadeUsesRegisteredManager(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = req
 
-	RegisterDTokenContextMiddleware(ctx)(c)
+	RegisterDTokenContextMiddleware(ctx, WithManagerResolver(dtoken.GetManager))(c)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("RegisterDTokenContextMiddleware wrote status %d, want default OK", recorder.Code)
 	}
@@ -93,12 +97,19 @@ func TestContextFacadeMissingManagerAndToken(t *testing.T) {
 	if _, err := GetTokenValueByContext(c); !errors.Is(err, derror.ErrManagerNotFound) {
 		t.Fatalf("GetTokenValueByContext without manager error = %v, want ErrManagerNotFound", err)
 	}
-
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
+	mgr := builtAuth2.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
+	authOption1, authErr := WithAuth(builtAuth2)
+	if authErr != nil {
+		t.Fatal(authErr)
+	}
+	RegisterDTokenContextMiddleware(context.Background(), authOption1)(c)
 	if _, err = GetTokenValueByContext(c); !errors.Is(err, ErrNotLogin) {
 		t.Fatalf("GetTokenValueByContext without token error = %v, want ErrNotLogin", err)
 	}
@@ -111,15 +122,19 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().
+	builtAuth3, err := dtoken.NewBuilder().
 		IsPrintBanner(false).
 		AutoRenew(false).
 		AuthType("gin-annotation").
-		Build()
+		BuildInstance()
+	mgr := builtAuth3.Manager()
+
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 
 	token, err := mgr.Login(ctx, "ann-user")
 	if err != nil {
@@ -132,6 +147,7 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 	handled := false
 	failCalled := false
 	success := newGinTestContext(http.MethodGet, "/reports", mgr.GetConfig().TokenName, token)
+	RegisterDTokenContextMiddleware(ctx, WithManager(mgr))(success)
 	CheckPermissionMiddleware(ctx, []string{"report:read"}, func(c *gin.Context) {
 		handled = true
 	}, func(c *gin.Context, err error) {
@@ -152,6 +168,7 @@ func TestAnnotationHandlerControlFlow(t *testing.T) {
 
 	var gotErr error
 	failCtx := newGinTestContext(http.MethodGet, "/reports", mgr.GetConfig().TokenName, token)
+	RegisterDTokenContextMiddleware(ctx, WithManager(mgr))(failCtx)
 	CheckRoleMiddleware(ctx, []string{"admin"}, nil, func(c *gin.Context, err error) {
 		gotErr = err
 	}, "gin-annotation")(failCtx)
@@ -170,11 +187,13 @@ func TestAnnotationReusesExplicitManager(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().
+	builtAuth4, err := dtoken.NewBuilder().
 		IsPrintBanner(false).
 		AutoRenew(false).
 		AuthType("gin-explicit").
-		Build()
+		BuildInstance()
+	mgr := builtAuth4.Manager()
+
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -188,6 +207,7 @@ func TestAnnotationReusesExplicitManager(t *testing.T) {
 	}
 
 	success := newGinTestContext(http.MethodGet, "/reports", mgr.GetConfig().TokenName, token)
+	RegisterDTokenContextMiddleware(ctx, WithManager(mgr))(success)
 	RegisterDTokenContextMiddleware(ctx, WithManager(mgr))(success)
 
 	handled := false

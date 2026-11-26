@@ -1,6 +1,11 @@
 package main
 
 import (
+	dtoken "github.com/Zany2/dtoken-go"
+	dt1 "github.com/Zany2/dtoken-go/contract"
+	dterror "github.com/Zany2/dtoken-go/errors"
+	dt2 "github.com/Zany2/dtoken-go/storage/memory"
+
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/iotest"
 	"time"
@@ -19,7 +25,7 @@ import (
 // TestInitDTokenConfiguration verifies the actual example uses a valid renewal threshold. TestInitDTokenConfiguration 验证示例实际使用的续期阈值合法。
 func TestInitDTokenConfiguration(t *testing.T) {
 	setupKratosManager(t)
-	mgr, err := kratosdt.GetManager()
+	mgr, err := dtoken.GetManager()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +41,10 @@ func TestInitDTokenConfiguration(t *testing.T) {
 // TestLoginRejectsMalformedBodies covers decoder errors without creating a login. TestLoginRejectsMalformedBodies 覆盖解码错误，确保非法请求无法登录。
 func TestLoginRejectsMalformedBodies(t *testing.T) {
 	setupKratosManager(t)
-	srv := newKratosExampleServer()
+	srv, err := newKratosExampleServer(registeredAuth())
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, body := range []string{
 		"", " \n\t ", "null", "[]", `{"username":"alice",`,
 		`{"username":123,"password":"123456"}`,
@@ -45,74 +54,104 @@ func TestLoginRejectsMalformedBodies(t *testing.T) {
 		`{"username":"alice","password":"123456"} trailing`,
 	} {
 		t.Run(body, func(t *testing.T) {
-			assertKratosResponse(t, requestKratos(t, srv, http.MethodPost, "/login", body, ""), http.StatusBadRequest, kratosdt.CodeBadRequest)
+			assertKratosResponse(t, requestKratos(t, srv, http.MethodPost, "/login", body, ""), http.StatusBadRequest, dterror.CodeBadRequest)
 		})
 	}
-	assertKratosResponse(t, requestKratos(t, srv, http.MethodPost, "/login?username=alice&password=123456", `{}`, ""), http.StatusBadRequest, kratosdt.CodeBadRequest)
+	assertKratosResponse(t, requestKratos(t, srv, http.MethodPost, "/login?username=alice&password=123456", `{}`, ""), http.StatusBadRequest, dterror.CodeBadRequest)
 	req := httptest.NewRequest(http.MethodPost, "/login", iotest.ErrReader(errors.New("private request read error")))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
-	assertKratosResponse(t, rec, http.StatusBadRequest, kratosdt.CodeBadRequest)
+	assertKratosResponse(t, rec, http.StatusBadRequest, dterror.CodeBadRequest)
 	if strings.Contains(rec.Body.String(), "private request") {
 		t.Fatal("request read error leaked")
 	}
-	assertKratosResponse(t, requestKratos(t, srv, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`+"\n\t", ""), http.StatusOK, kratosdt.CodeSuccess)
+	assertKratosResponse(t, requestKratos(t, srv, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`+"\n\t", ""), http.StatusOK, dterror.CodeSuccess)
 }
 
 // TestAccountAndDeviceRestrictions distinguishes access restrictions from invalid credentials. TestAccountAndDeviceRestrictions 区分访问限制与无效凭证。
 func TestAccountAndDeviceRestrictions(t *testing.T) {
 	setupKratosManager(t)
 	ctx := context.Background()
-	if err := kratosdt.Disable(ctx, "blocked", time.Hour, ""); err != nil {
+	if err := dtoken.Disable(ctx, dtoken.DisableOptions{LoginID: "blocked", Duration: time.Hour, Reason: ""}); err != nil {
 		t.Fatal(err)
 	}
-	srv := newKratosExampleServer()
-	assertKratosResponse(t, requestKratos(t, srv, http.MethodPost, "/login", `{"username":"blocked","password":"123456"}`, ""), http.StatusForbidden, kratosdt.CodeAccountDisabled)
-	token, err := kratosdt.Login(ctx, "alice", "web")
+	srv, err := newKratosExampleServer(registeredAuth())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := kratosdt.DisableDevice(ctx, "alice", "web", time.Hour); err != nil {
+	assertKratosResponse(t, requestKratos(t, srv, http.MethodPost, "/login", `{"username":"blocked","password":"123456"}`, ""), http.StatusForbidden, dterror.CodeAccountDisabled)
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "alice", Device: "web"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	assertKratosResponse(t, requestKratos(t, srv, http.MethodGet, "/me", "", token), http.StatusForbidden, kratosdt.CodeAccountDisabled)
-	if err := kratosdt.UntieDevice(ctx, "alice", "web"); err != nil {
+	if err := dtoken.DisableDevice(ctx, dtoken.DeviceDisableOptions{LoginID: "alice", Device: "web", Duration: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
-	assertKratosResponse(t, requestKratos(t, srv, http.MethodGet, "/me", "", token), http.StatusOK, kratosdt.CodeSuccess)
+	assertKratosResponse(t, requestKratos(t, srv, http.MethodGet, "/me", "", token), http.StatusForbidden, dterror.CodeAccountDisabled)
+	if err := dtoken.UntieDevice(ctx, "alice", "web"); err != nil {
+		t.Fatal(err)
+	}
+	assertKratosResponse(t, requestKratos(t, srv, http.MethodGet, "/me", "", token), http.StatusOK, dterror.CodeSuccess)
 }
 
 // TestStorageErrorsUseUnifiedResponse covers raw handler errors and wrapped middleware failures. TestStorageErrorsUseUnifiedResponse 覆盖处理器原始错误和中间件包装错误。
 func TestStorageErrorsUseUnifiedResponse(t *testing.T) {
-	kratosdt.DeleteAllManager()
-	t.Cleanup(kratosdt.DeleteAllManager)
-	mgr, err := kratosdt.NewBuilder().SetStorage(&failingKratosStorage{Storage: kratosdt.NewMemoryStorage()}).
-		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).Build()
+	dtoken.DeleteAllManager()
+	t.Cleanup(dtoken.DeleteAllManager)
+	storage := &failingKratosStorage{Storage: dt2.NewStorage()}
+	builtAuth1, err := dtoken.NewBuilder().Storage(storage).
+		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
+	mgr := builtAuth1.Manager()
+
 	if err != nil {
 		t.Fatal(err)
 	}
-	kratosdt.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, withAuth := range []bool{false, true} {
 		t.Run(fmt.Sprintf("withAuth=%t", withAuth), func(t *testing.T) {
+			handlerCalls := 0
 			var srv *khttp.Server
 			if withAuth {
-				srv = newKratosExampleServer()
+				srv, err = newKratosExampleServer(registeredAuth())
+				if err != nil {
+					t.Fatal(err)
+				}
 			} else {
 				// Skip authentication middleware to reach each handler's own error branch. 跳过认证中间件以到达各处理器自身的错误分支。
-				srv = khttp.NewServer(khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware()))
+				authOption1, authErr := kratosdt.WithAuth(builtAuth1)
+				if authErr != nil {
+					t.Fatal(authErr)
+				}
+				srv = khttp.NewServer(khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware(authOption1)))
 				r := srv.Route("/")
-				r.POST("/login", wrapHandler(handleLogin))
-				r.GET("/me", wrapHandler(handleMe))
-				r.POST("/logout", wrapHandler(handleLogout))
+				counted := func(handler func(context.Context, khttp.Context) error) func(context.Context, khttp.Context) error {
+					return func(ctx context.Context, c khttp.Context) error {
+						handlerCalls++
+						return handler(ctx, c)
+					}
+				}
+				r.POST("/login", wrapHandler(counted(handleLogin)))
+				r.GET("/me", wrapHandler(counted(handleMe)))
+				r.POST("/logout", wrapHandler(counted(handleLogout)))
 			}
 			for _, tc := range []struct{ method, path, body string }{
 				{http.MethodPost, "/login", `{"username":"alice","password":"123456"}`},
 				{http.MethodGet, "/me", ""},
 				{http.MethodPost, "/logout", ""},
 			} {
+				beforeStorage, beforeHandlers := storage.calls.Load(), handlerCalls
 				rec := requestKratos(t, srv, tc.method, tc.path, tc.body, "some-token")
-				assertKratosResponse(t, rec, http.StatusInternalServerError, kratosdt.CodeServerError)
+				if storage.calls.Load() <= beforeStorage {
+					t.Fatalf("%s never reached storage", tc.path)
+				}
+				if !withAuth && handlerCalls != beforeHandlers+1 {
+					t.Fatalf("%s never reached its handler", tc.path)
+				}
+
+				assertKratosResponse(t, rec, http.StatusInternalServerError, dterror.CodeServerError)
 				if strings.Contains(rec.Body.String(), "private storage") || !strings.Contains(rec.Body.String(), "internal server error") {
 					t.Fatalf("unsafe server response: %s", rec.Body.String())
 				}
@@ -121,18 +160,21 @@ func TestStorageErrorsUseUnifiedResponse(t *testing.T) {
 	}
 }
 
-// TestMissingManagerStopsHandlers verifies registration failures use the same error envelope. TestMissingManagerStopsHandlers 验证注册失败使用相同的错误响应结构。
-func TestMissingManagerStopsHandlers(t *testing.T) {
-	kratosdt.DeleteAllManager()
-	t.Cleanup(kratosdt.DeleteAllManager)
-	srv := newKratosExampleServer()
-	assertKratosResponse(t, requestKratos(t, srv, http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, ""), http.StatusInternalServerError, kratosdt.CodeServerError)
+// TestMissingAuthRejectedAtSetup verifies missing instances fail before accepting requests. TestMissingAuthRejectedAtSetup 验证缺失实例在接收请求前被拒绝。
+func TestMissingAuthRejectedAtSetup(t *testing.T) {
+	if _, err := newKratosExampleServer(nil); !errors.Is(err, dterror.ErrManagerNotFound) {
+		t.Fatalf("setup error = %v, want ErrManagerNotFound", err)
+	}
 }
 
-type failingKratosStorage struct{ kratosdt.Storage }
+type failingKratosStorage struct {
+	dt1.Storage
+	calls atomic.Int64
+}
 
 // Get simulates a storage failure containing private connection details. Get 模拟包含私有连接详情的存储故障。
-func (*failingKratosStorage) Get(context.Context, string) (any, error) {
+func (s *failingKratosStorage) Get(context.Context, string) (any, error) {
+	s.calls.Add(1)
 	return nil, errors.New("private storage connection details")
 }
 

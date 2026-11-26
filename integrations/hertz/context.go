@@ -2,9 +2,11 @@
 package hertz
 
 import (
+	"fmt"
 	"net/url"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/network"
 	"github.com/cloudwego/hertz/pkg/protocol"
@@ -163,9 +165,13 @@ func (h *HertzContext) GetString(key string) string {
 	return h.ctx.GetString(key)
 }
 
-// MustGet implements adapter.RequestContext MustGet 实现强制上下文读取
-func (h *HertzContext) MustGet(key string) any {
-	return h.ctx.MustGet(key)
+// GetRequired returns a context value or ErrKeyNotFound when missing. GetRequired 返回上下文值，不存在时返回 ErrKeyNotFound。
+func (h *HertzContext) GetRequired(key string) (any, error) {
+	value, ok := h.Get(key)
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", derror.ErrKeyNotFound, key)
+	}
+	return value, nil
 }
 
 // Abort implements adapter.RequestContext Abort 实现请求中断

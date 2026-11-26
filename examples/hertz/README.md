@@ -2,6 +2,8 @@
 
 This example shows how to use `github.com/Zany2/dtoken-go/integrations/hertz` with Hertz middleware.
 
+Build automatically registers and returns one Auth instance. The application explicitly binds that instance with `WithAuth`; login and request checks use the bound engine. Close it after draining requests. Use `BuildInstance()` for an unregistered instance.
+
 ## Run
 
 ```bash
@@ -19,7 +21,7 @@ The server listens on `http://localhost:8080`.
 - `GET /articles`: requires the `article:read` permission.
 - `POST /logout`: logs out the current token.
 
-The example uses bundled memory storage through `hertzdt.NewBuilder()`, so no Redis service is required. Login and authorization data are lost on restart. Demo credentials and permission grants illustrate the API; real applications must verify their own accounts and load their own authorization rules.
+The example uses bundled memory storage through `dtoken.NewBuilder()`, so no Redis service is required. Login and authorization data are lost on restart. Demo credentials and permission grants illustrate the API; real applications must verify their own accounts and load their own authorization rules.
 
 Tokens have a two-hour timeout, with automatic renewal during authentication checks when one hour or less remains. Repeated logins for the same username may reuse a token under the default sharing policy; logging out invalidates that shared token.
 
@@ -51,8 +53,22 @@ curl -X POST http://localhost:8080/logout \
 
 ## Key APIs
 
+The middleware fragments below belong in a setup function that returns `error`; propagate binding errors to the caller and stop startup if setup fails.
+
+Build an instance first and keep it open while the server handles requests. These fragments use the handlers and error callbacks from `main.go`.
+
 ```go
-h.Use(hertzdt.RegisterDTokenContextMiddleware(ctx, hertzdt.WithFailFunc(writeAuthError)))
+authInstance, err := dtoken.NewBuilder().TokenName("Authorization").Build()
+if err != nil { panic(err) }
+defer authInstance.Close()
+```
+
+```go
+authOption1, authErr := hertzdt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+h.Use(hertzdt.RegisterDTokenContextMiddleware(ctx, authOption1, hertzdt.WithFailFunc(writeAuthError)))
 auth.Use(hertzdt.AuthMiddleware(ctx, hertzdt.WithFailFunc(writeAuthError)))
 auth.GET("/admin", hertzdt.RoleMiddleware(ctx, []string{"admin"}, hertzdt.WithFailFunc(writeAuthError)), handleAdmin)
 auth.GET("/articles", hertzdt.PermissionMiddleware(ctx, []string{"article:read"}, hertzdt.WithFailFunc(writeAuthError)), handleArticles)

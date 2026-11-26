@@ -4,20 +4,29 @@ package kratos
 import (
 	"context"
 
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/integrations/authcheck"
+	derror "github.com/Zany2/dtoken-go/errors"
+	authcheck "github.com/Zany2/dtoken-go/httpauth"
 	"github.com/go-kratos/kratos/v2/middleware"
 )
 
 // Annotation defines annotation config Annotation 定义注解配置
 type Annotation struct {
-	AuthType        string    `json:"authType"`        // Optional: specify auth type 可选：指定认证类型
-	CheckLogin      bool      `json:"checkLogin"`      // Check login 检查登录
-	CheckRole       []string  `json:"checkRole"`       // Check roles 检查角色
-	CheckPermission []string  `json:"checkPermission"` // Check permissions 检查权限
-	CheckDisable    bool      `json:"checkDisable"`    // Check disable status 检查封禁状态
-	Ignore          bool      `json:"ignore"`          // Ignore authentication 忽略认证
-	LogicType       LogicType `json:"logicType"`       // OR or AND logic (default: AND) OR 或 AND 逻辑（默认：AND）
+	// ManagerResolver explicitly selects a registry for this annotation. ManagerResolver 为此注解显式选择注册表。
+	ManagerResolver authcheck.ManagerResolver `json:"-"`
+	// Optional: specify auth type 可选：指定认证类型
+	AuthType string `json:"authType"`
+	// Check login 检查登录
+	CheckLogin bool `json:"checkLogin"`
+	// Check roles 检查角色
+	CheckRole []string `json:"checkRole"`
+	// Check permissions 检查权限
+	CheckPermission []string `json:"checkPermission"`
+	// Check disable status 检查封禁状态
+	CheckDisable bool `json:"checkDisable"`
+	// Ignore authentication 忽略认证
+	Ignore bool `json:"ignore"`
+	// OR or AND logic (default: AND) OR 或 AND 逻辑（默认：AND）
+	LogicType LogicType `json:"logicType"`
 }
 
 // GetHandler gets annotation middleware GetHandler 获取注解中间件
@@ -48,12 +57,13 @@ func GetHandler(failFunc FailFunc, annotations ...*Annotation) middleware.Middle
 				return next(ctx, req)
 			}
 
-			mgr, err := resolveRequestManager(ctx, nil, ann.AuthType)
+			mgr, err := resolveRequestManager(ctx, nil, ann.AuthType, ann.ManagerResolver)
 			if err != nil {
 				return nil, dispatchFail(ctx, failFunc, err)
 			}
 
 			dCtx, ctx := getDTokenContext(ctx, mgr)
+			dCtx.WithManagerResolver(ann.ManagerResolver)
 			tokenValue := dCtx.GetTokenValue()
 
 			_, err = authcheck.Check(ctx, mgr, authcheck.Request{

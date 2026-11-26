@@ -1,5 +1,7 @@
 # AccessProvider
 
+代码片段的导入别名：dt = github.com/Zany2/dtoken-go.
+
 [English](../core/access-provider.md) | 中文文档
 
 `AccessProvider` 用于从业务系统动态解析权限和角色。它适合权限数据保存在数据库、RBAC 服务、配置中心或第三方权限平台的场景。
@@ -9,9 +11,13 @@
 DToken-Go 支持两种权限来源：
 
 1. 写入 Session 的权限和角色，例如 `AddPermissions`、`AddRoles`。
-2. 通过 `AccessProvider` 或兼容回调动态返回权限和角色。
+2. 通过 `AccessProvider` 动态返回权限和角色。
 
 当配置了 `AccessProvider` 时，Provider 返回的非 `nil` 数据优先于 Session 中缓存的数据。Provider 返回 `nil` 时，才会回退到 Session 数据。
+
+按 Token 查询和 HTTP 权限检查先校验凭据、构建完整 `AccessSubject`，再调用所需 Provider。正常路径中，Provider 返回非 `nil`（包括空列表）或错误时不会读取、解码 Session；只有未配置 Provider 或返回 `nil` 才加载回退数据。HTTP 同时检查权限和角色时，共用一次按需 Session 读取，权限拒绝后不再查询角色。这里的复用只作用于单次操作，不缓存跨请求的权限结果。
+
+因此，凭据有效且 Provider 接管查询时，Session 缺失或损坏不会阻止授权；需要 Session 回退时仍返回相应错误。活跃超时清理、后台维护及完整自省仍有独立的 Session 需求，不属于这个读取预算。角色权限查询不隐式执行封禁检查，访问入口需要按规则显式开启 `CheckDisable`。
 
 ## AccessSubject
 
@@ -31,26 +37,39 @@ type AccessSubject struct {
 
 ## 基本用法
 
+<!-- dtoken-compile: access-provider -->
 ```go
-provider := manager.AccessProviderFunc{
-    PermissionFunc: func(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
-        if subject.AuthType == "admin:" {
-            return []string{"admin:*"}, nil
-        }
-        return []string{"user:read"}, nil
-    },
-    RoleFunc: func(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
-        if subject.LoginID == "10001" {
-            return []string{"admin"}, nil
-        }
-        return []string{"user"}, nil
-    },
-}
+package main
 
-mgr, err := defaults.NewBuilder().
-    SetStorage(storage).
-    SetAccessProvider(provider).
-    Build()
+import (
+	"context"
+	dt "github.com/Zany2/dtoken-go"
+)
+
+func main() {
+	provider := dt.AccessProviderFunc{
+		PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
+			if subject.AuthType == "admin:" {
+				return []string{"admin:*"}, nil
+			}
+			return []string{"user:read"}, nil
+		},
+		RoleFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
+			if subject.LoginID == "10001" {
+				return []string{"admin"}, nil
+			}
+			return []string{"user"}, nil
+		},
+	}
+
+	auth, err := dt.NewBuilder().
+		SetAccessProvider(provider).
+		Build()
+	if err != nil {
+		panic(err)
+	}
+	defer auth.Close()
+}
 ```
 
 ## 回退到 Session
@@ -58,8 +77,8 @@ mgr, err := defaults.NewBuilder().
 Provider 返回 `nil` 表示不接管本次查询，让框架继续使用 Session 中的数据：
 
 ```go
-provider := manager.AccessProviderFunc{
-    PermissionFunc: func(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
+provider := dt.AccessProviderFunc{
+    PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
         if subject.LoginID == "" {
             return nil, nil
         }
@@ -75,41 +94,47 @@ provider := manager.AccessProviderFunc{
 Provider 返回错误时，权限或角色解析会失败。用于布尔判断的 `Has*` 方法会按安全拒绝处理，避免权限服务异常时放行请求。
 
 ```go
-PermissionFunc: func(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
+PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
     return nil, errors.New("permission service unavailable")
 }
 ```
 
-## 兼容回调
+集成中间件使用基于 Token 的 `Check*` API，保留当前请求的设备与 Token 字段。提供器错误会传递给集成层失败处理器，供其区分服务故障与 `ErrPermissionDenied`、`ErrRoleDenied` 等正常拒绝。
 
-Builder 也保留了更简单的回调方式：
+## 函数式 Provider 与旧回调迁移
+
+当前 Builder 统一使用 `SetAccessProvider`。旧的 `SetCustomPermissionListFunc`、`SetCustomRoleListFunc` 及 Ext 版本不再提供；将回调迁移到 `AccessProviderFunc.PermissionFunc` / `RoleFunc`，通过 subject 读取认证体系、账号、设备和 Token。
 
 ```go
-mgr, err := defaults.NewBuilder().
-    SetStorage(storage).
-    SetCustomPermissionListFunc(func(loginID, authType string) ([]string, error) {
-        return []string{"user:read"}, nil
-    }).
-    SetCustomRoleListFunc(func(loginID, authType string) ([]string, error) {
-        return []string{"user"}, nil
-    }).
-    SetCustomPermissionListExtFunc(func(loginID, device, deviceID, authType string) ([]string, error) {
-        if device == "app" {
-            return []string{"mobile:read"}, nil
+provider := dt.AccessProviderFunc{
+    PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
+        if subject.Device == "app" {
+            return []string{"mobile:read", "mobile:write"}, nil
         }
         return nil, nil
-    }).
-    Build()
+    },
+    RoleFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
+        if subject.LoginID == "10001" {
+            return []string{"admin"}, nil
+        }
+        return []string{}, nil
+    },
+}
+auth, err := dt.NewBuilder().SetAccessProvider(provider).Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
-新项目更推荐直接使用 `SetAccessProvider`，表达能力更完整。
+按账号查询时 subject 中没有 Token 和设备信息；需要这些字段时使用按 Token 查询或框架鉴权入口。Provider 返回 nil 才回退到 Session，非 nil 空切片表示明确无权限或角色。
 
 ## 和多认证体系搭配
 
 `AccessSubject.AuthType` 会携带当前认证体系：
 
 ```go
-PermissionFunc: func(ctx context.Context, subject manager.AccessSubject) ([]string, error) {
+PermissionFunc: func(ctx context.Context, subject dt.AccessSubject) ([]string, error) {
     switch subject.AuthType {
     case "admin:":
         return loadAdminPermissions(subject.LoginID)

@@ -1,14 +1,16 @@
 package main
 
 import (
+	dtoken "github.com/Zany2/dtoken-go"
+	dterror "github.com/Zany2/dtoken-go/errors"
+	dt1 "github.com/Zany2/dtoken-go/storage/memory"
+
 	"context"
 	"encoding/json"
+	echo4 "github.com/labstack/echo/v4"
 	"net/http"
 	"testing"
 	"time"
-
-	echodt "github.com/Zany2/dtoken-go/integrations/echo"
-	echo4 "github.com/labstack/echo/v4"
 )
 
 // TestProductionRouteFailures covers the actual registration, authentication and access failure callbacks. TestProductionRouteFailures 覆盖实际注册、认证和权限过滤器的失败回调。
@@ -16,7 +18,7 @@ func TestProductionRouteFailures(t *testing.T) {
 	setupEchoManager(t)
 	ctx := context.Background()
 	router := echo4.New()
-	registerRoutes(router)
+	registerTestRoutes(t, router)
 	check := func(method, path, body, token string, wantStatus, wantCode int) {
 		t.Helper()
 		rec := requestEcho(t, router, method, path, body, token)
@@ -37,36 +39,39 @@ func TestProductionRouteFailures(t *testing.T) {
 		if path == "/logout" {
 			method = http.MethodPost
 		}
-		check(method, path, "", "", http.StatusUnauthorized, echodt.CodeNotLogin)
-		check(method, path, "", "invalid-token", http.StatusUnauthorized, echodt.CodeNotLogin)
+		check(method, path, "", "", http.StatusUnauthorized, dterror.CodeNotLogin)
+		check(method, path, "", "invalid-token", http.StatusUnauthorized, dterror.CodeNotLogin)
 	}
-	token, err := echodt.Login(ctx, "reader", "web")
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "reader", Device: "web"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/admin", "/articles"} {
-		check(http.MethodGet, path, "", token, http.StatusForbidden, echodt.CodePermissionDenied)
+		check(http.MethodGet, path, "", token, http.StatusForbidden, dterror.CodePermissionDenied)
 	}
-	if err := echodt.DisableDevice(ctx, "reader", "web", time.Hour); err != nil {
+	if err := dtoken.DisableDevice(ctx, dtoken.DeviceDisableOptions{LoginID: "reader", Device: "web", Duration: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
-	check(http.MethodGet, "/me", "", token, http.StatusForbidden, echodt.CodeAccountDisabled)
+	check(http.MethodGet, "/me", "", token, http.StatusForbidden, dterror.CodeAccountDisabled)
 
-	echodt.DeleteAllManager()
-	check(http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "", http.StatusInternalServerError, echodt.CodeServerError)
-	check(http.MethodGet, "/admin", "", "", http.StatusInternalServerError, echodt.CodeServerError)
+	dtoken.DeleteAllManager()
+	check(http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "", http.StatusInternalServerError, dterror.CodeServerError)
+	check(http.MethodGet, "/admin", "", "", http.StatusInternalServerError, dterror.CodeServerError)
+	builtAuth1, err := dtoken.NewBuilder().Storage(&echoFailingStorage{Storage: dt1.NewStorage()}).
+		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
+	mgr := builtAuth1.Manager()
 
-	mgr, err := echodt.NewBuilder().SetStorage(&echoFailingStorage{Storage: echodt.NewMemoryStorage()}).
-		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).Build()
 	if err != nil {
 		t.Fatal(err)
 	}
-	echodt.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, path := range []string{"/me", "/admin", "/articles", "/logout"} {
 		method := http.MethodGet
 		if path == "/logout" {
 			method = http.MethodPost
 		}
-		check(method, path, "", "some-token", http.StatusInternalServerError, echodt.CodeServerError)
+		check(method, path, "", "some-token", http.StatusInternalServerError, dterror.CodeServerError)
 	}
 }

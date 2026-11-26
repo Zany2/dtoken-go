@@ -2,6 +2,8 @@
 
 This example shows how to use `github.com/Zany2/dtoken-go/integrations/gf` with GoFrame middleware.
 
+Build automatically registers and returns one Auth instance. The application explicitly binds that instance with `WithAuth`; login and request checks use the bound engine. Close it after draining requests. Use `BuildInstance()` for an unregistered instance.
+
 ## Run
 
 ```bash
@@ -25,7 +27,7 @@ The server listens on `http://localhost:8080`.
 - `GET /access/articles`: requires `article:read` through route access rules.
 - `GET /access/admin`: requires `admin` through route access rules.
 
-The example uses bundled memory storage through `gfdt.NewBuilder()`, so no Redis service is required. Login state and authorization data are lost on restart. Access tokens last two hours, automatic renewal uses a one-hour threshold, and refresh tokens last 30 days. Registered Managers are closed when `main` returns.
+The example uses bundled memory storage through `dtoken.NewBuilder()`, so no Redis service is required. Login state and authorization data are lost on restart. Access tokens last two hours, automatic renewal uses a one-hour threshold, and refresh tokens last 30 days. Registered Managers are closed when `main` returns.
 
 This is a demonstration: any nonempty username can log in with password `123456`, and every successful login receives the `admin` role and `article:read` permission. A real application must verify credentials and load each user's own authorization rules.
 
@@ -62,8 +64,22 @@ After logout, both the new access token and its associated refresh token are inv
 
 ## Key APIs
 
+The middleware fragments below belong in a setup function that returns `error`; propagate binding errors to the caller and stop startup if setup fails.
+
+Build an instance first and keep it open while the server handles requests. These fragments use the handlers and error callbacks from `main.go`.
+
 ```go
-s.Use(gfdt.RegisterDTokenContextMiddleware(ctx, gfdt.WithFailFunc(handleAuthFail)))
+authInstance, err := dtoken.NewBuilder().TokenName("Authorization").Build()
+if err != nil { panic(err) }
+defer authInstance.Close()
+```
+
+```go
+authOption1, authErr := gfdt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+s.Use(gfdt.RegisterDTokenContextMiddleware(ctx, authOption1, gfdt.WithFailFunc(handleAuthFail)))
 
 group.Middleware(gfdt.AuthMiddleware(ctx, gfdt.WithFailFunc(handleAuthFail)))
 group.GET("/admin", gfdt.CheckRoleMiddleware(ctx, []string{"admin"}, handleAdmin, handleAuthFail))
@@ -74,7 +90,7 @@ group.Middleware(gfdt.AccessMiddleware(ctx,
 	gfdt.WithFailFunc(handleAuthFail),
 ))
 
-pair, err := gfdt.LoginWithRefreshToken(ctx, loginID, "web", "gf-example")
-pair, err = gfdt.RefreshToken(ctx, refreshToken)
+pair, err := authInstance.LoginWithRefreshToken(ctx, loginID, "web", "gf-example")
+pair, err = authInstance.RefreshToken(ctx, refreshToken)
 info, err := gfdt.IntrospectTokenByCtx(ctx)
 ```

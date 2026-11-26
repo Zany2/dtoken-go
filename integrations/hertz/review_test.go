@@ -6,6 +6,14 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"github.com/Zany2/dtoken-go"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
+	"github.com/Zany2/dtoken-go/storage/memory"
+	hertzapp "github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/network"
+	"github.com/cloudwego/hertz/pkg/protocol"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -13,15 +21,6 @@ import (
 	"testing"
 	"testing/iotest"
 	"time"
-
-	"github.com/Zany2/dtoken-go/com/storage/memory"
-	"github.com/Zany2/dtoken-go/core/adapter"
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
-	hertzapp "github.com/cloudwego/hertz/pkg/app"
-	"github.com/cloudwego/hertz/pkg/network"
-	"github.com/cloudwego/hertz/pkg/protocol"
 )
 
 // hertzReviewChecks covers each authentication entry point. hertzReviewChecks 覆盖各个鉴权入口。
@@ -43,7 +42,8 @@ var hertzReviewChecks = []struct {
 			opt(options)
 		}
 		return GetHandler(c, nil, options.FailFunc, &Annotation{
-			AuthType: options.AuthType, CheckLogin: true, CheckPermission: []string{"read"},
+			ManagerResolver: options.ManagerResolver,
+			AuthType:        options.AuthType, CheckLogin: true, CheckPermission: []string{"read"},
 		})
 	}},
 }
@@ -51,17 +51,18 @@ var hertzReviewChecks = []struct {
 // newHertzReviewManager creates an isolated manager without asynchronous maintenance. newHertzReviewManager 创建无异步维护的独立 Manager。
 func newHertzReviewManager(t *testing.T, authType string, storage adapter.Storage) *manager.Manager {
 	t.Helper()
-	b := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
+	b := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
 	if authType != "" {
 		b.AuthType(authType)
 	}
 	if storage != nil {
-		b.SetStorage(storage)
+		b.Storage(storage)
 	}
-	mgr, err := b.Build()
+	mgrAuth, err := b.BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	return mgr
 }
@@ -215,8 +216,12 @@ func TestHertzReviewManagerSelection(t *testing.T) {
 	global := newHertzReviewManager(t, "", nil)
 	selected := newHertzReviewManager(t, "hertz-selected", nil)
 	local := newHertzReviewManager(t, "hertz-local", nil)
-	dtoken.SetManager(global)
-	dtoken.SetManager(selected)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
+	if err := dtoken.SetManager(selected); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	ctx := hertzapp.NewContext(0)
 	getDTokenContext(ctx, local)
 	for _, tc := range []struct {
@@ -226,14 +231,14 @@ func TestHertzReviewManagerSelection(t *testing.T) {
 	}{
 		{nil, "", local}, {nil, "hertz-selected", selected}, {local, "missing", local},
 	} {
-		if got, err := resolveRequestManager(ctx, tc.explicit, tc.authType); err != nil || got != tc.want {
+		if got, err := resolveRequestManager(ctx, tc.explicit, tc.authType, dtoken.GetManager); err != nil || got != tc.want {
 			t.Fatalf("manager=%p,%v want=%p", got, err, tc.want)
 		}
 	}
 	var typedNil *corecontext.DTokenContext
 	ctx.Set(DTokenCtxKey, typedNil)
-	if got, err := GetManagerByContext(ctx); err != nil || got != global {
-		t.Fatalf("typed nil fallback=%p,%v", got, err)
+	if got, err := GetManagerByContext(ctx); !errors.Is(err, ErrManagerNotFound) {
+		t.Fatalf("typed nil missing binding=%p,%v", got, err)
 	}
 	local.CloseManager()
 	for _, mgr := range []*manager.Manager{nil, local} {
@@ -407,7 +412,9 @@ func TestHertzReviewRenewalIsolation(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newHertzReviewManager(t, "", nil)
 	local := newHertzReviewManager(t, "hertz-renew", nil)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	const token = "same-token"
 	hertzReviewLogin(t, global, token)
 	hertzReviewLogin(t, local, token)
@@ -430,7 +437,13 @@ func TestHertzReviewRenewalIsolation(t *testing.T) {
 
 // TestHertzReviewCookieRoundTrip verifies escaped custom tokens survive login cookies and cookie options remain independent. TestHertzReviewCookieRoundTrip 验证自定义 Token 经 Cookie 往返不变，且各 Cookie 选项独立。
 func TestHertzReviewCookieRoundTrip(t *testing.T) {
-	mgr := newHertzReviewManager(t, "hertz-cookie", nil)
+	auth, err := dtoken.NewBuilder().AuthType("hertz-cookie").IsReadCookie(true).
+		IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).BuildInstance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(auth.Close)
+	mgr := auth.Manager()
 	ctx := hertzapp.NewContext(0)
 	getDTokenContext(ctx, mgr)
 	const token = "custom+/%2B=token"
@@ -534,11 +547,12 @@ func TestHertzReviewTLSAndClientIP(t *testing.T) {
 
 // TestHertzReviewRequestData verifies body-only token extraction and owned token strings. TestHertzReviewRequestData 验证仅从 Body 读取 Token 以及 Token 字符串拥有独立内存。
 func TestHertzReviewRequestData(t *testing.T) {
-	mgr, err := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
-		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).Build()
+	mgrAuth, err := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	key := mgr.GetConfig().TokenName
 	var multipartBody bytes.Buffer
@@ -558,7 +572,7 @@ func TestHertzReviewRequestData(t *testing.T) {
 		ctx := hertzapp.NewContext(0)
 		ctx.Request.SetMethod(http.MethodPost)
 		ctx.Request.SetRequestURI("/?" + url.Values{key: {"query-token"}}.Encode())
-		ctx.Request.Header.SetContentType(tc.contentType)
+		ctx.Request.Header.Set("Content-Type", tc.contentType)
 		ctx.Request.SetBodyString(tc.body)
 		if got := getDTokenContext(ctx, mgr).GetTokenValue(); got != tc.want {
 			t.Fatalf("body token=%q want=%q", got, tc.want)
@@ -569,7 +583,7 @@ func TestHertzReviewRequestData(t *testing.T) {
 	ctx.Request.SetRequestURI("/?token=original")
 	ctx.Request.Header.Set("X-Token", "original")
 	ctx.Request.Header.SetCookie("token", "original")
-	ctx.Request.Header.SetContentType("application/x-www-form-urlencoded")
+	ctx.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	ctx.Request.SetBodyString("token=original")
 	adapterCtx := NewHertzContext(ctx)
 	values := []string{adapterCtx.GetHeader("X-Token"), adapterCtx.GetQuery("token"), adapterCtx.GetCookie("token"), adapterCtx.GetPostForm("token")}

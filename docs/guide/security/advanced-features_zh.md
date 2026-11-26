@@ -1,15 +1,54 @@
 # 高级能力
 
+[English](advanced-features.md) | 中文文档
+
 本页整理 DToken-Go 在普通登录、登出、权限和角色 API 之外可以直接使用的高级能力。
 
-示例假设已经注册 Manager。Nonce、Ticket 和 ShortKey 为可选模块，应在 Builder 调用 `Build()` 前，按需通过 `EnableNonce()`、`EnableTicket()` 和 `EnableShortKey()` 启用，详见[可选模块](../reference/configuration_zh.md)。Token Introspection 和业务 Refresh Token 无需这些开关。
+以下为按主题拆分的调用片段，ctx 是当前 context.Context，错误处理片段放在返回 error 的函数内。dt 为根包，listener 为 event；SSO 片段需另行导入独立 sso 模块。Auth 的 Introspection、Refresh Token 与独立能力服务属于不同入口。
+
+## 显式组合
+
+以下片段使用根认证实例和独立能力服务。Build 自动注册 Auth；能力服务通过构造器组合，HTTP 接入通过 WithCapabilities 注入，无需额外注册能力服务。需要不注册的 Auth 时使用 BuildInstance。
+
+```go
+import (
+    dt "github.com/Zany2/dtoken-go"
+    "github.com/Zany2/dtoken-go/nonce"
+    "github.com/Zany2/dtoken-go/ticket"
+    "github.com/Zany2/dtoken-go/shortkey"
+)
+
+auth, err := dt.NewBuilder().Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
+cfg := auth.Config()
+nonceManager, err := nonce.NewDefaultNonceManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage())
+if err != nil {
+	return err
+}
+nonceService := nonce.NewService(nonceManager, auth)
+ticketManager, err := ticket.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+if err != nil {
+	return err
+}
+ticketService := ticket.NewService(ticketManager, auth)
+shortKeyManager, err := shortkey.NewDefaultManager(cfg.AuthType, cfg.KeyPrefix, auth.Storage(), auth.Codec())
+if err != nil {
+	return err
+}
+shortKeyService := shortkey.NewService(shortKeyManager, auth)
+```
+
+服务接口分别位于 contract/nonce、contract/ticket、contract/shortkey；HTTP 通过 WithCapabilities 绑定接口，可接入自定义实现。服务借用 Auth 组件，不负责关闭；同一个 Auth 关闭后不得继续使用这些组件。
 
 ## Token Introspection
 
 Token Introspection 用来无续期副作用地检查 token 当前是否活跃，并返回归属信息、TTL、权限、角色、扩展数据和非活跃原因。
 
 ```go
-info, err := dtoken.IntrospectToken(ctx, token)
+info, err := auth.IntrospectToken(ctx, token)
 if err != nil {
 	return err
 }
@@ -20,7 +59,7 @@ if !info.Active {
 fmt.Println(info.LoginID, info.ExpiresIn, info.Permissions, info.Roles)
 ```
 
-各框架包也会导出同名 API。例如 GoFrame 项目只引入 `github.com/Zany2/dtoken-go/integrations/gf` 后，可以直接调用 `gfdt.IntrospectToken(...)`。
+框架请求使用 GetDTokenContext(r) 返回的上下文执行 IntrospectToken；默认和指定体系调用使用根包，框架不转导出这些 API。
 
 ## Refresh Token
 
@@ -33,23 +72,23 @@ fmt.Println(info.LoginID, info.ExpiresIn, info.Permissions, info.Roles)
 消费优先使用 `AtomicStorage.GetAndDelete`；基础存储通过同一 Manager 的账号锁串行处理，不保证跨实例或跨进程原子消费。
 
 ```go
-pair, err := dtoken.LoginWithRefreshToken(ctx, "user-1001")
+pair, err := auth.LoginWithRefreshToken(ctx, "user-1001")
 if err != nil {
 	return err
 }
 
-nextPair, err := dtoken.RefreshToken(ctx, pair.RefreshToken)
+nextPair, err := auth.RefreshToken(ctx, pair.RefreshToken)
 if err != nil {
 	return err
 }
 
-ttl, err := dtoken.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
+ttl, err := auth.GetRefreshTokenTTL(ctx, nextPair.RefreshToken)
 if err != nil {
 	return err
 }
 fmt.Println(ttl)
 
-_ = dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
+_ = auth.RevokeRefreshToken(ctx, nextPair.RefreshToken)
 ```
 
 默认 refresh token 有效期是 `30` 天。可以通过 `RefreshTokenTimeout(...)` 设置全局有效期，也可以通过 `LoginWithRefreshTokenOptions(...)` 为单次登录覆盖有效期。
@@ -60,15 +99,15 @@ _ = dtoken.RevokeRefreshToken(ctx, nextPair.RefreshToken)
 
 Ticket 校验和状态回写使用精确截止时间 `ExpiresAt`。`CreateTime` 仍为 Unix 秒时间戳，`ExpiresIn` 仍为向上取整后的有效秒数。存储中不含 `ExpiresAt` 的旧票据继续使用原有整秒到期规则。
 
-消费时优先使用 `adapter.AtomicStorage`。仅提供基础 `Storage` 时，消费和撤销在同一个 Ticket 管理器实例内串行执行；该回退不保证不同管理器实例或进程之间的原子消费。多个实例共享票据时应使用原子存储。
+消费时优先使用 `contract.AtomicStorage`。仅提供基础 `Storage` 时，消费和撤销在同一个 Ticket 管理器实例内串行执行；该回退不保证不同管理器实例或进程之间的原子消费。多个实例共享票据时应使用原子存储。
 
 ```go
-createdTicket, err := dtoken.CreateTicket(ctx, "user-1001")
+createdTicket, err := ticketService.CreateTicket(ctx, ticket.CreateOptions{LoginID: "user-1001"})
 if err != nil {
 	return err
 }
 
-result, err := dtoken.ConsumeTicket(ctx, createdTicket.Ticket)
+result, err := ticketService.ConsumeTicket(ctx, createdTicket.Ticket)
 if err != nil {
 	return err
 }
@@ -81,20 +120,20 @@ fmt.Println(result.Ticket.LoginID)
 
 短 Key 的校验和状态回写使用精确截止时间 `ExpiresAt`。`CreateTime`、`UpdateTime` 和 `ExpiresIn` 保留原有秒单位；存储中不含 `ExpiresAt` 的旧短 Key 继续使用原有到期规则。
 
-创建写入、确认、消费和撤销在同一个 ShortKey 管理器实例内串行执行。创建和消费优先使用 `adapter.AtomicStorage`，基础 `Storage` 提供本地回退。实例锁不协调其他管理器实例或进程；原子创建和消费也不使跨实例的确认、撤销成为事务操作。
+创建写入、确认、消费和撤销在同一个 ShortKey 管理器实例内串行执行。创建和消费优先使用 `contract.AtomicStorage`，基础 `Storage` 提供本地回退。实例锁不协调其他管理器实例或进程；原子创建和消费也不使跨实例的确认、撤销成为事务操作。
 
 ```go
-createdKey, err := dtoken.CreateShortKey(ctx)
+createdKey, err := shortKeyService.CreateShortKey(ctx, shortkey.CreateOptions{})
 if err != nil {
 	return err
 }
 
-confirmedKey, err := dtoken.ConfirmShortKey(ctx, createdKey.Key, "user-1001")
+confirmedKey, err := shortKeyService.ConfirmShortKey(ctx, createdKey.Key, shortkey.ConfirmOptions{LoginID: "user-1001"})
 if err != nil {
 	return err
 }
 
-result, err := dtoken.ConsumeShortKey(ctx, confirmedKey.Key)
+result, err := shortKeyService.ConsumeShortKey(ctx, confirmedKey.Key)
 if err != nil {
 	return err
 }
@@ -107,6 +146,7 @@ fmt.Println(result.ShortKey.LoginID)
 
 ```go
 server := sso.NewServer()
+defer server.Close()
 err := server.RegisterClient(&sso.Client{
 	ClientID:     "app-a",
 	ClientSecret: "secret-a",
@@ -149,12 +189,12 @@ fmt.Println(info.LoginID)
 用于一次性随机值生成、校验和消费，防止请求重放。
 
 ```go
-nonce, err := dtoken.GenerateNonce(ctx)
+nonce, err := nonceService.GenerateNonce(ctx)
 if err != nil {
 	return err
 }
 
-err = dtoken.VerifyAndConsumeNonce(ctx, nonce)
+err = nonceService.VerifyAndConsumeNonce(ctx, nonce)
 ```
 
 ## 事件监听
@@ -162,8 +202,14 @@ err = dtoken.VerifyAndConsumeNonce(ctx, nonce)
 事件系统可以监听登录、登出、续期、权限、角色、封禁、解封等核心生命周期事件。
 
 ```go
-eventMgr := mgr.GetEventManager()
+eventMgr := auth.EventManager()
 eventMgr.RegisterFunc(listener.EventAll, func(data *listener.EventData) {
 	fmt.Println(data.Event, data.LoginID, data.Token)
 })
 ```
+
+## 相关文档
+
+- [Auth 实例 API](../../api/auth_zh.md)
+- [生命周期](../../design/api-lifecycle_zh.md)
+- [SSO Redis 存储](../../../sso/storage/redis/README_zh.md)

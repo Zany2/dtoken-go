@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/Zany2/dtoken-go/core/manager"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 )
 
 // TestWithManagerOption verifies explicit manager injection is retained by options. TestWithManagerOption 验证选项会保留显式注入的 Manager。

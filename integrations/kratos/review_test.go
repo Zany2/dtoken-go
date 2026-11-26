@@ -5,6 +5,19 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"github.com/Zany2/dtoken-go"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
+	"github.com/Zany2/dtoken-go/storage/memory"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"github.com/go-kratos/kratos/v2/middleware"
+	"github.com/go-kratos/kratos/v2/transport"
+	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 	"io"
 	"mime/multipart"
 	"net"
@@ -15,20 +28,6 @@ import (
 	"testing"
 	"testing/iotest"
 	"time"
-
-	"github.com/Zany2/dtoken-go/com/storage/memory"
-	"github.com/Zany2/dtoken-go/core/adapter"
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
-	"github.com/go-kratos/kratos/v2/middleware"
-	"github.com/go-kratos/kratos/v2/transport"
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/peer"
-	"google.golang.org/grpc/status"
 )
 
 // kratosReviewHeader implements transport headers without a network server. kratosReviewHeader 在不启动网络服务的情况下实现传输头。
@@ -82,17 +81,18 @@ func newKratosReviewContext(kind transport.Kind, tokenName, token string) (conte
 // newKratosReviewManager creates an isolated manager without asynchronous work. newKratosReviewManager 创建无异步任务的独立 Manager。
 func newKratosReviewManager(t *testing.T, authType string, storage adapter.Storage) *manager.Manager {
 	t.Helper()
-	b := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
+	b := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
 	if authType != "" {
 		b.AuthType(authType)
 	}
 	if storage != nil {
-		b.SetStorage(storage)
+		b.Storage(storage)
 	}
-	mgr, err := b.Build()
+	mgrAuth, err := b.BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	return mgr
 }
@@ -130,7 +130,7 @@ var kratosReviewChecks = []struct {
 		for _, opt := range opts {
 			opt(o)
 		}
-		return GetHandler(o.FailFunc, &Annotation{AuthType: o.AuthType, CheckPermission: []string{"read"}})
+		return GetHandler(o.FailFunc, &Annotation{ManagerResolver: o.ManagerResolver, AuthType: o.AuthType, CheckPermission: []string{"read"}})
 	}},
 }
 
@@ -209,8 +209,12 @@ func TestKratosReviewManagerSelection(t *testing.T) {
 	global := newKratosReviewManager(t, "", nil)
 	local := newKratosReviewManager(t, "kratos-local", nil)
 	selected := newKratosReviewManager(t, "kratos-selected", nil)
-	dtoken.SetManager(global)
-	dtoken.SetManager(selected)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
+	if err := dtoken.SetManager(selected); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	for _, mgr := range []*manager.Manager{global, local} {
 		if _, err := mgr.LoginWithOptions(context.Background(), manager.LoginOptions{LoginID: "reader", Token: "same-token"}); err != nil {
 			t.Fatal(err)
@@ -226,7 +230,7 @@ func TestKratosReviewManagerSelection(t *testing.T) {
 	}{
 		{nil, "", local}, {nil, "kratos-selected", selected}, {local, "missing", local},
 	} {
-		if got, err := resolveRequestManager(ctx, tc.explicit, tc.authType); err != nil || got != tc.want {
+		if got, err := resolveRequestManager(ctx, tc.explicit, tc.authType, dtoken.GetManager); err != nil || got != tc.want {
 			t.Fatalf("manager=%p,%v want=%p", got, err, tc.want)
 		}
 	}
@@ -247,7 +251,7 @@ func TestKratosReviewManagerSelection(t *testing.T) {
 		}
 	}
 	var typedNil *DTokenContext
-	if got, err := resolveRequestManager(context.WithValue(base, DTokenCtxKey, typedNil), nil, ""); err != nil || got != global {
+	if got, err := resolveRequestManager(context.WithValue(base, DTokenCtxKey, typedNil), nil, ""); !errors.Is(err, ErrManagerNotFound) {
 		t.Fatalf("typed nil=%p,%v", got, err)
 	}
 	local.CloseManager()
@@ -389,11 +393,12 @@ func TestKratosReviewFailureAndAnnotations(t *testing.T) {
 
 // TestKratosReviewMultipart verifies multipart and body-only token sources. TestKratosReviewMultipart 验证 multipart 与仅请求体 Token 来源。
 func TestKratosReviewMultipart(t *testing.T) {
-	mgr, err := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
-		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).Build()
+	mgrAuth, err := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	key := mgr.GetConfig().TokenName
 	var body bytes.Buffer

@@ -4,22 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Zany2/dtoken-go"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"testing"
 	"time"
-
-	"github.com/Zany2/dtoken-go/core/adapter"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/defaults"
-	"github.com/Zany2/dtoken-go/dtoken"
-	"github.com/gin-gonic/gin"
 )
 
 // TestProductionConfiguration validates the configuration used by main, not a separate test builder. TestProductionConfiguration 校验 main 实际使用的配置，避免独立测试配置掩盖问题。
 func TestProductionConfiguration(t *testing.T) {
 	dtoken.DeleteAllManager()
 	t.Cleanup(dtoken.DeleteAllManager)
-	initDToken()
+	if _, err := initDToken(); err != nil {
+		t.Fatal(err)
+	}
 	mgr, err := dtoken.GetManager()
 	if err != nil {
 		t.Fatal(err)
@@ -37,7 +37,7 @@ func TestProductionConfiguration(t *testing.T) {
 func TestProductionRouteFailures(t *testing.T) {
 	setupQuickStartManager(t)
 	router := gin.New()
-	registerRoutes(router)
+	registerTestRoutes(router)
 	check := func(method, path, body, token string, want int) {
 		t.Helper()
 		rec := requestQuickStart(t, router, method, path, body, token)
@@ -56,32 +56,38 @@ func TestProductionRouteFailures(t *testing.T) {
 		check(http.MethodGet, path, "", "", http.StatusUnauthorized)
 	}
 	ctx := context.Background()
-	token, err := dtoken.Login(ctx, "reader", "web")
+	token, err := dtoken.Login(ctx, dtoken.LoginOptions{LoginID: "reader", Device: "web"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := dtoken.DisableDevice(ctx, "reader", "web", time.Hour); err != nil {
+	if err := dtoken.DisableDevice(ctx, dtoken.DeviceDisableOptions{LoginID: "reader", Device: "web", Duration: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
 	check(http.MethodGet, "/me", "", token, http.StatusForbidden)
-	if err := dtoken.Disable(ctx, "blocked", time.Hour, ""); err != nil {
+	if err := dtoken.Disable(ctx, dtoken.DisableOptions{LoginID: "blocked", Duration: time.Hour, Reason: ""}); err != nil {
 		t.Fatal(err)
 	}
 	check(http.MethodPost, "/login", `{"username":"blocked","password":"123456"}`, "", http.StatusForbidden)
 
 	dtoken.DeleteAllManager()
 	check(http.MethodGet, "/me", "", token, http.StatusInternalServerError)
-	base, err := defaults.NewBuilder().AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).Build()
+	baseAuth, err := dtoken.NewBuilder().AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	base := baseAuth.Manager()
 	t.Cleanup(base.CloseManager)
-	mgr, err := defaults.NewBuilder().SetStorage(&quickStartFailingStorage{Storage: base.GetStorage()}).
-		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).Build()
+	mgrAuth, err := dtoken.NewBuilder().Storage(&quickStartFailingStorage{Storage: base.GetStorage()}).
+		AutoRenew(false).AsyncEvent(false).IsPrintBanner(false).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
-	dtoken.SetManager(mgr)
+	mgr := mgrAuth.Manager()
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
+	router = gin.New()
+	registerTestRoutes(router)
 	check(http.MethodPost, "/login", `{"username":"alice","password":"123456"}`, "", http.StatusInternalServerError)
 	for _, path := range []string{"/me", "/admin", "/articles", "/logout"} {
 		method := http.MethodGet
@@ -96,7 +102,7 @@ func TestProductionRouteFailures(t *testing.T) {
 func TestLoginRejectsTrailingJSON(t *testing.T) {
 	setupQuickStartManager(t)
 	router := gin.New()
-	registerRoutes(router)
+	registerTestRoutes(router)
 	valid := `{"username":"alice","password":"123456"}`
 	for _, suffix := range []string{" {}", " null", " trailing"} {
 		rec := requestQuickStart(t, router, http.MethodPost, "/login", valid+suffix, "")

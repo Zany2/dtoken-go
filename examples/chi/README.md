@@ -2,6 +2,8 @@
 
 This example shows how to use `github.com/Zany2/dtoken-go/integrations/chi` with Chi middleware.
 
+Build automatically registers and returns one Auth instance. The application explicitly binds that instance with `WithAuth`; login and request checks use the bound engine. Close it after draining requests. Use `BuildInstance()` for an unregistered instance.
+
 ## Run
 
 ```bash
@@ -19,7 +21,7 @@ The server listens on `http://localhost:8080`.
 - `GET /articles`: requires the `article:read` permission.
 - `POST /logout`: logs out the current token.
 
-The example uses bundled memory storage through `chidt.NewBuilder()`, so no Redis service is required. Login and authorization data are lost on restart. Demo credentials and permission grants illustrate the API; real applications must verify their own accounts and load their own authorization rules.
+The example uses bundled memory storage through `dtoken.NewBuilder()`, so no Redis service is required. Login and authorization data are lost on restart. Demo credentials and permission grants illustrate the API; real applications must verify their own accounts and load their own authorization rules.
 
 Tokens have a two-hour timeout, with automatic renewal during authentication checks when one hour or less remains. Repeated logins for the same username may reuse a token under the default sharing policy; logging out invalidates that shared token.
 
@@ -51,9 +53,23 @@ Handlers and authentication middleware share the same error response callback. R
 
 ## Key APIs
 
+The middleware fragments below belong in a setup function that returns `error`; propagate binding errors to the caller and stop startup if setup fails.
+
+Build an instance first and keep it open while the server handles requests. These fragments use the handlers and error callbacks from `main.go`.
+
+```go
+authInstance, err := dtoken.NewBuilder().TokenName("Authorization").Build()
+if err != nil { panic(err) }
+defer authInstance.Close()
+```
+
 ```go
 fail := func(w http.ResponseWriter, _ *http.Request, err error) { writeAuthError(w, err) }
-r.Use(chidt.RegisterDTokenContextMiddleware(chidt.WithFailFunc(fail)))
+authOption1, authErr := chidt.WithAuth(authInstance)
+if authErr != nil {
+    return authErr
+}
+r.Use(chidt.RegisterDTokenContextMiddleware(authOption1, chidt.WithFailFunc(fail)))
 auth.Use(chidt.AuthMiddleware(chidt.WithFailFunc(fail)))
 auth.With(chidt.RoleMiddleware([]string{"admin"}, chidt.WithFailFunc(fail))).Get("/admin", handleAdmin)
 auth.With(chidt.PermissionMiddleware([]string{"article:read"}, chidt.WithFailFunc(fail))).Get("/articles", handleArticles)

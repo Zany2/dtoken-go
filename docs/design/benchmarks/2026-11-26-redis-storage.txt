@@ -1,0 +1,84 @@
+=== RUN   TestKeysDeduplicatesScanPages
+--- PASS: TestKeysDeduplicatesScanPages (0.00s)
+=== RUN   TestKeysReportsLaterScanFailure
+--- PASS: TestKeysReportsLaterScanFailure (0.00s)
+=== RUN   TestStorageContract
+=== RUN   TestStorageContract/optional_update_retaining_TTL
+=== RUN   TestStorageContract/optional_persistence
+=== RUN   TestStorageContract/basic_operations
+=== RUN   TestStorageContract/atomic_get_and_delete
+=== RUN   TestStorageContract/atomic_set_if_absent
+=== RUN   TestStorageContract/ttl_and_expire
+=== RUN   TestStorageContract/keys_delete_and_clear
+=== RUN   TestStorageContract/context_cancellation
+--- PASS: TestStorageContract (4.69s)
+    --- PASS: TestStorageContract/optional_update_retaining_TTL (0.92s)
+    --- PASS: TestStorageContract/optional_persistence (0.68s)
+    --- PASS: TestStorageContract/basic_operations (0.40s)
+    --- PASS: TestStorageContract/atomic_get_and_delete (0.40s)
+    --- PASS: TestStorageContract/atomic_set_if_absent (0.46s)
+    --- PASS: TestStorageContract/ttl_and_expire (0.82s)
+    --- PASS: TestStorageContract/keys_delete_and_clear (0.73s)
+    --- PASS: TestStorageContract/context_cancellation (0.28s)
+=== RUN   TestNewStorageFromClient
+--- PASS: TestNewStorageFromClient (0.00s)
+=== RUN   TestNewStorageFromConfigRejectsNil
+--- PASS: TestNewStorageFromConfigRejectsNil (0.00s)
+=== RUN   TestNewStorageFromConfigRejectsNegativePoolSize
+--- PASS: TestNewStorageFromConfigRejectsNegativePoolSize (0.00s)
+=== RUN   TestConstructorsRejectNegativeDatabase
+=== RUN   TestConstructorsRejectNegativeDatabase/config
+=== RUN   TestConstructorsRejectNegativeDatabase/url_path
+=== RUN   TestConstructorsRejectNegativeDatabase/url_query
+--- PASS: TestConstructorsRejectNegativeDatabase (0.00s)
+    --- PASS: TestConstructorsRejectNegativeDatabase/config (0.00s)
+    --- PASS: TestConstructorsRejectNegativeDatabase/url_path (0.00s)
+    --- PASS: TestConstructorsRejectNegativeDatabase/url_query (0.00s)
+=== RUN   TestRedisOptionsFromConfig
+--- PASS: TestRedisOptionsFromConfig (0.00s)
+=== RUN   TestNewStorageFromConfigReturnsConnectionError
+--- PASS: TestNewStorageFromConfigReturnsConnectionError (0.03s)
+=== RUN   TestNewStorageFromClientHasNoOperationTimeout
+--- PASS: TestNewStorageFromClientHasNoOperationTimeout (0.00s)
+=== RUN   TestNewStorageFromClientNilReceiverAndClose
+--- PASS: TestNewStorageFromClientNilReceiverAndClose (0.00s)
+=== RUN   TestWithOperationTimeoutAppliesConfiguredTimeout
+--- PASS: TestWithOperationTimeoutAppliesConfiguredTimeout (0.00s)
+=== RUN   TestWithOperationTimeoutPreservesParentCancellation
+--- PASS: TestWithOperationTimeoutPreservesParentCancellation (0.00s)
+=== RUN   TestNewStorageFromConfigConnects
+--- PASS: TestNewStorageFromConfigConnects (0.29s)
+=== RUN   TestNormalizeTTL
+=== RUN   TestNormalizeTTL/no_expire_seconds
+=== RUN   TestNormalizeTTL/not_found_seconds
+=== RUN   TestNormalizeTTL/no_expire_milliseconds
+=== RUN   TestNormalizeTTL/not_found_milliseconds
+=== RUN   TestNormalizeTTL/no_expire_adapter
+=== RUN   TestNormalizeTTL/not_found_adapter
+=== RUN   TestNormalizeTTL/positive
+--- PASS: TestNormalizeTTL (0.00s)
+    --- PASS: TestNormalizeTTL/no_expire_seconds (0.00s)
+    --- PASS: TestNormalizeTTL/not_found_seconds (0.00s)
+    --- PASS: TestNormalizeTTL/no_expire_milliseconds (0.00s)
+    --- PASS: TestNormalizeTTL/not_found_milliseconds (0.00s)
+    --- PASS: TestNormalizeTTL/no_expire_adapter (0.00s)
+    --- PASS: TestNormalizeTTL/not_found_adapter (0.00s)
+    --- PASS: TestNormalizeTTL/positive (0.00s)
+=== RUN   TestNormalizeSetExpiration
+=== RUN   TestNormalizeSetExpiration/zero_means_no_expiration
+=== RUN   TestNormalizeSetExpiration/negative_means_no_expiration
+=== RUN   TestNormalizeSetExpiration/positive_unchanged
+--- PASS: TestNormalizeSetExpiration (0.00s)
+    --- PASS: TestNormalizeSetExpiration/zero_means_no_expiration (0.00s)
+    --- PASS: TestNormalizeSetExpiration/negative_means_no_expiration (0.00s)
+    --- PASS: TestNormalizeSetExpiration/positive_unchanged (0.00s)
+=== RUN   TestNewStorageRejectsInvalidURL
+--- PASS: TestNewStorageRejectsInvalidURL (0.00s)
+=== RUN   TestNewStorageRejectsNegativePoolSize
+--- PASS: TestNewStorageRejectsNegativePoolSize (0.00s)
+=== RUN   TestDeleteWithoutKeysSkipsClient
+--- PASS: TestDeleteWithoutKeysSkipsClient (0.00s)
+=== RUN   TestNilClientReturnsErrors
+--- PASS: TestNilClientReturnsErrors (0.00s)
+PASS
+ok  	github.com/Zany2/dtoken-go/storage/redis	5.822s

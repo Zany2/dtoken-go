@@ -1,8 +1,12 @@
 # 组件生态
 
+代码片段的导入别名：dt = github.com/Zany2/dtoken-go, adapter = github.com/Zany2/dtoken-go/contract.
+
 [English](../integration/component-ecosystem.md) | 中文文档
 
-DToken-Go 将核心认证逻辑和组件实现解耦。核心只依赖接口，默认实现由 `defaults` 组装，也可以按业务需要替换存储、编解码、日志、Token 生成器和异步任务池。
+DToken-Go 将核心认证逻辑和组件实现解耦。核心只依赖接口，应用通过根包 Builder 选择内置默认组件并完成装配，也可以按业务需要替换存储、编解码、日志、Token 生成器和异步任务池。
+
+构建成功后，引擎默认负责关闭显式传入的存储、日志和池；构建失败时显式传入的组件仍由调用方清理。共享组件使用 WithComponentOwnership 声明完整策略，并由应用统一关闭。默认组件随根模块发布，Redis、MsgPack、JSON v2 和 GoFrame 日志是独立模块。
 
 ## 组件总览
 
@@ -10,6 +14,8 @@ DToken-Go 将核心认证逻辑和组件实现解耦。核心只依赖接口，�
 | --- | --- | --- | --- |
 | 存储 | `adapter.Storage` | Memory、Redis | 保存 Token、Session、封禁、Nonce、OAuth2 数据 |
 | 原子存储 | `adapter.AtomicStorage` | Redis、Memory | Nonce 一次性消费等需要原子读删的场景 |
+| 保留 TTL 更新 | `adapter.UpdateStorage` | Redis | Update 仅替换已有值；Redis 使用 SET XX KEEPTTL，Memory 与普通存储使用非原子 TTL + Set 回退 |
+| 永久化存储 | `adapter.PersistentStorage` | Redis、Memory | 使用 Persist 移除已有键有效期；基础 Storage 不强制实现，普通实现通过原始值读取写回回退 |
 | 扫描存储 | `adapter.ScannerStorage` | Redis、Memory | 搜索 Token、Session ID |
 | 管理存储 | `adapter.AdminStorage` | Redis、Memory | 测试清理或管理性清空 |
 | 编解码 | `adapter.Codec` | JSON、MessagePack、Base64 | 序列化存储结构 |
@@ -19,21 +25,42 @@ DToken-Go 将核心认证逻辑和组件实现解耦。核心只依赖接口，�
 
 ## 默认 Builder
 
-`defaults.NewBuilder()` 会装配默认组件：
+`dt.NewBuilder()` 会装配默认组件：
 
+<!-- dtoken-compile: default-components -->
 ```go
-mgr, err := defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
-    Build()
+package main
+
+import (
+	dt "github.com/Zany2/dtoken-go"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	"github.com/Zany2/dtoken-go/storage/memory"
+)
+
+func main() {
+	storage := memory.NewStorage()
+	var _ adapter.Storage = storage
+	auth, err := dt.NewBuilder().
+		Storage(storage).
+		Build()
+	if err != nil {
+		panic(err)
+	}
+	defer auth.Close()
+}
 ```
 
 默认已经提供内存存储；使用 Redis 或其他后端时再显式设置存储。其他组件没有特殊诉求时，可以继续使用默认实现。
 
+组件选择顺序为：显式传入的实例 → 自定义工厂 → 内置默认工厂。`SetGeneratorFactory(nil)`、`SetStorageFactory(nil)`、`SetCodecFactory(nil)`、`SetLogFactory(nil)` 和 `SetPoolFactory(nil)` 均恢复默认工厂；不会清除已经注入的实例。要取消实例覆盖，传入对应的 `nil` 实例。工厂已经被调用但返回错误或缺失必需组件时，构建失败，不会再静默回退到默认实现。
+
+内置日志和池配置仅在实际创建对应默认组件时校验。关闭日志，或注入自定义日志/池时，未使用的内置实现配置不会影响构建。`RenewPoolPrintStatusInterval` 同样控制自定义池的状态报告，仍要求非负值。未显式注入池时，只有启用 `AutoRenew` 才创建池；自定义池工厂返回 `(nil, nil)` 仍表示不使用池。
+
 ## 替换具体组件
 
 ```go
-mgr, err := defaults.NewBuilder().
-    SetStorage(storage).
+auth, err := dt.NewBuilder().
+    Storage(storage).
     SetCodec(codec).
     SetLog(logger).
     SetGenerator(generator).
@@ -44,7 +71,7 @@ mgr, err := defaults.NewBuilder().
 也可以通过工厂延迟创建组件：
 
 ```go
-mgr, err := defaults.NewBuilder().
+auth, err := dt.NewBuilder().
     SetStorageFactory(func(cfg *config.Config) (adapter.Storage, error) {
         return redis.NewStorage("redis://localhost:6379/0")
     }).
@@ -53,14 +80,14 @@ mgr, err := defaults.NewBuilder().
 
 工厂适合组件依赖配置项的场景，例如根据 `AuthType`、`KeyPrefix` 或部署环境创建不同实例。
 
-`com/codec/jsonv2` 提供基于 Go 1.27 标准库 `encoding/json/v2` 的适配器，需要启用 `GOEXPERIMENT=jsonv2`。如果不需要 JSON v2 的实验特性，可继续使用 JSON、MessagePack、Base64，或自行实现 `adapter.Codec`。
+`codec/jsonv2` 提供基于 Go 1.27 标准库 `encoding/json/v2` 的适配器，需要启用 `GOEXPERIMENT=jsonv2`。如果不需要 JSON v2 的实验特性，可继续使用 JSON、MessagePack、Base64，或自行实现 `adapter.Codec`。
 
 ## 存储组件建议
 
 - 单进程测试、示例项目、本地开发：使用 Memory Storage。
 - 多实例部署、跨服务共享登录态、生产环境：使用 Redis Storage。
 - 需要 `SearchTokenValue`、`SearchSessionId` 等搜索能力时，存储应实现 `ScannerStorage`。
-- 需要安全的一次性消费时，存储应实现 `AtomicStorage`。
+- 需要跨实例原子消费时，存储应实现 `AtomicStorage`。Nonce 消费显式要求此扩展；其他能力是否提供普通存储回退，以各自契约为准。
 
 Redis 接入方式见 [Redis 存储](../integration/redis-storage_zh.md)。
 
@@ -69,9 +96,9 @@ Redis 接入方式见 [Redis 存储](../integration/redis-storage_zh.md)。
 默认生成器支持多种 Token 风格：
 
 ```go
-mgr, err := defaults.NewBuilder().
+auth, err := dt.NewBuilder().
     TokenStyle(adapter.TokenStyleRandom64).
-    SetStorage(storage).
+    Storage(storage).
     Build()
 ```
 
@@ -98,6 +125,37 @@ func (MyGenerator) Generate(loginID, device, deviceID string) (string, error) {
 
 ## 日志与异步任务
 
+默认 `dlog` 基于 Zap 同步输出日志，由 Lumberjack 负责按文件大小轮转、备份保留和可选 gzip 压缩。核心继续通过 `contract.Log` / `contract.LogControl` 使用日志组件。
+
+<!-- dtoken-compile: logging -->
+```go
+package main
+
+import dt "github.com/Zany2/dtoken-go"
+
+func main() {
+	auth, err := dt.NewBuilder().
+		IsLog(true).
+		LoggerPath("logs").
+		LoggerFilename("dtoken.log").
+		LoggerMaxSize(10).
+		LoggerMaxBackups(10).
+		LoggerMaxAge(7).
+		LoggerCompress(true).
+		Build()
+	if err != nil {
+		panic(err)
+	}
+	defer auth.Close()
+}
+```
+
+`MaxSize` 的单位是 MiB（1024 × 1024 字节），`MaxAge` 的单位是天；`MaxBackups` 或 `MaxAge` 为零时，不启用对应的保留限制。使用 `dlog.DefaultLoggerConfig()` 可获得 10 MiB、10 个备份、7 天的完整默认配置，部分配置结构体中的零值保留限制不会被默认值覆盖。活动文件默认为 `dtoken_logs/DTOKEN.log`，文件名固定，备份名称由 Lumberjack 生成。单条日志超过 `MaxSize` 时，Lumberjack 拒绝该次文件写入，Zap 将写入错误报告到标准错误输出。
+
+本次重构移除自研异步队列和时间切分：`QueueSize`、`RotateExpire` 及对应 Builder 方法不再提供；`FileFormat` 改为 `Filename`，不再支持日期模板；原字节单位的 `RotateSize` 改为 MiB 单位的 `MaxSize`；`RotateBackupLimit`、`RotateBackupDays` 分别改为 `MaxBackups`、`MaxAge`，Builder 方法也使用对应新名称。
+
+日志调用与运行时控制方法保持兼容。`Print` / `Printf` 不受级别阈值过滤；`DropCount()` 固定返回零，表示没有异步队列溢出丢弃，不代表所有文件写入均成功。启用文件输出时，初始化与 `SetConfig` 会预先创建或以追加方式打开目标文件，检查后关闭，不修改已有内容；检查失败时保留当前输出。`MaxAge` 最大为 106751 天，超过此值会导致底层时长计算溢出，因此会拒绝该配置。每个活动日志文件应由单个日志器实例管理轮转。`Close` 等待正在进行的同步写入并关闭自有文件，不关闭标准输出。`Flush` 调用 Zap 的同步接口；Lumberjack 不提供文件 `fsync` 接口，标准输出也不执行 `fsync`，以避免 Windows 管道同步阻塞。备份压缩与清理由 Lumberjack 异步执行，`Flush` 和 `Close` 不等待这些维护任务。
+
 - `IsLog(false)` 时会使用空日志实现，不需要额外注入日志组件。
 - `IsLog(true)` 时应确保存在可用日志组件或日志工厂。
 - `AutoRenew(true)` 时，默认 Builder 可装配异步任务池，用于续期任务。
@@ -105,11 +163,11 @@ func (MyGenerator) Generate(loginID, device, deviceID string) (string, error) {
 
 ## 使用建议
 
-- 优先使用 `defaults.NewBuilder()`，只替换确实需要替换的组件。
+- 优先使用 `dt.NewBuilder()`，只替换确实需要替换的组件。
 - 自定义组件时先满足核心接口，再考虑额外接口能力。
 - 生产环境建议使用 Redis Storage，并设置清晰的 `KeyPrefix`。
 - 自定义 Token 生成器要保证足够随机性和不可预测性。
-- 编解码组件应保持版本稳定，避免历史数据无法反序列化。
+- 编解码组件应保持版本稳定，避免历史数据无法反序列化。新 Token 主记录使用引擎固定格式，绕过 Codec；Session、Token Extra、刷新凭据和独立能力对象仍使用 Codec。自定义 Codec 的压缩或加密不会覆盖新 Token 主记录中的身份字段。
 
 ## 相关文档
 

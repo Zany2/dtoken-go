@@ -6,22 +6,24 @@
 
 The current Redis storage implementation is located at:
 
-- `com/storage/redis`
+- `storage/redis`
 
 There are only 3 public constructors:
 
 1. `redis.NewStorage(url string)`
 2. `redis.NewStorageFromConfig(cfg *redis.Config)`
-3. `redis.NewStorageFromClient(client *redis.Client)`
+3. `redis.NewStorageFromClient(client *goredis.Client)`
 
 ## Installation
 
 ```bash
-go get github.com/Zany2/dtoken-go/com/storage/redis
+go get github.com/Zany2/dtoken-go/storage/redis
 go get github.com/redis/go-redis/v9
 ```
 
 ## Usage
+
+Examples use dt for the root package, redis for storage/redis, goredis for github.com/redis/go-redis/v9, and time from the standard library. URL and config constructors issue PING; existing-client injection does not. Atomic read/delete uses GETDEL and requires Redis 6.2+. Optional UpdateStorage uses SET XX KEEPTTL to replace existing values without changing expiration or creating missing keys. Caller-supplied storage remains caller-owned if Build fails; after success, Auth owns it by default.
 
 ### Option 1: Redis URL
 
@@ -29,23 +31,24 @@ go get github.com/redis/go-redis/v9
 package main
 
 import (
-    "github.com/Zany2/dtoken-go/com/storage/redis"
-    "github.com/Zany2/dtoken-go/defaults"
-    "github.com/Zany2/dtoken-go/dtoken"
+    dt "github.com/Zany2/dtoken-go"
+    "github.com/Zany2/dtoken-go/storage/redis"
 )
 
-func initDToken() {
+func main() {
     storage, err := redis.NewStorage("redis://localhost:6379/0")
     if err != nil {
         panic(err)
     }
 
-    if _, err = dtoken.BuildAndSetManager(
-        defaults.NewBuilder().
-            SetStorage(storage),
-    ); err != nil {
+    auth, err := dt.NewBuilder().
+        Storage(storage).
+        Build()
+    if err != nil {
+        _ = storage.Close()
         panic(err)
     }
+    defer auth.Close()
 }
 ```
 
@@ -67,12 +70,14 @@ if err != nil {
     panic(err)
 }
 
-if _, err = dtoken.BuildAndSetManager(
-    defaults.NewBuilder().
-        SetStorage(storage),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(storage).
+    Build()
+if err != nil {
+    _ = storage.Close()
     panic(err)
 }
+defer auth.Close()
 ```
 
 ### Option 3: Reuse an Existing go-redis Client
@@ -86,12 +91,14 @@ rdb := goredis.NewClient(&goredis.Options{
 
 storage := redis.NewStorageFromClient(rdb)
 
-if _, err := dtoken.BuildAndSetManager(
-    defaults.NewBuilder().
-        SetStorage(storage),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(storage).
+    Build()
+if err != nil {
+    _ = storage.Close()
     panic(err)
 }
+defer auth.Close()
 ```
 
 `NewStorageFromClient` wraps the supplied client without changing its connection settings. `Storage.Close()` closes that client, and a Manager owns injected storage by default. For a client shared elsewhere, use caller-owned storage through `ComponentOwnership{Storage: false, Logger: true, Pool: true}` and close it once after all users stop; see [Multi-Auth Systems](../core/multi-auth.md).
@@ -123,26 +130,28 @@ if err != nil {
     panic(err)
 }
 
-if _, err = dtoken.BuildAndSetManager(
-    defaults.NewBuilder().
-        SetStorage(storage).
-        TokenName("dtoken").
-        Timeout(2 * 60 * 60).
-        ActiveTimeout(30 * 60).
-        AutoRenew(true),
-); err != nil {
+auth, err := dt.NewBuilder().
+    Storage(storage).
+    TokenName("dtoken").
+    Timeout(2 * 60 * 60).
+    ActiveTimeout(30 * 60).
+    AutoRenew(true).
+    Build()
+if err != nil {
+    _ = storage.Close()
     panic(err)
 }
+defer auth.Close()
 ```
 
-Login state, session data, permissions, and roles use Redis. Nonce and OAuth2 use the same backend after their optional modules are enabled.
+Login state, session data, permissions, and roles use Redis. Nonce, OAuth2, Ticket, and ShortKey reuse this backend only when explicitly composed with auth.Storage(), auth.Codec(), and the same namespace.
 
 ## Redis Key Structure
 
 Core storage keys use a unified format. Namespace components are escaped independently; see [Namespace Rules](../reference/configuration.md#namespace-rules).
 
 ```text
-encoded KeyPrefix + encoded AuthType + businessPrefix + businessID
+encoded KeyPrefix + encoded AuthType + v2: + businessPrefix + businessID
 ```
 
 With default configuration:
@@ -155,14 +164,14 @@ AuthType  = auth:
 Common key examples:
 
 ```text
-dtoken:auth:token:{token}                         -> token info
-dtoken:auth:session:{loginID}                     -> session info
-dtoken:auth:renew:{token}                         -> renew interval marker
-dtoken:auth:active:{token}                        -> active-timeout marker
-dtoken:auth:disable:{loginID}                     -> account disable info
-dtoken:auth:disable:service:{loginID}:{service}   -> service disable info
-dtoken:auth:disable:device:{loginID}:{device}     -> device disable info
-dtoken:auth:oauth2:client:{clientID}              -> OAuth2 client
+dtoken:auth:v2:token:{token}                         -> token info
+dtoken:auth:v2:session:{loginID}                     -> session info
+dtoken:auth:v2:renew:{token}                         -> renew interval marker
+dtoken:auth:v2:active:{token}                        -> active-timeout marker
+dtoken:auth:v2:disable:{loginID}                     -> account disable info
+dtoken:auth:v2:disable:service:{loginID}:{service}   -> service disable info
+dtoken:auth:v2:disable:device:{loginID}:{device}     -> device disable info
+dtoken:auth:v2:oauth2:client:{clientID}              -> OAuth2 client
 ```
 
 ### Multiple Auth Systems
@@ -170,11 +179,11 @@ dtoken:auth:oauth2:client:{clientID}              -> OAuth2 client
 Multiple auth systems are isolated by `AuthType`. The same Redis DB may contain:
 
 ```text
-dtoken:user-auth:token:{token}
-dtoken:user-auth:session:{loginID}
+dtoken:user-auth:v2:token:{token}
+dtoken:user-auth:v2:session:{loginID}
 
-dtoken:admin-auth:token:{token}
-dtoken:admin-auth:session:{loginID}
+dtoken:admin-auth:v2:token:{token}
+dtoken:admin-auth:v2:session:{loginID}
 ```
 
 The same `loginID` under different `AuthType` values is independent. Tokens, sessions, permissions, roles, disable data, and OAuth2 data are all separated by auth type.
@@ -224,7 +233,7 @@ There is **no** `redis.NewBuilder()` API in the current package. Older documenta
 The current signature is:
 
 ```go
-func NewStorageFromClient(client *redis.Client) *Storage
+func NewStorageFromClient(client *goredis.Client) *Storage
 ```
 
 That means:

@@ -5,10 +5,10 @@ import (
 	"context"
 	"net/http"
 
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/integrations/authcheck"
+	derror "github.com/Zany2/dtoken-go/errors"
+	authcheck "github.com/Zany2/dtoken-go/httpauth"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	echo4 "github.com/labstack/echo/v4"
 )
 
@@ -28,25 +28,25 @@ const (
 // AuthOption defines auth option setter AuthOption 定义认证选项设置器
 type AuthOption func(*AuthOptions)
 
-// BeforeAuthHandler handles request before dtoken checks BeforeAuthHandler 在 dtoken 校验前处理请求
+// BeforeAuthHandler observes check metadata and may call Next or Exit; use RouteAccessHandler to change rules. BeforeAuthHandler 查看校验元数据并可调用 Next 或 Exit；动态规则使用 RouteAccessHandler。
 type BeforeAuthHandler func(ctx context.Context, c echo4.Context, req *AuthHandleRequest)
 
 // RouteAccessHandler resolves route auth, permission, and role rules RouteAccessHandler 解析路由认证、权限、角色规则
 type RouteAccessHandler func(ctx context.Context, c echo4.Context, req *RouteAccessRequest)
 
-// AuthHandleRequest carries auth check metadata AuthHandleRequest 携带认证校验元数据
+// AuthHandleRequest carries check metadata and flow controls; changing metadata does not change subsequent checks. AuthHandleRequest 携带校验元数据和流程控制方法；修改元数据不会改变后续校验。
 type AuthHandleRequest struct {
-	// AuthType selects the auth type. AuthType 指定认证类型。
+	// AuthType describes the configured auth type. AuthType 描述配置的认证类型。
 	AuthType string
-	// CheckLogin requires login-state validation. CheckLogin 要求校验登录状态。
+	// CheckLogin describes login-state validation. CheckLogin 描述登录状态校验。
 	CheckLogin bool
-	// CheckDisable requires account-disable validation. CheckDisable 要求校验账号封禁状态。
+	// CheckDisable requires account, device type and concrete device restriction checks. CheckDisable 要求校验账号、设备类型与具体设备封禁。
 	CheckDisable bool
-	// Permissions lists required permissions. Permissions 保存所需权限列表。
+	// Permissions snapshots the required permissions. Permissions 保存所需权限的快照。
 	Permissions []string
-	// Roles lists required roles. Roles 保存所需角色列表。
+	// Roles snapshots the required roles. Roles 保存所需角色的快照。
 	Roles []string
-	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
+	// LogicType describes permission and role matching. LogicType 描述权限和角色的匹配逻辑。
 	LogicType LogicType
 
 	next    func() error
@@ -81,7 +81,7 @@ type RouteAccessRequest struct {
 	AuthType string
 	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
 	LogicType LogicType
-	// CheckDisable requires account-disable validation. CheckDisable 要求校验账号封禁状态。
+	// CheckDisable requires account, device type and concrete device restriction checks. CheckDisable 要求校验账号、设备类型与具体设备封禁。
 	CheckDisable bool
 	// Permissions lists route-required permissions. Permissions 保存路由所需权限列表。
 	Permissions []string
@@ -125,8 +125,12 @@ func (req *RouteAccessRequest) SetLogicType(logicType LogicType) {
 type AuthOptions struct {
 	// AuthType selects the auth type. AuthType 指定认证类型。
 	AuthType string
-	// Manager selects the manager explicitly. Auth checks otherwise prefer AuthType, the request manager, then the registry. Manager 显式指定 Manager；鉴权未显式指定时依次使用 AuthType、请求 Manager 和全局注册表。
+	// Manager selects an explicit instance before request-scope resolution. Manager 在请求作用域解析之前显式选择实例。
 	Manager *manager.Manager
+	// ManagerResolver explicitly enables registry lookup. ManagerResolver 显式启用注册表查找。
+	ManagerResolver authcheck.ManagerResolver
+	// Capabilities binds independently composed services to this request scope. Capabilities 为请求作用域绑定独立组合的服务。
+	Capabilities *corecontext.Capabilities
 	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
 	LogicType LogicType
 	// FailFunc handles authentication failures. FailFunc 处理认证失败。
@@ -155,6 +159,21 @@ func WithManager(mgr *manager.Manager) AuthOption {
 		if mgr != nil {
 			o.Manager = mgr
 		}
+	}
+}
+
+// WithManagerResolver selects a registry, such as dtoken.GetManager. WithManagerResolver 选择注册表，例如 dtoken.GetManager。
+func WithManagerResolver(resolver authcheck.ManagerResolver) AuthOption {
+	return func(o *AuthOptions) {
+		o.ManagerResolver = resolver
+	}
+}
+
+// WithCapabilities binds services composed for the selected authentication instance. WithCapabilities 绑定为所选认证实例组合的服务。
+func WithCapabilities(capabilities corecontext.Capabilities) AuthOption {
+	return func(o *AuthOptions) {
+		bindings := capabilities
+		o.Capabilities = &bindings
 	}
 }
 
@@ -199,7 +218,7 @@ func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) ec
 				return nil
 			}
 
-			mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
+			mgr, err := resolveRequestManager(c, options.Manager, options.AuthType, options.ManagerResolver)
 			if err != nil {
 				if options.FailFunc != nil {
 					return options.FailFunc(c, err)
@@ -207,7 +226,7 @@ func RegisterDTokenContextMiddleware(ctx context.Context, opts ...AuthOption) ec
 				return writeErrorResponse(c, err)
 			}
 
-			_ = getDTokenContext(c, mgr)
+			_ = getDTokenContext(c, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 			return next(c)
 		}
 	}
@@ -237,7 +256,7 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) echo4.MiddlewareFun
 				return authReq.result
 			}
 
-			mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
+			mgr, err := resolveRequestManager(c, options.Manager, options.AuthType, options.ManagerResolver)
 			if err != nil {
 				if options.FailFunc != nil {
 					return options.FailFunc(c, err)
@@ -245,7 +264,7 @@ func AuthMiddleware(ctx context.Context, opts ...AuthOption) echo4.MiddlewareFun
 				return writeErrorResponse(c, err)
 			}
 
-			dCtx := getDTokenContext(c, mgr)
+			dCtx := getDTokenContext(c, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 			tokenValue := dCtx.GetTokenValue()
 
 			_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
@@ -290,7 +309,7 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) echo4.MiddlewareF
 				return next(c)
 			}
 
-			mgr, err := resolveRequestManager(c, options.Manager, accessReq.AuthType)
+			mgr, err := resolveRequestManager(c, options.Manager, accessReq.AuthType, options.ManagerResolver)
 			if err != nil {
 				if options.FailFunc != nil {
 					return options.FailFunc(c, err)
@@ -298,7 +317,7 @@ func AccessMiddleware(ctx context.Context, opts ...AuthOption) echo4.MiddlewareF
 				return writeErrorResponse(c, err)
 			}
 
-			dCtx := getDTokenContext(c, mgr)
+			dCtx := getDTokenContext(c, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 			tokenValue := dCtx.GetTokenValue()
 
 			req := authcheck.Request{
@@ -355,7 +374,7 @@ func PermissionMiddleware(ctx context.Context, permissions []string, opts ...Aut
 				return next(c)
 			}
 
-			mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
+			mgr, err := resolveRequestManager(c, options.Manager, options.AuthType, options.ManagerResolver)
 			if err != nil {
 				if options.FailFunc != nil {
 					return options.FailFunc(c, err)
@@ -363,7 +382,7 @@ func PermissionMiddleware(ctx context.Context, permissions []string, opts ...Aut
 				return writeErrorResponse(c, err)
 			}
 
-			dCtx := getDTokenContext(c, mgr)
+			dCtx := getDTokenContext(c, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 			tokenValue := dCtx.GetTokenValue()
 
 			_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
@@ -411,7 +430,7 @@ func RoleMiddleware(ctx context.Context, roles []string, opts ...AuthOption) ech
 				return next(c)
 			}
 
-			mgr, err := resolveRequestManager(c, options.Manager, options.AuthType)
+			mgr, err := resolveRequestManager(c, options.Manager, options.AuthType, options.ManagerResolver)
 			if err != nil {
 				if options.FailFunc != nil {
 					return options.FailFunc(c, err)
@@ -419,7 +438,7 @@ func RoleMiddleware(ctx context.Context, roles []string, opts ...AuthOption) ech
 				return writeErrorResponse(c, err)
 			}
 
-			dCtx := getDTokenContext(c, mgr)
+			dCtx := getDTokenContext(c, mgr).WithCapabilities(options.Capabilities).WithManagerResolver(options.ManagerResolver)
 			tokenValue := dCtx.GetTokenValue()
 
 			_, err = authcheck.Check(requestContext(c), mgr, authcheck.Request{
@@ -492,17 +511,20 @@ func getDTokenContext(c echo4.Context, mgr *manager.Manager) *corecontext.DToken
 	}
 
 	dCtx := corecontext.NewContext(NewEchoContext(c), mgr)
+	if previous, ok := GetDTokenContext(c); ok {
+		dCtx.WithManagerResolver(previous.GetManagerResolver())
+	}
 	c.Set(DTokenCtxKey, dCtx)
 	return dCtx
 }
 
 // resolveRequestManager honors explicit selection before inheriting the request manager. resolveRequestManager 优先使用显式配置，否则继承请求 Manager。
-func resolveRequestManager(c echo4.Context, explicit *manager.Manager, authType string) (*manager.Manager, error) {
+func resolveRequestManager(c echo4.Context, explicit *manager.Manager, authType string, resolvers ...authcheck.ManagerResolver) (*manager.Manager, error) {
 	if explicit != nil {
 		return authcheck.ResolveManager(explicit, authType)
 	}
 	cached, _ := GetDTokenContext(c)
-	return authcheck.ResolveManagerFromContext(authType, cached)
+	return authcheck.ResolveManagerFromContext(authType, cached, resolvers...)
 }
 
 // isRequestAborted checks the shared request adapter before continuing the chain. isRequestAborted 在继续处理链前检查共享请求适配器是否已终止。
@@ -523,7 +545,7 @@ func writeErrorResponse(c echo4.Context, err error) error {
 	return c.JSON(httpStatus, echo4.Map{
 		"code":    code,
 		"message": message,
-		"data":    err.Error(),
+		"data":    message,
 	})
 }
 

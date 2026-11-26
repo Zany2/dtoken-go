@@ -2,21 +2,25 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/defaults"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
+	derror "github.com/Zany2/dtoken-go/errors"
+	"github.com/Zany2/dtoken-go/httpauth"
 	"github.com/gin-gonic/gin"
 )
 
 const (
-	// tokenHeader stores the header used by this example tokenHeader 保存本示例读取的 Token 请求头
-	tokenHeader = "Authorization"
+	tokenHeader = "Authorization" // tokenHeader stores the header used by this example tokenHeader 保存本示例读取的 Token 请求头
 )
 
 // Response defines the example response body Response 定义示例响应结构
@@ -37,47 +41,71 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+// application binds the custom handlers to one Auth instance. application 将自定义处理器绑定到同一个 Auth 实例。
+type application struct {
+	auth *dtoken.Auth
+}
+
 func main() {
-	initDToken()
-	defer dtoken.DeleteAllManager()
+	auth, err := initDToken()
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	defer dtoken.CloseAll()
 
 	r := gin.Default()
-	registerRoutes(r)
+	registerRoutes(r, auth)
 
-	if err := r.Run(":8080"); err != nil {
-		panic(err)
+	// The application owns process signals; the authentication library only owns its resources. 应用管理进程信号，认证库仅管理自身资源。
+	stopped, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	server := &http.Server{Addr: ":8080", Handler: r}
+	done := make(chan error, 1)
+	go func() { done <- server.ListenAndServe() }()
+
+	var serveErr error
+	select {
+	case serveErr = <-done:
+	case <-stopped.Done():
+	}
+
+	// Keep authentication resources available until all HTTP handlers finish. HTTP 处理器全部结束后才释放认证资源。
+	if err := server.Shutdown(context.Background()); err != nil {
+		log.Print(err)
+		return
+	}
+	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		log.Print(serveErr)
+		return
 	}
 }
 
 // registerRoutes shares production routes with regression tests. registerRoutes 与回归测试共用实际路由。
-func registerRoutes(r *gin.Engine) {
-	r.POST("/login", handleLogin)
+func registerRoutes(r *gin.Engine, instance *dtoken.Auth) {
+	app := application{auth: instance}
+	r.POST("/login", app.handleLogin)
 
 	auth := r.Group("/")
-	auth.Use(authMiddleware())
-	auth.GET("/me", handleMe)
-	auth.GET("/admin", roleMiddleware("admin"), handleAdmin)
-	auth.GET("/articles", permissionMiddleware("article:read"), handleArticles)
-	auth.POST("/logout", handleLogout)
+	auth.Use(app.authMiddleware())
+	auth.GET("/me", app.handleMe)
+	auth.GET("/admin", app.roleMiddleware("admin"), handleAdmin)
+	auth.GET("/articles", app.permissionMiddleware("article:read"), handleArticles)
+	auth.POST("/logout", app.handleLogout)
 }
 
 // initDToken initializes DToken with bundled memory storage initDToken 使用内置内存存储初始化 DToken
-func initDToken() {
-	mgr, err := defaults.NewBuilder().
+func initDToken() (*dtoken.Auth, error) {
+	return dtoken.NewBuilder().
 		TokenName(tokenHeader).
 		Timeout(int64((2 * time.Hour).Seconds())).
 		RenewMaxRefresh(int64(time.Hour.Seconds())).
 		IsPrintBanner(false).
 		Build()
-	if err != nil {
-		panic(err)
-	}
-
-	dtoken.SetManager(mgr)
 }
 
 // handleLogin logs in a demo user handleLogin 登录示例用户
-func handleLogin(c *gin.Context) {
+func (app application) handleLogin(c *gin.Context) {
 	var req LoginRequest
 	decoder := json.NewDecoder(c.Request.Body)
 	if err := decoder.Decode(&req); err != nil || req.Username == "" || req.Password == "" {
@@ -97,18 +125,18 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	token, err := dtoken.Login(c.Request.Context(), req.Username)
+	token, err := app.auth.Login(c.Request.Context(), dtoken.LoginOptions{LoginID: req.Username})
 	if err != nil {
 		writeAuthError(c, err)
 		return
 	}
 
 	// Grant every demo user the same access rules. 为所有示例用户授予相同权限，仅用于演示鉴权流程。
-	if err = dtoken.AddRoles(c.Request.Context(), req.Username, []string{"admin"}); err != nil {
+	if err = app.auth.AddRoles(c.Request.Context(), dtoken.RoleOptions{LoginID: req.Username, Roles: []string{"admin"}}); err != nil {
 		writeAuthError(c, err)
 		return
 	}
-	if err = dtoken.AddPermissions(c.Request.Context(), req.Username, []string{"article:read"}); err != nil {
+	if err = app.auth.AddPermissions(c.Request.Context(), dtoken.PermissionOptions{LoginID: req.Username, Permissions: []string{"article:read"}}); err != nil {
 		writeAuthError(c, err)
 		return
 	}
@@ -120,20 +148,20 @@ func handleLogin(c *gin.Context) {
 }
 
 // handleMe returns current login information handleMe 返回当前登录信息
-func handleMe(c *gin.Context) {
+func (app application) handleMe(c *gin.Context) {
 	token := currentToken(c)
-	loginID, err := dtoken.GetLoginID(c.Request.Context(), token)
+	loginID, err := app.auth.GetLoginID(c.Request.Context(), token)
 	if err != nil {
 		writeAuthError(c, err)
 		return
 	}
 
-	roles, err := dtoken.GetRoles(c.Request.Context(), loginID)
+	roles, err := app.auth.GetRoles(c.Request.Context(), loginID)
 	if err != nil {
 		writeAuthError(c, err)
 		return
 	}
-	permissions, err := dtoken.GetPermissions(c.Request.Context(), loginID)
+	permissions, err := app.auth.GetPermissions(c.Request.Context(), loginID)
 	if err != nil {
 		writeAuthError(c, err)
 		return
@@ -157,8 +185,8 @@ func handleArticles(c *gin.Context) {
 }
 
 // handleLogout logs out current token handleLogout 注销当前 Token
-func handleLogout(c *gin.Context) {
-	if err := dtoken.Logout(c.Request.Context(), currentToken(c)); err != nil {
+func (app application) handleLogout(c *gin.Context) {
+	if err := app.auth.Logout(c.Request.Context(), dtoken.LogoutOptions{Token: currentToken(c)}); err != nil {
 		writeAuthError(c, err)
 		return
 	}
@@ -166,10 +194,12 @@ func handleLogout(c *gin.Context) {
 	writeJSON(c, http.StatusOK, 0, "ok", nil)
 }
 
-// authMiddleware checks login state authMiddleware 校验登录状态
-func authMiddleware() gin.HandlerFunc {
+// authMiddleware checks credentials and explicit account/device restrictions. authMiddleware 校验凭据并显式检查账号与设备封禁。
+func (app application) authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := dtoken.CheckLogin(c.Request.Context(), currentToken(c)); err != nil {
+		if _, err := httpauth.Check(c.Request.Context(), app.auth.Manager(), httpauth.Request{
+			TokenValue: currentToken(c), CheckLogin: true, CheckDisable: true, LoginError: derror.ErrInvalidToken,
+		}); err != nil {
 			writeAuthError(c, err)
 			c.Abort()
 			return
@@ -180,17 +210,17 @@ func authMiddleware() gin.HandlerFunc {
 }
 
 // roleMiddleware checks current user role roleMiddleware 校验当前用户角色
-func roleMiddleware(role string) gin.HandlerFunc {
+func (app application) roleMiddleware(role string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		loginID, err := dtoken.GetLoginID(ctx, currentToken(c))
+		loginID, err := app.auth.GetLoginID(ctx, currentToken(c))
 		if err != nil {
 			writeAuthError(c, err)
 			c.Abort()
 			return
 		}
 
-		if !dtoken.HasRole(ctx, loginID, role) {
+		if !app.auth.HasRole(ctx, loginID, role) {
 			writeJSON(c, http.StatusForbidden, 403, "role denied", nil)
 			c.Abort()
 			return
@@ -201,17 +231,17 @@ func roleMiddleware(role string) gin.HandlerFunc {
 }
 
 // permissionMiddleware checks current user permission permissionMiddleware 校验当前用户权限
-func permissionMiddleware(permission string) gin.HandlerFunc {
+func (app application) permissionMiddleware(permission string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		loginID, err := dtoken.GetLoginID(ctx, currentToken(c))
+		loginID, err := app.auth.GetLoginID(ctx, currentToken(c))
 		if err != nil {
 			writeAuthError(c, err)
 			c.Abort()
 			return
 		}
 
-		if !dtoken.HasPermission(ctx, loginID, permission) {
+		if !app.auth.HasPermission(ctx, loginID, permission) {
 			writeJSON(c, http.StatusForbidden, 403, "permission denied", nil)
 			c.Abort()
 			return

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,44 +13,29 @@ const testSource = `// source-only comment
 package gin
 
 import (
-	"github.com/Zany2/dtoken-go/com/log/dlog"
+	"github.com/Zany2/dtoken-go"
 )
 
 type (
-	Logger                     = dlog.Logger
+	Auth = dtoken.Auth
 )
 
 var (
-	NewLoggerWithConfig            = dlog.NewLoggerWithConfig
+	NewBuilder = dtoken.NewBuilder
 )
 `
 
 // TestExportFileSpecs verifies only truly shared exports are generated. TestExportFileSpecs 验证仅生成真正同构的导出文件。
 func TestExportFileSpecs(t *testing.T) {
-	expected := map[string]bool{
-		"api_export.go":       false,
-		"component_export.go": true,
-		"error_export.go":     false,
-		"facade_export.go":    false,
-	}
-	if len(exportFiles) != len(expected) {
-		t.Fatalf("export file count = %d, want %d", len(exportFiles), len(expected))
-	}
-
-	for _, exportFile := range exportFiles {
-		includeGFLogger, ok := expected[exportFile.name]
-		if !ok {
-			t.Fatalf("unexpected generated export file %q", exportFile.name)
-		}
-		if exportFile.includeGFLogger != includeGFLogger {
-			t.Fatalf("%s includeGFLogger = %v, want %v", exportFile.name, exportFile.includeGFLogger, includeGFLogger)
-		}
+	expected := []string{"error_export.go", "export.go"}
+	if strings.Join(exportFiles, ",") != strings.Join(expected, ",") {
+		t.Fatalf("export files = %v, want %v", exportFiles, expected)
 	}
 }
 
 // TestRenderCommonFramework verifies package replacement without GoFrame extensions. TestRenderCommonFramework 验证普通框架只替换包名且不注入 GoFrame 扩展。
 func TestRenderCommonFramework(t *testing.T) {
-	output, err := render([]byte(testSource), targetSpec{packageName: "echo"})
+	output, err := render([]byte(testSource), "echo")
 	if err != nil {
 		t.Fatalf("render() error = %v", err)
 	}
@@ -65,69 +49,46 @@ func TestRenderCommonFramework(t *testing.T) {
 	}
 }
 
-// TestRenderGoFrameFramework verifies GoFrame logger extensions are injected once. TestRenderGoFrameFramework 验证 GoFrame 日志扩展仅注入一次。
-func TestRenderGoFrameFramework(t *testing.T) {
-	for _, ending := range []string{"\n", "\r\n"} {
-		t.Run(fmt.Sprintf("newline=%q", ending), func(t *testing.T) {
-			source := strings.ReplaceAll(testSource, "\n", ending)
-			output, err := render([]byte(source), targetSpec{packageName: "gf", includeGFLogger: true})
-			if err != nil {
-				t.Fatalf("render() error = %v", err)
-			}
-
-			text := string(output)
-			for _, expected := range []string{
-				`gflog "github.com/Zany2/dtoken-go/com/log/gf"`,
-				"gflog.GFLogger",
-				"gflog.NewGFLogger",
-			} {
-				if strings.Count(text, expected) != 1 {
-					t.Fatalf("generated output count for %q is not 1:\n%s", expected, text)
-				}
-			}
-		})
-	}
-}
-
-// TestGeneratedFilesAreUpToDate verifies committed exports match the Gin canonical sources. TestGeneratedFilesAreUpToDate 验证已提交导出文件与 Gin 标准源保持同步。
-func TestGeneratedFilesAreUpToDate(t *testing.T) {
-	canonicalDir := filepath.Join("..", "..")
-	integrationsDir := filepath.Join("..", "..", "..")
-
+// TestCanonicalSourcesRender verifies real sources render for every target without sibling modules. TestCanonicalSourcesRender 验证真实源文件能为所有框架生成导出，无需其他模块目录。
+func TestCanonicalSourcesRender(t *testing.T) {
 	for _, exportFile := range exportFiles {
-		exportFile := exportFile
-		t.Run(exportFile.name, func(t *testing.T) {
-			sourcePath := filepath.Join(canonicalDir, exportFile.name)
-			source, err := os.ReadFile(sourcePath)
-			if err != nil {
-				t.Fatalf("read canonical source %q: %v", sourcePath, err)
+		source, err := os.ReadFile(filepath.Join("..", "..", exportFile))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, packageName := range targetPackages {
+			if _, err := render(source, packageName); err != nil {
+				t.Fatalf("%s/%s: %v", packageName, exportFile, err)
 			}
-
-			for _, packageName := range targetPackages {
-				packageName := packageName
-				t.Run(packageName, func(t *testing.T) {
-					expected, err := render(source, targetSpec{
-						packageName:     packageName,
-						includeGFLogger: exportFile.includeGFLogger && packageName == "gf",
-					})
-					if err != nil {
-						t.Fatalf("render %s: %v", packageName, err)
-					}
-
-					targetPath := filepath.Join(integrationsDir, packageName, exportFile.name)
-					actual, err := os.ReadFile(targetPath)
-					if err != nil {
-						t.Fatalf("read generated file %q: %v", targetPath, err)
-					}
-					if !bytes.Equal(normalizeLineEndings(actual), normalizeLineEndings(expected)) {
-						t.Fatalf("generated file %q is out of date; run go generate in integrations/gin", targetPath)
-					}
-				})
-			}
-		})
+		}
 	}
 }
 
-func normalizeLineEndings(data []byte) []byte {
-	return bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
+// TestCheckModeRejectsDriftWithoutWriting verifies repository checks fail without repairing the evidence. TestCheckModeRejectsDriftWithoutWriting 验证仓库检查能拒绝差异且不修改文件。
+func TestCheckModeRejectsDriftWithoutWriting(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "export.go")
+	expected := []byte("package echo\n")
+	if err := writeOrCheck(path, expected, true); err == nil {
+		t.Fatal("missing file passed")
+	}
+	actual := []byte("package stale\n")
+	if err := os.WriteFile(path, actual, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeOrCheck(path, expected, true); err == nil {
+		t.Fatal("stale export passed")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, actual) {
+		t.Fatal("check mode modified the export")
+	}
+	if err := os.WriteFile(path, []byte("package echo\r\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeOrCheck(path, expected, true); err != nil {
+		t.Fatal(err)
+	}
 }

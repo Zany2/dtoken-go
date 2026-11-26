@@ -7,10 +7,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/derror"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
+	"github.com/Zany2/dtoken-go"
+	derror "github.com/Zany2/dtoken-go/errors"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
 	chiRouter "github.com/go-chi/chi/v5"
 )
 
@@ -43,7 +43,8 @@ func TestChiMiddlewareSuccessAndFailure(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth1, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
+	mgr := builtAuth1.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -86,7 +87,8 @@ func TestChiPermissionPathMiddleware(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth2, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
+	mgr := builtAuth2.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -119,11 +121,14 @@ func TestChiAnnotationHandlers(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth3, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
+	mgr := builtAuth3.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	dtoken.SetManager(mgr)
+	if err := dtoken.SetManager(mgr); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	token, err := mgr.Login(ctx, "chi-annotation-user")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
@@ -132,13 +137,13 @@ func TestChiAnnotationHandlers(t *testing.T) {
 	called := false
 	successReq := httptest.NewRequest(http.MethodGet, "/annotated", nil)
 	successReq.Header.Set(mgr.GetConfig().TokenName, token)
-	GetHandler(func(http.ResponseWriter, *http.Request) { called = true }, &Annotation{CheckLogin: true})(httptest.NewRecorder(), successReq)
+	GetHandler(func(http.ResponseWriter, *http.Request) { called = true }, &Annotation{CheckLogin: true, ManagerResolver: dtoken.GetManager})(httptest.NewRecorder(), successReq)
 	if !called {
 		t.Fatal("GetHandler() did not run handler for valid token")
 	}
 
 	failureRecorder := httptest.NewRecorder()
-	CheckLoginHandler()(failureRecorder, httptest.NewRequest(http.MethodGet, "/annotated", nil))
+	RegisterDTokenContextMiddleware(WithManager(mgr))(CheckLoginHandler()).ServeHTTP(failureRecorder, httptest.NewRequest(http.MethodGet, "/annotated", nil))
 	if failureRecorder.Code != http.StatusUnauthorized {
 		t.Fatalf("annotation failure status = %d, want 401", failureRecorder.Code)
 	}
@@ -175,7 +180,8 @@ func TestChiContextFacadeUsesCachedManager(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 
 	ctx := context.Background()
-	mgr, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).Build()
+	builtAuth4, err := dtoken.NewBuilder().IsPrintBanner(false).AutoRenew(false).BuildInstance()
+	mgr := builtAuth4.Manager()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

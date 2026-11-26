@@ -3,18 +3,11 @@ module github.com/Zany2/dtoken-go/examples/quick_start
 go 1.25.0
 
 require (
-	github.com/Zany2/dtoken-go/core v0.0.3
-	github.com/Zany2/dtoken-go/defaults v0.0.3
-	github.com/Zany2/dtoken-go/dtoken v0.0.3
+	github.com/Zany2/dtoken-go v0.0.1
 	github.com/gin-gonic/gin v1.10.0
 )
 
 require (
-	github.com/Zany2/dtoken-go/com/codec/json v0.0.3 // indirect
-	github.com/Zany2/dtoken-go/com/generator/dgenerator v0.0.3 // indirect
-	github.com/Zany2/dtoken-go/com/log/dlog v0.0.3 // indirect
-	github.com/Zany2/dtoken-go/com/pool/ants v0.0.3 // indirect
-	github.com/Zany2/dtoken-go/com/storage/memory v0.0.3 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
@@ -40,6 +33,8 @@ require (
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
+	go.uber.org/multierr v1.10.0 // indirect
+	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/arch v0.8.0 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/net v0.43.0 // indirect
@@ -48,5 +43,6 @@ require (
 	golang.org/x/text v0.28.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

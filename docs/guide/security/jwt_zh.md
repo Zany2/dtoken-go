@@ -2,13 +2,15 @@
 
 [English](../security/jwt.md) | 中文文档
 
+本文 dt 表示根包，adapter 表示 contract，dgenerator 表示 generator/dgenerator。Build 自动注册；使用 auth.Login(ctx, dt.LoginOptions{...})、dt.LoginID 或 dt.AuthType(name) 调用。
+
 ## 概览
 
 当前项目支持把 Token 生成风格切换为 `JWT`，入口是：
 
-- `defaults.NewBuilder().TokenStyle(TokenStyleJWT)`
-- `defaults.NewBuilder().JwtSecretKey(...)`
-- `defaults.NewBuilder().JwtSecret(...)`
+- `dt.NewBuilder().TokenStyle(TokenStyleJWT)`
+- `dt.NewBuilder().JwtSecretKey(...)`
+- `dt.NewBuilder().JwtSecret(...)`
 
 ## 重要说明
 
@@ -57,32 +59,31 @@
 package main
 
 import (
+    dt "github.com/Zany2/dtoken-go"
     "context"
 
-    "github.com/Zany2/dtoken-go/com/storage/memory"
-    "github.com/Zany2/dtoken-go/core/adapter"
-    "github.com/Zany2/dtoken-go/defaults"
-    "github.com/Zany2/dtoken-go/dtoken"
+    "github.com/Zany2/dtoken-go/storage/memory"
+    adapter "github.com/Zany2/dtoken-go/contract"
 )
 
 func initDToken() {
-    if _, err := dtoken.BuildAndSetManager(
-        defaults.NewBuilder().
-            SetStorage(memory.NewStorage()).
-            TokenStyle(adapter.TokenStyleJWT).
-            JwtSecretKey("your-very-strong-secret-key").
-            Timeout(2 * 60 * 60),
-    ); err != nil {
+    _, err := dt.NewBuilder().
+        Storage(memory.NewStorage()).
+        TokenStyle(adapter.TokenStyleJWT).
+        JwtSecretKey("your-very-strong-secret-key").
+        Timeout(2 * 60 * 60).
+        Build()
+    if err != nil {
         panic(err)
     }
 }
 
 func main() {
     initDToken()
-    defer dtoken.DeleteAllManager()
+    defer dt.CloseAll()
 
     ctx := context.Background()
-    token, _ := dtoken.Login(ctx, "10001", "web", "chrome-mac")
+    token, _ := dt.Login(ctx, dt.LoginOptions{LoginID: "10001", Device: "web", DeviceID: "chrome-mac"})
     _ = token
 }
 ```
@@ -90,11 +91,15 @@ func main() {
 ### 使用快捷方式
 
 ```go
-defaults.NewBuilder().
-    SetStorage(memory.NewStorage()).
+auth, err := dt.NewBuilder().
+    Storage(memory.NewStorage()).
     JwtSecret("your-very-strong-secret-key").
     Timeout(2 * 60 * 60).
     Build()
+if err != nil {
+    panic(err)
+}
+defer auth.Close()
 ```
 
 `JwtSecret(...)` 会同时把 `TokenStyle` 切换成 `JWT` 并设置密钥。
@@ -104,12 +109,12 @@ defaults.NewBuilder().
 ```go
 ctx := context.Background()
 
-token, err := dtoken.Login(ctx, "10001", "web")
+token, err := dt.Login(ctx, dt.LoginOptions{LoginID: "10001", Device: "web"})
 
-isLogin := dtoken.IsLogin(ctx, token)
-loginID, err := dtoken.GetLoginID(ctx, token)
-info, err := dtoken.GetTokenInfo(ctx, token)
-ttl, err := dtoken.GetTokenTTL(ctx, token)
+isLogin := dt.IsLogin(ctx, token)
+loginID, err := dt.GetLoginID(ctx, token)
+info, err := dt.GetTokenInfo(ctx, token)
+ttl, err := dt.GetTokenTTL(ctx, token)
 ```
 
 这些 API 和普通 UUID Token 的用法一致。

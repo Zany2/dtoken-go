@@ -1,0 +1,41 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      github-actions:
+        patterns: ['*']
+
+  - package-ecosystem: gomod
+    directories:
+      - /
+      - /codec/jsonv2
+      - /codec/msgpack
+      - /logging/gf
+      - /storage/redis
+      - /integrations/beego
+      - /integrations/chi
+      - /integrations/echo
+      - /integrations/fiber
+      - /integrations/gf
+      - /integrations/gin
+      - /integrations/hertz
+      - /integrations/kratos
+      - /examples/*
+      - /sso
+      - /sso/storage/*
+      - /tests/*
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # Coordinate repository module versions through the release process. 仓库内部模块版本由发布流程统一维护。
+    ignore:
+      - dependency-name: github.com/Zany2/dtoken-go
+      - dependency-name: github.com/Zany2/dtoken-go/*
+    groups:
+      go-minor-and-patch:
+        patterns: ['*']
+        update-types: [minor, patch]

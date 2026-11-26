@@ -1,12 +1,14 @@
 package gin
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/Zany2/dtoken-go/core/adapter"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
 	gingonic "github.com/gin-gonic/gin"
 )
 
@@ -48,6 +50,9 @@ func TestGinContextValuesAndAbort(t *testing.T) {
 	if value, ok := ctx.Get("missing"); ok || value != nil {
 		t.Fatalf("Get(missing) = %v, %v, want nil,false", value, ok)
 	}
+	if value, err := ctx.GetRequired("missing"); value != nil || !errors.Is(err, derror.ErrKeyNotFound) {
+		t.Fatalf("GetRequired(missing) = (%v, %v)", value, err)
+	}
 	ctx.Set("name", "dtoken")
 	if value, ok := ctx.Get("name"); !ok || value != "dtoken" {
 		t.Fatalf("Get(name) = %v, %v, want dtoken,true", value, ok)
@@ -55,8 +60,8 @@ func TestGinContextValuesAndAbort(t *testing.T) {
 	if value := ctx.GetString("name"); value != "dtoken" {
 		t.Fatalf("GetString(name) = %q, want dtoken", value)
 	}
-	if value := ctx.MustGet("name"); value != "dtoken" {
-		t.Fatalf("MustGet(name) = %v, want dtoken", value)
+	if value, err := ctx.GetRequired("name"); err != nil || value != "dtoken" {
+		t.Fatalf("GetRequired(name) = %v, want dtoken", value)
 	}
 	ctx.Abort()
 	if !ctx.IsAborted() {

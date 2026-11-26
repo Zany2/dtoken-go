@@ -4,7 +4,7 @@ package gin
 import (
 	"time"
 
-	"github.com/Zany2/dtoken-go/core/ticket"
+	"github.com/Zany2/dtoken-go/contract/ticket"
 	"github.com/gin-gonic/gin"
 )
 

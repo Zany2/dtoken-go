@@ -5,6 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Zany2/dtoken-go"
+	adapter "github.com/Zany2/dtoken-go/contract"
+	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
+	manager "github.com/Zany2/dtoken-go/internal/engine"
+	"github.com/Zany2/dtoken-go/storage/memory"
+	"github.com/gogf/gf/v2/net/ghttp"
+	"github.com/gogf/gf/v2/os/gsession"
+	"github.com/gogf/gf/v2/util/guid"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -12,15 +20,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/Zany2/dtoken-go/com/storage/memory"
-	"github.com/Zany2/dtoken-go/core/adapter"
-	corecontext "github.com/Zany2/dtoken-go/core/context"
-	"github.com/Zany2/dtoken-go/core/manager"
-	"github.com/Zany2/dtoken-go/dtoken"
-	"github.com/gogf/gf/v2/net/ghttp"
-	"github.com/gogf/gf/v2/os/gsession"
-	"github.com/gogf/gf/v2/util/guid"
 )
 
 // gfReviewChecks covers all authentication entry points. gfReviewChecks 覆盖全部鉴权入口。
@@ -45,7 +44,8 @@ var gfReviewChecks = []struct {
 			opt(options)
 		}
 		return GetHandler(ctx, nil, options.FailFunc, &Annotation{
-			AuthType: options.AuthType, CheckLogin: true, CheckPermission: []string{"read"},
+			ManagerResolver: options.ManagerResolver,
+			AuthType:        options.AuthType, CheckLogin: true, CheckPermission: []string{"read"},
 		})
 	}},
 }
@@ -76,17 +76,18 @@ func newGFReviewServer(t *testing.T, handler ghttp.HandlerFunc, middleware ...gh
 // newGFReviewManager creates an isolated manager without asynchronous maintenance. newGFReviewManager 创建不执行异步维护的独立 Manager。
 func newGFReviewManager(t *testing.T, authType string, storage adapter.Storage) *manager.Manager {
 	t.Helper()
-	b := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
+	b := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).Timeout(600)
 	if authType != "" {
 		b.AuthType(authType)
 	}
 	if storage != nil {
-		b.SetStorage(storage)
+		b.Storage(storage)
 	}
-	mgr, err := b.Build()
+	mgrAuth, err := b.BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	return mgr
 }
@@ -189,8 +190,12 @@ func TestGFReviewManagerSelection(t *testing.T) {
 	global := newGFReviewManager(t, "", nil)
 	selected := newGFReviewManager(t, "gf-selected", nil)
 	local := newGFReviewManager(t, "gf-local", nil)
-	dtoken.SetManager(global)
-	dtoken.SetManager(selected)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
+	if err := dtoken.SetManager(selected); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	r := &ghttp.Request{Request: httptest.NewRequest(http.MethodGet, "/", nil)}
 	getDContext(r, local)
 	for _, tc := range []struct {
@@ -200,7 +205,7 @@ func TestGFReviewManagerSelection(t *testing.T) {
 	}{
 		{nil, "", local}, {nil, "gf-selected", selected}, {local, "missing", local},
 	} {
-		if got, err := resolveRequestManager(r, tc.explicit, tc.authType); err != nil || got != tc.want {
+		if got, err := resolveRequestManager(r, tc.explicit, tc.authType, dtoken.GetManager); err != nil || got != tc.want {
 			t.Fatalf("manager=%p,%v want %p", got, err, tc.want)
 		}
 	}
@@ -219,7 +224,9 @@ func TestGFReviewRenewalAndInvalidCache(t *testing.T) {
 	t.Cleanup(dtoken.DeleteAllManager)
 	global := newGFReviewManager(t, "", nil)
 	local := newGFReviewManager(t, "gf-renew", nil)
-	dtoken.SetManager(global)
+	if err := dtoken.SetManager(global); err != nil {
+		t.Fatalf("register authentication: %v", err)
+	}
 	const token = "shared-token"
 	gfReviewLogin(t, global, token)
 	gfReviewLogin(t, local, token)
@@ -240,8 +247,8 @@ func TestGFReviewRenewalAndInvalidCache(t *testing.T) {
 	}
 	var typedNil *corecontext.DTokenContext
 	r.SetCtxVar(DTokenCtxKey, typedNil)
-	if got, err := GetManagerByCtx(r.Context()); err != nil || got != global {
-		t.Fatalf("typed nil fallback=%p,%v", got, err)
+	if got, err := GetManagerByCtx(r.Context()); !errors.Is(err, ErrManagerNotFound) {
+		t.Fatalf("typed nil missing binding=%p,%v", got, err)
 	}
 	local.CloseManager()
 	for _, mgr := range []*manager.Manager{nil, local} {
@@ -477,11 +484,12 @@ func TestGFReviewBodyAndClientIP(t *testing.T) {
 
 // TestGFReviewBodyTokenSources preserves GoFrame body formats without allowing query fallback. TestGFReviewBodyTokenSources 保留 GoFrame 请求体格式支持，并防止回退至查询参数。
 func TestGFReviewBodyTokenSources(t *testing.T) {
-	mgr, err := NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
-		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).Build()
+	mgrAuth, err := dtoken.NewBuilder().IsPrintBanner(false).IsLog(false).AutoRenew(false).AsyncEvent(false).
+		IsReadHeader(false).IsReadCookie(false).IsReadQuery(false).IsReadBody(true).BuildInstance()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mgr := mgrAuth.Manager()
 	t.Cleanup(mgr.CloseManager)
 	key := mgr.GetConfig().TokenName
 	var multipartBody bytes.Buffer
@@ -519,6 +527,7 @@ func TestGFReviewBodyTokenSources(t *testing.T) {
 // gfReviewExpectExit handles GoFrame's native exit panic in direct handler tests. gfReviewExpectExit 在直接调用处理器的测试中接收 GoFrame 原生退出信号。
 func gfReviewExpectExit(t *testing.T, r *ghttp.Request, handler ghttp.HandlerFunc) {
 	t.Helper()
+
 	// Obtain the framework's private control signal without treating arbitrary panics as success. 获取框架私有控制信号，避免将其他 panic 误判为正常退出。
 	var exitSignal any
 	func() {
