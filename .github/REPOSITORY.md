@@ -22,6 +22,10 @@ Dependabot checks all module directory groups weekly, limits Go update PRs to fi
 
 Dependabot 每周检查各组模块目录，Go 依赖更新最多保留五个 PR，Actions 更新最多保留三个 PR，并合并 Go 次版本和补丁版本更新。仓库内部模块版本由发布流程统一维护。依赖更新 PR 按通常的兼容性要求审核。
 
+Go and GitHub Actions version-update PRs target `develop`; validate them there before merging into `main`. Merge changes to `dependabot.yml` into the default branch (`main`) for GitHub to use them. This target does not redirect security-update PRs, which use the default branch.
+
+Go 依赖与 GitHub Actions 的版本更新 PR 以 `develop` 为目标，验证后再合并到 `main`。`dependabot.yml` 的配置变更需合并到默认分支（`main`）后供 GitHub 使用。该目标设置不改变安全更新 PR 的目标，安全更新仍使用默认分支。
+
 Repository administrators can enable private vulnerability reporting in the repository settings. Once CI has passed on GitHub, administrators can select `Main module minimum Go`, `Workspace checks`, and `Module checks without workspace` as required status checks in a branch ruleset.
 
 仓库管理员可在设置中启用私密漏洞报告。CI 在 GitHub 成功运行后，可在分支规则中将 `Main module minimum Go`、`Workspace checks` 和 `Module checks without workspace` 设为合并前必须通过的检查。
