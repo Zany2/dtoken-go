@@ -189,12 +189,9 @@ func (m *Service) RevokeOAuth2Token(ctx context.Context, accessToken string) err
 	if m.oauth2Manager == nil {
 		return derror.ErrModuleNotEnabled
 	}
-	token, _ := m.oauth2Manager.ValidateAccessTokenAndGetInfo(ctx, accessToken)
-	err := m.oauth2Manager.RevokeToken(ctx, accessToken)
-	if err == nil {
-		if token != nil {
-			m.triggerOAuth2TokenEvent(listener.EventOAuth2TokenRevoke, token, listener.ActionRevoke, "")
-		}
+	token, err := m.oauth2Manager.revokeToken(ctx, accessToken)
+	if err == nil && token != nil {
+		m.triggerOAuth2TokenEvent(listener.EventOAuth2TokenRevoke, token, listener.ActionRevoke, "")
 	}
 	return err
 }

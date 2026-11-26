@@ -11,6 +11,7 @@ import (
 	derror "github.com/Zany2/dtoken-go/errors"
 	corecontext "github.com/Zany2/dtoken-go/httpauth/context"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
+	"github.com/Zany2/dtoken-go/internal/utils"
 )
 
 // TestResolveManagerFromContextMissingCache verifies explicit registry lookup without a cached context. TestResolveManagerFromContextMissingCache 验证无缓存上下文时的显式注册表查找。
@@ -165,7 +166,7 @@ func TestCheckDisablePropagatesReadFailure(t *testing.T) {
 	cfg := base.GetConfig()
 	storage := &disableReadFailureStorage{
 		authcheckTestStorage: newAuthcheckTestStorage(),
-		disableKey:           cfg.KeyPrefix + cfg.AuthType + manager.DisableKeyPrefix + "user",
+		disableKey:           utils.StorageNamespace(cfg.KeyPrefix, cfg.AuthType) + manager.DisableKeyPrefix + "user",
 	}
 	mgr := manager.NewManager(cfg, &authcheckTestGenerator{}, storage, authcheckTestCodec{}, adapter.NewNopLogger(), nil, nil)
 	t.Cleanup(mgr.CloseManager)
@@ -179,8 +180,8 @@ func TestCheckDisablePropagatesReadFailure(t *testing.T) {
 	if result != nil || !errors.Is(err, derror.ErrStorageUnavailable) {
 		t.Fatalf("Check(disable read failure) = %v, %v", result, err)
 	}
-	if storage.disableReads != 2 {
-		t.Fatalf("disable reads = %d, want 2", storage.disableReads)
+	if storage.disableReads != 1 {
+		t.Fatalf("disable reads = %d, want 1", storage.disableReads)
 	}
 }
 
@@ -191,13 +192,11 @@ type disableReadFailureStorage struct {
 	disableReads int
 }
 
-// Get fails after login validation has read the disable marker once. Get 在登录校验读取一次封禁标记后模拟故障。
+// Get fails on the explicitly requested restriction read. Get 在显式要求的封禁读取中模拟故障。
 func (s *disableReadFailureStorage) Get(ctx context.Context, key string) (any, error) {
 	if s.armed && key == s.disableKey {
 		s.disableReads++
-		if s.disableReads > 1 {
-			return nil, errors.New("disable storage unavailable")
-		}
+		return nil, errors.New("disable storage unavailable")
 	}
 	return s.authcheckTestStorage.Get(ctx, key)
 }

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -48,6 +47,8 @@ type HTTPOptions struct {
 	OnHTTPError HTTPErrorFunc
 	// EnrichExchangeResult adds center-session metadata after consumption and before callback registration. EnrichExchangeResult 在凭证消费后、回调登记前补充中心会话信息。
 	EnrichExchangeResult ExchangeResultFunc
+	// ExchangeEnricher supplies HTTP-independent metadata; mutually exclusive with EnrichExchangeResult. ExchangeEnricher 提供独立于 HTTP 的元数据补充，与 EnrichExchangeResult 互斥。
+	ExchangeEnricher ExchangeEnricher
 	// AuthorizationExtra binds application-owned center-session metadata during HTTP authorization. AuthorizationExtra 在 HTTP 授权时绑定应用管理的中心会话信息。
 	AuthorizationExtra AuthorizationExtraFunc
 	// AuthorizationPolicy evaluates current access at issuance, exchange, and inspection; nil preserves existing grants. AuthorizationPolicy 在签发、兑换与检查时评估当前访问权限，nil 保持已有授权行为。
@@ -110,6 +111,10 @@ func NewHTTPServer(server *Server, options HTTPOptions) *HTTPServer {
 		options.LoginIDResolver = LoginIDFromCookie(options.Cookie)
 	}
 	handler := &HTTPServer{server: server, options: options}
+	if options.ExchangeEnricher != nil && options.EnrichExchangeResult != nil {
+		handler.initErr = configError("ExchangeEnricher", "cannot combine with EnrichExchangeResult", nil)
+		return handler
+	}
 	if err := options.Endpoints.Validate(); err != nil {
 		handler.initErr = err
 		return handler
@@ -386,24 +391,7 @@ func (h *HTTPServer) registerClientSession(ctx context.Context, loginID, clientI
 
 // checkClientSessionLimit checks capacity while the caller holds clientSessionMu. checkClientSessionLimit 在调用方持有 clientSessionMu 时检查容量。
 func (h *HTTPServer) checkClientSessionLimit(ctx context.Context, loginID, clientID string) error {
-	limit := h.options.ServerOptions.MaxRegisteredClient
-	if limit > 0 {
-		sessions, err := h.server.GetClientSessions(ctx, loginID)
-		if err != nil {
-			return err
-		}
-		registered := false
-		for i := range sessions {
-			if sessions[i].ClientID == clientID {
-				registered = true
-				break
-			}
-		}
-		if !registered && len(sessions) >= limit {
-			return ErrClientSessionLimit
-		}
-	}
-	return nil
+	return h.exchangeCore(nil).checkClientSessionLimit(ctx, loginID, clientID)
 }
 
 // HandleToken handles ticket or code exchange and returns user identity JSON. HandleToken 处理 Ticket 或授权码交换并返回用户身份 JSON。
@@ -542,148 +530,12 @@ func (h *HTTPServer) HandleRevoke(w http.ResponseWriter, r *http.Request) {
 
 // authenticateClient validates the registered client and its optional secret. authenticateClient 校验已注册客户端及其可选密钥。
 func (h *HTTPServer) authenticateClient(ctx context.Context, values url.Values) error {
-	params := h.options.ServerOptions.Params
-	clientID := values.Get(params.Client)
-	if clientID == "" {
-		return ErrClientOrClientIDEmpty
-	}
-	client, err := h.server.getClient(ctx, clientID)
-	if err != nil {
-		return err
-	}
-	if !clientSecretMatches(client.ClientSecret, values.Get(params.ClientSecret)) {
-		return ErrInvalidClientCredentials
-	}
-	return nil
+	return h.exchangeCore(nil).authenticateClient(ctx, values)
 }
 
 // exchangeCredential dispatches credential exchange by mode. exchangeCredential 按模式分发凭证交换。
 func (h *HTTPServer) exchangeCredential(r *http.Request, values url.Values) (*TicketExchangeResult, error) {
-	params := h.options.ServerOptions.Params
-	mode := Mode(values.Get(params.Mode))
-	codeValue := values.Get(params.Code)
-	ticketValue := values.Get(params.Ticket)
-
-	// Resolve a single mode before consuming either credential. 消费凭证前先确定唯一模式。
-	if codeValue != "" && ticketValue != "" {
-		return nil, ErrInvalidRequest
-	}
-	if mode == "" {
-		mode = ModeTicket
-		if codeValue != "" {
-			mode = ModeOAuth2
-		}
-	}
-	if mode != ModeTicket && mode != ModeOAuth2 {
-		return nil, ErrModeUnsupported
-	}
-	if mode == ModeTicket && codeValue != "" || mode == ModeOAuth2 && ticketValue != "" {
-		return nil, ErrInvalidRequest
-	}
-
-	clientID := values.Get(params.Client)
-	callbackURL := values.Get(params.Callback)
-	registerCallback := h.options.ServerOptions.EnableSLO && callbackURL != ""
-	var authorization AuthorizationRequest
-	var grantedScopes []string
-	if registerCallback || h.options.AuthorizationPolicy != nil {
-		var err error
-		authorization, err = h.exchangeAuthorization(r, values, mode)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if registerCallback {
-		// Check callback ownership and capacity before consuming a one-time credential. 消费一次性凭证前检查回调归属和登记容量。
-		h.clientSessionMu.Lock()
-		defer h.clientSessionMu.Unlock()
-		client, err := h.server.getClient(r.Context(), clientID)
-		if err != nil {
-			return nil, err
-		}
-		if !h.server.isValidLogoutCallbackURL(client, callbackURL) {
-			return nil, ErrInvalidCallbackURL
-		}
-		if err := h.checkClientSessionLimit(r.Context(), authorization.LoginID, clientID); err != nil {
-			return nil, err
-		}
-	}
-	if h.options.AuthorizationPolicy != nil {
-		var err error
-		grantedScopes, err = h.evaluateAuthorization(r.Context(), authorization)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	var result *TicketExchangeResult
-	if mode == ModeOAuth2 {
-		code, err := h.server.ConsumeOAuth2CodeWithVerifier(
-			r.Context(),
-			codeValue,
-			values.Get(params.Client),
-			values.Get(params.ClientSecret),
-			values.Get(params.Redirect),
-			values.Get(params.CodeVerifier),
-		)
-		if err != nil {
-			return nil, err
-		}
-		result = OAuth2CodeResult(code)
-	} else {
-		ticket, err := h.server.ConsumeTicketWithVerifier(
-			r.Context(),
-			ticketValue,
-			values.Get(params.Client),
-			values.Get(params.ClientSecret),
-			values.Get(params.Redirect),
-			values.Get(params.CodeVerifier),
-		)
-		if err != nil {
-			return nil, err
-		}
-		result = TicketResult(ticket)
-	}
-
-	// Recheck the consumed payload against the policy input before applying a reduced grant. 应用缩减授权前，核对实际消费载荷与策略输入一致。
-	if h.options.AuthorizationPolicy != nil {
-		if result.LoginID != authorization.LoginID || !slices.Equal(result.Scopes, authorization.Scopes) {
-			return nil, ErrAuthorizationDecision
-		}
-		result.Scopes = grantedScopes
-	}
-
-	// Allow application-owned session metadata without changing the credential's authorization. 允许应用补充自己管理的会话信息，但不能改变凭证授权。
-	if err := r.Context().Err(); err != nil {
-		return nil, err
-	}
-	if h.options.EnrichExchangeResult != nil {
-		loginID, centerID := result.LoginID, result.CenterID
-		scopes := append([]string(nil), result.Scopes...)
-		if err := h.options.EnrichExchangeResult(r, clientID, result); err != nil {
-			return nil, err
-		}
-		if result.LoginID != loginID || result.CenterID != centerID || !slices.Equal(result.Scopes, scopes) {
-			return nil, errors.New("exchange result hook changed credential identity or scopes")
-		}
-		if result.RemainTokenTimeout < -1 || result.RemainSessionTimeout < -1 {
-			return nil, errors.New("exchange result hook returned an invalid session timeout")
-		}
-	}
-	if err := r.Context().Err(); err != nil {
-		return nil, err
-	}
-
-	// Bind only the identity returned by successful consumption. 仅登记成功消费凭证后返回的身份。
-	if registerCallback {
-		if _, err := h.server.RegisterClientSession(r.Context(), result.LoginID, clientID, callbackURL); err != nil {
-			return nil, err
-		}
-	}
-	if err := r.Context().Err(); err != nil {
-		return nil, err
-	}
-	return result, nil
+	return h.exchangeCore(r).exchangeCredential(r.Context(), values)
 }
 
 // introspectCredential inspects a credential by mode. introspectCredential 按模式检查凭证。
@@ -976,68 +828,12 @@ func (h *HTTPServer) HandleLogout(w http.ResponseWriter, r *http.Request) {
 
 // verifyRequest authenticates before checking freshness or recording a nonce. verifyRequest 在检查时效或记录随机值前完成认证。
 func (h *HTTPServer) verifyRequest(ctx context.Context, values url.Values, action string, consume bool) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := validatePKCEParameters(values, h.options.Params, action == ActionAuthorize); err != nil {
-		return err
-	}
-	if err := validateScalarParameters(values, h.options.Params); err != nil {
-		return err
-	}
-	if err := validateCredentialParameters(values, h.options.Params, action); err != nil {
-		return err
-	}
-	if err := h.verifySign(ctx, values); err != nil {
-		return err
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	protection := h.options.ReplayProtection
-	if protection == nil {
-		return nil
-	}
-	if err := protection.validateConfig(h.options.CheckSign, h.options.Params); err != nil {
-		return err
-	}
-	if consume {
-		return protection.claim(ctx, values, h.options.Params, action)
-	}
-	return protection.validate(values, h.options.Params, action, time.Now())
+	return h.exchangeCore(nil).verifyRequest(ctx, values, action, consume)
 }
 
 // verifySign validates request signatures when enabled. verifySign 在启用时校验请求签名。
 func (h *HTTPServer) verifySign(ctx context.Context, values url.Values) error {
-	if !h.options.ServerOptions.CheckSign {
-		return nil
-	}
-	params := h.options.ServerOptions.Params
-	if len(values[params.Client]) > 1 {
-		return ErrInvalidRequest
-	}
-	clientID := values.Get(params.Client)
-	if clientID == "" && h.options.ServerOptions.AllowAnonymousClient {
-		clientID = ClientAnonymous
-	}
-
-	// Resolve the current registration on each request; lookup failures must not fall back to another key. 每次请求读取当前注册配置；查询失败时不能降级为其他密钥。
-	var client *Client
-	if clientID != "" {
-		var err error
-		client, err = h.server.getClient(ctx, clientID)
-		if err != nil {
-			return err
-		}
-	}
-	secret, verification, err := h.signingKeys(client)
-	if err != nil {
-		return err
-	}
-	if !verifyProtocolSignature(values, params, secret, verification) {
-		return ErrInvalidSign
-	}
-	return nil
+	return h.exchangeCore(nil).verifySign(ctx, values)
 }
 
 // signingSecret selects a client's explicit key before the shared fallback. signingSecret 优先选择客户端显式密钥，再选择共享默认密钥。

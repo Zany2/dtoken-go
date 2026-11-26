@@ -79,6 +79,10 @@ Automatic renewal compares the storage TTL against its threshold without roundin
 
 ## Check Login Status
 
+`IsLogin`, `CheckLogin`, and basic identity queries validate credential presence, state, and enabled inactivity timeout without implicitly reading account or device restrictions. A normal foreground check of a new-format token with inactivity checks disabled uses one token GET, without loading Session, Extra, or the general Codec. Background maintenance reads are separate.
+
+For restricted access, explicitly set `CheckDisable: true` in HTTP checks or call the appropriate `CheckDisable`, `CheckDisableDevice`, and `CheckDisableDeviceAndDeviceID` operations at the business entry. Permission/role checks and token-based Session access do not imply restriction checks. Introspection, new login, and refresh issuance continue to enforce restrictions.
+
 ```go
 ctx := context.Background()
 
@@ -101,9 +105,9 @@ loginID, err := dt.GetLoginID(ctx, token)
 
 ### Get Token Info
 
-`GetTokenInfo` reads stored metadata; success does not prove the token is logged in. It does not check account/device bans, inactivity timeout, or session validity. Use `IsLogin` or `CheckLogin` for ordinary login validation. These methods and identity queries such as `GetLoginID` validate the token and current restrictions without reading or decoding the account Session on the normal path. Token records still require decoding; storage TTL determines their expiry. Renewal eligibility is checked by background maintenance.
+`GetTokenInfo` reads stored metadata; success does not prove the token is logged in. It does not check account/device bans, inactivity timeout, or session validity. Use `IsLogin` or `CheckLogin` for ordinary login validation. These methods and identity queries such as `GetLoginID` validate credentials and enabled inactivity timeout without reading Session or restriction records on the normal path. Access credentials use fixed-field parsing only; legacy Token payloads must be converted offline and are rejected at runtime without Codec decoding. Storage TTL determines absolute expiry, and background maintenance checks renewal eligibility.
 
-Session queries, token-based permission/role checks, and `IntrospectToken` still require a valid account Session. Account-based access queries may use AccessProvider directly; a nil provider result falls back to Session. Inactive-timeout cleanup also loads the Session. Deleting or corrupting a Session alone no longer revokes a token for ordinary login checks; use logout or kickout APIs to revoke credentials. Background maintenance does not renew or persist activity if the Session is invalid.
+Operations requiring Session content and `IntrospectToken` still validate the account Session. Permission/role queries by account or token prefer AccessProvider; Session is loaded only when the provider is absent or returns nil. Inactive-timeout cleanup also loads Session. Deleting or corrupting a Session alone no longer revokes a token for ordinary login checks; use logout or kickout APIs to revoke credentials. Automatic renewal checks Session TTL and stops if the key is missing, without decoding its contents. Activity-only maintenance does not depend on Session existence or readable contents; it still rechecks credential lifecycle and restrictions.
 
 ```go
 ctx := context.Background()
@@ -212,6 +216,16 @@ err = dt.ReplaceByDeviceAndDeviceID(ctx, "10001", "app", "ios-iphone-15")
 
 Replaced tokens are marked with the `replaced` state, which is useful for "new login overrides old login" scenarios.
 
+### Retirement Operation Costs
+
+Account, device-type and concrete-device operations load the Session once under the account lock and select the target terminals. Each normally valid primary credential is read once and reused for ownership checks, liveness checks and Extra deletion, without reading the Extra payload. Kickout and replacement use the matched terminal directly, avoiding repeated Session scans and copies of terminal, role or permission lists.
+
+Logout deletes selected primary records and their Extra keys in a batch. Kickout and replacement write individual state markers, preferring the current remaining TTL. Renewal and activity keys are removed in one batch; linked refresh credentials are still read and checked before revocation. The changed Session is saved once, or deleted if empty, and events are dispatched after releasing the account lock.
+
+The single primary read applies to normal account/device cleanup, not to the total storage cost of retirement. Direct `Logout`, `Kickout`, and `Replace` validate credentials and enabled inactivity tracking before entering the account lock, then load Session for cleanup under that lock. The normal direct path reads and decodes Session once instead of twice, without loading Extra. Primary-record capture, validation, lock-entry lifecycle recheck and cleanup ownership checks remain separate; this is not a one-read retirement operation. Missing Sessions still allow explicit credential cleanup, while corrupt or foreign Sessions and storage failures return errors. Suspected inactivity timeout still loads context and rechecks under the lock before changing state, preserving its cause and events. Inactive credentials, foreign ownership and abnormal refresh bindings can require additional reads.
+
+These steps run sequentially without a multi-key transaction. A storage failure returns an error and can leave some credentials already retired. The Session index is persisted only after cleanup succeeds, allowing another account/device cleanup attempt. Retrying kickout or replacement does not emit duplicate events for state markers already written by the failed operation.
+
 ## Online Terminal Statistics
 
 ```go
@@ -276,6 +290,18 @@ defer auth.Close()
 
 When `MaxLoginCount > 0`, older terminals beyond the limit are removed automatically.
 
+### Session Writes During Login
+
+A new login combines expired-entry pruning, overflow eviction or replacement, and terminal insertion into one final Session save. It no longer serializes and writes the entire session after each removal. Shared login saves no Session content when the list is unchanged, and saves once after necessary pruning or eviction. Token states, auxiliary keys, and TTL maintenance still have separate costs; these counts cover Session content writes only.
+
+These counts describe one internal login phase. Refresh-token rotation also retires the old terminal, whose logout phase can write the Session separately.
+
+Ordinary replacement preserves account data, historical counts, and a longer existing Session TTL. If on-demand pruning finds every old terminal invalid, the existing reset behavior remains: create a fresh Session with new account data and history, using this login's lifetime. Successful reset overwrites the old session without an intermediate Session deletion. Destroy, create, and login events still run in order after releasing the account lock.
+
+Login-triggered replacement, overflow eviction and eviction during shared login reuse the primary record checked under the account lock for state writes and Extra deletion. These steps do not reread the primary or load the Extra payload. Occupancy validation still has its own read: a normal candidate is checked once, then rechecked if selected for retirement. This does not mean the whole login performs only one GET. State markers use the current remaining TTL, falling back to the known credential's lifetime when TTL is unavailable.
+
+Early failures attempt to persist completed list cleanup; failed token persistence still removes the terminal appended by this login. Failure paths can require additional writes. Already retired credentials are not restored, and the operation does not provide a transaction across keys.
+
 ## Auto Renew
 
 ### Configuration
@@ -299,7 +325,7 @@ defer auth.Close()
 In the current implementation, auto-renew does not refresh on every `IsLogin()` call unconditionally. Instead it:
 
 1. Validates the token
-2. Checks whether the account is disabled
+2. Synchronously checks account and device restrictions only when explicitly requested by an access check
 3. Checks `ActiveTimeout`
 4. Renews asynchronously only when `AutoRenew=true` and the current TTL matches the `RenewMaxRefresh` and `RenewInterval` conditions
 

@@ -68,7 +68,7 @@ func TestManagerLateValidationMaintenanceRejectsTokenReuse(t *testing.T) {
 
 				// Equalize timestamps without relying on execution speed or sleeping. 对齐时间戳，使同秒复用用例不依赖执行速度或等待。
 				current.CreateTime = original.CreateTime
-				if err := mgr.saveToStorage(ctx, mgr.getTokenKey(token), *current, time.Minute); err != nil {
+				if err := mgr.saveTokenRecord(ctx, token, current, time.Minute); err != nil {
 					t.Fatal(err)
 				}
 				sess, err := mgr.getSession(ctx, opts.LoginID)

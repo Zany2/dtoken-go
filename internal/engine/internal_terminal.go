@@ -84,31 +84,6 @@ func normalizeAccessValues(values []string) []string {
 	return normalized
 }
 
-// removeStrings removes matched non-empty strings. removeStrings 移除匹配的非空字符串。
-func removeStrings(items []string, values ...string) []string {
-	// Return original list when no removal needed. 无需移除时返回原列表。
-	if len(values) == 0 || len(items) == 0 {
-		return items
-	}
-
-	// Build remove set. 构建待移除值集合。
-	toRemove := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		if value != "" {
-			toRemove[value] = struct{}{}
-		}
-	}
-
-	// Keep unmatched values. 过滤保留未删除值。
-	var kept []string
-	for _, item := range items {
-		if _, shouldRemove := toRemove[item]; !shouldRemove {
-			kept = append(kept, item)
-		}
-	}
-	return kept
-}
-
 // removeTerminalByToken removes terminal by token. removeTerminalByToken 根据 token 值移除终端信息。
 func sessionRemoveTerminalByToken(s *Session, tokenValue string) (TerminalInfo, bool) {
 	// Validate token value. 校验 Token 值。
@@ -213,13 +188,6 @@ func sessionRemoveAllTerminals(s *Session) []TerminalInfo {
 func sessionGetTerminalsByDevice(s *Session, device string) []TerminalInfo {
 	return sessionFilterTerminals(s, func(ti TerminalInfo) bool {
 		return ti.Device == device
-	})
-}
-
-// getTerminalsByDeviceAndDeviceID gets terminals by device and id. getTerminalsByDeviceAndDeviceID 返回精确匹配设备和设备 ID 的终端信息。
-func sessionGetTerminalsByDeviceAndDeviceID(s *Session, device, deviceID string) []TerminalInfo {
-	return sessionFilterTerminals(s, func(ti TerminalInfo) bool {
-		return ti.Device == device && ti.DeviceID == deviceID
 	})
 }
 

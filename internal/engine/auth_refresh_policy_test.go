@@ -101,7 +101,13 @@ func TestManagerRefreshHonorsOccupiedLoginSlots(t *testing.T) {
 						} else {
 							wantToken = next.AccessToken
 						}
-						if len(web) != 1 || web[0].Token != wantToken || sess.Data["theme"] != "dark" {
+						// Rejected admission preserves stale indexes; only live terminals occupy slots. 拒绝接收保留残留索引，仅存活终端占用名额。
+						wantRecorded := 1
+						if rejected {
+							wantRecorded = 2
+						}
+						live, liveErr := mgr.GetTokenValueListByDevice(ctx, old.LoginID, "web", true)
+						if liveErr != nil || len(live) != 1 || live[0] != wantToken || len(web) != wantRecorded || sess.Data["theme"] != "dark" {
 							t.Fatalf("rotation exceeded the slot limit or lost session data: %+v", sess)
 						}
 						if otherDevice != "" && !sessionHasTerminalToken(sess, otherDevice) {

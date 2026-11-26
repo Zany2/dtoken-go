@@ -66,21 +66,18 @@ func defaultPermissionMatcher(pattern, permission string) bool {
 		separator = "/"
 	}
 
-	patternParts := strings.Split(pattern, separator)
-	permParts := strings.Split(permission, separator)
-	if len(patternParts) != len(permParts) {
-		return false
-	}
-
-	for i := range patternParts {
-		if patternParts[i] == PermissionWildcard {
-			continue
-		}
-		if patternParts[i] != permParts[i] {
+	// Compare segments without allocating split slices; wildcard segments still consume exactly one segment. 逐段比较而不分配拆分切片，通配段仍只匹配一个分段。
+	for {
+		patternPart, patternRest, patternMore := strings.Cut(pattern, separator)
+		permissionPart, permissionRest, permissionMore := strings.Cut(permission, separator)
+		if patternMore != permissionMore || patternPart != PermissionWildcard && patternPart != permissionPart {
 			return false
 		}
+		if !patternMore {
+			return true
+		}
+		pattern, permission = patternRest, permissionRest
 	}
-	return true
 }
 
 // defaultRoleMatcher matches roles by exact value defaultRoleMatcher 按精确值匹配角色

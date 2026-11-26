@@ -51,7 +51,7 @@ func (m *Manager) IntrospectToken(ctx context.Context, tokenValue string) (*Toke
 	}
 
 	// Reuse the canonical login-state validation so detached terminal records do not cause false inactive results. 复用统一登录态校验，避免终端记录脱离时误判为非活跃。
-	sess, tokenInfo, err := m.checkLoginAndGetContextNoRenew(ctx, tokenValue)
+	sess, tokenInfo, err := m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{loadExtra: true, checkDisable: true})
 	if err != nil {
 		if isTokenInactiveError(err) || errors.Is(err, derror.ErrSessionNotFound) {
 			result.Error = err.Error()
@@ -82,18 +82,11 @@ func (m *Manager) IntrospectToken(ctx context.Context, tokenValue string) (*Toke
 		Token:    tokenValue,
 	}
 
-	// Reuse session for permission/role fallback 复用会话以获取权。角色回退。
-	var sessionPermissions, sessionRoles []string
-	if sess != nil {
-		sessionPermissions = sess.Permissions
-		sessionRoles = sess.Roles
-	}
-
-	permissions, err := m.loadPermissions(ctx, sessionPermissions, subject)
+	permissions, err := m.loadPermissions(ctx, &sess, subject)
 	if err != nil {
 		return nil, err
 	}
-	roles, err := m.loadRoles(ctx, sessionRoles, subject)
+	roles, err := m.loadRoles(ctx, &sess, subject)
 	if err != nil {
 		return nil, err
 	}

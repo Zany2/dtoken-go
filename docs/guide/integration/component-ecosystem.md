@@ -14,6 +14,8 @@ After a successful build, the engine owns injected storage, logging, and pools b
 | --- | --- | --- | --- |
 | Storage | `adapter.Storage` | Memory, Redis | Store Token, Session, disable, Nonce, and OAuth2 data |
 | Atomic storage | `adapter.AtomicStorage` | Redis, Memory | Atomic get-and-delete operations such as one-time Nonce consumption |
+| Update retaining TTL | `adapter.UpdateStorage` | Redis | Updates existing values with SET XX KEEPTTL; Memory and ordinary storage use non-atomic TTL + Set fallback |
+| Persistent storage | `adapter.PersistentStorage` | Redis, Memory | Persist removes expiration from existing keys; optional for base Storage, with raw read/write fallback |
 | Scanner storage | `adapter.ScannerStorage` | Redis, Memory | Search Tokens and Session IDs |
 | Admin storage | `adapter.AdminStorage` | Redis, Memory | Test cleanup or administrative clear operations |
 | Codec | `adapter.Codec` | JSON, MessagePack, Base64 | Serialize stored structures |
@@ -165,7 +167,7 @@ Logging and runtime-control methods remain compatible. `Print` / `Printf` bypass
 - Custom components should satisfy core interfaces first, then add optional capabilities when needed.
 - Production deployments should usually use Redis Storage with a clear `KeyPrefix`.
 - Custom Token generators must provide enough randomness and unpredictability.
-- Codec implementations should remain stable to avoid breaking old serialized data.
+- Codec implementations should remain stable to avoid breaking old serialized data. New token primary records use the engine's fixed format and bypass Codec; sessions, token Extra, refresh credentials, and capability objects still use Codec. Custom Codec compression or encryption does not cover identity fields in new token primary records.
 
 ## Related Documentation
 

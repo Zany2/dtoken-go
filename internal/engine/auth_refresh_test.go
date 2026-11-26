@@ -294,10 +294,15 @@ func TestManagerRefreshTokenExpires(t *testing.T) {
 
 	pair, err := mgr.LoginWithRefreshTokenOptions(ctx, RefreshTokenOptions{
 		LoginOptions:   LoginOptions{LoginID: "refresh-expiring"},
-		RefreshTimeout: 20 * time.Millisecond,
+		RefreshTimeout: time.Minute,
 	})
 	if err != nil {
 		t.Fatalf("LoginWithRefreshTokenOptions() error = %v", err)
+	}
+
+	// Expire an issued credential so setup latency cannot consume the tested lifetime. 先完成签发再缩短有效期，避免准备阶段耗尽待测生命周期。
+	if err = mgr.storage.Expire(ctx, mgr.getRefreshTokenKey(pair.RefreshToken), 20*time.Millisecond); err != nil {
+		t.Fatal(err)
 	}
 	time.Sleep(30 * time.Millisecond)
 	if _, err = mgr.RefreshToken(ctx, pair.RefreshToken); !errors.Is(err, derror.ErrInvalidRefreshToken) {
@@ -305,6 +310,9 @@ func TestManagerRefreshTokenExpires(t *testing.T) {
 	}
 	if ttl, err := mgr.GetRefreshTokenTTL(ctx, pair.RefreshToken); err != nil || ttl != -2 {
 		t.Fatalf("GetRefreshTokenTTL(expired) = %d, %v, want -2, nil", ttl, err)
+	}
+	if !mgr.IsLogin(ctx, pair.AccessToken) {
+		t.Fatal("refresh expiry invalidated the independently valid access token")
 	}
 }
 

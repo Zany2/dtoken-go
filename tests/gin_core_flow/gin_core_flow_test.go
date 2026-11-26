@@ -70,7 +70,7 @@ func newFlowClient(t *testing.T, cfg gincoreapp.Config) *flowClient {
 }
 
 // flowKeyPrefix creates a unique storage prefix for a flow test. flowKeyPrefix 为流程测试创建唯一存储前缀。
-func flowKeyPrefix(t *testing.T) string {
+func flowKeyPrefix(t testing.TB) string {
 	t.Helper()
 	var id [16]byte
 	if _, err := rand.Read(id[:]); err != nil {
@@ -82,7 +82,7 @@ func flowKeyPrefix(t *testing.T) string {
 }
 
 // clearFlowStorage removes storage keys created by a flow test. clearFlowStorage 删除流程测试创建的存储键。
-func clearFlowStorage(t *testing.T, storage adapter.Storage, keyPrefix string) {
+func clearFlowStorage(t testing.TB, storage adapter.Storage, keyPrefix string) {
 	t.Helper()
 	scanner, ok := storage.(adapter.ScannerStorage)
 	if storage == nil || !ok || keyPrefix == "" {
@@ -1426,11 +1426,17 @@ func TestDisableFlow(t *testing.T) {
 			t.Fatalf("account disable info = %+v, want disabled risk with ttl 1..60", info)
 		}
 
-		// Step 2: old token should be rejected as account disabled. 步骤 2：旧 Token 再访问接口，预期账号封禁错误。
-		c.expect("GET", "/api/me", nil, token, http.StatusForbidden, derror.CodeAccountDisabled, nil)
+		// Account bans revoke credentials; validation rejects them before restriction lookup. 账号封禁撤销凭据，基础校验在查询限制前拒绝旧 Token。
+		c.expect("GET", "/api/me", nil, token, http.StatusUnauthorized, derror.CodeNotLogin, nil)
 
 		// Step 3: same account should not be able to login again while disabled. 步骤 3：同账号在封禁期间重新登录，预期被拒绝。
 		c.expect("POST", "/login", map[string]any{"username": "erin", "password": "123456"}, "", http.StatusForbidden, derror.CodeAccountDisabled, nil)
+
+		// Lifting the ban permits new login without reviving revoked credentials. 解封允许重新登录，但不能恢复已撤销凭据。
+		c.expect("POST", "/operator/untie/account/erin", nil, "", http.StatusOK, derror.CodeSuccess, nil)
+		c.expect("GET", "/api/me", nil, token, http.StatusUnauthorized, derror.CodeNotLogin, nil)
+		fresh := c.login("erin")
+		c.expect("GET", "/api/me", nil, fresh, http.StatusOK, derror.CodeSuccess, nil)
 	})
 
 	t.Run("service", func(t *testing.T) {

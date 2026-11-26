@@ -9,6 +9,7 @@ import (
 	derror "github.com/Zany2/dtoken-go/errors"
 	"github.com/Zany2/dtoken-go/event"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
+	"github.com/Zany2/dtoken-go/internal/utils"
 )
 
 // TestAccessChecksPreserveTokenSubjectAndFailures covers route and standalone authorization paths. TestAccessChecksPreserveTokenSubjectAndFailures 覆盖路由与独立授权路径的 Token 主体及故障传递。
@@ -32,6 +33,10 @@ func TestAccessChecksPreserveTokenSubjectAndFailures(t *testing.T) {
 			t.Cleanup(mgr.CloseManager)
 			token, err := mgr.Login(ctx, "scoped-user", "web", "browser")
 			if err != nil {
+				t.Fatal(err)
+			}
+			// Provider-owned authorization must not depend on a Session that it does not use. 提供器负责的授权不能依赖不会使用的 Session。
+			if err := mgr.GetStorage().Delete(ctx, utils.StorageNamespace(cfg.KeyPrefix, cfg.AuthType)+manager.SessionKeyPrefix+"scoped-user"); err != nil {
 				t.Fatal(err)
 			}
 

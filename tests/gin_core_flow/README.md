@@ -1,8 +1,96 @@
 # Gin Core Flow Tests
 
-This directory contains HTTP flow tests for `tests/gin_core_app`.
+This directory contains HTTP flow tests for `tests/gin_core_app` and serial and parallel benchmarks from the public Auth API to storage.
 
-这些测试不会手动请求外部端口，而是用 `httptest.NewServer` 在测试进程里启动 Gin app，然后按真实 HTTP 流程调用接口。
+The HTTP tests start a Gin app inside the test process with `httptest.NewServer`, then call its endpoints through HTTP.
+
+## Auth benchmarks
+
+`auth_benchmark_test.go` calls public Auth APIs using the bundled Memory or Redis adapter, without an HTTP round trip. Memory is the default. Redis requires explicit selection; a missing URL or failed connection fails the benchmark instead of falling back or skipping.
+
+All 120 Auth scenarios completed three timed Memory samples on 2026-11-26, with additional parallelism measurements; see the [full workload report (Chinese)](../../docs/design/benchmarks/2026-11-26-memory-workloads_zh.md). Earlier local comparisons and real-pool concurrency checks remain in the [measurement record (Chinese)](../../docs/design/benchmarks/2026-11-26-memory-report_zh.md). Redis has not been measured. General commands from the repository root:
+
+```powershell
+$env:DTOKEN_BENCH_STORAGE='memory'
+go test ./tests/gin_core_flow -run '^$' -bench 'BenchmarkAuth(Validation|Writes)' -benchmem -count=3
+
+$env:DTOKEN_BENCH_STORAGE='redis'
+$env:DTOKEN_REDIS_URL='redis://localhost:6379/0'
+go test ./tests/gin_core_flow -run '^$' -bench 'BenchmarkAuth(Validation|Writes)' -benchmem -count=3
+```
+
+The full matrix can take time. To start with basic validation only:
+
+```powershell
+go test ./tests/gin_core_flow -run '^$' -bench '^BenchmarkAuthValidation$/^redis$/^terminals=1$/^extra=0$/^(is-login|check-login)$' -benchmem -count=3
+```
+
+| Scenario | Measurement |
+| --- | --- |
+| `is-login` / `check-login` | Basic validity checks with activity timeout and auto renewal disabled |
+| `details` | Full token details, including Extra retrieval and decoding when present |
+| `active-foreground` | Activity validation and task submission; draining after return is excluded from timing |
+| `active-complete` | Validation through activity task completion, including the drain wait |
+| `renew-active-complete` | Validation through auto renewal and activity maintenance; every iteration is eligible, and successful renewal events are counted |
+| `login-logout` | One complete login and logout cycle, restoring the original terminal count |
+| `manual-renew` | Renew an existing token for one hour |
+
+Each group uses 1, 100, or 1000 terminals and an Extra string of 0, 1 KiB, or 64 KiB. Only the measured target carries Extra; the transient token in login/logout also carries the selected size. Sizes exclude encoding overhead. Sharing is disabled, concurrent login is enabled, and terminal count is unlimited. Token TTL and enabled activity timeout are one hour; fixture preparation and measurement must finish within that lifetime.
+
+Construction, seeding, result checks, and cleanup are excluded from timing. Each fixture uses a random key prefix; cleanup closes Auth, drains tasks, and deletes only that prefix before closing Redis. Use a dedicated test Redis database. Login/logout keeps terminal list length stable, while the historical terminal counter still increases.
+
+Activity scenarios drain every iteration so task coalescing cannot hide background work. `tasks/op` must be 1 for activity scenarios and 0 otherwise. Activity scenarios enable an error counter that produces no log output; auto renewal also uses a synchronous event counter. Their instrumentation and synchronization costs are included. Basic validation and write scenarios disable logging and event observation.
+
+Workers can run concurrently with the foreground in `active-foreground`, so its `B/op` and `allocs/op` are **not isolated foreground allocations**; background execution before return can also affect timing. Complete scenarios include drain synchronization. These serial averages do not measure concurrent throughput, pool saturation, or p95/p99. Basic parallel validation and permanent TTL comparisons are described below. Preserve the toolchain, Redis version and location, configuration, dataset sizes, and raw output when comparing versions with equivalent semantics.
+
+### Terminal remnants and Provider benchmarks
+
+`auth_query_benchmark_test.go` uses the same storage selection and cleanup. Run from the repository root:
+
+```powershell
+go test ./tests/gin_core_flow -run '^$' -bench '^BenchmarkAuth(TerminalQueries|PermissionProvider)$' -benchmem -count=3
+```
+
+- `BenchmarkAuthTerminalQueries`: 10, 100, or 1000 terminals with 0%, 50%, or 100% missing credentials. `raw` returns every indexed entry; `alive` filters all live entries; `device-alive` queries only the last logged-in device. Each iteration checks the count; final checks verify token values, order, and an unchanged stored index.
+- `BenchmarkAuthPermissionProvider`: 1, 100, or 1000 terminals, comparing `hit` (Provider supplies permission), `fallback` (returns nil), and `empty-deny` (returns a non-nil empty list). All three Sessions contain the same permission: the first two must succeed, while the empty list must deny access. Every operation must call the Provider once, reported as `provider-calls/op`.
+
+Before timing, the terminal benchmark deletes the primary records for the first half or all of the index, leaving the Session intact. Extra, activity, and refresh records are not created. This models the missing state after natural expiry on real storage; it **does not measure TTL expiration, Redis background cleanup, or index pruning triggered by login**. Setup uses the current namespace helper and must be adapted when ported to historical key layouts. The Session retains its one-hour TTL even when all credentials are missing.
+
+Both groups disable activity maintenance, auto renewal, and logging; `tasks/op` must be 0. The Provider is a local callback returning a fixed slice, with its counter overhead included; these results do not represent an application database or remote permission service. The timed loops retain error and count assertions. Setup, final full-result checks, and cleanup are excluded from timing.
+
+### Permanent TTL, parallel validation, and login pruning
+
+`auth_lifecycle_benchmark_test.go` uses the same backend selection and random prefix isolation:
+
+```powershell
+go test ./tests/gin_core_flow -run '^$' -bench '^BenchmarkAuthPermanentValidation$' -benchmem -count=3
+go test ./tests/gin_core_flow -run '^$' -bench '^BenchmarkAuthParallelValidation$' -benchmem '-cpu=1,4,8' -count=3
+go test ./tests/gin_core_flow -run '^$' -bench '^BenchmarkAuthParallelWrites$' -benchmem '-cpu=1,4,8' -count=3
+go test ./tests/gin_core_flow -run '^$' -bench '^BenchmarkAuthLoginPruning$' -benchtime=20x -benchmem -count=3
+```
+
+- `PermanentValidation`: compares tokens issued with a one-hour TTL and permanent configuration. It times `CheckLogin` and checks storage TTL afterward. It does not measure conversion to permanent storage or persistence of Extra or activity records.
+- `ParallelValidation`: prepares 64 credentials in one Auth. `same-account` has 64 terminals for one account; `many-accounts` has one terminal for each of 64 accounts. Each `RunParallel` worker cycles through the credentials from a different starting offset. `-cpu` controls GOMAXPROCS for each run and therefore the default worker count. Failures are aggregated and checked by the main goroutine. `ns/op` is total wall time divided by total operations, reflecting throughput, **not per-request latency or tail latency**. Scheduling and credential rotation overhead are included.
+- `LoginPruning`: uses 10, 100, or 1000 terminals with 50% or 100% missing primary records. Each login sets the account limit to the original terminal count, forcing slot validation and pruning. Every iteration restores the same serialized Session snapshot outside timing, times the complete login, then stops timing to verify the persisted index and new token and log out the transient terminal. Final checks preserve the original live credentials. The 50% case retains live entries; the 100% case covers login after all old entries are removed. There are no event observers.
+
+All three disable activity timeout, auto renewal, and logging; `tasks/op` must be 0. Except for permanent credentials, data lasts one hour and each sample must finish within that lifetime. Pruning fixture restoration makes actual runtime substantially longer than reported timed work, so a fixed `-benchtime=20x` is recommended. Repeated restoration affects cache warmth and does not simulate actual TTL expiration. This scenario excludes shared login, device scope, and overflow eviction of live terminals.
+
+`ParallelWrites` adds concurrent login/logout cycles for one account or multiple accounts. Each worker uses a distinct device ID; workers contend on one account lock in the shared-account case and own distinct accounts in the multi-account case. One operation includes both login and logout. Final checks reject leftover terminals, and workers aggregate failures when finished. Account creation costs are included, so this is not equivalent to a workload with all accounts created beforehand. Sharing, terminal limits, activity maintenance, and auto renewal are disabled; `tasks/op` must be 0.
+
+These scenarios do not complete performance acceptance: maintenance coalescing and pool overload, tail latency, and migration rehearsal still require deployment-specific validation. Select all Auth benchmarks with `-bench '^BenchmarkAuth'`, but prefer grouped runs and retain raw output because the full matrix is lengthy. Module regression and release status are tracked in the [non-SSO acceptance record (Chinese)](../../docs/design/performance-acceptance_zh.md).
+
+### Maintenance concurrency with a real pool
+
+`auth_maintenance_load_test.go` always uses bundled Memory and a single-worker Ants pool, without Redis or HTTP. Channels control task and listener execution to check:
+
+- `TestAuthRealPoolCoalescingAndClose`: 64 concurrent checks share one pending token task; an asynchronous listener falls back inline when the shared pool rejects it; shutdown drains both work and listeners and rejects new checks.
+- `TestAuthRealPoolSaturationAndRecovery`: 32 distinct tokens across same-account or multiple-account workloads, with activity only, renewal only, or both. Saturation preserves activity without extending TTL, skips optional renewal, and allows retries once capacity returns.
+
+```powershell
+go test ./tests/gin_core_flow -run '^TestAuthRealPool' -count=20 '-cpu=1,4,8' -timeout=2m
+```
+
+On 2026-11-26, all seven scenarios passed 420 executions in total. Twelve activity/renewal benchmark configurations also passed three samples each; see the [measurement record (Chinese)](../../docs/design/benchmarks/2026-11-26-memory-report_zh.md). Controlled interleavings and normal maintenance costs do not replace race detection, sustained overload tests, or p95/p99 measurements.
 
 ## Test List
 

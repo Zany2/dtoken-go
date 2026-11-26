@@ -69,7 +69,7 @@ func TestAsyncPoolTracksQueuedDispatchAndListeners(t *testing.T) {
 			t.Fatalf("reset listener received %q, want new", got.LoginID)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("nil pool did not restore goroutine execution")
+		t.Fatal("nil pool did not execute listener inline")
 	}
 	assertListenerSignalPending(t, done, "reset discarded previously queued listener")
 	(<-queue)()
@@ -100,8 +100,8 @@ func TestAsyncPoolRejectionFallsBack(t *testing.T) {
 	done := make(chan struct{})
 	go func() { manager.Wait(); close(done) }()
 	waitForListenerSignal(t, done, "fallback or panic leaked task accounting")
-	if submissions.Load() != 2 || calls.Load() != 1 || panics.Load() != 1 {
-		t.Fatalf("submissions/calls/panics = %d/%d/%d, want 2/1/1", submissions.Load(), calls.Load(), panics.Load())
+	if submissions.Load() != 1 || calls.Load() != 1 || panics.Load() != 1 {
+		t.Fatalf("submissions/calls/panics = %d/%d/%d, want 1/1/1", submissions.Load(), calls.Load(), panics.Load())
 	}
 }
 
@@ -177,5 +177,24 @@ func TestAsyncPoolLeavesSynchronousListenersInline(t *testing.T) {
 	manager.Trigger(&EventData{Event: EventLogin})
 	if !called {
 		t.Fatal("synchronous listener did not complete inline")
+	}
+}
+
+// TestAsyncFallbackCompletesBeforeReturning checks nil and rejecting pools keep delivery inline in every entry point. TestAsyncFallbackCompletesBeforeReturning 验证未配置池和池拒绝时各入口在返回前完成投递。
+func TestAsyncFallbackCompletesBeforeReturning(t *testing.T) {
+	for _, rejected := range []bool{false, true} {
+		manager := NewManager()
+		if rejected {
+			manager.SetAsyncPool(&listenerTestPool{submit: func(func()) error { return fmt.Errorf("full") }})
+		}
+		var calls int
+		manager.RegisterFunc(EventLogin, func(*EventData) { calls++ })
+		for i, trigger := range []func(*EventData){manager.Trigger, manager.TriggerAsync, manager.TriggerSync} {
+			trigger(&EventData{Event: EventLogin})
+			if calls != i+1 {
+				t.Fatalf("calls = %d, want %d before return", calls, i+1)
+			}
+		}
+		manager.Wait()
 	}
 }

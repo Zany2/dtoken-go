@@ -40,15 +40,20 @@ func TestUntieEventsRequireExistingDisableState(t *testing.T) {
 			},
 		},
 		{
-			name:  "legacy service marker",
+			name:  "migrated service marker",
 			event: listener.EventUntieService,
 			disable: func(mgr *Manager) error {
-				return mgr.saveToStorage(
+				err := mgr.saveToStorage(
 					ctx,
 					mgr.getLegacyDisableServiceKey("untie-legacy-service", "billing"),
 					ServiceDisableInfo{Service: "billing"},
 					time.Minute,
 				)
+				if err != nil {
+					return err
+				}
+				upgradeTestDisableMarker(t, mgr, mgr.getLegacyDisableServiceKey("untie-legacy-service", "billing"))
+				return nil
 			},
 			untie: func(mgr *Manager) error {
 				return mgr.UntieService(ctx, "untie-legacy-service", "billing")

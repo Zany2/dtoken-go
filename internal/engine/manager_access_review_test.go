@@ -31,8 +31,8 @@ func TestManagerEmptyAccessMutationsValidateLogin(t *testing.T) {
 			{"missing token", derror.ErrInvalidToken},
 			{"kickout", derror.ErrTokenKickout},
 			{"replaced", derror.ErrTokenReplaced},
-			{"disabled account", derror.ErrAccountDisabled},
-			{"disabled device", derror.ErrDeviceDisabled},
+			{"disabled account", derror.ErrInvalidToken},
+			{"disabled device", nil},
 			{"missing session", derror.ErrInvalidToken},
 			{"active timeout", derror.ErrActiveTimeout},
 		} {

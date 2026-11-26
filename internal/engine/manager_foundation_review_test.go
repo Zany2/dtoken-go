@@ -106,18 +106,19 @@ func TestManagerAccountDisableCannotChangeOtherKinds(t *testing.T) {
 					t.Fatalf("account operations changed another kind: %v, %v", after, err)
 				}
 
-				// A recognizable legacy account marker remains an account restriction only. 可识别的旧账号标记仍只限制该账号。
+				// Offline migration moves a legacy account marker away from a service or device key. 离线迁移将旧账号标记移出服务或设备键。
 				if err = mgr.saveToStorage(ctx, key, DisableInfo{DisableReason: "legacy account"}, time.Minute); err != nil {
 					t.Fatal(err)
 				}
+				upgradeTestDisableMarker(t, mgr, key)
 				if !mgr.IsDisable(ctx, account) || check() {
 					t.Fatal("legacy account marker crossed a disable type boundary")
 				}
-				if err = write(); !errors.Is(err, derror.ErrInvalidParam) {
-					t.Fatalf("overwrite legacy account = %v, want ErrInvalidParam", err)
+				if err = write(); err != nil {
+					t.Fatalf("independent restriction after migration = %v", err)
 				}
-				if err = mgr.Untie(ctx, account); err != nil || mgr.storage.Exists(ctx, key) {
-					t.Fatalf("Untie(legacy owner) = %v, want removal", err)
+				if err = mgr.Untie(ctx, account); err != nil || mgr.IsDisable(ctx, account) || !check() {
+					t.Fatalf("Untie(migrated owner) = %v, want independent removal", err)
 				}
 			})
 		}
@@ -178,16 +179,17 @@ func TestManagerAmbiguousLegacyDisableIsNotOverwrittenOrDeleted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"a:b", `a\:b`} {
-		if err := mgr.CheckDisableService(ctx, id, "pay"); !errors.Is(err, derror.ErrInvalidParam) {
-			t.Fatalf("CheckDisableService(%q) = %v, want ambiguity error", id, err)
-		}
-		if _, err := mgr.GetDisableServiceTTL(ctx, id, "pay"); !errors.Is(err, derror.ErrInvalidParam) {
-			t.Fatalf("GetDisableServiceTTL(%q) = %v, want ambiguity error", id, err)
-		}
-		if err := mgr.UntieService(ctx, id, "pay"); !errors.Is(err, derror.ErrInvalidParam) {
-			t.Fatalf("UntieService(%q) = %v, want ambiguity error", id, err)
-		}
+	if err := mgr.CheckDisableService(ctx, "a:b", "pay"); !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("CheckDisableService = %v, want ownership error", err)
+	}
+	if _, err := mgr.GetDisableServiceTTL(ctx, "a:b", "pay"); !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("GetDisableServiceTTL = %v, want ownership error", err)
+	}
+	if err := mgr.UntieService(ctx, "a:b", "pay"); !errors.Is(err, derror.ErrInvalidParam) {
+		t.Fatalf("UntieService = %v, want ownership error", err)
+	}
+	if err := mgr.CheckDisableService(ctx, `a\:b`, "pay"); err != nil {
+		t.Fatalf("distinct canonical owner consulted a legacy key: %v", err)
 	}
 	if err := mgr.DisableService(ctx, "a:b", "pay", 0); !errors.Is(err, derror.ErrInvalidParam) {
 		t.Fatalf("DisableService(ambiguous existing key) = %v", err)

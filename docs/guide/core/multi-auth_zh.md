@@ -13,12 +13,14 @@ Build 自动注册并返回 Auth，可直接调用返回实例、使用 dt.AuthT
 `AuthType` 会参与 Manager 注册、Token 查询、Session 查询、权限角色和存储 key 生成。同一个 Token 只能在所属的认证体系里被识别。
 
 ```text
-dtoken:user:token:xxx
-dtoken:admin:token:yyy
-dtoken:app:session:client-001
+dtoken:user:v2:token:xxx
+dtoken:admin:v2:token:yyy
+dtoken:app:v2:session:client-001
 ```
 
 `AuthType("user")` 会自动规范化为 `user:`，构建、`dt.AuthType(name)` 和 `dt.GetManager(name)` 都接受 `"user"` 或 `"user:"`。`TokenName` 决定 HTTP 读取 Token 的字段名，存储命名空间由 `KeyPrefix` 与 `AuthType` 决定。
+
+Manager 与内置 Nonce、OAuth2、Ticket、ShortKey 实例在构造时编码并保存固定存储命名空间，后续构造键直接复用，避免每次请求重复转义 `KeyPrefix` 和 `AuthType`。修改传入配置或 `GetConfig()` 返回的快照不会切换已构建 Manager 的命名空间；需要其他体系时应构建对应实例。此优化保持现有键格式，不需要额外迁移。
 
 ## 构建并注册多个体系
 
@@ -165,10 +167,10 @@ func registerRoutes(ctx context.Context, r *gin.Engine, userAuth, adminAuth *dt.
 Redis 存储 key 会包含 `KeyPrefix` 和 `AuthType`。如果两套认证体系共享 Redis，只要 `AuthType` 不同，核心登录态数据也不会串用。
 
 ```text
-dtoken:user:token:...
-dtoken:user:session:...
-dtoken:admin:token:...
-dtoken:admin:session:...
+dtoken:user:v2:token:...
+dtoken:user:v2:session:...
+dtoken:admin:v2:token:...
+dtoken:admin:v2:session:...
 ```
 
 如果希望不同项目、环境或测试批次完全隔离，可以同时区分 `KeyPrefix`：

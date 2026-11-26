@@ -336,3 +336,7 @@ client := &oauth2.Client{
 - [Nonce 防重放](../security/nonce_zh.md)
 - [Refresh Token 指南](../security/refresh-token_zh.md)
 - [登录认证](../core/authentication_zh.md)
+
+## 撤销的存储开销
+
+`Service.RevokeOAuth2Token` 与服务端 `RevokeToken` 共用一次访问令牌读取和解码，Service 复用该记录发布撤销事件。访问令牌与关联刷新令牌通过一次 `Storage.Delete` 调用删除，Redis 对应一条多键 DEL；不增加客户端读取，也不承诺所有自定义存储都能原子删除多个键。读取或删除失败时返回错误，不发布成功事件。

@@ -4,7 +4,7 @@
 
 Here `dt` names the root package. `Build()` registers automatically; use `dt.XXX()` for the default namespace or `dt.AuthType("user").XXX()` for another namespace. Business method signatures match Auth methods. See [Auth API](../../api/auth.md).
 
-DToken-Go supports more than account-level banning. It also supports service disable, service-level disable, device-type disable, and concrete-device disable. Disable state participates in login checks where applicable, and disabled subjects receive the corresponding error.
+DToken-Go supports account, service, service-level, device-type, and concrete-device restrictions. Base login checks validate credentials only; access points that enforce restrictions must explicitly request the corresponding checks.
 
 ## Disable Types
 
@@ -18,9 +18,11 @@ DToken-Go supports more than account-level banning. It also supports service dis
 
 ## Account Disable
 
-`Disable` destroys the current account session, synchronously retires the terminal credentials listed in it, and removes their linked refresh tokens. Those access tokens report an account-disabled error during the ban and remain invalid after untie or ban expiry. A new login is required. `Untie` only removes the ban; it does not restore the destroyed session.
+`Disable` destroys the current account session, synchronously retires the terminal credentials listed in it, and removes their linked refresh tokens. Base checks return `ErrInvalidToken` for those credentials; explicit restriction checks return an account-disabled error during the ban. They remain invalid after untie or ban expiry, requiring a new login. `Untie` only removes the ban; it does not restore the destroyed session.
 
-A duration of `0` means permanent disable; negative durations are invalid. Setting a ban again replaces its duration and reason and removes matching legacy records, preventing an older ban from reappearing after the new one expires. The operation returns an error if a legacy record cannot be decoded or its ownership cannot be determined.
+Credential cleanup reads each nonempty token's primary key once, distinguishing missing values, retirement markers and credential ownership directly. Existing values whose ownership cannot be verified are not treated as missing keys. Valid credentials retain their details and remaining TTL while being marked revoked, without loading Extra. When an access credential has expired, refresh ownership is still checked before revocation; those refresh reads are additional costs. The Session is deleted only after cleanup succeeds; failures return an error and retain the index for retry.
+
+A duration of `0` means permanent disable; negative durations are invalid. Setting a ban again replaces the duration and reason at its canonical key. Runtime reads, writes, and unties never probe or delete legacy keys. Use [PrepareAuthUpgrade](../../design/namespace-copy.md) to convert old restrictions before cutover. A canonical marker that cannot be decoded, lacks loginId/kind, or belongs to another identity cannot be overwritten.
 
 ```go
 ctx := context.Background()
@@ -89,7 +91,7 @@ This fits layered risk control:
 
 Device disable can target a device type or a concrete device ID.
 
-Device bans preserve the session and terminal credentials. After untie, credentials remain usable if they have not expired or been revoked. Device-type and concrete-device bans are independent: removing one does not remove the other. Concrete-device `IsDisable` / `CheckDisable` checks both levels, while detail and TTL queries return only the requested level. Service bans also preserve the session. Replacing a service or device ban removes matching legacy records as well.
+Device bans preserve the session and terminal credentials. After untie, credentials remain usable if they have not expired or been revoked. Device-type and concrete-device bans are independent: removing one does not remove the other. Concrete-device `IsDisable` / `CheckDisable` checks both levels, while detail and TTL queries return only the requested level. Service bans also preserve the session. Replacing a service or device ban updates only its canonical key.
 
 ```go
 // Disable app access for this account.
@@ -117,12 +119,14 @@ concreteTTL, err := dt.GetDisableDeviceAndDeviceIDTTL(ctx, "10001", "app", "ipho
 
 ## Relationship With Login Checks
 
-Account disable and device disable participate in Token checks:
+Credential validation and access restrictions are separate:
 
-- After an account is disabled, existing Tokens for that account fail login checks.
-- After a device type is disabled, Tokens matching that `device` fail.
-- After a concrete device is disabled, Tokens matching `device + deviceID` fail.
+- Account disabling still retires credentials referenced by Session; base checks return `ErrInvalidToken`, and lifting the ban does not revive them. Credentials outside the index require explicit restriction checks for complete enforcement.
+- Device-type and concrete-device bans are reversible access restrictions, without retiring the credential; `CheckLogin` / `IsLogin` can succeed. HTTP `CheckDisable: true` checks the account, device type, and concrete device and returns the corresponding restriction error.
+- New login, refresh issuance, and introspection still enforce these restrictions. Business code may compose the relevant account and device `CheckDisable*` methods; an account-only check does not replace device checks.
 - Service disable does not block all login state automatically. Call `CheckDisableService` or `CheckDisableServiceLevel` explicitly in the corresponding business entry.
+
+Restriction checks read canonical keys by scope: account, single-service, and device-type checks each use one GET. Concrete-device checks read the device type first, then the concrete device only if needed, for at most two GETs. TTL queries validate ownership with a GET before requesting TTL for a matching record. Untie reuses that record and calls Delete on ordinary storage or GetAndDelete when supported; missing records and deletion failures do not emit success events. Restriction details still use the configured Codec, and ordinary login validation does not gain restriction reads.
 
 ## Multi-Auth Systems
 

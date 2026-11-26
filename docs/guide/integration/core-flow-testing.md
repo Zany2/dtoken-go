@@ -102,7 +102,7 @@ The suite covers:
 The test only deletes keys under its own randomly generated prefix. It does not delete other prefixes, for example:
 
 ```text
-dtoken:gin-core-flow:oauth2:client:demo-client
+dtoken:gin-core-flow:v2:oauth2:client:demo-client
 ```
 
 That kind of key usually comes from manually running the example server or from older test runs.
@@ -123,6 +123,8 @@ Automated flow tests do not need a separately started server.
 
 ## Related Documentation
 
+- [Non-SSO acceptance record and commands (Chinese)](../../design/performance-acceptance_zh.md)
+- [Public Auth API benchmarks](../../../tests/gin_core_flow/README.md)
 - [Redis Storage](../integration/redis-storage.md)
 - [Authentication](../core/authentication.md)
 - [Concurrent Login Policy](../core/concurrency-login.md)

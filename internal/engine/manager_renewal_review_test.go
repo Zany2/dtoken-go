@@ -133,15 +133,15 @@ func TestManagerRenewalDoesNotReportExpiredToken(t *testing.T) {
 	}
 }
 
-// managerExpireBeforeRenewStorage expires the token after its session is read. managerExpireBeforeRenewStorage 在读取 Session 后使 Token 过期。
+// managerExpireBeforeRenewStorage expires the token after its Session TTL is read. managerExpireBeforeRenewStorage 在读取 Session TTL 后使 Token 过期。
 type managerExpireBeforeRenewStorage struct {
 	adapter.Storage
 	tokenKey   string
 	sessionKey string
 }
 
-func (s *managerExpireBeforeRenewStorage) Get(ctx context.Context, key string) (any, error) {
-	value, err := s.Storage.Get(ctx, key)
+func (s *managerExpireBeforeRenewStorage) TTL(ctx context.Context, key string) (time.Duration, error) {
+	value, err := s.Storage.TTL(ctx, key)
 	if err == nil && key == s.sessionKey {
 		err = s.Storage.Delete(ctx, s.tokenKey)
 	}

@@ -5,17 +5,21 @@ import (
 	"strings"
 
 	"github.com/Zany2/dtoken-go/config"
-	"github.com/Zany2/dtoken-go/internal/utils"
 )
 
 // storageNamespace keeps namespace boundaries independent of business key suffixes. storageNamespace 保持命名空间边界独立于业务键后缀。
 func (m *Manager) storageNamespace() string {
-	return utils.StorageNamespace(m.config.KeyPrefix, m.config.AuthType)
+	return m.namespace
 }
 
 // getTokenKey generates the storage key for a token. getTokenKey 获取 Token 存储键。
 func (m *Manager) getTokenKey(tokenValue string) string {
 	return m.storageNamespace() + config.TokenKeyPrefix + tokenValue
+}
+
+// getTokenExtraKey binds extension data to an individual credential lifecycle. getTokenExtraKey 将扩展数据绑定到独立的凭据生命周期。
+func (m *Manager) getTokenExtraKey(accessID string) string {
+	return m.storageNamespace() + "token-extra:" + accessID
 }
 
 // getSessionKey generates the storage key for a session. getSessionKey 获取会话存储键。
@@ -48,19 +52,9 @@ func (m *Manager) getDisableKey(loginID string) string {
 	return m.storageNamespace() + DisableKeyPrefix + escapeStorageKeyComponent(loginID)
 }
 
-// getLegacyDisableKey returns the original account key for identity-checked migration reads. getLegacyDisableKey 返回原账号键，用于核对身份后的兼容读取。
-func (m *Manager) getLegacyDisableKey(loginID string) string {
-	return m.storageNamespace() + DisableKeyPrefix + loginID
-}
-
 // getDisableServiceKey generates the storage key for service disable status. getDisableServiceKey 获取账号分类禁用状态存储键。
 func (m *Manager) getDisableServiceKey(loginID, service string) string {
 	return m.storageNamespace() + DisableServiceKeyPrefix + escapeStorageKeyComponent(loginID) + ":" + escapeStorageKeyComponent(service)
-}
-
-// getLegacyDisableServiceKey returns the pre-escaping service key for migration reads. getLegacyDisableServiceKey 返回转义改造前的服务封禁键，用于兼容读取。
-func (m *Manager) getLegacyDisableServiceKey(loginID, service string) string {
-	return m.storageNamespace() + DisableServiceKeyPrefix + loginID + ":" + service
 }
 
 // getDisableDeviceKey generates the storage key for device disable status. getDisableDeviceKey 获取设备封禁状态存储键。
@@ -68,19 +62,9 @@ func (m *Manager) getDisableDeviceKey(loginID, device string) string {
 	return m.storageNamespace() + DisableDeviceKeyPrefix + escapeStorageKeyComponent(loginID) + ":" + escapeStorageKeyComponent(device)
 }
 
-// getLegacyDisableDeviceKey returns the pre-escaping device key for migration reads. getLegacyDisableDeviceKey 返回转义改造前的设备封禁键，用于兼容读取。
-func (m *Manager) getLegacyDisableDeviceKey(loginID, device string) string {
-	return m.storageNamespace() + DisableDeviceKeyPrefix + loginID + ":" + device
-}
-
 // getDisableDeviceAndDeviceIDKey generates the storage key for concrete device disable status. getDisableDeviceAndDeviceIDKey 获取具体设备封禁状态存储键。
 func (m *Manager) getDisableDeviceAndDeviceIDKey(loginID, device, deviceID string) string {
 	return m.storageNamespace() + DisableDeviceIDKeyPrefix + escapeStorageKeyComponent(loginID) + ":" + escapeStorageKeyComponent(device) + ":" + escapeStorageKeyComponent(deviceID)
-}
-
-// getLegacyDisableDeviceAndDeviceIDKey returns the pre-escaping concrete device key for migration reads. getLegacyDisableDeviceAndDeviceIDKey 返回转义改造前的具体设备封禁键，用于兼容读取。
-func (m *Manager) getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID string) string {
-	return m.storageNamespace() + DisableDeviceIDKeyPrefix + loginID + ":" + device + ":" + deviceID
 }
 
 // escapeStorageKeyComponent escapes composite-key separators while preserving ordinary keys. escapeStorageKeyComponent 转义复合键分隔符，同时保持普通键格式不变。

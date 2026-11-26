@@ -201,7 +201,7 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 		return nil, accessErr
 	}
 	if accessErr == nil && refreshMatchesAccessRecord(info, access) {
-		_, _, expired, inspectErr := m.inspectLoginToken(ctx, info.AccessToken, access)
+		_, _, expired, inspectErr := m.inspectLoginTokenRecord(ctx, info.AccessToken, access, false)
 		if inspectErr != nil {
 			return nil, inspectErr
 		}
@@ -231,18 +231,11 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*Refre
 		}
 	}
 
-	// Prefer atomic consumption and fall back to the account lock for basic storage implementations. 优先原子消费；基础存储实现回退为账号锁保护的读取删除。
-	consumedInfo, err := m.consumeRefreshToken(ctx, refreshToken)
+	// Reuse the locked snapshot for basic storage; atomic consumption verifies the returned lifecycle. 基础存储复用锁内快照；原子消费核对返回的生命周期。
+	info, err = m.consumeRefreshToken(ctx, refreshToken, info)
 	if err != nil {
 		return nil, err
 	}
-	if consumedInfo.LoginID != info.LoginID ||
-		consumedInfo.AccessToken != info.AccessToken ||
-		consumedInfo.AccessID != info.AccessID ||
-		consumedInfo.CreateTime != info.CreateTime {
-		return nil, derror.ErrInvalidRefreshToken
-	}
-	info = consumedInfo
 	if err = m.removeRefreshTokenReverseLookup(ctx, info.AccessToken, refreshToken); err != nil {
 		return nil, err
 	}
@@ -302,18 +295,20 @@ func (m *Manager) RevokeRefreshToken(ctx context.Context, refreshToken string) e
 	unlock := m.lockLoginWrite(loginID)
 	defer func() { unlock() }()
 
-	// Reload and consume first so a concurrent refresh cannot succeed after revocation wins. 先重新加载并消费，确保撤销先完成时并发刷新无法成功。
-	info, err = m.getRefreshTokenInfo(ctx, refreshToken)
-	if err != nil {
-		if errors.Is(err, derror.ErrInvalidRefreshToken) {
-			return nil
+	// Atomic consumption supplies the current record; only basic storage needs a locked read before deletion. 原子消费返回当前记录；仅基础存储需要在删除前进行锁内读取。
+	if _, atomic := m.storage.(adapter.AtomicStorage); !atomic {
+		info, err = m.getRefreshTokenInfo(ctx, refreshToken)
+		if err != nil {
+			if errors.Is(err, derror.ErrInvalidRefreshToken) {
+				return nil
+			}
+			return err
 		}
-		return err
+		if info.LoginID != loginID {
+			return derror.ErrInvalidRefreshToken
+		}
 	}
-	if info.LoginID != loginID {
-		return derror.ErrInvalidRefreshToken
-	}
-	info, err = m.consumeRefreshToken(ctx, refreshToken)
+	info, err = m.consumeRefreshToken(ctx, refreshToken, info)
 	if err != nil {
 		if errors.Is(err, derror.ErrInvalidRefreshToken) {
 			return nil
@@ -388,6 +383,9 @@ func (m *Manager) issueRefreshToken(ctx context.Context, expected *refreshTokenR
 	}
 	if !alive {
 		return nil, derror.ErrInvalidToken
+	}
+	if err = m.loadTokenExtra(ctx, tokenInfo); err != nil {
+		return nil, err
 	}
 
 	// Only a verified original login may remove its stale reverse mapping. 只有确认原登录身份后才能清理其陈旧反向映射。
@@ -477,9 +475,9 @@ func (m *Manager) getRefreshTokenInfo(ctx context.Context, refreshToken string) 
 	return m.decodeRefreshTokenInfo(data)
 }
 
-// consumeRefreshToken removes and returns refresh metadata once. consumeRefreshToken 一次性删除并返回刷新令牌元数据。
-func (m *Manager) consumeRefreshToken(ctx context.Context, refreshToken string) (*refreshTokenRecord, error) {
-	if refreshToken == "" {
+// consumeRefreshToken consumes the expected lifecycle under the account lock; basic storage requires a locked snapshot. consumeRefreshToken 在账号锁内消费预期生命周期；基础存储要求传入锁内快照。
+func (m *Manager) consumeRefreshToken(ctx context.Context, refreshToken string, expected *refreshTokenRecord) (*refreshTokenRecord, error) {
+	if refreshToken == "" || expected == nil {
 		return nil, derror.ErrInvalidRefreshToken
 	}
 
@@ -493,21 +491,22 @@ func (m *Manager) consumeRefreshToken(ctx context.Context, refreshToken string) 
 		if data == nil {
 			return nil, derror.ErrInvalidRefreshToken
 		}
-		return m.decodeRefreshTokenInfo(data)
+		current, err := m.decodeRefreshTokenInfo(data)
+		if err != nil {
+			return nil, err
+		}
+		if current.LoginID != expected.LoginID || current.AccessToken != expected.AccessToken ||
+			current.AccessID != expected.AccessID || current.CreateTime != expected.CreateTime {
+			return nil, derror.ErrInvalidRefreshToken
+		}
+		return current, nil
 	}
 
-	// Caller holds the account lock for the ordinary Get/Delete fallback. 普通 Get/Delete 回退由调用方持有账号锁保护。
-	data, err := m.storage.Get(ctx, key)
-	if err != nil {
+	// Reuse the record loaded under this lock instead of reading and decoding it a third time. 复用本次锁内已加载的记录，避免第三次读取和解码。
+	if err := m.storage.Delete(ctx, key); err != nil {
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
-	if data == nil {
-		return nil, derror.ErrInvalidRefreshToken
-	}
-	if err = m.storage.Delete(ctx, key); err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-	}
-	return m.decodeRefreshTokenInfo(data)
+	return expected, nil
 }
 
 // decodeRefreshTokenInfo decodes stored refresh metadata. decodeRefreshTokenInfo 解码存储中的刷新令牌元数据。

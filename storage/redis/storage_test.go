@@ -20,7 +20,7 @@ func TestStorageContract(t *testing.T) {
 	storagetest.RunStorageContract(t, func(t *testing.T) adapter.FullStorage {
 		storage, err := NewStorage(redisTestURL(t))
 		if err != nil {
-			t.Skipf("skip redis storage contract: %v", err)
+			t.Fatalf("connect configured Redis for storage contract: %v", err)
 		}
 		t.Cleanup(func() {
 			_ = storage.Close()
@@ -213,7 +213,7 @@ func TestWithOperationTimeoutPreservesParentCancellation(t *testing.T) {
 func TestNewStorageFromConfigConnects(t *testing.T) {
 	storage, err := NewStorageFromConfig(redisTestConfig(t))
 	if err != nil {
-		t.Skipf("skip redis storage connectivity test: %v", err)
+		t.Fatalf("connect configured Redis for connectivity test: %v", err)
 	}
 	defer func() {
 		if err := storage.Close(); err != nil {

@@ -4,6 +4,28 @@
 
 本文维护旧路径与 API 的升级步骤、发布顺序和消费者验证方式。当前系统分层见[架构设计](architecture_zh.md)，包与模块边界见[模块化设计](modular_zh.md)，代码位置见[源码目录](source-layout_zh.md)。
 
+当前 Manager 及 Nonce/OAuth2/Ticket/ShortKey 均在编码后的 KeyPrefix、AuthType 之后增加固定 `v2:` 段，不回退读取无版本空间。部署前参见[离线迁移](namespace-copy_zh.md)，使用 `PrepareAuthUpgrade` 将旧数据转换到实际版本化目标；两个前缀可以相同。`Prepare` 和 `PrepareTokenUpgrade` 保留无版本复制或暂存语义，不能代替完整升级。归属歧义和目标冲突会使预检失败；工具不会启动应用或清理旧数据，新空间内部的兼容解析清理仍待完成。
+
+## 登录校验与封禁拆分
+
+本轮性能重构不再让 `CheckLogin`、`IsLogin`、身份查询、按 Token 访问 Session 和角色权限方法隐式读取封禁。临时设备封禁下凭据仍可有效；账号封禁已经废弃的凭据则返回 `ErrInvalidToken`。需要具体封禁原因时使用显式检查，自省仍执行限制检查。
+
+升级受保护路由时，将原来依赖隐式封禁的 `AuthMiddleware` 改为 `AccessMiddleware`，通过 `WithRouteAccessHandler` 设置 `req.CheckDisable = true`；使用注解时设置 `CheckDisable: true`。直接使用公共 HTTP 检查时设置 `httpauth.Request.CheckDisable`。这些入口复用一次 Token 身份读取，覆盖账号、设备类型和具体设备。只要求登录态的路由可以继续使用 `AuthMiddleware`。
+
+封禁检查仍同步决定本次访问结果，并在提交登录维护任务前执行。启用活跃超时会额外读取活跃记录；权限回退、自省和异步续期的开销不计入“基础校验一次 GET”。示例路由已显式声明限制；应用升级时也需要同步声明，不能仅替换依赖版本。
+
+## 续期与活跃维护
+
+续期维护也已按实际需要访问 Session：自动续期检查 key 的 TTL，不校验 Session 内容；缺失时不续期，也不重建。仅活跃更新不再依赖 Session 存在。手动续期、共享登录及依赖 Session 内容的业务操作保留前置校验。自定义存储可选实现 `contract.PersistentStorage` 来避免永久化时读取和写回完整值；原有 `Expire(<=0)` 删除语义不变。
+
+Session 内容及未续期的活跃值更新优先使用可选 `contract.UpdateStorage`。Redis 使用 `SET XX KEEPTTL`，Memory 和普通存储保留 TTL + Set 非原子回退。基础 Storage 和 FullStorage 接口不强制增加方法。
+
+池满或无池时不再创建额外 goroutine：自动续期跳过本次任务，活跃更新、显式 `LoginByToken` 和事件投递同步回退。独立事件管理器需要通过 `SetAsyncPool` 配置池才能异步执行；`TriggerSync` 按优先级内联执行直接监听器。应用不能依赖这些回调一定在另一个 goroutine 运行，也不应在回调内等待同一事件的其他回调或调用等待自身完成的 Close/Wait。
+
+## Provider 按需回退
+
+按 Token 查询权限、角色和 HTTP 组合授权不再预先加载 Session。有效凭据由 Provider 返回非 `nil` 数据时，Session 缺失或损坏不再阻止授权；空列表仍表示明确无权限，不会回退。仅 Provider 未配置或返回 `nil` 时读取 Session，组合检查最多复用一次正常路径读取。依赖 Session 存在性控制访问的应用应通过注销、踢出等 API 撤销凭据，或在业务策略中显式检查会话；不能继续用删除 Session 代替撤销。完整自省的 Session 校验约定保持不变。
+
 ## 错误处理接口迁移
 
 框架不再提供主动 panic 的构建和上下文读取接口，调用方负责处理返回错误：

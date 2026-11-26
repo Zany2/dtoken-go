@@ -62,7 +62,9 @@ func registerRoutes(h *server.Hertz, authInstance *dtoken.Auth) error {
 	h.POST("/login", handleLogin)
 
 	auth := h.Group("/")
-	auth.Use(hertzdt.AuthMiddleware(ctx, hertzdt.WithFailFunc(writeAuthError)))
+	auth.Use(hertzdt.AccessMiddleware(ctx, hertzdt.WithFailFunc(writeAuthError), hertzdt.WithRouteAccessHandler(func(_ context.Context, _ *hertzapp.RequestContext, req *hertzdt.RouteAccessRequest) {
+		req.CheckDisable = true
+	})))
 	auth.GET("/me", handleMe)
 	auth.GET("/admin", hertzdt.RoleMiddleware(ctx, []string{"admin"}, hertzdt.WithFailFunc(writeAuthError)), handleAdmin)
 	auth.GET("/articles", hertzdt.PermissionMiddleware(ctx, []string{"article:read"}, hertzdt.WithFailFunc(writeAuthError)), handleArticles)

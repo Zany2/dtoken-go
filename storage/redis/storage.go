@@ -52,9 +52,11 @@ type Storage struct {
 
 // Interface assertion keeps storage contract checked at compile time 接口断言在编译期检查存储契约
 var (
-	_ adapter.Storage       = (*Storage)(nil)
-	_ adapter.AtomicStorage = (*Storage)(nil)
-	_ adapter.FullStorage   = (*Storage)(nil)
+	_ adapter.Storage           = (*Storage)(nil)
+	_ adapter.AtomicStorage     = (*Storage)(nil)
+	_ adapter.FullStorage       = (*Storage)(nil)
+	_ adapter.PersistentStorage = (*Storage)(nil)
+	_ adapter.UpdateStorage     = (*Storage)(nil)
 )
 
 // NewStorage creates storage from a Redis URL 通过 Redis URL 创建存储
@@ -305,6 +307,45 @@ func (s *Storage) Expire(ctx context.Context, key string, expiration time.Durati
 	}
 	if !ok {
 		// Handle Redis zero result when the key is missing Redis 返回 0：key 不存在或已过期
+		return derror.ErrKeyNotFound
+	}
+	return nil
+}
+
+// Update replaces an existing value while retaining its absolute expiration. Update 替换已有值并保留其绝对过期时间。
+func (s *Storage) Update(ctx context.Context, key string, value any) error {
+	if err := s.ensureReady(); err != nil {
+		return err
+	}
+	ctx, cancel := s.withOperationTimeout(ctx)
+	defer cancel()
+	err := s.client.SetArgs(ctx, key, value, redis.SetArgs{Mode: "XX", KeepTTL: true}).Err()
+	if errors.Is(err, redis.Nil) {
+		return derror.ErrKeyNotFound
+	}
+	return err
+}
+
+// Persist removes expiration and distinguishes missing keys from already persistent keys. Persist 移除有效期，并区分缺失键与已有永久键。
+func (s *Storage) Persist(ctx context.Context, key string) error {
+	if err := s.ensureReady(); err != nil {
+		return err
+	}
+	ctx, cancel := s.withOperationTimeout(ctx)
+	defer cancel()
+	ok, err := s.client.Persist(ctx, key).Result()
+	if err != nil {
+		return err
+	}
+	if ok {
+		return nil
+	}
+	// PERSIST also returns false for existing permanent keys. PERSIST 对已有永久键也返回 false。
+	count, err := s.client.Exists(ctx, key).Result()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
 		return derror.ErrKeyNotFound
 	}
 	return nil

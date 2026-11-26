@@ -9,6 +9,7 @@ import (
 	adapter "github.com/Zany2/dtoken-go/contract"
 	derror "github.com/Zany2/dtoken-go/errors"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
+	"github.com/Zany2/dtoken-go/internal/utils"
 )
 
 // TestSessionWritesRevalidateToken verifies a revoked request token cannot mutate an existing account session. TestSessionWritesRevalidateToken 验证请求 Token 撤销后不能修改仍存在的账号会话。
@@ -30,8 +31,7 @@ func TestSessionWritesRevalidateToken(t *testing.T) {
 			}
 			cfg := mgr.GetConfig()
 			req.headers[cfg.TokenName] = token
-			storage.sessionKey = cfg.KeyPrefix + cfg.AuthType + manager.SessionKeyPrefix + "session-user"
-			storage.tokenKey = cfg.KeyPrefix + cfg.AuthType + config.TokenKeyPrefix + token
+			storage.tokenKey = utils.StorageNamespace(cfg.KeyPrefix, cfg.AuthType) + config.TokenKeyPrefix + token
 			storage.armed = true
 
 			if operation == "set" {
@@ -53,17 +53,16 @@ func TestSessionWritesRevalidateToken(t *testing.T) {
 	}
 }
 
-// sessionRevokingStorage deterministically revokes the token between validation and the session mutation. sessionRevokingStorage 确定性地在校验与会话修改之间撤销 Token。
+// sessionRevokingStorage revokes the captured token before account-lock revalidation. sessionRevokingStorage 在账号锁内复核前撤销已捕获的 Token。
 type sessionRevokingStorage struct {
 	adapter.Storage
-	sessionKey string
-	tokenKey   string
-	armed      bool
+	tokenKey string
+	armed    bool
 }
 
 func (s *sessionRevokingStorage) Get(ctx stdctx.Context, key string) (any, error) {
 	value, err := s.Storage.Get(ctx, key)
-	if err == nil && s.armed && key == s.sessionKey {
+	if err == nil && s.armed && key == s.tokenKey {
 		s.armed = false
 		if err = s.Storage.Delete(ctx, s.tokenKey); err != nil {
 			return nil, err

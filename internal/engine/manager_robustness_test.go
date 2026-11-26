@@ -119,8 +119,8 @@ func TestManagerTemporaryDeviceDisablePreservesToken(t *testing.T) {
 	if err = mgr.DisableDevice(ctx, "temporary-device-disable", "web", time.Minute); err != nil {
 		t.Fatalf("DisableDevice() error = %v", err)
 	}
-	if err = mgr.CheckLogin(ctx, token); !errors.Is(err, derror.ErrDeviceDisabled) {
-		t.Fatalf("CheckLogin(disabled device) error = %v, want ErrDeviceDisabled", err)
+	if err = mgr.CheckLogin(ctx, token); err != nil {
+		t.Fatalf("CheckLogin(disabled device) error = %v, want valid credential", err)
 	}
 
 	// A login on another device exercises session cleanup while the original device is disabled. 在另一设备登录以覆盖设备封禁期间的会话清理路径。
@@ -164,6 +164,7 @@ func TestManagerCompositeDisableKeysAreInjective(t *testing.T) {
 	if err := mgr.saveToStorage(ctx, mgr.getLegacyDisableServiceKey("legacy:user", "billing"), legacyInfo, time.Minute); err != nil {
 		t.Fatalf("save legacy service key error = %v", err)
 	}
+	upgradeTestDisableMarker(t, mgr, mgr.getLegacyDisableServiceKey("legacy:user", "billing"))
 	if info, err := mgr.GetDisableServiceInfo(ctx, "legacy:user", "billing"); err != nil || info.Level != 1 {
 		t.Fatalf("GetDisableServiceInfo(legacy key) = %+v, %v, want legacy record", info, err)
 	}
@@ -175,7 +176,7 @@ func TestManagerCompositeDisableKeysAreInjective(t *testing.T) {
 	}
 }
 
-// TestManagerLegacyCompositeDisableKeyCollisionsAreIsolated verifies legacy key collisions cannot affect another disable identity. TestManagerLegacyCompositeDisableKeyCollisionsAreIsolated 验证旧复合键碰撞不会影响其他封禁身份。
+// TestManagerLegacyCompositeDisableKeyCollisionsAreIsolated verifies migration separates colliding legacy keys before runtime access. TestManagerLegacyCompositeDisableKeyCollisionsAreIsolated 验证迁移在运行时访问前分离存在碰撞的旧复合键。
 func TestManagerLegacyCompositeDisableKeyCollisionsAreIsolated(t *testing.T) {
 	ctx := context.Background()
 
@@ -189,6 +190,8 @@ func TestManagerLegacyCompositeDisableKeyCollisionsAreIsolated(t *testing.T) {
 		if err := mgr.saveToStorage(ctx, ownerKey, ServiceDisableInfo{Service: "one:billing", Level: 2}, time.Minute); err != nil {
 			t.Fatalf("save legacy service marker error = %v", err)
 		}
+		upgradeTestDisableMarker(t, mgr, ownerKey)
+		ownerKey = mgr.getDisableServiceKey("user", "one:billing")
 
 		if mgr.IsDisableService(ctx, "user:one", "billing") {
 			t.Fatal("IsDisableService(colliding identity) = true, want false")
@@ -223,6 +226,8 @@ func TestManagerLegacyCompositeDisableKeyCollisionsAreIsolated(t *testing.T) {
 		if err := mgr.saveToStorage(ctx, ownerKey, DeviceDisableInfo{Device: "one:web"}, time.Minute); err != nil {
 			t.Fatalf("save legacy device marker error = %v", err)
 		}
+		upgradeTestDisableMarker(t, mgr, ownerKey)
+		ownerKey = mgr.getDisableDeviceKey("user", "one:web")
 
 		if mgr.IsDisableDevice(ctx, "user:one", "web") {
 			t.Fatal("IsDisableDevice(colliding identity) = true, want false")
@@ -257,6 +262,8 @@ func TestManagerLegacyCompositeDisableKeyCollisionsAreIsolated(t *testing.T) {
 		if err := mgr.saveToStorage(ctx, ownerKey, DeviceDisableInfo{Device: "web", DeviceID: "phone:one"}, time.Minute); err != nil {
 			t.Fatalf("save legacy concrete device marker error = %v", err)
 		}
+		upgradeTestDisableMarker(t, mgr, ownerKey)
+		ownerKey = mgr.getDisableDeviceAndDeviceIDKey("user", "web", "phone:one")
 
 		if mgr.IsDisableDeviceAndDeviceID(ctx, "user", "web:phone", "one") {
 			t.Fatal("IsDisableDeviceAndDeviceID(colliding identity) = true, want false")

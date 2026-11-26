@@ -71,6 +71,22 @@ Service interfaces isolate HTTP from implementations; they do not imply automati
 
 Manager organizes account coordination, Token maintenance, and runtime shutdown state within one implementation package. See the [engine file index](source-layout.md#engine-file-index). Correctness of concurrency, storage operations, and business flows is verified separately during feature reviews.
 
+## Token storage and validation
+
+Permissions and roles are resolved on demand. Token authorization validates credentials and builds `AccessSubject` before consulting the provider, without preloading Session. Session is read only when the provider is absent or returns nil; combined checks share that read and skip roles after permission rejection. Full introspection retains its separate Session validation.
+
+New tokens use the engine-private `dtk:2:` primary format for identity, state, lifecycle ID, timeout settings, and terminal association, without embedding Extra. Storage TTL determines absolute expiration. Base checks read and parse small fields without the general Codec, Extra reads, or Session reads on the normal path. With inactivity timeout disabled, base login validation performs one foreground Token GET. Explicit access checks enforce restrictions synchronously; inactivity checks, permission queries, and background maintenance have separate costs.
+
+Non-nil Extra creates a separate `token-extra:<accessID>` record using the configured Codec; empty maps are preserved. Token details, introspection, and refresh issuance load it when needed. Renewal maintains its lifetime, and logout, kickout, replacement, and refresh revocation remove it. Missing or corrupt extensions cause detail reads to fail without independently invalidating the primary credential or blocking logout. Account disabling retains its existing revoked-credential metadata behavior.
+
+Sessions, refresh credentials, and capability objects still use Codec. Manager, Nonce, OAuth2, Ticket, and ShortKey share `{encoded KeyPrefix}{encoded AuthType}v2:` without falling back to unversioned storage. Upgrade using [PrepareAuthUpgrade](namespace-copy.md) during a stopped-writer window. Runtime access credentials accept only compact records with an explicit AuthType and AccessID; legacy Token Codec decoding and anonymous writes have been removed. Restrictions now read only their canonical key and require explicit ownership and kind; legacy key interpretation is confined to offline migration. Terminal pruning follows policy scopes and count thresholds, avoiding unconditional token probes during login; Session reads and writes remain. See the [implementation plan (Chinese)](performance-refactor-plan_zh.md) for progress.
+
+## Independent capability operations
+
+Independent capabilities coordinate writes only for the credential involved: ShortKey serializes creation, confirmation, consumption, and revocation per key; Ticket does the same for ordinary-storage consumption and revocation. Lock entries are reclaimed after holders and waiters leave. This coordination is local to one Manager and does not replace cross-instance atomic storage capabilities.
+
+Ticket, ShortKey, and OAuth2 Service revocation reuse the record processed by the internal operation to emit events, avoiding extra credential reads and decoding. Each normal revocation reads once; pending ShortKeys retain their existing event fields. OAuth2 combines access-token and refresh-token removal into one Delete call without requiring multi-key transactions. Public APIs and one-time consumption checks remain unchanged.
+
 ## Public API and lifecycle boundaries
 
 Applications prefer Auth; Manager is a supported advanced API. Engine type aliases exposed by the root remain public APIs, with compatibility obligations even when their implementation path is internal. Shared models such as TokenInfo, Session, and TerminalInfo are declared in contract.
@@ -87,4 +103,4 @@ Auth facades, registry registration, and framework bindings may share one engine
 | [API and lifecycle](api-lifecycle.md) | Public APIs, component ownership, instance sharing, and shutdown |
 | [Migration guide](module-migration.md) | Old-path migration, release ordering, and consumer verification |
 
-Feature details live in [authentication](../guide/core/authentication.md), [Session and terminals](../guide/core/session-terminal.md), [permissions and roles](../guide/core/permission.md), [refresh tokens](../guide/security/refresh-token.md), and [auto-renewal design](auto-renew.md). [contract/model.go](../../contract/model.go) defines shared persisted models; storage namespaces are described in the [configuration guide](../guide/reference/configuration.md).
+Feature details live in [authentication](../guide/core/authentication.md), [Session and terminals](../guide/core/session-terminal.md), [permissions and roles](../guide/core/permission.md), [refresh tokens](../guide/security/refresh-token.md), and [auto-renewal design](auto-renew.md). [contract/model.go](../../contract/model.go) defines public shared models; [internal_token_record.go](../../internal/engine/internal_token_record.go) defines the private token primary format. Storage namespaces are described in the [configuration guide](../guide/reference/configuration.md).

@@ -15,6 +15,7 @@ import (
 
 	"github.com/Zany2/dtoken-go"
 	derror "github.com/Zany2/dtoken-go/errors"
+	"github.com/Zany2/dtoken-go/httpauth"
 	"github.com/gin-gonic/gin"
 )
 
@@ -193,10 +194,12 @@ func (app application) handleLogout(c *gin.Context) {
 	writeJSON(c, http.StatusOK, 0, "ok", nil)
 }
 
-// authMiddleware checks login state authMiddleware 校验登录状态
+// authMiddleware checks credentials and explicit account/device restrictions. authMiddleware 校验凭据并显式检查账号与设备封禁。
 func (app application) authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := app.auth.CheckLogin(c.Request.Context(), currentToken(c)); err != nil {
+		if _, err := httpauth.Check(c.Request.Context(), app.auth.Manager(), httpauth.Request{
+			TokenValue: currentToken(c), CheckLogin: true, CheckDisable: true, LoginError: derror.ErrInvalidToken,
+		}); err != nil {
 			writeAuthError(c, err)
 			c.Abort()
 			return

@@ -2,6 +2,8 @@
 
 [English](DEPLOYMENT_MODES.md)
 
+新增本地兑换入口为 `ClientConfig.ExchangeService`，可直接调用公共兑换核心。下文 `SharedStoreServer` 装配仍为兼容入口。新入口、部署校验和后续会话接入边界见[第一阶段说明](EXCHANGE_CORE_zh.md)。
+
 统一登录的主线始终是：中心认证用户，应用认可可信登录结果，其他应用复用中心登录状态，退出时撤销关联会话。部署方式决定身份传递路径；`ModeTicket`、`ModeOAuth2`、`ModeSharedToken`、`ModeRemoteSession` 是凭证类型，不是以下部署分类。
 
 | 部署方式 | 身份传递 | 本地会话与退出 | 当前接入 |

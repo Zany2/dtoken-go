@@ -1,0 +1,396 @@
+=== RUN   TestManagerDisableCanonicalIsolation
+=== RUN   TestManagerDisableCanonicalIsolation/account
+=== RUN   TestManagerDisableCanonicalIsolation/service
+=== RUN   TestManagerDisableCanonicalIsolation/device_type
+=== RUN   TestManagerDisableCanonicalIsolation/concrete_device
+--- PASS: TestManagerDisableCanonicalIsolation (10.30s)
+    --- PASS: TestManagerDisableCanonicalIsolation/account (2.59s)
+    --- PASS: TestManagerDisableCanonicalIsolation/service (2.54s)
+    --- PASS: TestManagerDisableCanonicalIsolation/device_type (2.54s)
+    --- PASS: TestManagerDisableCanonicalIsolation/concrete_device (2.63s)
+=== RUN   TestManagerIntrospectionRejectsForeignAuthType
+--- PASS: TestManagerIntrospectionRejectsForeignAuthType (1.06s)
+=== RUN   TestManagerRotationFailureCleanupChecksReplacementIdentity
+=== RUN   TestManagerRotationFailureCleanupChecksReplacementIdentity/original_replacement
+=== RUN   TestManagerRotationFailureCleanupChecksReplacementIdentity/reused_replacement
+--- PASS: TestManagerRotationFailureCleanupChecksReplacementIdentity (6.70s)
+    --- PASS: TestManagerRotationFailureCleanupChecksReplacementIdentity/original_replacement (2.57s)
+    --- PASS: TestManagerRotationFailureCleanupChecksReplacementIdentity/reused_replacement (4.12s)
+=== RUN   TestTokenRecordJSONCompatibility
+--- PASS: TestTokenRecordJSONCompatibility (0.00s)
+=== RUN   TestRefreshTokenRecordJSONCompatibility
+--- PASS: TestRefreshTokenRecordJSONCompatibility (0.00s)
+=== RUN   TestManagerRefreshTokenReverseLookupTTLDoesNotExceedRefreshTTL
+--- PASS: TestManagerRefreshTokenReverseLookupTTLDoesNotExceedRefreshTTL (1.02s)
+=== RUN   TestManagerRefreshTokenExpires
+    auth_refresh_test.go:300: LoginWithRefreshTokenOptions() error = invalid refresh token
+--- FAIL: TestManagerRefreshTokenExpires (1.33s)
+=== RUN   TestManagerRefreshTokenKeepsOldAccessTokenOnNewTokenFailure
+--- PASS: TestManagerRefreshTokenKeepsOldAccessTokenOnNewTokenFailure (0.00s)
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/plain
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/plain/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/plain/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/star
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/star/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/star/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/question_mark
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/question_mark/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/question_mark/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/backslash
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/backslash/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/backslash/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/character_class
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/character_class/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/character_class/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/open_bracket
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/open_bracket/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/open_bracket/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/close_bracket
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/close_bracket/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/close_bracket/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/plain
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/plain/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/plain/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/star
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/star/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/star/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/question_mark
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/question_mark/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/question_mark/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/backslash
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/backslash/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/backslash/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/character_class
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/character_class/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/character_class/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/open_bracket
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/open_bracket/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/open_bracket/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/close_bracket
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/close_bracket/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/close_bracket/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/plain
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/plain/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/plain/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/star
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/star/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/star/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/question_mark
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/question_mark/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/question_mark/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/backslash
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/backslash/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/backslash/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/character_class
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/character_class/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/character_class/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/open_bracket
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/open_bracket/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/open_bracket/sessions
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/close_bracket
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/close_bracket/tokens
+=== RUN   TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/close_bracket/sessions
+--- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/plain (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/plain/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/plain/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/star (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/star/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/star/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/question_mark (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/question_mark/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/question_mark/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/backslash (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/backslash/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/backslash/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/character_class (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/character_class/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/character_class/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/open_bracket (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/open_bracket/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/open_bracket/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/close_bracket (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/close_bracket/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/key_prefix/close_bracket/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/plain (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/plain/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/plain/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/star (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/star/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/star/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/question_mark (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/question_mark/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/question_mark/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/backslash (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/backslash/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/backslash/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/character_class (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/character_class/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/character_class/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/open_bracket (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/open_bracket/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/open_bracket/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/close_bracket (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/close_bracket/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/auth_type/close_bracket/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/plain (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/plain/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/plain/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/star (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/star/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/star/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/question_mark (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/question_mark/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/question_mark/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/backslash (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/backslash/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/backslash/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/character_class (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/character_class/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/character_class/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/open_bracket (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/open_bracket/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/open_bracket/sessions (0.00s)
+    --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/close_bracket (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/close_bracket/tokens (0.00s)
+        --- PASS: TestManagerSearchTreatsNamespacesAndKeywordsLiterally/keyword/close_bracket/sessions (0.00s)
+=== RUN   TestManagerDirectRetirementRejectsLifecycleSwap
+=== RUN   TestManagerDirectRetirementRejectsLifecycleSwap/logout
+=== RUN   TestManagerDirectRetirementRejectsLifecycleSwap/kickout
+=== RUN   TestManagerDirectRetirementRejectsLifecycleSwap/replace
+--- PASS: TestManagerDirectRetirementRejectsLifecycleSwap (13.29s)
+    --- PASS: TestManagerDirectRetirementRejectsLifecycleSwap/logout (4.87s)
+    --- PASS: TestManagerDirectRetirementRejectsLifecycleSwap/kickout (3.96s)
+    --- PASS: TestManagerDirectRetirementRejectsLifecycleSwap/replace (4.46s)
+=== RUN   TestManagerScopedTerminationPersistsStateDuringTemporaryDisable
+=== RUN   TestManagerScopedTerminationPersistsStateDuringTemporaryDisable/kickout
+=== RUN   TestManagerScopedTerminationPersistsStateDuringTemporaryDisable/replace
+--- PASS: TestManagerScopedTerminationPersistsStateDuringTemporaryDisable (3.66s)
+    --- PASS: TestManagerScopedTerminationPersistsStateDuringTemporaryDisable/kickout (1.79s)
+    --- PASS: TestManagerScopedTerminationPersistsStateDuringTemporaryDisable/replace (1.88s)
+=== RUN   TestDisableMigrationRejectsAmbiguityAndConflicts
+=== RUN   TestDisableMigrationRejectsAmbiguityAndConflicts/unknown_kind
+=== RUN   TestDisableMigrationRejectsAmbiguityAndConflicts/missing_device
+=== RUN   TestDisableMigrationRejectsAmbiguityAndConflicts/negative_level
+=== RUN   TestDisableMigrationRejectsAmbiguityAndConflicts/corrupt
+=== RUN   TestDisableMigrationRejectsAmbiguityAndConflicts/duplicate_destination
+=== RUN   TestDisableMigrationRejectsAmbiguityAndConflicts/ownerless_backslash
+=== RUN   TestDisableMigrationRejectsAmbiguityAndConflicts/different_owner
+=== RUN   TestDisableMigrationRejectsAmbiguityAndConflicts/different_kind
+=== RUN   TestDisableMigrationRejectsAmbiguityAndConflicts/mixed_fields
+=== RUN   TestDisableMigrationRejectsAmbiguityAndConflicts/wrong_service_suffix
+=== RUN   TestDisableMigrationRejectsAmbiguityAndConflicts/empty_account
+=== RUN   TestDisableMigrationRejectsAmbiguityAndConflicts/untrimmed_device
+=== RUN   TestDisableMigrationRejectsAmbiguityAndConflicts/null
+=== RUN   TestDisableMigrationRejectsAmbiguityAndConflicts/kind_without_owner
+--- PASS: TestDisableMigrationRejectsAmbiguityAndConflicts (0.00s)
+    --- PASS: TestDisableMigrationRejectsAmbiguityAndConflicts/unknown_kind (0.00s)
+    --- PASS: TestDisableMigrationRejectsAmbiguityAndConflicts/missing_device (0.00s)
+    --- PASS: TestDisableMigrationRejectsAmbiguityAndConflicts/negative_level (0.00s)
+    --- PASS: TestDisableMigrationRejectsAmbiguityAndConflicts/corrupt (0.00s)
+    --- PASS: TestDisableMigrationRejectsAmbiguityAndConflicts/duplicate_destination (0.00s)
+    --- PASS: TestDisableMigrationRejectsAmbiguityAndConflicts/ownerless_backslash (0.00s)
+    --- PASS: TestDisableMigrationRejectsAmbiguityAndConflicts/different_owner (0.00s)
+    --- PASS: TestDisableMigrationRejectsAmbiguityAndConflicts/different_kind (0.00s)
+    --- PASS: TestDisableMigrationRejectsAmbiguityAndConflicts/mixed_fields (0.00s)
+    --- PASS: TestDisableMigrationRejectsAmbiguityAndConflicts/wrong_service_suffix (0.00s)
+    --- PASS: TestDisableMigrationRejectsAmbiguityAndConflicts/empty_account (0.00s)
+    --- PASS: TestDisableMigrationRejectsAmbiguityAndConflicts/untrimmed_device (0.00s)
+    --- PASS: TestDisableMigrationRejectsAmbiguityAndConflicts/null (0.00s)
+    --- PASS: TestDisableMigrationRejectsAmbiguityAndConflicts/kind_without_owner (0.00s)
+=== RUN   TestManagerGetTokenAndShareHandlesNilSession
+--- PASS: TestManagerGetTokenAndShareHandlesNilSession (0.32s)
+=== RUN   TestManagerEventAdmissionPreservesObservers
+=== RUN   TestManagerEventAdmissionPreservesObservers/statistics
+=== RUN   TestManagerEventAdmissionPreservesObservers/filter
+=== RUN   TestManagerEventAdmissionPreservesObservers/logger
+=== RUN   TestManagerEventAdmissionPreservesObservers/wildcard
+=== RUN   TestManagerEventAdmissionPreservesObservers/specific
+=== RUN   TestManagerEventAdmissionPreservesObservers/disabled
+--- PASS: TestManagerEventAdmissionPreservesObservers (1.93s)
+    --- PASS: TestManagerEventAdmissionPreservesObservers/statistics (0.33s)
+    --- PASS: TestManagerEventAdmissionPreservesObservers/filter (0.37s)
+    --- PASS: TestManagerEventAdmissionPreservesObservers/logger (0.30s)
+    --- PASS: TestManagerEventAdmissionPreservesObservers/wildcard (0.29s)
+    --- PASS: TestManagerEventAdmissionPreservesObservers/specific (0.36s)
+    --- PASS: TestManagerEventAdmissionPreservesObservers/disabled (0.29s)
+=== RUN   TestManagerValueUpdatePrefersCapability
+=== RUN   TestManagerValueUpdatePrefersCapability/success
+=== RUN   TestManagerValueUpdatePrefersCapability/expired
+=== RUN   TestManagerValueUpdatePrefersCapability/unavailable
+--- PASS: TestManagerValueUpdatePrefersCapability (1.02s)
+    --- PASS: TestManagerValueUpdatePrefersCapability/success (0.32s)
+    --- PASS: TestManagerValueUpdatePrefersCapability/expired (0.34s)
+    --- PASS: TestManagerValueUpdatePrefersCapability/unavailable (0.37s)
+=== RUN   TestCompactTokenExtraRenewal
+=== RUN   TestCompactTokenExtraRenewal/manual
+=== RUN   TestCompactTokenExtraRenewal/unlimited
+=== RUN   TestCompactTokenExtraRenewal/shared
+=== RUN   TestCompactTokenExtraRenewal/automatic
+--- PASS: TestCompactTokenExtraRenewal (5.37s)
+    --- PASS: TestCompactTokenExtraRenewal/manual (1.21s)
+    --- PASS: TestCompactTokenExtraRenewal/unlimited (1.40s)
+    --- PASS: TestCompactTokenExtraRenewal/shared (1.50s)
+    --- PASS: TestCompactTokenExtraRenewal/automatic (1.27s)
+=== RUN   TestCompactTokenWritesRejectMissingIdentity
+--- PASS: TestCompactTokenWritesRejectMissingIdentity (0.52s)
+=== RUN   TestBeginCloseStopsAdmissionBeforeCleanup
+--- PASS: TestBeginCloseStopsAdmissionBeforeCleanup (0.37s)
+=== RUN   TestManagerKickoutAndReplacePreserveTokenState
+=== RUN   TestManagerKickoutAndReplacePreserveTokenState/kickout
+=== RUN   TestManagerKickoutAndReplacePreserveTokenState/replace
+--- PASS: TestManagerKickoutAndReplacePreserveTokenState (2.51s)
+    --- PASS: TestManagerKickoutAndReplacePreserveTokenState/kickout (1.34s)
+    --- PASS: TestManagerKickoutAndReplacePreserveTokenState/replace (1.17s)
+=== RUN   TestManagerDisableAccountAndDevice
+=== RUN   TestManagerDisableAccountAndDevice/account_disable_destroys_session_and_blocks_old_and_new_login
+=== RUN   TestManagerDisableAccountAndDevice/concrete_device_disable_only_blocks_matching_device_id
+--- PASS: TestManagerDisableAccountAndDevice (2.71s)
+    --- PASS: TestManagerDisableAccountAndDevice/account_disable_destroys_session_and_blocks_old_and_new_login (1.51s)
+    --- PASS: TestManagerDisableAccountAndDevice/concrete_device_disable_only_blocks_matching_device_id (1.20s)
+=== RUN   TestManagerActiveTimeoutMarksTokenState
+--- PASS: TestManagerActiveTimeoutMarksTokenState (1.61s)
+=== RUN   TestManagerDeviceScopeConcurrency
+=== RUN   TestManagerDeviceScopeConcurrency/device_max_count_only_removes_oldest_within_that_device
+=== RUN   TestManagerDeviceScopeConcurrency/non_concurrent_device_scope_keeps_other_devices_alive
+--- PASS: TestManagerDeviceScopeConcurrency (4.80s)
+    --- PASS: TestManagerDeviceScopeConcurrency/device_max_count_only_removes_oldest_within_that_device (2.59s)
+    --- PASS: TestManagerDeviceScopeConcurrency/non_concurrent_device_scope_keeps_other_devices_alive (2.22s)
+=== RUN   TestClosedManagerCannotUseLiveCredentials
+=== RUN   TestClosedManagerCannotUseLiveCredentials/login
+=== RUN   TestClosedManagerCannotUseLiveCredentials/check_login
+=== RUN   TestClosedManagerCannotUseLiveCredentials/logout
+=== RUN   TestClosedManagerCannotUseLiveCredentials/session
+=== RUN   TestClosedManagerCannotUseLiveCredentials/session_write
+=== RUN   TestClosedManagerCannotUseLiveCredentials/disable
+=== RUN   TestClosedManagerCannotUseLiveCredentials/refresh
+=== RUN   TestClosedManagerCannotUseLiveCredentials/permission
+=== RUN   TestClosedManagerCannotUseLiveCredentials/role
+=== RUN   TestClosedManagerCannotUseLiveCredentials/terminals
+--- PASS: TestClosedManagerCannotUseLiveCredentials (3.21s)
+    --- PASS: TestClosedManagerCannotUseLiveCredentials/login (0.00s)
+    --- PASS: TestClosedManagerCannotUseLiveCredentials/check_login (0.00s)
+    --- PASS: TestClosedManagerCannotUseLiveCredentials/logout (0.00s)
+    --- PASS: TestClosedManagerCannotUseLiveCredentials/session (0.00s)
+    --- PASS: TestClosedManagerCannotUseLiveCredentials/session_write (0.00s)
+    --- PASS: TestClosedManagerCannotUseLiveCredentials/disable (0.00s)
+    --- PASS: TestClosedManagerCannotUseLiveCredentials/refresh (0.00s)
+    --- PASS: TestClosedManagerCannotUseLiveCredentials/permission (0.00s)
+    --- PASS: TestClosedManagerCannotUseLiveCredentials/role (0.00s)
+    --- PASS: TestClosedManagerCannotUseLiveCredentials/terminals (0.00s)
+=== RUN   TestManagerDisableCanonicalCosts
+=== RUN   TestManagerDisableCanonicalCosts/account/success/atomic=false
+=== RUN   TestManagerDisableCanonicalCosts/account/failure/atomic=false
+=== RUN   TestManagerDisableCanonicalCosts/account/expired/atomic=false
+=== RUN   TestManagerDisableCanonicalCosts/service/success/atomic=false
+=== RUN   TestManagerDisableCanonicalCosts/service/failure/atomic=false
+=== RUN   TestManagerDisableCanonicalCosts/service/expired/atomic=false
+=== RUN   TestManagerDisableCanonicalCosts/device/success/atomic=false
+=== RUN   TestManagerDisableCanonicalCosts/device/failure/atomic=false
+=== RUN   TestManagerDisableCanonicalCosts/device/expired/atomic=false
+=== RUN   TestManagerDisableCanonicalCosts/concrete/success/atomic=false
+=== RUN   TestManagerDisableCanonicalCosts/concrete/failure/atomic=false
+=== RUN   TestManagerDisableCanonicalCosts/concrete/expired/atomic=false
+=== RUN   TestManagerDisableCanonicalCosts/account/success/atomic=true
+=== RUN   TestManagerDisableCanonicalCosts/account/failure/atomic=true
+=== RUN   TestManagerDisableCanonicalCosts/account/expired/atomic=true
+=== RUN   TestManagerDisableCanonicalCosts/service/success/atomic=true
+=== RUN   TestManagerDisableCanonicalCosts/service/failure/atomic=true
+=== RUN   TestManagerDisableCanonicalCosts/service/expired/atomic=true
+=== RUN   TestManagerDisableCanonicalCosts/device/success/atomic=true
+=== RUN   TestManagerDisableCanonicalCosts/device/failure/atomic=true
+=== RUN   TestManagerDisableCanonicalCosts/device/expired/atomic=true
+=== RUN   TestManagerDisableCanonicalCosts/concrete/success/atomic=true
+=== RUN   TestManagerDisableCanonicalCosts/concrete/failure/atomic=true
+=== RUN   TestManagerDisableCanonicalCosts/concrete/expired/atomic=true
+--- PASS: TestManagerDisableCanonicalCosts (20.08s)
+    --- PASS: TestManagerDisableCanonicalCosts/account/success/atomic=false (0.92s)
+    --- PASS: TestManagerDisableCanonicalCosts/account/failure/atomic=false (0.96s)
+    --- PASS: TestManagerDisableCanonicalCosts/account/expired/atomic=false (0.86s)
+    --- PASS: TestManagerDisableCanonicalCosts/service/success/atomic=false (0.75s)
+    --- PASS: TestManagerDisableCanonicalCosts/service/failure/atomic=false (0.79s)
+    --- PASS: TestManagerDisableCanonicalCosts/service/expired/atomic=false (0.78s)
+    --- PASS: TestManagerDisableCanonicalCosts/device/success/atomic=false (0.81s)
+    --- PASS: TestManagerDisableCanonicalCosts/device/failure/atomic=false (0.75s)
+    --- PASS: TestManagerDisableCanonicalCosts/device/expired/atomic=false (0.69s)
+    --- PASS: TestManagerDisableCanonicalCosts/concrete/success/atomic=false (0.95s)
+    --- PASS: TestManagerDisableCanonicalCosts/concrete/failure/atomic=false (0.91s)
+    --- PASS: TestManagerDisableCanonicalCosts/concrete/expired/atomic=false (0.94s)
+    --- PASS: TestManagerDisableCanonicalCosts/account/success/atomic=true (0.91s)
+    --- PASS: TestManagerDisableCanonicalCosts/account/failure/atomic=true (0.89s)
+    --- PASS: TestManagerDisableCanonicalCosts/account/expired/atomic=true (0.91s)
+    --- PASS: TestManagerDisableCanonicalCosts/service/success/atomic=true (0.76s)
+    --- PASS: TestManagerDisableCanonicalCosts/service/failure/atomic=true (0.69s)
+    --- PASS: TestManagerDisableCanonicalCosts/service/expired/atomic=true (0.76s)
+    --- PASS: TestManagerDisableCanonicalCosts/device/success/atomic=true (0.68s)
+    --- PASS: TestManagerDisableCanonicalCosts/device/failure/atomic=true (0.73s)
+    --- PASS: TestManagerDisableCanonicalCosts/device/expired/atomic=true (0.85s)
+    --- PASS: TestManagerDisableCanonicalCosts/concrete/success/atomic=true (0.97s)
+    --- PASS: TestManagerDisableCanonicalCosts/concrete/failure/atomic=true (0.98s)
+    --- PASS: TestManagerDisableCanonicalCosts/concrete/expired/atomic=true (0.83s)
+=== RUN   TestManagerDisableReportsCleanupFailure
+--- PASS: TestManagerDisableReportsCleanupFailure (1.83s)
+=== RUN   TestManagerSessionDataBoundaries
+--- PASS: TestManagerSessionDataBoundaries (0.93s)
+=== RUN   TestManagerLoginWithTimeoutEntryPoint
+--- PASS: TestManagerLoginWithTimeoutEntryPoint (0.76s)
+=== RUN   TestManagerRejectsNewLoginWhenReplacementModeIsNewDevice
+--- PASS: TestManagerRejectsNewLoginWhenReplacementModeIsNewDevice (1.09s)
+=== RUN   TestManagerTerminateDispatchesAccountAndDeviceScopes
+=== RUN   TestManagerTerminateDispatchesAccountAndDeviceScopes/logout_by_login_id
+=== RUN   TestManagerTerminateDispatchesAccountAndDeviceScopes/kickout_by_device_type
+=== RUN   TestManagerTerminateDispatchesAccountAndDeviceScopes/replace_by_concrete_device
+--- PASS: TestManagerTerminateDispatchesAccountAndDeviceScopes (5.19s)
+    --- PASS: TestManagerTerminateDispatchesAccountAndDeviceScopes/logout_by_login_id (1.57s)
+    --- PASS: TestManagerTerminateDispatchesAccountAndDeviceScopes/kickout_by_device_type (1.66s)
+    --- PASS: TestManagerTerminateDispatchesAccountAndDeviceScopes/replace_by_concrete_device (1.97s)
+=== RUN   TestManagerLogoutHelpersHandleNoopAndEmptyTokenMetadata
+--- PASS: TestManagerLogoutHelpersHandleNoopAndEmptyTokenMetadata (1.13s)
+=== RUN   TestManagerActiveTimeoutEmitsDedicatedEvent
+--- PASS: TestManagerActiveTimeoutEmitsDedicatedEvent (1.61s)
+=== RUN   TestManagerDisableLegacyLookupChecksOwner
+=== RUN   TestManagerDisableLegacyLookupChecksOwner/account
+=== RUN   TestManagerDisableLegacyLookupChecksOwner/service
+=== RUN   TestManagerDisableLegacyLookupChecksOwner/device
+=== RUN   TestManagerDisableLegacyLookupChecksOwner/concrete_device
+--- PASS: TestManagerDisableLegacyLookupChecksOwner (4.50s)
+    --- PASS: TestManagerDisableLegacyLookupChecksOwner/account (1.35s)
+    --- PASS: TestManagerDisableLegacyLookupChecksOwner/service (0.89s)
+    --- PASS: TestManagerDisableLegacyLookupChecksOwner/device (0.89s)
+    --- PASS: TestManagerDisableLegacyLookupChecksOwner/concrete_device (1.37s)
+=== RUN   TestManagerMaintenanceDoesNotMergeOtherLifecycleActivity
+--- PASS: TestManagerMaintenanceDoesNotMergeOtherLifecycleActivity (1.06s)
+=== RUN   TestManagerKnownInactiveStateTTL
+--- PASS: TestManagerKnownInactiveStateTTL (0.47s)
+=== RUN   TestManagerTTLConversions
+=== RUN   TestManagerTTLConversions/not_found
+=== RUN   TestManagerTTLConversions/no_expire
+=== RUN   TestManagerTTLConversions/positive
+=== RUN   TestManagerTTLConversions/zero
+=== RUN   TestManagerTTLConversions/other_negative
+=== RUN   TestManagerTTLConversions/not_found#01
+=== RUN   TestManagerTTLConversions/no_expire#01
+=== RUN   TestManagerTTLConversions/positive#01
+=== RUN   TestManagerTTLConversions/zero#01
+--- PASS: TestManagerTTLConversions (0.00s)
+    --- PASS: TestManagerTTLConversions/not_found (0.00s)
+    --- PASS: TestManagerTTLConversions/no_expire (0.00s)
+    --- PASS: TestManagerTTLConversions/positive (0.00s)
+    --- PASS: TestManagerTTLConversions/zero (0.00s)
+    --- PASS: TestManagerTTLConversions/other_negative (0.00s)
+    --- PASS: TestManagerTTLConversions/not_found#01 (0.00s)
+    --- PASS: TestManagerTTLConversions/no_expire#01 (0.00s)
+    --- PASS: TestManagerTTLConversions/positive#01 (0.00s)
+    --- PASS: TestManagerTTLConversions/zero#01 (0.00s)
+=== RUN   TestManagerSearchKeywordEscaping
+--- PASS: TestManagerSearchKeywordEscaping (0.00s)
+=== RUN   TestManagerSubmitAsyncFallbacks
+=== RUN   TestManagerSubmitAsyncFallbacks/nil_pool
+=== RUN   TestManagerSubmitAsyncFallbacks/submit_error
+--- PASS: TestManagerSubmitAsyncFallbacks (0.65s)
+    --- PASS: TestManagerSubmitAsyncFallbacks/nil_pool (0.32s)
+    --- PASS: TestManagerSubmitAsyncFallbacks/submit_error (0.32s)
+=== RUN   TestManagerTokenTextReuseReplacesStaleIndex
+FAIL	github.com/Zany2/dtoken-go/internal/engine	102.192s
+FAIL

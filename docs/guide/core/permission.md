@@ -8,7 +8,11 @@ Here `dt` names the root package. `Build()` registers automatically; use `dt.XXX
 
 Permissions and roles come from the session or a business provider injected with `SetAccessProvider`. Non-nil provider results take precedence; nil falls back to the session, and an empty slice means no permissions or roles. Check/Get methods return provider errors; Has methods return false.
 
+Token authorization validates credentials before resolving provider data. On the normal path, Session is read and decoded only for fallback. Combined HTTP permission and role checks share the lazily loaded Session without cross-request caching. Provider-owned authorization does not require Session existence; see [AccessProvider](access-provider.md).
+
 Account queries supply the namespace and loginID; token queries also supply device and token information. The old CustomPermissionList/CustomRoleList callbacks have been removed; migrate through AccessProviderFunc.
+
+The default permission matcher compares segments directly without allocating the two split slices on each wildcard comparison. Its existing rules remain: `*` alone matches any permission; otherwise a whole `*` segment matches one segment, including an empty one, and segment counts must agree. A pattern containing `/` uses `/` as its separator; other patterns use `:`. Partial stars such as `user*` remain literal. Default role matching remains exact, and custom Strategy matchers keep their behavior and invocation order.
 
 ## Initialization
 
@@ -34,7 +38,9 @@ func initDToken() {
 
 ## Permission APIs
 
-Token-based permission and role additions/removals validate the full login state even when the list is `nil`, empty, or contains only empty strings. Invalid, disabled, or inactive tokens return the corresponding error. For a valid login, an empty change does not write the session, emit change events, or schedule renewal or activity maintenance.
+Token-based permission and role additions/removals validate credentials even when the list is `nil`, empty, or contains only empty strings. Invalid, retired, or inactive tokens return the corresponding error; reversible device restrictions require explicit checks at the access point. For valid credentials, an empty change does not write the session, emit change events, or schedule renewal or activity maintenance.
+
+Permission and role removal filters the stored list once using a set sized to the requested values, without building a second set of all existing account values. Remaining entries keep their original order; change events contain each actually removed value once, in first-request order. No-match removals reuse the unchanged list and skip Session writes and change events. These are local processing improvements; storage reads and authentication checks are unchanged.
 
 ### Add Permissions
 

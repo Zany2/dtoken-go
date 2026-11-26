@@ -1,0 +1,30 @@
+goos: windows
+goarch: amd64
+pkg: github.com/Zany2/dtoken-go/tests/gin_core_flow
+cpu: AMD Ryzen 7 7840HS with Radeon 780M Graphics
+BenchmarkAuthValidation/memory/terminals=1/extra=0/is-login-4         	 1384719	       264.5 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/is-login-4         	 1334320	       269.9 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/is-login-4         	 1283115	       282.1 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/check-login-4      	 1377742	       261.2 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/check-login-4      	 1340834	       268.3 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/check-login-4      	 1324837	       280.2 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/is-login-4     	 1303015	       271.4 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/is-login-4     	 1000000	       353.6 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/is-login-4     	 1000000	       333.1 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/check-login-4  	 1337556	       269.8 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/check-login-4  	 1347337	       298.5 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/check-login-4  	 1043071	       362.2 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/is-login-4      	 1000000	       312.9 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/is-login-4      	 1319332	       270.6 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/is-login-4      	 1000000	       300.4 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/check-login-4   	 1289470	       276.3 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/check-login-4   	 1207826	       292.8 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/check-login-4   	 1312104	       279.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/is-login-4  	 1310358	       272.8 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/is-login-4  	 1319463	       273.3 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/is-login-4  	 1296919	       273.7 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/check-login-4         	 1365363	       261.7 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/check-login-4         	 1291476	       285.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/check-login-4         	 1247072	       292.5 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+PASS
+ok  	github.com/Zany2/dtoken-go/tests/gin_core_flow	14.802s

@@ -28,6 +28,9 @@ type AccountLogoutResult = sso.AccountLogoutResult
 // ExchangeResultFunc enriches a consumed credential's result without changing its identity or scopes. ExchangeResultFunc 补充已消费凭证的返回信息，不得改变身份或授权范围。
 type ExchangeResultFunc = sso.ExchangeResultFunc
 
+// ExchangeEnricher enriches exchange results without an HTTP request dependency. ExchangeEnricher 无需依赖 HTTP 请求即可补充兑换结果。
+type ExchangeEnricher = sso.ExchangeEnricher
+
 // AuthorizationExtraFunc resolves trusted metadata to bind to issued credentials. AuthorizationExtraFunc 解析要绑定到签发凭证的可信元数据。
 type AuthorizationExtraFunc = sso.AuthorizationExtraFunc
 

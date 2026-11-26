@@ -1,0 +1,81 @@
+=== RUN   TestDisableRejectsInvalidMarkers
+=== RUN   TestDisableRejectsInvalidMarkers/json/account/null
+=== RUN   TestDisableRejectsInvalidMarkers/json/account/ownerless
+=== RUN   TestDisableRejectsInvalidMarkers/json/account/missing_kind
+=== RUN   TestDisableRejectsInvalidMarkers/json/service/null
+=== RUN   TestDisableRejectsInvalidMarkers/json/service/ownerless
+=== RUN   TestDisableRejectsInvalidMarkers/json/service/missing_kind
+=== RUN   TestDisableRejectsInvalidMarkers/json/device/null
+=== RUN   TestDisableRejectsInvalidMarkers/json/device/ownerless
+=== RUN   TestDisableRejectsInvalidMarkers/json/device/missing_kind
+=== RUN   TestDisableRejectsInvalidMarkers/json/concrete_device/null
+=== RUN   TestDisableRejectsInvalidMarkers/json/concrete_device/ownerless
+=== RUN   TestDisableRejectsInvalidMarkers/json/concrete_device/missing_kind
+=== RUN   TestDisableRejectsInvalidMarkers/base64/account/null
+=== RUN   TestDisableRejectsInvalidMarkers/base64/account/ownerless
+=== RUN   TestDisableRejectsInvalidMarkers/base64/account/missing_kind
+=== RUN   TestDisableRejectsInvalidMarkers/base64/service/null
+=== RUN   TestDisableRejectsInvalidMarkers/base64/service/ownerless
+=== RUN   TestDisableRejectsInvalidMarkers/base64/service/missing_kind
+=== RUN   TestDisableRejectsInvalidMarkers/base64/device/null
+=== RUN   TestDisableRejectsInvalidMarkers/base64/device/ownerless
+=== RUN   TestDisableRejectsInvalidMarkers/base64/device/missing_kind
+=== RUN   TestDisableRejectsInvalidMarkers/base64/concrete_device/null
+=== RUN   TestDisableRejectsInvalidMarkers/base64/concrete_device/ownerless
+=== RUN   TestDisableRejectsInvalidMarkers/base64/concrete_device/missing_kind
+--- PASS: TestDisableRejectsInvalidMarkers (45.25s)
+    --- PASS: TestDisableRejectsInvalidMarkers/json/account/null (1.81s)
+    --- PASS: TestDisableRejectsInvalidMarkers/json/account/ownerless (1.96s)
+    --- PASS: TestDisableRejectsInvalidMarkers/json/account/missing_kind (1.99s)
+    --- PASS: TestDisableRejectsInvalidMarkers/json/service/null (1.74s)
+    --- PASS: TestDisableRejectsInvalidMarkers/json/service/ownerless (1.90s)
+    --- PASS: TestDisableRejectsInvalidMarkers/json/service/missing_kind (1.97s)
+    --- PASS: TestDisableRejectsInvalidMarkers/json/device/null (1.60s)
+    --- PASS: TestDisableRejectsInvalidMarkers/json/device/ownerless (2.03s)
+    --- PASS: TestDisableRejectsInvalidMarkers/json/device/missing_kind (1.66s)
+    --- PASS: TestDisableRejectsInvalidMarkers/json/concrete_device/null (1.75s)
+    --- PASS: TestDisableRejectsInvalidMarkers/json/concrete_device/ownerless (1.88s)
+    --- PASS: TestDisableRejectsInvalidMarkers/json/concrete_device/missing_kind (2.03s)
+    --- PASS: TestDisableRejectsInvalidMarkers/base64/account/null (2.17s)
+    --- PASS: TestDisableRejectsInvalidMarkers/base64/account/ownerless (2.12s)
+    --- PASS: TestDisableRejectsInvalidMarkers/base64/account/missing_kind (1.83s)
+    --- PASS: TestDisableRejectsInvalidMarkers/base64/service/null (1.68s)
+    --- PASS: TestDisableRejectsInvalidMarkers/base64/service/ownerless (1.93s)
+    --- PASS: TestDisableRejectsInvalidMarkers/base64/service/missing_kind (2.01s)
+    --- PASS: TestDisableRejectsInvalidMarkers/base64/device/null (1.85s)
+    --- PASS: TestDisableRejectsInvalidMarkers/base64/device/ownerless (1.81s)
+    --- PASS: TestDisableRejectsInvalidMarkers/base64/device/missing_kind (1.62s)
+    --- PASS: TestDisableRejectsInvalidMarkers/base64/concrete_device/null (2.11s)
+    --- PASS: TestDisableRejectsInvalidMarkers/base64/concrete_device/ownerless (1.86s)
+    --- PASS: TestDisableRejectsInvalidMarkers/base64/concrete_device/missing_kind (1.94s)
+=== RUN   TestManagerIntrospectionRejectsTokenExpiredBeforeTTLLookup
+--- PASS: TestManagerIntrospectionRejectsTokenExpiredBeforeTTLLookup (1.14s)
+=== RUN   TestManagerRefreshIssuanceRechecksSession
+--- PASS: TestManagerRefreshIssuanceRechecksSession (1.34s)
+=== RUN   TestManagerRefreshRotationCanReuseExpiredAccessValue
+=== RUN   TestManagerRefreshRotationCanReuseExpiredAccessValue/atomic
+=== RUN   TestManagerRefreshRotationCanReuseExpiredAccessValue/basic
+--- PASS: TestManagerRefreshRotationCanReuseExpiredAccessValue (7.34s)
+    --- PASS: TestManagerRefreshRotationCanReuseExpiredAccessValue/atomic (3.50s)
+    --- PASS: TestManagerRefreshRotationCanReuseExpiredAccessValue/basic (3.83s)
+=== RUN   TestManagerRefreshTokenPreservesTerminalExtra
+=== RUN   TestManagerRefreshTokenPreservesTerminalExtra/atomic
+=== RUN   TestManagerRefreshTokenPreservesTerminalExtra/atomic/live_access
+=== RUN   TestManagerRefreshTokenPreservesTerminalExtra/atomic/expired_access_and_session
+=== RUN   TestManagerRefreshTokenPreservesTerminalExtra/atomic/migrated_record
+=== RUN   TestManagerRefreshTokenPreservesTerminalExtra/basic
+=== RUN   TestManagerRefreshTokenPreservesTerminalExtra/basic/live_access
+=== RUN   TestManagerRefreshTokenPreservesTerminalExtra/basic/expired_access_and_session
+=== RUN   TestManagerRefreshTokenPreservesTerminalExtra/basic/migrated_record
+--- PASS: TestManagerRefreshTokenPreservesTerminalExtra (43.90s)
+    --- PASS: TestManagerRefreshTokenPreservesTerminalExtra/atomic (20.64s)
+        --- PASS: TestManagerRefreshTokenPreservesTerminalExtra/atomic/live_access (6.44s)
+        --- PASS: TestManagerRefreshTokenPreservesTerminalExtra/atomic/expired_access_and_session (6.20s)
+        --- PASS: TestManagerRefreshTokenPreservesTerminalExtra/atomic/migrated_record (7.99s)
+    --- PASS: TestManagerRefreshTokenPreservesTerminalExtra/basic (23.26s)
+        --- PASS: TestManagerRefreshTokenPreservesTerminalExtra/basic/live_access (7.59s)
+        --- PASS: TestManagerRefreshTokenPreservesTerminalExtra/basic/expired_access_and_session (6.76s)
+        --- PASS: TestManagerRefreshTokenPreservesTerminalExtra/basic/migrated_record (8.91s)
+=== RUN   TestManagerRefreshTokenAllowsExpiredAccessToken
+FAIL	github.com/Zany2/dtoken-go/internal/engine	101.863s
+FAIL

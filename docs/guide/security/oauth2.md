@@ -337,3 +337,7 @@ The OAuth2 implementation is already usable for common authorization flows, with
 - [Nonce Anti-Replay](../security/nonce.md)
 - [Refresh Token Guide](../security/refresh-token.md)
 - [Authentication Guide](../core/authentication.md)
+
+## Revocation storage cost
+
+`Service.RevokeOAuth2Token` and server `RevokeToken` share one access-token read and decode; Service reuses that record for the revocation event. The access token and associated refresh token are removed in one `Storage.Delete` call, corresponding to one multi-key DEL in Redis. Revocation adds no client read and does not require every custom backend to delete multiple keys atomically. Read or delete failures return an error without emitting a success event.

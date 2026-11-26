@@ -102,7 +102,7 @@ dt-gcf-<当前实例的 32 位十六进制字符串>:*
 当前测试只删除自身随机前缀下的 key。其它前缀不会删除，例如：
 
 ```text
-dtoken:gin-core-flow:oauth2:client:demo-client
+dtoken:gin-core-flow:v2:oauth2:client:demo-client
 ```
 
 这类 key 通常来自手动启动示例服务，或旧版本测试遗留。
@@ -123,6 +123,8 @@ go run ./tests/gin_core_app/cmd/server
 
 ## 相关文档
 
+- [非 SSO 模块验收记录与复现命令](../../design/performance-acceptance_zh.md)
+- [公开 Auth API 性能基准](../../../tests/gin_core_flow/README_zh.md)
 - [Redis 存储指南](../integration/redis-storage_zh.md)
 - [登录认证指南](../core/authentication_zh.md)
 - [并发登录策略](../core/concurrency-login_zh.md)

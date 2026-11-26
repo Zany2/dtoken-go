@@ -64,12 +64,15 @@ func registerRoutes(r *web.ControllerRegister, authInstance *dtoken.Auth) error 
 	}
 	r.Post("/login", handleLogin)
 
-	if err := insertFilter("/me", web.BeforeRouter, beegodt.AuthMiddleware(ctx, beegodt.WithFailFunc(writeAuthError))); err != nil {
+	protected := beegodt.AccessMiddleware(ctx, beegodt.WithFailFunc(writeAuthError), beegodt.WithRouteAccessHandler(func(_ context.Context, _ *beegocontext.Context, req *beegodt.RouteAccessRequest) {
+		req.CheckDisable = true
+	}))
+	if err := insertFilter("/me", web.BeforeRouter, protected); err != nil {
 		return err
 	}
 	r.Get("/me", handleMe)
 
-	if err := insertFilter("/admin", web.BeforeRouter, beegodt.AuthMiddleware(ctx, beegodt.WithFailFunc(writeAuthError))); err != nil {
+	if err := insertFilter("/admin", web.BeforeRouter, protected); err != nil {
 		return err
 	}
 	if err := insertFilter("/admin", web.BeforeRouter, beegodt.RoleMiddleware(ctx, []string{"admin"}, beegodt.WithFailFunc(writeAuthError))); err != nil {
@@ -77,7 +80,7 @@ func registerRoutes(r *web.ControllerRegister, authInstance *dtoken.Auth) error 
 	}
 	r.Get("/admin", handleAdmin)
 
-	if err := insertFilter("/articles", web.BeforeRouter, beegodt.AuthMiddleware(ctx, beegodt.WithFailFunc(writeAuthError))); err != nil {
+	if err := insertFilter("/articles", web.BeforeRouter, protected); err != nil {
 		return err
 	}
 	if err := insertFilter("/articles", web.BeforeRouter, beegodt.PermissionMiddleware(ctx, []string{"article:read"}, beegodt.WithFailFunc(writeAuthError))); err != nil {
@@ -85,7 +88,7 @@ func registerRoutes(r *web.ControllerRegister, authInstance *dtoken.Auth) error 
 	}
 	r.Get("/articles", handleArticles)
 
-	if err := insertFilter("/logout", web.BeforeRouter, beegodt.AuthMiddleware(ctx, beegodt.WithFailFunc(writeAuthError))); err != nil {
+	if err := insertFilter("/logout", web.BeforeRouter, protected); err != nil {
 		return err
 	}
 	r.Post("/logout", handleLogout)

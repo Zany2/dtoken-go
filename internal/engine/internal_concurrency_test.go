@@ -66,8 +66,8 @@ func TestManagerSharedLoginRejectsMismatchedTerminalMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTerminalListByLoginID() error = %v", err)
 	}
-	if len(terminals) != 1 || terminals[0].Token != sharedCandidate {
-		t.Fatalf("terminals after shared cleanup = %+v, want only %q", terminals, sharedCandidate)
+	if len(terminals) != 2 || terminals[0].Token != sharedCandidate || terminals[1].Token != mismatchedToken {
+		t.Fatalf("shared login should retain unneeded index entries: %+v", terminals)
 	}
 }
 

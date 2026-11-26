@@ -46,8 +46,7 @@ func (c *Config) Clone() *Config {
 
 // NonceManager defines nonce manager NonceManager 定义 Nonce 管理器
 type NonceManager struct {
-	authType  string          // authType stores auth type authType 存储认证体系类型
-	keyPrefix string          // keyPrefix stores key prefix keyPrefix 存储可配置前缀
+	namespace string          // namespace stores the immutable encoded storage boundary. namespace 存储固定编码后的存储命名空间。
 	ttl       time.Duration   // ttl stores nonce ttl ttl 存储 Nonce 有效期
 	storage   adapter.Storage // storage stores storage adapter storage 存储存储适配器
 }
@@ -70,8 +69,7 @@ func NewNonceManagerWithConfig(authType, prefix string, storage adapter.Storage,
 	}
 
 	return &NonceManager{
-		authType:  authType,
-		keyPrefix: prefix,
+		namespace: utils.StorageNamespace(prefix, authType),
 		storage:   storage,
 		ttl:       cfg.TTL,
 	}, nil
@@ -178,5 +176,5 @@ func (nm *NonceManager) IsValid(ctx context.Context, nonce string) bool {
 
 // getNonceKey builds nonce storage key getNonceKey 获取 nonce 的存储键
 func (nm *NonceManager) getNonceKey(nonce string) string {
-	return utils.StorageNamespace(nm.keyPrefix, nm.authType) + NonceKeySuffix + nonce
+	return nm.namespace + NonceKeySuffix + nonce
 }

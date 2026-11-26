@@ -70,12 +70,15 @@ func newKratosExampleServer(auth *dtoken.Auth) (*khttp.Server, error) {
 		khttp.Middleware(kratosdt.RegisterDTokenContextMiddleware(authOption)),
 	)
 
+	protected := kratosdt.AccessMiddleware(kratosdt.WithRouteAccessHandler(func(_ context.Context, _ any, req *kratosdt.RouteAccessRequest) {
+		req.CheckDisable = true
+	}))
 	r := srv.Route("/")
 	r.POST("/login", wrapHandler(handleLogin))
-	r.GET("/me", wrapHandler(handleMe, kratosdt.AuthMiddleware()))
-	r.GET("/admin", wrapHandler(handleAdmin, kratosdt.AuthMiddleware(), kratosdt.RoleMiddleware([]string{"admin"})))
-	r.GET("/articles", wrapHandler(handleArticles, kratosdt.AuthMiddleware(), kratosdt.PermissionMiddleware([]string{"article:read"})))
-	r.POST("/logout", wrapHandler(handleLogout, kratosdt.AuthMiddleware()))
+	r.GET("/me", wrapHandler(handleMe, protected))
+	r.GET("/admin", wrapHandler(handleAdmin, protected, kratosdt.RoleMiddleware([]string{"admin"})))
+	r.GET("/articles", wrapHandler(handleArticles, protected, kratosdt.PermissionMiddleware([]string{"article:read"})))
+	r.POST("/logout", wrapHandler(handleLogout, protected))
 
 	return srv, nil
 }

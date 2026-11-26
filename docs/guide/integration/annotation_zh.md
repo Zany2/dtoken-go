@@ -27,7 +27,7 @@
 | `CheckLogin` | 是否校验登录 |
 | `CheckRole` | 角色列表 |
 | `CheckPermission` | 权限列表 |
-| `CheckDisable` | 是否校验账号封禁 |
+| `CheckDisable` | 是否校验账号、设备类型和具体设备封禁 |
 | `Ignore` | 是否忽略鉴权 |
 | `LogicType` | 多角色 / 多权限逻辑，支持 `OR`、`AND` |
 

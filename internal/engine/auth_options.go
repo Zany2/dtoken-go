@@ -105,7 +105,7 @@ type loginInternalOptions struct {
 type concurrencyResult struct {
 	reuseToken string // reuseToken stores a shared token when login can reuse one. reuseToken 保存可复用的共享 Token。
 	handled    bool   // handled reports whether concurrency logic already took an action. handled 表示并发逻辑是否已经处理。
-	// destroyedSession reports whether the whole old session was removed. destroyedSession 表示是否移除了整个旧会话。
+	// destroyedSession requests a fresh session after pruning removed all old slots. destroyedSession 表示整理已移除所有旧名额，需要重建会话。
 	destroyedSession bool
 	// terminalEvents stores terminal lifecycle events emitted after releasing the login lock. terminalEvents 保存登录锁释放后触发的终端生命周期事件。
 	terminalEvents []terminalLifecycleEvent

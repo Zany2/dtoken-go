@@ -2,7 +2,10 @@ package engine
 
 import (
 	"context"
+	"errors"
+
 	"github.com/Zany2/dtoken-go/contract"
+	derror "github.com/Zany2/dtoken-go/errors"
 )
 
 type (
@@ -13,134 +16,80 @@ type (
 
 // loadPermissionsByLoginID loads login ID permissions and prefers provider data. loadPermissionsByLoginID 按登录 ID 加载权限并优先使用提供器数据。
 func (m *Manager) loadPermissionsByLoginID(ctx context.Context, loginID string) ([]string, error) {
-	// Build account subject 构建账户主体。
-	subject := AccessSubject{AuthType: m.config.AuthType, LoginID: loginID}
-
-	// Prefer access provider 优先使用访问提供器。
-	if m.accessProvider != nil {
-		permissions, err := m.providerPermissions(ctx, nil, subject)
-		if err != nil {
-			return nil, err
-		}
-
-		// Return provider permissions 返回提供器权限。
-		if permissions != nil {
-			return permissions, nil
-		}
-	}
-
-	// Load session fallback 加载会话回退值。
-	sess, err := m.getSession(ctx, loginID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Return session permissions 返回会话权限。
-	return sess.Permissions, nil
+	return m.loadPermissions(ctx, nil, AccessSubject{AuthType: m.config.AuthType, LoginID: loginID})
 }
 
 // loadRolesByLoginID loads login ID roles and prefers provider data. loadRolesByLoginID 按登录 ID 加载角色并优先使用提供器数据。
 func (m *Manager) loadRolesByLoginID(ctx context.Context, loginID string) ([]string, error) {
-	// Build account subject 构建账户主体。
-	subject := AccessSubject{AuthType: m.config.AuthType, LoginID: loginID}
+	return m.loadRoles(ctx, nil, AccessSubject{AuthType: m.config.AuthType, LoginID: loginID})
+}
 
-	// Prefer access provider 优先使用访问提供器。
+// loadPermissions prefers provider values and loads Session only for nil fallback. loadPermissions 优先使用提供器值，仅在 nil 回退时加载 Session。
+func (m *Manager) loadPermissions(ctx context.Context, cached **Session, subject AccessSubject) ([]string, error) {
+	// Fill default auth type 填充默认认证类型
+	if subject.AuthType == "" {
+		subject.AuthType = m.config.AuthType
+	}
+
+	// Only nil provider data requests Session fallback; empty data and failures are final. 仅提供器返回 nil 时回退 Session，空列表和错误均为最终结果。
 	if m.accessProvider != nil {
-		roles, err := m.providerRoles(ctx, nil, subject)
+		values, err := m.accessProvider.Permissions(ctx, subject)
 		if err != nil {
 			return nil, err
 		}
-
-		// Return provider roles 返回提供器角色。
-		if roles != nil {
-			return roles, nil
+		if values != nil {
+			return normalizeProviderAccessValues(values), nil
 		}
 	}
 
-	// Load session fallback 加载会话回退值。
-	sess, err := m.getSession(ctx, loginID)
+	sess, err := m.loadAccessSession(ctx, cached, subject)
 	if err != nil {
 		return nil, err
 	}
+	return sess.Permissions, nil
+}
 
-	// Return session roles 返回会话角色。
+// loadRoles prefers provider values and loads Session only for nil fallback. loadRoles 优先使用提供器值，仅在 nil 回退时加载 Session。
+func (m *Manager) loadRoles(ctx context.Context, cached **Session, subject AccessSubject) ([]string, error) {
+	// Fill default auth type 填充默认认证类型
+	if subject.AuthType == "" {
+		subject.AuthType = m.config.AuthType
+	}
+
+	// Only nil provider data requests Session fallback; empty data and failures are final. 仅提供器返回 nil 时回退 Session，空列表和错误均为最终结果。
+	if m.accessProvider != nil {
+		values, err := m.accessProvider.Roles(ctx, subject)
+		if err != nil {
+			return nil, err
+		}
+		if values != nil {
+			return normalizeProviderAccessValues(values), nil
+		}
+	}
+
+	sess, err := m.loadAccessSession(ctx, cached, subject)
+	if err != nil {
+		return nil, err
+	}
 	return sess.Roles, nil
 }
 
-// loadPermissions loads permissions from provider with fallback. loadPermissions 从提供器加载权限并支持回退值。
-func (m *Manager) loadPermissions(ctx context.Context, fallback []string, subject AccessSubject) ([]string, error) {
-	// Fill default auth type 填充默认认证类型
-	if subject.AuthType == "" {
-		subject.AuthType = m.config.AuthType
+// loadAccessSession loads fallback data once per operation; nil cached disables reuse. loadAccessSession 在单次操作内按需加载一次回退数据，cached 为 nil 时不缓存。
+func (m *Manager) loadAccessSession(ctx context.Context, cached **Session, subject AccessSubject) (*Session, error) {
+	if cached != nil && *cached != nil {
+		return *cached, nil
 	}
-
-	// Return fallback when provider is absent 提供器不存在时返回回退值
-	if m.accessProvider == nil {
-		return fallback, nil
-	}
-
-	// Resolve provider permissions 解析提供器权限。
-	return m.providerPermissions(ctx, fallback, subject)
-}
-
-// providerPermissions resolves permissions from provider. providerPermissions 从提供器解析权限。
-func (m *Manager) providerPermissions(ctx context.Context, fallback []string, subject AccessSubject) ([]string, error) {
-	// Use fallback when provider is absent 提供器不存在时使用回退值。
-	if m.accessProvider == nil {
-		return fallback, nil
-	}
-
-	// Query access provider 查询访问提供器。
-	permissions, err := m.accessProvider.Permissions(ctx, subject)
+	sess, err := m.getSession(ctx, subject.LoginID)
 	if err != nil {
+		if subject.Token != "" && errors.Is(err, derror.ErrSessionNotFound) {
+			return nil, derror.ErrInvalidToken
+		}
 		return nil, err
 	}
-
-	// Use fallback when provider returns nil 提供器返回 nil 时使用回退值。
-	if permissions == nil {
-		return fallback, nil
+	if cached != nil {
+		*cached = sess
 	}
-
-	// Return normalized provider permissions 返回规范化后的提供器权限。
-	return normalizeProviderAccessValues(permissions), nil
-}
-
-// loadRoles loads roles from provider with fallback. loadRoles 从提供器加载角色并支持回退值。
-func (m *Manager) loadRoles(ctx context.Context, fallback []string, subject AccessSubject) ([]string, error) {
-	// Fill default auth type 填充默认认证类型
-	if subject.AuthType == "" {
-		subject.AuthType = m.config.AuthType
-	}
-
-	// Return fallback when provider is absent 提供器不存在时返回回退值
-	if m.accessProvider == nil {
-		return fallback, nil
-	}
-
-	// Resolve provider roles 解析提供器角色。
-	return m.providerRoles(ctx, fallback, subject)
-}
-
-// providerRoles resolves roles from provider. providerRoles 从提供器解析角色。
-func (m *Manager) providerRoles(ctx context.Context, fallback []string, subject AccessSubject) ([]string, error) {
-	// Use fallback when provider is absent 提供器不存在时使用回退值。
-	if m.accessProvider == nil {
-		return fallback, nil
-	}
-
-	// Query access provider 查询访问提供器。
-	roles, err := m.accessProvider.Roles(ctx, subject)
-	if err != nil {
-		return nil, err
-	}
-
-	// Use fallback when provider returns nil 提供器返回 nil 时使用回退值。
-	if roles == nil {
-		return fallback, nil
-	}
-
-	// Return normalized provider roles 返回规范化后的提供器角色。
-	return normalizeProviderAccessValues(roles), nil
+	return sess, nil
 }
 
 // normalizeProviderAccessValues normalizes provider values while preserving non-nil empty meaning. normalizeProviderAccessValues 规范化提供器返回值，并保留非 nil 空列表语义。

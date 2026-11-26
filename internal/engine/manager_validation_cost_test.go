@@ -74,8 +74,17 @@ func TestManagerLoginChecksDeferSessionAndRenewalReads(t *testing.T) {
 			if loginID, err := mgr.GetLoginID(ctx, token); err != nil || loginID != id {
 				t.Fatalf("GetLoginID = %q, %v", loginID, err)
 			}
-			if storage.getCount(storage.tokenKey) != 3 || codec.tokens.Load() != 3 {
-				t.Fatalf("token reads/decodes = %d/%d, want 3/3", storage.getCount(storage.tokenKey), codec.tokens.Load())
+			if storage.getCount(storage.tokenKey) != 3 || codec.tokens.Load() != 0 {
+				t.Fatalf("token reads/codec decodes = %d/%d, want 3/0", storage.getCount(storage.tokenKey), codec.tokens.Load())
+			}
+			storage.mu.Lock()
+			totalGets := 0
+			for _, count := range storage.gets {
+				totalGets += count
+			}
+			storage.mu.Unlock()
+			if totalGets != 3 {
+				t.Fatalf("foreground total GETs = %d, want one per check", totalGets)
 			}
 			if storage.getCount(mgr.getSessionKey(id)) != 0 || codec.sessions.Load() != 0 || storage.ttls.Load() != 0 || storage.markers.Load() != 0 {
 				t.Fatal("foreground validation loaded session data or checked renewal eligibility")
@@ -88,7 +97,7 @@ func TestManagerLoginChecksDeferSessionAndRenewalReads(t *testing.T) {
 			if renews != input.wantRenew || storage.ttls.Load() != 1 || storage.markers.Load() != input.wantMarker {
 				t.Fatalf("renewals/TTL checks/marker checks = %d/%d/%d, want %d/1/%d", renews, storage.ttls.Load(), storage.markers.Load(), input.wantRenew, input.wantMarker)
 			}
-			if storage.getCount(mgr.getSessionKey(id)) != input.wantRenew || codec.sessions.Load() != int64(input.wantRenew) || codec.tokens.Load() != int64(3+input.wantRenew) {
+			if storage.getCount(mgr.getSessionKey(id)) != 0 || codec.sessions.Load() != 0 || codec.tokens.Load() != 0 || storage.getCount(storage.tokenKey) != 3+input.wantRenew {
 				t.Fatalf("background record reads were not limited to due renewal: session reads/decodes=%d/%d, token decodes=%d", storage.getCount(mgr.getSessionKey(id)), codec.sessions.Load(), codec.tokens.Load())
 			}
 			mgr.maintenanceMu.Lock()
@@ -135,6 +144,7 @@ type managerValidationCountingCodec struct {
 	adapter.Codec
 	tokens   atomic.Int64
 	sessions atomic.Int64
+	extras   atomic.Int64
 }
 
 // Decode counts credential and account data decoding. Decode 统计凭据与账号数据解码。
@@ -144,6 +154,8 @@ func (c *managerValidationCountingCodec) Decode(data []byte, target any) error {
 		c.tokens.Add(1)
 	case *Session, **Session:
 		c.sessions.Add(1)
+	case *map[string]any:
+		c.extras.Add(1)
 	}
 	return c.Codec.Decode(data, target)
 }

@@ -1,0 +1,126 @@
+goos: windows
+goarch: amd64
+pkg: github.com/Zany2/dtoken-go/tests/gin_core_flow
+cpu: AMD Ryzen 7 7840HS with Radeon 780M Graphics
+BenchmarkAuthValidation/memory/terminals=1/extra=0/is-login-4         	      20	       885.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/check-login-4      	      20	       675.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/details-4          	      20	       290.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/active-foreground-4         	      20	      3580 ns/op	         1.000 tasks/op	     923 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/active-complete-4           	      20	      5755 ns/op	         1.000 tasks/op	    1546 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/renew-active-complete-4     	      20	      6860 ns/op	         1.000 tasks/op	    2324 B/op	      31 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=1024/is-login-4               	      20	       290.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=1024/check-login-4            	      20	       285.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=1024/details-4                	      20	      5400 ns/op	         0 tasks/op	    2116 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=1024/active-foreground-4      	      20	      2220 ns/op	         1.000 tasks/op	     930 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=1024/active-complete-4        	      20	      3445 ns/op	         1.000 tasks/op	    1546 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=1024/renew-active-complete-4  	      20	      5700 ns/op	         1.000 tasks/op	    2330 B/op	      31 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/is-login-4              	      20	       300.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/check-login-4           	      20	       620.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/details-4               	      20	     74740 ns/op	         0 tasks/op	   66544 B/op	      10 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/active-foreground-4     	      20	      2420 ns/op	         1.000 tasks/op	     930 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/active-complete-4       	      20	      4130 ns/op	         1.000 tasks/op	    1522 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/renew-active-complete-4 	      20	      5710 ns/op	         1.000 tasks/op	    2360 B/op	      31 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=0/is-login-4                	      20	       380.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=0/check-login-4             	      20	       470.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=0/details-4                 	      20	       315.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=0/active-foreground-4       	      20	      2330 ns/op	         1.000 tasks/op	     872 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=0/active-complete-4         	      20	      6280 ns/op	         1.000 tasks/op	    1522 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=0/renew-active-complete-4   	      20	      5940 ns/op	         1.000 tasks/op	    2244 B/op	      30 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=1024/is-login-4             	      20	       380.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=1024/check-login-4          	      20	       410.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=1024/details-4              	      20	      2100 ns/op	         0 tasks/op	    1744 B/op	      10 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=1024/active-foreground-4    	      20	      3800 ns/op	         1.000 tasks/op	     872 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=1024/active-complete-4      	      20	      6350 ns/op	         1.000 tasks/op	    1556 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=1024/renew-active-complete-4         	      20	      8340 ns/op	         1.000 tasks/op	    2329 B/op	      31 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=65536/is-login-4                     	      20	       390.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=65536/check-login-4                  	      20	       430.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=65536/details-4                      	      20	     84145 ns/op	         0 tasks/op	   66282 B/op	      10 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=65536/active-foreground-4            	      20	      2160 ns/op	         1.000 tasks/op	     872 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=65536/active-complete-4              	      20	      3975 ns/op	         1.000 tasks/op	    1521 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=100/extra=65536/renew-active-complete-4        	      20	      8585 ns/op	         1.000 tasks/op	    2364 B/op	      31 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/is-login-4                        	      20	       455.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/check-login-4                     	      20	       500.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/details-4                         	      20	       415.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/active-foreground-4               	      20	      5585 ns/op	         1.000 tasks/op	     872 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/active-complete-4                 	      20	      4620 ns/op	         1.000 tasks/op	    1534 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/renew-active-complete-4           	      20	      5735 ns/op	         1.000 tasks/op	    2238 B/op	      30 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=1024/is-login-4                     	      20	       430.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=1024/check-login-4                  	      20	       655.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=1024/details-4                      	      20	      2465 ns/op	         0 tasks/op	    1744 B/op	      10 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=1024/active-foreground-4            	      20	      6000 ns/op	         1.000 tasks/op	     872 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=1024/active-complete-4              	      20	      8085 ns/op	         1.000 tasks/op	    1545 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=1024/renew-active-complete-4        	      20	      6905 ns/op	         1.000 tasks/op	    2329 B/op	      31 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/is-login-4                    	      20	       740.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/check-login-4                 	      20	       855.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/details-4                     	      20	     85215 ns/op	         0 tasks/op	   66256 B/op	      10 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/active-foreground-4           	      20	      5415 ns/op	         1.000 tasks/op	     970 B/op	      12 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/active-complete-4             	      20	      7510 ns/op	         1.000 tasks/op	    1533 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/renew-active-complete-4       	      20	     10065 ns/op	         1.000 tasks/op	    2329 B/op	      31 allocs/op
+BenchmarkAuthWrites/memory/terminals=1/extra=0/login-logout-4                           	      20	     17470 ns/op	         0 tasks/op	    5376 B/op	      56 allocs/op
+BenchmarkAuthWrites/memory/terminals=1/extra=0/manual-renew-4                           	      20	      5550 ns/op	         0 tasks/op	    1709 B/op	      19 allocs/op
+BenchmarkAuthWrites/memory/terminals=1/extra=1024/login-logout-4                        	      20	     23230 ns/op	         0 tasks/op	    7982 B/op	      69 allocs/op
+BenchmarkAuthWrites/memory/terminals=1/extra=1024/manual-renew-4                        	      20	      4565 ns/op	         0 tasks/op	    1805 B/op	      20 allocs/op
+BenchmarkAuthWrites/memory/terminals=1/extra=65536/login-logout-4                       	      20	    215930 ns/op	         0 tasks/op	  153458 B/op	      70 allocs/op
+BenchmarkAuthWrites/memory/terminals=1/extra=65536/manual-renew-4                       	      20	      4565 ns/op	         0 tasks/op	    1541 B/op	      20 allocs/op
+BenchmarkAuthWrites/memory/terminals=100/extra=0/login-logout-4                         	      20	    393780 ns/op	         0 tasks/op	  113608 B/op	     284 allocs/op
+BenchmarkAuthWrites/memory/terminals=100/extra=0/manual-renew-4                         	      20	    106285 ns/op	         0 tasks/op	   28403 B/op	     143 allocs/op
+BenchmarkAuthWrites/memory/terminals=100/extra=1024/login-logout-4                      	      20	    327285 ns/op	         0 tasks/op	  120046 B/op	     316 allocs/op
+BenchmarkAuthWrites/memory/terminals=100/extra=1024/manual-renew-4                      	      20	    103350 ns/op	         0 tasks/op	   28547 B/op	     147 allocs/op
+BenchmarkAuthWrites/memory/terminals=100/extra=65536/login-logout-4                     	      20	    665960 ns/op	         0 tasks/op	  273622 B/op	     340 allocs/op
+BenchmarkAuthWrites/memory/terminals=100/extra=65536/manual-renew-4                     	      20	    146500 ns/op	         0 tasks/op	   28090 B/op	     130 allocs/op
+BenchmarkAuthWrites/memory/terminals=1000/extra=0/login-logout-4                        	      20	   1921045 ns/op	         0 tasks/op	 1604046 B/op	    4111 allocs/op
+BenchmarkAuthWrites/memory/terminals=1000/extra=0/manual-renew-4                        	      20	    646725 ns/op	         0 tasks/op	  355440 B/op	    2034 allocs/op
+BenchmarkAuthWrites/memory/terminals=1000/extra=1024/login-logout-4                     	      20	   2021595 ns/op	         0 tasks/op	 1573212 B/op	    4136 allocs/op
+BenchmarkAuthWrites/memory/terminals=1000/extra=1024/manual-renew-4                     	      20	   1288205 ns/op	         0 tasks/op	  355450 B/op	    2032 allocs/op
+BenchmarkAuthWrites/memory/terminals=1000/extra=65536/login-logout-4                    	      20	   2142910 ns/op	         0 tasks/op	 1752064 B/op	    4119 allocs/op
+BenchmarkAuthWrites/memory/terminals=1000/extra=65536/manual-renew-4                    	      20	    688325 ns/op	         0 tasks/op	  355542 B/op	    2036 allocs/op
+BenchmarkAuthPermanentValidation/memory/timeout=3600-4                                  	      20	      1040 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthPermanentValidation/memory/timeout=-1-4                                    	      20	       540.0 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthParallelValidation/memory/same-account-4                                   	      20	      1410 ns/op	         0 tasks/op	     247 B/op	       2 allocs/op
+BenchmarkAuthParallelValidation/memory/many-accounts-4                                  	      20	       715.0 ns/op	         0 tasks/op	     247 B/op	       2 allocs/op
+BenchmarkAuthParallelWrites/memory/same-account-4                                       	      20	     31550 ns/op	         0 tasks/op	    6489 B/op	      58 allocs/op
+BenchmarkAuthParallelWrites/memory/many-accounts-4                                      	      20	     15990 ns/op	         0 tasks/op	    5320 B/op	      55 allocs/op
+BenchmarkAuthLoginPruning/memory/terminals=10/missing=50-4                              	      20	     27185 ns/op	         0 tasks/op	    9760 B/op	      67 allocs/op
+BenchmarkAuthLoginPruning/memory/terminals=10/missing=100-4                             	      20	     17730 ns/op	         0 tasks/op	    8162 B/op	      72 allocs/op
+BenchmarkAuthLoginPruning/memory/terminals=100/missing=50-4                             	      20	    158665 ns/op	         0 tasks/op	   78247 B/op	     458 allocs/op
+BenchmarkAuthLoginPruning/memory/terminals=100/missing=100-4                            	      20	    132205 ns/op	         0 tasks/op	   61956 B/op	     565 allocs/op
+BenchmarkAuthLoginPruning/memory/terminals=1000/missing=50-4                            	      20	   1254825 ns/op	         0 tasks/op	  886478 B/op	    5066 allocs/op
+BenchmarkAuthLoginPruning/memory/terminals=1000/missing=100-4                           	      20	    957480 ns/op	         0 tasks/op	  676634 B/op	    6048 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=10/missing=0/raw-4                        	      20	      6565 ns/op	         0 tasks/op	    3304 B/op	       9 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=10/missing=0/alive-4                      	      20	     13545 ns/op	         0 tasks/op	    8816 B/op	      48 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=10/missing=0/device-alive-4               	      20	      8000 ns/op	         0 tasks/op	    4760 B/op	      22 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=10/missing=50/raw-4                       	      20	      7135 ns/op	         0 tasks/op	    3304 B/op	       9 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=10/missing=50/alive-4                     	      20	     10070 ns/op	         0 tasks/op	    6504 B/op	      35 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=10/missing=50/device-alive-4              	      20	      7645 ns/op	         0 tasks/op	    4600 B/op	      18 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=10/missing=100/raw-4                      	      20	      6315 ns/op	         0 tasks/op	    3304 B/op	       9 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=10/missing=100/alive-4                    	      20	      8965 ns/op	         0 tasks/op	    4360 B/op	      21 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=10/missing=100/device-alive-4             	      20	     14270 ns/op	         0 tasks/op	    3240 B/op	       9 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=100/missing=0/raw-4                       	      20	     57660 ns/op	         0 tasks/op	   28864 B/op	     126 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=100/missing=0/alive-4                     	      20	    169640 ns/op	         0 tasks/op	   80314 B/op	     438 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=100/missing=0/device-alive-4              	      20	     57560 ns/op	         0 tasks/op	   29136 B/op	     143 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=100/missing=50/raw-4                      	      20	     80125 ns/op	         0 tasks/op	   29272 B/op	     137 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=100/missing=50/alive-4                    	      20	    118465 ns/op	         0 tasks/op	   59403 B/op	     336 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=100/missing=50/device-alive-4             	      20	     65340 ns/op	         0 tasks/op	   28264 B/op	     123 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=100/missing=100/raw-4                     	      20	     61290 ns/op	         0 tasks/op	   29072 B/op	     121 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=100/missing=100/alive-4                   	      20	     67440 ns/op	         0 tasks/op	   38200 B/op	     212 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=100/missing=100/device-alive-4            	      20	     60800 ns/op	         0 tasks/op	   27608 B/op	     133 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=1000/missing=0/raw-4                      	      20	    661010 ns/op	         0 tasks/op	  370824 B/op	    2024 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=1000/missing=0/alive-4                    	      20	   3318955 ns/op	         0 tasks/op	  990728 B/op	    5048 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=1000/missing=0/device-alive-4             	      20	    654770 ns/op	         0 tasks/op	  356099 B/op	    2028 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=1000/missing=50/raw-4                     	      20	    657395 ns/op	         0 tasks/op	  370745 B/op	    2022 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=1000/missing=50/alive-4                   	      20	   2595645 ns/op	         0 tasks/op	  732210 B/op	    4045 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=1000/missing=50/device-alive-4            	      20	    648350 ns/op	         0 tasks/op	  355865 B/op	    2036 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=1000/missing=100/raw-4                    	      20	    887205 ns/op	         0 tasks/op	  370997 B/op	    2020 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=1000/missing=100/alive-4                  	      20	   1029875 ns/op	         0 tasks/op	  466866 B/op	    3026 allocs/op
+BenchmarkAuthTerminalQueries/memory/terminals=1000/missing=100/device-alive-4           	      20	   1071080 ns/op	         0 tasks/op	  354250 B/op	    2025 allocs/op
+BenchmarkAuthPermissionProvider/memory/terminals=1/hit-4                                	      20	      1045 ns/op	         1.000 provider-calls/op	         0 tasks/op	     256 B/op	       4 allocs/op
+BenchmarkAuthPermissionProvider/memory/terminals=1/fallback-4                           	      20	      3940 ns/op	         1.000 provider-calls/op	         0 tasks/op	     568 B/op	       8 allocs/op
+BenchmarkAuthPermissionProvider/memory/terminals=1/empty-deny-4                         	      20	      1755 ns/op	         1.000 provider-calls/op	         0 tasks/op	     375 B/op	       6 allocs/op
+BenchmarkAuthPermissionProvider/memory/terminals=100/hit-4                              	      20	       910.0 ns/op	         1.000 provider-calls/op	         0 tasks/op	     256 B/op	       4 allocs/op
+BenchmarkAuthPermissionProvider/memory/terminals=100/fallback-4                         	      20	    132910 ns/op	         1.000 provider-calls/op	         0 tasks/op	   28024 B/op	     138 allocs/op
+BenchmarkAuthPermissionProvider/memory/terminals=100/empty-deny-4                       	      20	      1615 ns/op	         1.000 provider-calls/op	         0 tasks/op	     372 B/op	       6 allocs/op
+BenchmarkAuthPermissionProvider/memory/terminals=1000/hit-4                             	      20	       685.0 ns/op	         1.000 provider-calls/op	         0 tasks/op	     256 B/op	       4 allocs/op
+BenchmarkAuthPermissionProvider/memory/terminals=1000/fallback-4                        	      20	    621035 ns/op	         1.000 provider-calls/op	         0 tasks/op	  354664 B/op	    2024 allocs/op
+BenchmarkAuthPermissionProvider/memory/terminals=1000/empty-deny-4                      	      20	      1110 ns/op	         1.000 provider-calls/op	         0 tasks/op	     372 B/op	       6 allocs/op
+PASS
+ok  	github.com/Zany2/dtoken-go/tests/gin_core_flow	27.216s

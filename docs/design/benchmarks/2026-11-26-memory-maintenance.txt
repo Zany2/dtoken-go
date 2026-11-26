@@ -1,0 +1,42 @@
+goos: windows
+goarch: amd64
+pkg: github.com/Zany2/dtoken-go/tests/gin_core_flow
+cpu: AMD Ryzen 7 7840HS with Radeon 780M Graphics
+BenchmarkAuthValidation/memory/terminals=1/extra=0/active-foreground-4         	  136732	      3002 ns/op	         1.000 tasks/op	     857 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/active-foreground-4         	  125402	      2851 ns/op	         1.000 tasks/op	     857 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/active-foreground-4         	  139000	      2564 ns/op	         1.000 tasks/op	     852 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/active-complete-4           	   90720	      4081 ns/op	         1.000 tasks/op	    1472 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/active-complete-4           	   84314	      4170 ns/op	         1.000 tasks/op	    1472 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/active-complete-4           	   96296	      3925 ns/op	         1.000 tasks/op	    1472 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/renew-active-complete-4     	   73732	      4852 ns/op	         1.000 tasks/op	    2184 B/op	      30 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/renew-active-complete-4     	   76904	      4930 ns/op	         1.000 tasks/op	    2184 B/op	      30 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=0/renew-active-complete-4     	   60872	      5102 ns/op	         1.000 tasks/op	    2184 B/op	      30 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/active-foreground-4     	  151914	      2648 ns/op	         1.000 tasks/op	     852 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/active-foreground-4     	  123553	      3839 ns/op	         1.000 tasks/op	     862 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/active-foreground-4     	  138428	      2671 ns/op	         1.000 tasks/op	     852 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/active-complete-4       	   88783	      4126 ns/op	         1.000 tasks/op	    1472 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/active-complete-4       	   91280	      4009 ns/op	         1.000 tasks/op	    1472 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/active-complete-4       	   87817	      4030 ns/op	         1.000 tasks/op	    1472 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/renew-active-complete-4 	   68486	      5308 ns/op	         1.000 tasks/op	    2280 B/op	      31 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/renew-active-complete-4 	   65397	      5360 ns/op	         1.000 tasks/op	    2280 B/op	      31 allocs/op
+BenchmarkAuthValidation/memory/terminals=1/extra=65536/renew-active-complete-4 	   69252	      5157 ns/op	         1.000 tasks/op	    2280 B/op	      31 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/active-foreground-4      	  136321	      2769 ns/op	         1.000 tasks/op	     855 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/active-foreground-4      	  125545	      2767 ns/op	         1.000 tasks/op	     855 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/active-foreground-4      	  116000	      2704 ns/op	         1.000 tasks/op	     854 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/active-complete-4        	   97495	      4057 ns/op	         1.000 tasks/op	    1472 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/active-complete-4        	   81009	      4183 ns/op	         1.000 tasks/op	    1472 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/active-complete-4        	   92002	      4246 ns/op	         1.000 tasks/op	    1472 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/renew-active-complete-4  	   72718	      5110 ns/op	         1.000 tasks/op	    2184 B/op	      30 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/renew-active-complete-4  	   73546	      4939 ns/op	         1.000 tasks/op	    2184 B/op	      30 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=0/renew-active-complete-4  	   67210	      5029 ns/op	         1.000 tasks/op	    2184 B/op	      30 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/active-foreground-4  	   98018	      3677 ns/op	         1.000 tasks/op	     866 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/active-foreground-4  	  138038	      2624 ns/op	         1.000 tasks/op	     852 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/active-foreground-4  	  139209	      2576 ns/op	         1.000 tasks/op	     851 B/op	      11 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/active-complete-4    	   84418	      4267 ns/op	         1.000 tasks/op	    1472 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/active-complete-4    	   81931	      4133 ns/op	         1.000 tasks/op	    1472 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/active-complete-4    	   88310	      3961 ns/op	         1.000 tasks/op	    1472 B/op	      20 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/renew-active-complete-4         	   70388	      5581 ns/op	         1.000 tasks/op	    2280 B/op	      31 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/renew-active-complete-4         	   68217	      5440 ns/op	         1.000 tasks/op	    2280 B/op	      31 allocs/op
+BenchmarkAuthValidation/memory/terminals=1000/extra=65536/renew-active-complete-4         	   67347	      5398 ns/op	         1.000 tasks/op	    2280 B/op	      31 allocs/op
+PASS
+ok  	github.com/Zany2/dtoken-go/tests/gin_core_flow	62.919s

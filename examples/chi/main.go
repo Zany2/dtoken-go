@@ -68,7 +68,9 @@ func registerRoutes(r chi.Router, authInstance *dtoken.Auth) error {
 	r.Post("/login", handleLogin)
 
 	r.Group(func(auth chi.Router) {
-		auth.Use(chidt.AuthMiddleware(chidt.WithFailFunc(fail)))
+		auth.Use(chidt.AccessMiddleware(chidt.WithFailFunc(fail), chidt.WithRouteAccessHandler(func(_ http.ResponseWriter, _ *http.Request, req *chidt.RouteAccessRequest) {
+			req.CheckDisable = true
+		})))
 		auth.Get("/me", handleMe)
 		auth.With(chidt.RoleMiddleware([]string{"admin"}, chidt.WithFailFunc(fail))).Get("/admin", handleAdmin)
 		auth.With(chidt.PermissionMiddleware([]string{"article:read"}, chidt.WithFailFunc(fail))).Get("/articles", handleArticles)

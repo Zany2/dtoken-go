@@ -87,14 +87,14 @@ func (m *Manager) GetRolesByToken(ctx context.Context, tokenValue string) ([]str
 	}
 
 	// Validate token and load context 校验 Token 并加载上下文
-	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	sess, tokenInfo, err := m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{tokenOnly: true, allowRenew: true})
 	if err != nil {
 		return nil, err
 	}
 
 	// Resolve roles by token 根据 Token 解析角色
-	return m.loadRoles(ctx, sess.Roles, AccessSubject{
-		LoginID:  sess.LoginID,
+	return m.loadRoles(ctx, &sess, AccessSubject{
+		LoginID:  tokenInfo.LoginID,
 		Device:   tokenInfo.Device,
 		DeviceID: tokenInfo.DeviceID,
 		Token:    tokenValue,
@@ -143,7 +143,7 @@ func (m *Manager) HasRoleByToken(ctx context.Context, tokenValue string, role st
 	}
 
 	// Validate token and load context 校验 Token 并加载上下文
-	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	sess, tokenInfo, err := m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{tokenOnly: true, allowRenew: true})
 	if err != nil {
 		m.logger.Errorf("manager.HasRoleByToken: failed to get token info, token=%s, error=%v", tokenValue, err)
 		return false
@@ -153,14 +153,14 @@ func (m *Manager) HasRoleByToken(ctx context.Context, tokenValue string, role st
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
 	// Load roles by token 根据 Token 加载角色
-	roles, err := m.loadRoles(ctx, sess.Roles, AccessSubject{
-		LoginID:  sess.LoginID,
+	roles, err := m.loadRoles(ctx, &sess, AccessSubject{
+		LoginID:  tokenInfo.LoginID,
 		Device:   device,
 		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
 	if err != nil {
-		m.logger.Errorf("manager.HasRoleByToken: failed to load roles, loginID=%s, error=%v", sess.LoginID, err)
+		m.logger.Errorf("manager.HasRoleByToken: failed to load roles, loginID=%s, error=%v", tokenInfo.LoginID, err)
 		return false
 	}
 
@@ -168,7 +168,7 @@ func (m *Manager) HasRoleByToken(ctx context.Context, tokenValue string, role st
 	hasRole := m.hasRoleInList(roles, role)
 
 	// Trigger role check event 触发角色校验事件
-	m.triggerEvent(listener.EventRoleCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventRoleCheck, tokenInfo.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyRole:   role,
 		listener.ExtraKeyResult: hasRole,
 	})
@@ -214,7 +214,7 @@ func (m *Manager) HasRolesAndByToken(ctx context.Context, tokenValue string, rol
 	}
 
 	// Validate token and load context 校验 Token 并加载上下文
-	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	sess, tokenInfo, err := m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{tokenOnly: true, allowRenew: true})
 	if err != nil {
 		m.logger.Errorf("manager.HasRolesAndByToken: failed to get token info, token=%s, error=%v", tokenValue, err)
 		return false
@@ -224,14 +224,14 @@ func (m *Manager) HasRolesAndByToken(ctx context.Context, tokenValue string, rol
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
 	// Load roles by token 根据 Token 加载角色
-	roleList, err := m.loadRoles(ctx, sess.Roles, AccessSubject{
-		LoginID:  sess.LoginID,
+	roleList, err := m.loadRoles(ctx, &sess, AccessSubject{
+		LoginID:  tokenInfo.LoginID,
 		Device:   device,
 		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
 	if err != nil {
-		m.logger.Errorf("manager.HasRolesAndByToken: failed to load roles, loginID=%s, error=%v", sess.LoginID, err)
+		m.logger.Errorf("manager.HasRolesAndByToken: failed to load roles, loginID=%s, error=%v", tokenInfo.LoginID, err)
 		return false
 	}
 
@@ -239,7 +239,7 @@ func (m *Manager) HasRolesAndByToken(ctx context.Context, tokenValue string, rol
 	hasAll := m.hasAllRoles(roleList, roles)
 
 	// Trigger role check event 触发角色校验事件
-	m.triggerEvent(listener.EventRoleCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventRoleCheck, tokenInfo.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyRoles:  roles,
 		listener.ExtraKeyLogic:  listener.LogicAnd,
 		listener.ExtraKeyResult: hasAll,
@@ -286,7 +286,7 @@ func (m *Manager) HasRolesOrByToken(ctx context.Context, tokenValue string, role
 	}
 
 	// Validate token and load context 校验 Token 并加载上下文
-	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	sess, tokenInfo, err := m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{tokenOnly: true, allowRenew: true})
 	if err != nil {
 		m.logger.Errorf("manager.HasRolesOrByToken: failed to get token info, token=%s, error=%v", tokenValue, err)
 		return false
@@ -296,14 +296,14 @@ func (m *Manager) HasRolesOrByToken(ctx context.Context, tokenValue string, role
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
 	// Load roles by token 根据 Token 加载角色
-	roleList, err := m.loadRoles(ctx, sess.Roles, AccessSubject{
-		LoginID:  sess.LoginID,
+	roleList, err := m.loadRoles(ctx, &sess, AccessSubject{
+		LoginID:  tokenInfo.LoginID,
 		Device:   device,
 		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
 	if err != nil {
-		m.logger.Errorf("manager.HasRolesOrByToken: failed to load roles, loginID=%s, error=%v", sess.LoginID, err)
+		m.logger.Errorf("manager.HasRolesOrByToken: failed to load roles, loginID=%s, error=%v", tokenInfo.LoginID, err)
 		return false
 	}
 
@@ -311,7 +311,7 @@ func (m *Manager) HasRolesOrByToken(ctx context.Context, tokenValue string, role
 	hasAny := m.hasAnyRole(roleList, roles)
 
 	// Trigger role check event 触发角色校验事件
-	m.triggerEvent(listener.EventRoleCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventRoleCheck, tokenInfo.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyRoles:  roles,
 		listener.ExtraKeyLogic:  listener.LogicOr,
 		listener.ExtraKeyResult: hasAny,
@@ -369,7 +369,7 @@ func (m *Manager) CheckRoleByToken(ctx context.Context, tokenValue string, role 
 	}
 
 	// Validate token and load context 校验 Token 并加载上下文
-	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	sess, tokenInfo, err := m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{tokenOnly: true, allowRenew: true})
 	if err != nil {
 		return err
 	}
@@ -378,8 +378,8 @@ func (m *Manager) CheckRoleByToken(ctx context.Context, tokenValue string, role 
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
 	// Load roles by token 根据 Token 加载角色
-	roles, err := m.loadRoles(ctx, sess.Roles, AccessSubject{
-		LoginID:  sess.LoginID,
+	roles, err := m.loadRoles(ctx, &sess, AccessSubject{
+		LoginID:  tokenInfo.LoginID,
 		Device:   device,
 		DeviceID: deviceID,
 		Token:    tokenValue,
@@ -392,7 +392,7 @@ func (m *Manager) CheckRoleByToken(ctx context.Context, tokenValue string, role 
 	hasRole := m.hasRoleInList(roles, role)
 
 	// Trigger role check event 触发角色校验事件
-	m.triggerEvent(listener.EventRoleCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventRoleCheck, tokenInfo.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyRole:   role,
 		listener.ExtraKeyResult: hasRole,
 	})
@@ -443,7 +443,7 @@ func (m *Manager) CheckRoleAndByToken(ctx context.Context, tokenValue string, ro
 	}
 
 	// Validate once and share access matching with combined checks. 单次校验，并与组合检查共用权限匹配逻辑。
-	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	sess, tokenInfo, err := m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{tokenOnly: true, allowRenew: true})
 	if err != nil {
 		return err
 	}
@@ -453,7 +453,7 @@ func (m *Manager) CheckRoleAndByToken(ctx context.Context, tokenValue string, ro
 		Device:   tokenInfo.Device,
 		DeviceID: tokenInfo.DeviceID,
 		Token:    tokenValue,
-	}, sess.Roles, roles, true)
+	}, &sess, roles, true)
 }
 
 // CheckRoleOr checks if a user has any specified role CheckRoleOr 校验用户是否拥有任一角色
@@ -496,7 +496,7 @@ func (m *Manager) CheckRoleOrByToken(ctx context.Context, tokenValue string, rol
 	}
 
 	// Validate once and share access matching with combined checks. 单次校验，并与组合检查共用权限匹配逻辑。
-	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	sess, tokenInfo, err := m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{tokenOnly: true, allowRenew: true})
 	if err != nil {
 		return err
 	}
@@ -506,7 +506,7 @@ func (m *Manager) CheckRoleOrByToken(ctx context.Context, tokenValue string, rol
 		Device:   tokenInfo.Device,
 		DeviceID: tokenInfo.DeviceID,
 		Token:    tokenValue,
-	}, sess.Roles, roles, false)
+	}, &sess, roles, false)
 }
 
 // hasRoleInList checks whether role exists hasRoleInList 检查角色是否存在。

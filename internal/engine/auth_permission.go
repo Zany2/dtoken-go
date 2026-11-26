@@ -87,14 +87,14 @@ func (m *Manager) GetPermissionsByToken(ctx context.Context, tokenValue string) 
 	}
 
 	// Validate token and load context 校验 Token 并加载上下文。
-	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	sess, tokenInfo, err := m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{tokenOnly: true, allowRenew: true})
 	if err != nil {
 		return nil, err
 	}
 
 	// Resolve permissions by token 根据 Token 解析权限。
-	return m.loadPermissions(ctx, sess.Permissions, AccessSubject{
-		LoginID:  sess.LoginID,
+	return m.loadPermissions(ctx, &sess, AccessSubject{
+		LoginID:  tokenInfo.LoginID,
 		Device:   tokenInfo.Device,
 		DeviceID: tokenInfo.DeviceID,
 		Token:    tokenValue,
@@ -143,7 +143,7 @@ func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, p
 	}
 
 	// Validate token and load context 校验 Token 并加载上下文。
-	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	sess, tokenInfo, err := m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{tokenOnly: true, allowRenew: true})
 	if err != nil {
 		m.logger.Errorf("manager.HasPermissionByToken: failed to get token info, token=%s, error=%v", tokenValue, err)
 		return false
@@ -153,14 +153,14 @@ func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, p
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
 	// Load permissions by token 根据 Token 加载权限。
-	permissions, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
-		LoginID:  sess.LoginID,
+	permissions, err := m.loadPermissions(ctx, &sess, AccessSubject{
+		LoginID:  tokenInfo.LoginID,
 		Device:   device,
 		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
 	if err != nil {
-		m.logger.Errorf("manager.HasPermissionByToken: failed to load permissions, loginID=%s, error=%v", sess.LoginID, err)
+		m.logger.Errorf("manager.HasPermissionByToken: failed to load permissions, loginID=%s, error=%v", tokenInfo.LoginID, err)
 		return false
 	}
 
@@ -168,7 +168,7 @@ func (m *Manager) HasPermissionByToken(ctx context.Context, tokenValue string, p
 	hasPermission := m.hasPermissionInList(permissions, permission)
 
 	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionCheck, tokenInfo.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermission: permission,
 		listener.ExtraKeyResult:     hasPermission,
 	})
@@ -214,7 +214,7 @@ func (m *Manager) HasPermissionsAndByToken(ctx context.Context, tokenValue strin
 	}
 
 	// Validate token and load context 校验 Token 并加载上下文。
-	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	sess, tokenInfo, err := m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{tokenOnly: true, allowRenew: true})
 	if err != nil {
 		m.logger.Errorf("manager.HasPermissionsAndByToken: failed to get token info, token=%s, error=%v", tokenValue, err)
 		return false
@@ -224,14 +224,14 @@ func (m *Manager) HasPermissionsAndByToken(ctx context.Context, tokenValue strin
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
 	// Load permissions by token 根据 Token 加载权限。
-	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
-		LoginID:  sess.LoginID,
+	permList, err := m.loadPermissions(ctx, &sess, AccessSubject{
+		LoginID:  tokenInfo.LoginID,
 		Device:   device,
 		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
 	if err != nil {
-		m.logger.Errorf("manager.HasPermissionsAndByToken: failed to load permissions, loginID=%s, error=%v", sess.LoginID, err)
+		m.logger.Errorf("manager.HasPermissionsAndByToken: failed to load permissions, loginID=%s, error=%v", tokenInfo.LoginID, err)
 		return false
 	}
 
@@ -239,7 +239,7 @@ func (m *Manager) HasPermissionsAndByToken(ctx context.Context, tokenValue strin
 	hasAll := m.hasAllPermissions(permList, permissions)
 
 	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionCheck, tokenInfo.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermissions: permissions,
 		listener.ExtraKeyLogic:       listener.LogicAnd,
 		listener.ExtraKeyResult:      hasAll,
@@ -286,7 +286,7 @@ func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string
 	}
 
 	// Validate token and load context 校验 Token 并加载上下文。
-	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	sess, tokenInfo, err := m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{tokenOnly: true, allowRenew: true})
 	if err != nil {
 		m.logger.Errorf("manager.HasPermissionsOrByToken: failed to get token info, token=%s, error=%v", tokenValue, err)
 		return false
@@ -296,14 +296,14 @@ func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
 	// Load permissions by token 根据 Token 加载权限。
-	permList, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
-		LoginID:  sess.LoginID,
+	permList, err := m.loadPermissions(ctx, &sess, AccessSubject{
+		LoginID:  tokenInfo.LoginID,
 		Device:   device,
 		DeviceID: deviceID,
 		Token:    tokenValue,
 	})
 	if err != nil {
-		m.logger.Errorf("manager.HasPermissionsOrByToken: failed to load permissions, loginID=%s, error=%v", sess.LoginID, err)
+		m.logger.Errorf("manager.HasPermissionsOrByToken: failed to load permissions, loginID=%s, error=%v", tokenInfo.LoginID, err)
 		return false
 	}
 
@@ -311,7 +311,7 @@ func (m *Manager) HasPermissionsOrByToken(ctx context.Context, tokenValue string
 	hasAny := m.hasAnyPermission(permList, permissions)
 
 	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionCheck, tokenInfo.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermissions: permissions,
 		listener.ExtraKeyLogic:       listener.LogicOr,
 		listener.ExtraKeyResult:      hasAny,
@@ -369,7 +369,7 @@ func (m *Manager) CheckPermissionByToken(ctx context.Context, tokenValue string,
 	}
 
 	// Validate token and load context 校验 Token 并加载上下文。
-	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	sess, tokenInfo, err := m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{tokenOnly: true, allowRenew: true})
 	if err != nil {
 		return err
 	}
@@ -378,8 +378,8 @@ func (m *Manager) CheckPermissionByToken(ctx context.Context, tokenValue string,
 	device, deviceID := tokenInfo.Device, tokenInfo.DeviceID
 
 	// Load permissions by token 根据 Token 加载权限。
-	permissions, err := m.loadPermissions(ctx, sess.Permissions, AccessSubject{
-		LoginID:  sess.LoginID,
+	permissions, err := m.loadPermissions(ctx, &sess, AccessSubject{
+		LoginID:  tokenInfo.LoginID,
 		Device:   device,
 		DeviceID: deviceID,
 		Token:    tokenValue,
@@ -392,7 +392,7 @@ func (m *Manager) CheckPermissionByToken(ctx context.Context, tokenValue string,
 	hasPermission := m.hasPermissionInList(permissions, permission)
 
 	// Trigger permission check event 触发权限校验事件。
-	m.triggerEvent(listener.EventPermissionCheck, sess.LoginID, device, deviceID, tokenValue, map[string]any{
+	m.triggerEvent(listener.EventPermissionCheck, tokenInfo.LoginID, device, deviceID, tokenValue, map[string]any{
 		listener.ExtraKeyPermission: permission,
 		listener.ExtraKeyResult:     hasPermission,
 	})
@@ -443,7 +443,7 @@ func (m *Manager) CheckPermissionAndByToken(ctx context.Context, tokenValue stri
 	}
 
 	// Validate once and share access matching with combined checks. 单次校验，并与组合检查共用权限匹配逻辑。
-	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	sess, tokenInfo, err := m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{tokenOnly: true, allowRenew: true})
 	if err != nil {
 		return err
 	}
@@ -453,7 +453,7 @@ func (m *Manager) CheckPermissionAndByToken(ctx context.Context, tokenValue stri
 		Device:   tokenInfo.Device,
 		DeviceID: tokenInfo.DeviceID,
 		Token:    tokenValue,
-	}, sess.Permissions, permissions, true)
+	}, &sess, permissions, true)
 }
 
 // CheckPermissionOr checks if a user has any specified permission. CheckPermissionOr 校验用户是否拥有任一权限。
@@ -496,7 +496,7 @@ func (m *Manager) CheckPermissionOrByToken(ctx context.Context, tokenValue strin
 	}
 
 	// Validate once and share access matching with combined checks. 单次校验，并与组合检查共用权限匹配逻辑。
-	sess, tokenInfo, err := m.getCheckedTokenSession(ctx, tokenValue)
+	sess, tokenInfo, err := m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{tokenOnly: true, allowRenew: true})
 	if err != nil {
 		return err
 	}
@@ -506,7 +506,7 @@ func (m *Manager) CheckPermissionOrByToken(ctx context.Context, tokenValue strin
 		Device:   tokenInfo.Device,
 		DeviceID: tokenInfo.DeviceID,
 		Token:    tokenValue,
-	}, sess.Permissions, permissions, false)
+	}, &sess, permissions, false)
 }
 
 // hasPermissionInList checks if permission exists in permission list. hasPermissionInList 判断权限是否存在。

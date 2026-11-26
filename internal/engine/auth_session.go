@@ -78,7 +78,7 @@ func (m *Manager) GetTokenValueListByLoginID(ctx context.Context, loginID string
 	}
 
 	// Filter terminal tokens 过滤终端 Token。
-	return m.filterTokens(ctx, sess.TerminalInfos, len(checkAlive) > 0 && checkAlive[0], sess)
+	return m.filterTokens(ctx, sess, len(checkAlive) > 0 && checkAlive[0], "", "")
 }
 
 // GetTokenValueListByDevice retrieves all tokens for a specific device type. GetTokenValueListByDevice 获取指定设备类型的所有 Token。
@@ -120,9 +120,8 @@ func (m *Manager) GetTokenValueListByDevice(ctx context.Context, loginID, device
 		return []string{}, nil
 	}
 
-	// Filter by device 过滤设备终端。
-	matched := sessionGetTerminalsByDevice(sess, device)
-	return m.filterTokens(ctx, matched, len(checkAlive) > 0 && checkAlive[0], sess)
+	// Filter during traversal without copying matching terminal records. 遍历时直接筛选，不复制匹配的终端记录。
+	return m.filterTokens(ctx, sess, len(checkAlive) > 0 && checkAlive[0], device, "")
 }
 
 // GetTokenValueListByDeviceAndDeviceID retrieves all tokens for a specific device type and device ID. GetTokenValueListByDeviceAndDeviceID 获取指定设备类型和设备 ID 的所有 Token。
@@ -165,9 +164,8 @@ func (m *Manager) GetTokenValueListByDeviceAndDeviceID(ctx context.Context, logi
 		return []string{}, nil
 	}
 
-	// Filter by concrete device 过滤具体设备终端。
-	matched := sessionGetTerminalsByDeviceAndDeviceID(sess, device, deviceID)
-	return m.filterTokens(ctx, matched, len(checkAlive) > 0 && checkAlive[0], sess)
+	// Filter during traversal without copying matching terminal records. 遍历时直接筛选，不复制匹配的终端记录。
+	return m.filterTokens(ctx, sess, len(checkAlive) > 0 && checkAlive[0], device, deviceID)
 }
 
 // GetOnlineTerminalCount retrieves the count of online terminals for a user. GetOnlineTerminalCount 获取用户的在线终端数量。
@@ -197,7 +195,7 @@ func (m *Manager) GetOnlineTerminalCount(ctx context.Context, loginID string) (i
 	}
 
 	// Count alive tokens 统计存活 Token。
-	return m.countAliveTokens(ctx, sess.TerminalInfos, sess)
+	return m.countAliveTokens(ctx, sess, "", "")
 }
 
 // GetOnlineTerminalCountByDevice retrieves the count of online terminals for a specific device type. GetOnlineTerminalCountByDevice 获取用户在指定设备类型的在线终端数量。
@@ -235,7 +233,7 @@ func (m *Manager) GetOnlineTerminalCountByDevice(ctx context.Context, loginID, d
 	}
 
 	// Count alive tokens by device 按设备统计存活 Token。
-	return m.countAliveTokens(ctx, sessionGetTerminalsByDevice(sess, device), sess)
+	return m.countAliveTokens(ctx, sess, device, "")
 }
 
 // GetOnlineTerminalCountByDeviceAndDeviceID retrieves the count of online terminals for a specific device type and device ID. GetOnlineTerminalCountByDeviceAndDeviceID 获取用户在指定设备类型和设备ID的在线终端数量。
@@ -274,7 +272,7 @@ func (m *Manager) GetOnlineTerminalCountByDeviceAndDeviceID(ctx context.Context,
 	}
 
 	// Count alive tokens by concrete device 按具体设备统计存活 Token。
-	return m.countAliveTokens(ctx, sessionGetTerminalsByDeviceAndDeviceID(sess, device, deviceID), sess)
+	return m.countAliveTokens(ctx, sess, device, deviceID)
 }
 
 // GetTerminalListByLoginID retrieves all terminal info for a login ID, optionally filtered by device. GetTerminalListByLoginID 获取指定登录 ID 的所有终端信息列表，可选按设备类型过滤。
@@ -392,21 +390,19 @@ func (m *Manager) GetTokenValueByLoginID(ctx context.Context, loginID string, de
 		return "", err
 	}
 
-	// Select target terminals 选择目标终端。
-	terminals := sess.TerminalInfos
-	if len(device) > 0 {
-		terminals = sessionGetTerminalsByDevice(sess, targetDevice)
-	}
-
-	// Walk backward so the newest alive token wins. 反向遍历以返回最新仍有效的 token。
+	// Filter while walking backward so a match stops without collecting older terminals. 反向遍历时直接筛选，命中即停止，不收集较旧终端。
 	cache := &terminalAliveCheckCache{}
-	for i := len(terminals) - 1; i >= 0; i-- {
-		alive, err := m.checkTerminalEntryAlive(ctx, terminals[i], sess, cache)
+	for i := len(sess.TerminalInfos) - 1; i >= 0; i-- {
+		terminal := &sess.TerminalInfos[i]
+		if targetDevice != "" && terminal.Device != targetDevice {
+			continue
+		}
+		alive, err := m.checkTerminalEntryAlive(ctx, *terminal, sess, cache)
 		if err != nil {
 			return "", err
 		}
 		if alive {
-			return terminals[i].Token, nil
+			return terminal.Token, nil
 		}
 	}
 
@@ -532,52 +528,52 @@ func (m *Manager) ForEachTerminalByDevice(ctx context.Context, loginID, device s
 	return nil
 }
 
-// filterTokens filters tokens based on checkAlive flag. filterTokens 根据 checkAlive 决定是否验证 token 有效性，并返回 token 列表。
-func (m *Manager) filterTokens(ctx context.Context, terminals []TerminalInfo, checkAlive bool, sess *Session) ([]string, error) {
-	// Return empty list when no terminals exist 没有终端时返回空列表。
-	if len(terminals) == 0 {
-		return []string{}, nil
-	}
-
-	// Return all tokens directly if no alive check 不检查存活时直接返回所有 Token。
-	if !checkAlive {
-		// Return all tokens without alive check 不检查存活：直接返回所有 token（预分配容量）。
-		tokens := make([]string, len(terminals))
-		for i, ti := range terminals {
-			tokens[i] = ti.Token
+// filterTokens collects scoped tokens directly; empty private filters mean all devices. filterTokens 直接收集作用域内 Token，私有过滤参数为空表示不限设备。
+func (m *Manager) filterTokens(ctx context.Context, sess *Session, checkAlive bool, device, deviceID string) ([]string, error) {
+	// Keep the unfiltered snapshot path as a direct copy of token strings. 未筛选的快照路径直接复制 Token 字符串。
+	if !checkAlive && device == "" && deviceID == "" {
+		tokens := make([]string, len(sess.TerminalInfos))
+		for i := range sess.TerminalInfos {
+			tokens[i] = sess.TerminalInfos[i].Token
 		}
 		return tokens, nil
 	}
 
-	// Filter tokens using the full liveness rules. 按完整存活规则过滤 Token。
-	tokens := make([]string, 0, len(terminals))
+	// Avoid allocating for unrelated terminals in a narrow query. 窄范围查询不为无关终端预分配结果空间。
+	tokens := []string{}
+	if device == "" {
+		tokens = make([]string, 0, len(sess.TerminalInfos))
+	}
 	cache := &terminalAliveCheckCache{}
-	for _, ti := range terminals {
-		alive, err := m.checkTerminalEntryAlive(ctx, ti, sess, cache)
-		if err != nil {
-			return nil, err
+	for i := range sess.TerminalInfos {
+		ti := &sess.TerminalInfos[i]
+		if device != "" && ti.Device != device || deviceID != "" && ti.DeviceID != deviceID {
+			continue
 		}
-
-		// Keep active tokens, skipping expired or kicked-out entries. 仅保留活跃 Token，跳过已过期、被踢下线等无效记录。
-		if alive {
-			tokens = append(tokens, ti.Token)
+		if checkAlive {
+			alive, err := m.checkTerminalEntryAlive(ctx, *ti, sess, cache)
+			if err != nil {
+				return nil, err
+			}
+			if !alive {
+				continue
+			}
 		}
+		tokens = append(tokens, ti.Token)
 	}
 	return tokens, nil
 }
 
-// countAliveTokens counts alive tokens without collecting token values. countAliveTokens 不收集 token，直接统计存活数量。
-func (m *Manager) countAliveTokens(ctx context.Context, terminals []TerminalInfo, sess *Session) (int, error) {
-	// Return zero when no terminals exist 没有终端时返回 0。
-	if len(terminals) == 0 {
-		return 0, nil
-	}
-
-	// Count alive terminals 统计存活终端。
+// countAliveTokens counts scoped live entries without collecting terminals or token values. countAliveTokens 直接统计作用域内存活条目，不收集终端或 Token 列表。
+func (m *Manager) countAliveTokens(ctx context.Context, sess *Session, device, deviceID string) (int, error) {
 	count := 0
 	cache := &terminalAliveCheckCache{}
-	for _, ti := range terminals {
-		alive, err := m.checkTerminalEntryAlive(ctx, ti, sess, cache)
+	for i := range sess.TerminalInfos {
+		ti := &sess.TerminalInfos[i]
+		if device != "" && ti.Device != device || deviceID != "" && ti.DeviceID != deviceID {
+			continue
+		}
+		alive, err := m.checkTerminalEntryAlive(ctx, *ti, sess, cache)
 		if err != nil {
 			return 0, err
 		}

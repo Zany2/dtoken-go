@@ -146,6 +146,7 @@ func TestManagerCloseKeepsPoolAliveForListeners(t *testing.T) {
 	pool := &managerObservedStopPool{stopped: make(chan struct{})}
 	logger := &managerLifecycleTestLogger{}
 	mgr := newTestManagerWithRuntime(t, pool, logger)
+	mgr.GetEventManager().SetAsyncPool(pool)
 	t.Cleanup(mgr.CloseManager)
 	started, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	var once sync.Once
@@ -190,7 +191,8 @@ func TestManagerAsyncTaskPanicIsContained(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			mgr := newTestManager(t, nil)
 			mgr.pool = pool
-			if !mgr.submitAsync("panic regression", func() { panic("component panic") }) {
+			task := func() { panic("component panic") }
+			if !mgr.submitAsync("panic regression", task, task) {
 				t.Fatal("task was not accepted")
 			}
 			completed := make(chan struct{})
@@ -201,7 +203,8 @@ func TestManagerAsyncTaskPanicIsContained(t *testing.T) {
 				t.Fatal("panicking task leaked its completion count")
 			}
 			next := make(chan struct{})
-			mgr.submitAsync("after panic", func() { close(next) })
+			task = func() { close(next) }
+			mgr.submitAsync("after panic", task, task)
 			select {
 			case <-next:
 			case <-time.After(time.Second):
@@ -225,7 +228,7 @@ func TestManagerLateMaintenanceCannotTouchRevokedToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkedRecord, _, _, err := mgr.inspectLoginToken(ctx, token, nil)
+	checkedRecord, _, _, err := mgr.inspectLoginToken(ctx, token, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

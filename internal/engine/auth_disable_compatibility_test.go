@@ -11,8 +11,8 @@ import (
 	listener "github.com/Zany2/dtoken-go/event"
 )
 
-// TestManagerDisableCrossFormatCompatibility verifies field matching, write protection, read precedence, and untie scope across overlapping key formats. TestManagerDisableCrossFormatCompatibility 验证重叠键格式之间的字段匹配、写入保护、读取优先级与解封范围。
-func TestManagerDisableCrossFormatCompatibility(t *testing.T) {
+// TestManagerDisableCanonicalIsolation verifies canonical ownership, legacy isolation, mutation errors, and event scope. TestManagerDisableCanonicalIsolation 验证规范键归属、旧键隔离、写入错误及事件范围。
+func TestManagerDisableCanonicalIsolation(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
 		name        string
@@ -32,6 +32,26 @@ func TestManagerDisableCrossFormatCompatibility(t *testing.T) {
 		disabled    error
 		event       listener.Event
 	}{
+		{
+			name:        "account",
+			loginID:     "user:one",
+			key:         func(m *Manager, id string) string { return m.getDisableKey(id) },
+			legacyKey:   func(m *Manager, id string) string { return m.getLegacyDisableKey(id) },
+			foreignKey:  func(m *Manager) string { return m.getLegacyDisableKey(`user\:one`) },
+			info:        &DisableInfo{DisableReason: "target"},
+			foreignInfo: &DisableInfo{DisableReason: "foreign"},
+			isDisabled:  func(m *Manager, id string) bool { return m.IsDisable(ctx, id) },
+			getInfo:     func(m *Manager, id string) (any, error) { return m.GetDisableInfo(ctx, id) },
+			check:       func(m *Manager, id string) error { return m.CheckDisable(ctx, id) },
+			ttl:         func(m *Manager, id string) (int64, error) { return m.GetDisableTTL(ctx, id) },
+			disable: func(m *Manager, id string, _ int, duration time.Duration, reason string) error {
+				return m.Disable(ctx, id, duration, reason)
+			},
+			untie:       func(m *Manager, id string) error { return m.Untie(ctx, id) },
+			notDisabled: derror.ErrAccountNotDisabled,
+			disabled:    derror.ErrAccountDisabled,
+			event:       listener.EventUntie,
+		},
 		{
 			name:        "service",
 			loginID:     "user:one",
@@ -128,14 +148,31 @@ func TestManagerDisableCrossFormatCompatibility(t *testing.T) {
 			disableEvent := listener.EventDisableDevice
 			if tt.event == listener.EventUntieService {
 				disableEvent = listener.EventDisableService
+			} else if tt.event == listener.EventUntie {
+				disableEvent = listener.EventDisable
 			}
 			disableEvents := 0
 			mgr.GetEventManager().RegisterFuncWithConfig(disableEvent, func(*listener.EventData) {
 				disableEvents++
 			}, listener.ListenerConfig{Async: false})
 
+			makeMarker := func(id string, value any) disableMarker {
+				marker := disableMarker{LoginID: id}
+				switch info := value.(type) {
+				case *DisableInfo:
+					marker.Kind, marker.DisableInfo = "account", *info
+				case *ServiceDisableInfo:
+					marker.Kind, marker.Service, marker.Level = "service", info.Service, info.Level
+					marker.DisableInfo = DisableInfo{DisableTime: info.DisableTime, DisableReason: info.DisableReason}
+				case *DeviceDisableInfo:
+					marker.Kind, marker.Device, marker.DeviceID = "device", info.Device, info.DeviceID
+					marker.DisableInfo = DisableInfo{DisableTime: info.DisableTime, DisableReason: info.DisableReason}
+				}
+				return marker
+			}
+
 			// A foreign legacy marker must not be trusted just because it occupies the current key. 其他身份的旧标记不能仅因占据当前键就被信任。
-			if err := mgr.saveToStorage(ctx, key, tt.foreignInfo, time.Minute); err != nil {
+			if err := mgr.saveToStorage(ctx, key, makeMarker("foreign-owner", tt.foreignInfo), time.Minute); err != nil {
 				t.Fatalf("save foreign marker error = %v", err)
 			}
 			foreignData, err := mgr.storage.Get(ctx, key)
@@ -173,42 +210,22 @@ func TestManagerDisableCrossFormatCompatibility(t *testing.T) {
 				t.Fatalf("no-op untie changed foreign marker or events: value=%v, error=%v, events=%d", got, err, events)
 			}
 
-			// A matching legacy marker remains usable behind the foreign current-key record. 当前键为其他身份记录时，匹配的旧标记仍可使用。
+			// A legacy-only restriction is never consulted or deleted at runtime. 运行时不查询或删除仅存在于旧键的封禁。
 			if err = mgr.saveToStorage(ctx, legacyKey, tt.info, 0); err != nil {
-				t.Fatalf("save matching legacy marker error = %v", err)
+				t.Fatal(err)
 			}
-			if !tt.isDisabled(mgr, tt.loginID) {
-				t.Fatal("matching legacy marker was ignored")
+			if tt.isDisabled(mgr, tt.loginID) {
+				t.Fatal("legacy marker became active")
 			}
-			if err = tt.check(mgr, tt.loginID); !errors.Is(err, tt.disabled) {
-				t.Fatalf("check(matching legacy) error = %v, want %v", err, tt.disabled)
+			if err = tt.check(mgr, tt.loginID); err != nil {
+				t.Fatal(err)
 			}
-			if info, err := tt.getInfo(mgr, tt.loginID); err != nil || !reflect.DeepEqual(info, tt.info) {
-				t.Fatalf("getInfo(matching legacy) = %+v, %v, want %+v", info, err, tt.info)
-			}
-			if ttl, err := tt.ttl(mgr, tt.loginID); err != nil || ttl != -1 {
-				t.Fatalf("ttl(matching legacy) = %d, %v, want -1, nil", ttl, err)
-			}
-			if err = tt.untie(mgr, tt.loginID); err != nil {
-				t.Fatalf("untie(matching legacy) error = %v", err)
-			}
-			if got, err := mgr.storage.Get(ctx, key); err != nil || !reflect.DeepEqual(got, foreignData) {
-				t.Fatalf("untie(matching legacy) changed foreign marker: value=%v, error=%v", got, err)
-			}
-			if mgr.storage.Exists(ctx, legacyKey) || events != 1 {
-				t.Fatalf("legacy untie did not remove only matching state: events=%d, want 1", events)
+			if err = tt.untie(mgr, tt.loginID); err != nil || !mgr.storage.Exists(ctx, legacyKey) || events != 0 {
+				t.Fatalf("legacy-only untie changed state: %v, events=%d", err, events)
 			}
 
 			// Valid current state takes precedence without reading malformed legacy data. 有效当前状态优先返回，无需读取损坏的旧数据。
-			currentMarker := disableMarker{LoginID: tt.loginID}
-			switch info := tt.info.(type) {
-			case *ServiceDisableInfo:
-				currentMarker.Kind, currentMarker.Service, currentMarker.Level = "service", info.Service, info.Level
-				currentMarker.DisableInfo = DisableInfo{DisableTime: info.DisableTime, DisableReason: info.DisableReason}
-			case *DeviceDisableInfo:
-				currentMarker.Kind, currentMarker.Device, currentMarker.DeviceID = "device", info.Device, info.DeviceID
-				currentMarker.DisableInfo = DisableInfo{DisableTime: info.DisableTime, DisableReason: info.DisableReason}
-			}
+			currentMarker := makeMarker(tt.loginID, tt.info)
 			if err = mgr.saveToStorage(ctx, key, currentMarker, 0); err != nil {
 				t.Fatalf("save matching current marker error = %v", err)
 			}
@@ -233,21 +250,16 @@ func TestManagerDisableCrossFormatCompatibility(t *testing.T) {
 				t.Fatalf("legacy reads after current match = %d, want 0", count)
 			}
 
-			// Untie still validates every candidate before deleting any record. 解封仍在删除任何记录前校验全部候选键。
-			if err = tt.untie(mgr, tt.loginID); !errors.Is(err, derror.ErrSerializeFailed) {
-				t.Fatalf("untie(malformed legacy) error = %v, want ErrSerializeFailed", err)
-			}
-			if !mgr.storage.Exists(ctx, key) || !mgr.storage.Exists(ctx, legacyKey) || events != 1 {
-				t.Fatalf("failed untie changed state or emitted events: events=%d, want 1", events)
-			}
-			if err = mgr.saveToStorage(ctx, legacyKey, tt.info, time.Minute); err != nil {
-				t.Fatalf("save matching legacy marker error = %v", err)
-			}
+			// Untie ignores malformed legacy data and reads the canonical marker only once. 解封忽略损坏的旧数据，规范标记只读取一次。
+			beforeReads := storage.getCount(key)
 			if err = tt.untie(mgr, tt.loginID); err != nil {
-				t.Fatalf("untie(both matches) error = %v", err)
+				t.Fatal(err)
 			}
-			if mgr.storage.Exists(ctx, key) || mgr.storage.Exists(ctx, legacyKey) || events != 2 {
-				t.Fatalf("untie(both matches) left state or emitted duplicate events: events=%d, want 2", events)
+			if mgr.storage.Exists(ctx, key) || !mgr.storage.Exists(ctx, legacyKey) || events != 1 || storage.getCount(key)-beforeReads != 1 {
+				t.Fatalf("canonical untie failed or reread its marker: events=%d", events)
+			}
+			if err = tt.untie(mgr, tt.loginID); err != nil || events != 1 {
+				t.Fatalf("repeated untie emitted an event: %v", err)
 			}
 
 			// Valid creation and updates still replace reason, service level, and expiration. 正常创建和更新仍可替换原因、服务等级与有效期。
@@ -265,6 +277,10 @@ func TestManagerDisableCrossFormatCompatibility(t *testing.T) {
 				t.Fatalf("getInfo(updated marker) error = %v", err)
 			}
 			switch info := updated.(type) {
+			case *DisableInfo:
+				if info.DisableReason != "updated" {
+					t.Fatalf("updated account marker = %+v", info)
+				}
 			case *ServiceDisableInfo:
 				if info.DisableReason != "updated" || info.Level != 4 {
 					t.Fatalf("updated service marker = %+v, want new reason and level", info)
@@ -278,6 +294,9 @@ func TestManagerDisableCrossFormatCompatibility(t *testing.T) {
 			}
 			if ttl, err := tt.ttl(mgr, tt.loginID); err != nil || ttl < 1 || ttl > 60 {
 				t.Fatalf("ttl(updated marker) = %d, %v, want 1..60 seconds", ttl, err)
+			}
+			if storage.getCount(legacyKey) != 0 {
+				t.Fatal("runtime operation read a legacy key")
 			}
 			if disableEvents != 2 {
 				t.Fatalf("successful disable events = %d, want 2", disableEvents)

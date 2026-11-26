@@ -12,6 +12,23 @@ Selection order: explicit WithAuth/WithManager, the bound request instance, then
 
 `BeforeAuthHandler` observes the `AuthHandleRequest` metadata and controls flow: `req.Next()` skips the current DToken checks and continues downstream; `req.Exit()` ends the current DToken flow after custom handling. Returning without handling or aborting the request continues the original middleware checks. Changing `AuthType`, `CheckLogin`, `CheckDisable`, `Permissions`, `Roles`, or `LogicType` on this request does not change those rules. For dynamic rules, use `AccessMiddleware` with `WithRouteAccessHandler` and modify its `RouteAccessRequest`. This distinction applies to all eight framework integrations.
 
+## Login validation and restriction checks
+
+`AuthMiddleware` validates credentials without implicit account or device restriction reads. To enforce these restrictions, use `AccessMiddleware` and explicitly set `CheckDisable`. This checks the account, device type, and concrete device while reusing the token identity already read. Service restrictions still require service-specific business checks.
+
+This Gin example assumes an instance is already bound through `RegisterDTokenContextMiddleware`:
+
+```go
+protected := r.Group("/protected")
+protected.Use(gindt.AccessMiddleware(ctx,
+    gindt.WithRouteAccessHandler(func(_ context.Context, _ *gin.Context, req *gindt.RouteAccessRequest) {
+        req.CheckDisable = true
+    }),
+))
+```
+
+`AccessMiddleware` requires login by default; the callback adds restrictions. Other frameworks use their own callback signatures. Annotations set `CheckDisable: true`; direct shared checks set `httpauth.Request.CheckDisable`. When upgrading from implicit bans, update route declarations according to the [migration guide](../../design/module-migration.md).
+
 ## Installation
 
 ```bash

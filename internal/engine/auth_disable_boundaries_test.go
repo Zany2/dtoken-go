@@ -151,12 +151,12 @@ func TestScopedRetirementRevokesOwnExpiredRefresh(t *testing.T) {
 	}
 }
 
-// TestDisableRejectsEncodedNull verifies null markers fail closed without mutating storage or emitting events. TestDisableRejectsEncodedNull 验证空封禁记录返回错误，且不修改存储或发送事件。
-func TestDisableRejectsEncodedNull(t *testing.T) {
+// TestDisableRejectsInvalidMarkers verifies malformed or unidentified markers fail without mutations or events. TestDisableRejectsInvalidMarkers 验证损坏或缺失身份的封禁记录返回错误，且不修改存储或发送事件。
+func TestDisableRejectsInvalidMarkers(t *testing.T) {
 	ctx := context.Background()
 	for _, codec := range []adapter.Codec{jsoncodec.NewJSONSerializer(), base64codec.NewBase64Serializer()} {
 		for _, kind := range []string{"account", "service", "device", "concrete device"} {
-			for _, format := range []string{"current", "legacy"} {
+			for _, format := range []string{"null", "ownerless", "missing kind"} {
 				t.Run(codec.Name()+"/"+kind+"/"+format, func(t *testing.T) {
 					mgr := newTestManager(t, nil)
 					mgr.serializer = codec
@@ -195,19 +195,26 @@ func TestDisableRejectsEncodedNull(t *testing.T) {
 						untie = func() error { return mgr.UntieDeviceAndDeviceID(ctx, id, "web", "phone") }
 					}
 					key := current
-					if format == "legacy" {
-						key = legacy
-						marker.LoginID, marker.Kind = "", ""
-					}
 
-					// Valid objects must still decode, including ownerless legacy markers. 合法对象仍须可解码，包括缺少账号字段的旧标记。
+					// Canonical objects must decode before invalidating their payload. 规范记录须可解码，再改写为无效载荷。
 					if err := mgr.saveToStorage(ctx, key, marker, time.Hour); err != nil {
 						t.Fatal(err)
 					}
 					if err := get(); err != nil {
 						t.Fatalf("valid marker rejected: %v", err)
 					}
-					if err := mgr.saveToStorage(ctx, key, (*disableMarker)(nil), time.Hour); err != nil {
+					wantErr := derror.ErrSerializeFailed
+					var invalid any = (*disableMarker)(nil)
+					if format != "null" {
+						wantErr = derror.ErrInvalidParam
+						if format == "ownerless" {
+							marker.LoginID = ""
+						} else {
+							marker.Kind = ""
+						}
+						invalid = marker
+					}
+					if err := mgr.saveToStorage(ctx, key, invalid, time.Hour); err != nil {
 						t.Fatal(err)
 					}
 					before := captureTerminalLifecycle(t, mgr, ctx, []string{current, legacy})
@@ -217,13 +224,13 @@ func TestDisableRejectsEncodedNull(t *testing.T) {
 						call func() error
 					}{{"get", get}, {"check", check}, {"ttl", ttl}, {"disable", disable}, {"untie", untie}}
 					if kind == "service" {
-						if err := mgr.CheckDisableServiceLevel(ctx, id, "pay", 2); !errors.Is(err, derror.ErrSerializeFailed) {
+						if err := mgr.CheckDisableServiceLevel(ctx, id, "pay", 2); !errors.Is(err, wantErr) {
 							t.Fatalf("null service level check = %v", err)
 						}
 					}
 					for _, operation := range operations {
-						if err := operation.call(); !errors.Is(err, derror.ErrSerializeFailed) {
-							t.Errorf("%s(null) = %v, want ErrSerializeFailed", operation.name, err)
+						if err := operation.call(); !errors.Is(err, wantErr) {
+							t.Errorf("%s(%s) = %v, want %v", operation.name, format, err, wantErr)
 						}
 						assertTerminalLifecycleUnchanged(t, mgr, ctx, before)
 					}

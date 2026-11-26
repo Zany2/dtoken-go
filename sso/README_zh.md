@@ -1,5 +1,7 @@
 # SSO 单点登录
 
+架构第一阶段已加入独立的 `ExchangeService`、部署装配校验及会话后端契约。新本地兑换无需 HTTP 适配，旧入口保持兼容；使用方式及尚待实现的统一登录边界见[公共兑换核心与会话契约](EXCHANGE_CORE_zh.md)。
+
 SSO 部署方式分为共享 Cookie／认证存储、跨域共享认证存储、跨域独立存储三类；它们与 Ticket 等凭证类型不同。跨域共享存储可通过 `ClientConfig.SharedStoreServer` 直接兑换，并复用现有浏览器登录与退出接入；默认仍走 HTTP。配置、模式一的当前边界及模式二完整流程见[三种部署方式](DEPLOYMENT_MODES_zh.md)。
 
 入站查询串与表单默认受大小限制，覆盖中心六个接口、注销回调和浏览器回调。配置、413 响应及中间件兼容说明见[HTTP 请求大小限制](REQUEST_LIMITS_zh.md)。

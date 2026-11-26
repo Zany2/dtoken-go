@@ -67,7 +67,9 @@ func registerRoutes(e *echo4.Echo, authInstance *dtoken.Auth) error {
 	e.POST("/login", handleLogin)
 
 	auth := e.Group("")
-	auth.Use(echodt.AuthMiddleware(ctx, echodt.WithFailFunc(writeAuthError)))
+	auth.Use(echodt.AccessMiddleware(ctx, echodt.WithFailFunc(writeAuthError), echodt.WithRouteAccessHandler(func(_ context.Context, _ echo4.Context, req *echodt.RouteAccessRequest) {
+		req.CheckDisable = true
+	})))
 	auth.GET("/me", handleMe)
 	auth.GET("/admin", handleAdmin, echodt.RoleMiddleware(ctx, []string{"admin"}, echodt.WithFailFunc(writeAuthError)))
 	auth.GET("/articles", handleArticles, echodt.PermissionMiddleware(ctx, []string{"article:read"}, echodt.WithFailFunc(writeAuthError)))

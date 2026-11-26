@@ -27,7 +27,7 @@ type Request struct {
 	TokenValue string
 	// CheckLogin indicates whether login state must be checked CheckLogin 表示是否必须校验登录态。
 	CheckLogin bool
-	// CheckDisable indicates whether account disable state must be checked CheckDisable 表示是否校验账号封禁状态。
+	// CheckDisable explicitly checks account, device type and concrete device restrictions. CheckDisable 显式检查账号、设备类型与具体设备封禁。
 	CheckDisable bool
 	// Permissions lists required permissions Permissions 表示本次请求需要的权限列表。
 	Permissions []string
@@ -132,7 +132,7 @@ func Check(ctx context.Context, mgr *manager.Manager, req Request) (*Result, err
 	}
 
 	// One check reuses the token identity and optional session across all access rules. 单次检查在全部访问规则之间复用 Token 身份及可选 Session。
-	loginID, err := manager.CheckTokenAccess(ctx, mgr, req.TokenValue, req.Permissions, req.Roles, req.LogicType == LogicAnd)
+	loginID, err := manager.CheckTokenAccess(ctx, mgr, req.TokenValue, req.Permissions, req.Roles, req.LogicType == LogicAnd, req.CheckDisable)
 	if err != nil {
 		// Only initial credential failures use LoginError; provider and session errors retain their causes. 仅初始凭证失败映射 LoginError，提供器与 Session 错误保留原始原因。
 		if req.CheckLogin && loginID == "" {
@@ -147,7 +147,7 @@ func Check(ctx context.Context, mgr *manager.Manager, req Request) (*Result, err
 		return nil, err
 	}
 
-	// Preserve lazy identity output; login validation already checks account and device restrictions. 保留延迟身份输出，登录校验已包含账号与设备封禁检查。
+	// Preserve lazy identity output after the declared checks have passed. 声明的检查通过后，保留延迟身份输出约定。
 	if req.CheckDisable || (req.CheckLogin && (len(req.Permissions) > 0 || len(req.Roles) > 0)) {
 		result.LoginID = loginID
 	}

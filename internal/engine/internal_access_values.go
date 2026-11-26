@@ -9,8 +9,8 @@ func sessionAddPermissions(s *Session, permissions ...string) []string {
 
 // removePermissions removes permissions and returns the removed values. removePermissions 从会话移除指定权限，同时返回实际移除值。
 func sessionRemovePermissions(s *Session, permissions ...string) []string {
-	removed := existingAccessValues(s.Permissions, permissions)
-	s.Permissions = removeStrings(s.Permissions, removed...)
+	var removed []string
+	s.Permissions, removed = removeAccessValues(s.Permissions, permissions)
 	return removed
 }
 
@@ -23,31 +23,91 @@ func sessionAddRoles(s *Session, roles ...string) []string {
 
 // removeRoles removes roles and returns the removed values. removeRoles 从会话移除指定角色，同时返回实际移除值。
 func sessionRemoveRoles(s *Session, roles ...string) []string {
-	removed := existingAccessValues(s.Roles, roles)
-	s.Roles = removeStrings(s.Roles, removed...)
+	var removed []string
+	s.Roles, removed = removeAccessValues(s.Roles, roles)
 	return removed
 }
 
-// existingAccessValues returns requested values that exist, preserving request order. existingAccessValues 返回已存在的请求值并保留请求顺序。
-func existingAccessValues(items, values []string) []string {
+// removeAccessValues bounds its lookup set by the smaller input and reports changes in request order. removeAccessValues 按较小输入限制查找集合，并按请求顺序报告变更。
+func removeAccessValues(items, values []string) ([]string, []string) {
 	if len(items) == 0 || len(values) == 0 {
-		return nil
+		return items, nil
 	}
 
-	existing := make(map[string]struct{}, len(items))
-	for _, item := range items {
-		existing[item] = struct{}{}
+	var removed []string
+	broad := len(values) >= len(items)
+	requested := make(map[string]bool, min(len(items), len(values)))
+	if broad {
+		// Index stored values so a large request cannot inflate the temporary set. 索引存储值，避免大批次请求扩大临时集合。
+		for _, item := range items {
+			requested[item] = false
+		}
+		for _, value := range values {
+			if _, exists := requested[value]; value != "" && exists {
+				if removed == nil {
+					removed = make([]string, 0, len(items))
+				}
+				removed = append(removed, value)
+				delete(requested, value)
+			}
+		}
+		if len(removed) == 0 {
+			return items, nil
+		}
+	} else {
+		for _, value := range values {
+			if value != "" {
+				requested[value] = false
+			}
+		}
+	}
+	if !broad && len(requested) == 0 {
+		return items, nil
 	}
 
-	matched := make([]string, 0, len(values))
-	for _, value := range values {
-		if value == "" {
-			continue
-		}
-		if _, ok := existing[value]; ok {
-			matched = append(matched, value)
-			delete(existing, value)
+	// Broad requests leave survivors in the set; narrow requests mark matched removals. 大请求在集合中留下保留项，小请求则标记命中的删除项。
+	// Allocate only when retaining values after a removal, leaving the original array untouched. 删除后仍需保留值时才分配列表，保持原底层数组不变。
+	kept := items
+	changed := false
+	matchedCount := 0
+	for i, item := range items {
+		matched, exists := requested[item]
+		if exists != broad {
+			if !broad && !matched {
+				requested[item] = true
+				matchedCount++
+			}
+			if !changed {
+				kept = nil
+				if i > 0 {
+					kept = make([]string, 0, len(items)-1)
+					kept = append(kept, items[:i]...)
+				}
+				changed = true
+			}
+		} else if changed {
+			if kept == nil {
+				kept = make([]string, 0, len(items)-i)
+			}
+			kept = append(kept, item)
 		}
 	}
-	return matched
+	if !changed {
+		return items, nil
+	}
+	if len(kept) == 0 {
+		kept = nil
+	}
+
+	// Retain first-request order and report each removed value once, even for duplicate stored values. 保留请求首次出现顺序，即使存储值重复也只报告一次。
+	if !broad {
+		removed = make([]string, 0, matchedCount)
+		for _, value := range values {
+			if requested[value] {
+				removed = append(removed, value)
+				delete(requested, value)
+			}
+		}
+	}
+	return kept, removed
 }

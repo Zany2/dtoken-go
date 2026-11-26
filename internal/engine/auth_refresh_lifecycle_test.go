@@ -78,7 +78,7 @@ func TestManagerOldRefreshTokenPreservesReusedAccess(t *testing.T) {
 
 						// Force equal timestamps and terminal indexes so only lifecycle identity can disambiguate same-account reuse. 强制时间戳和终端序号相同，使同账号复用只能通过生命周期标识区分。
 						current.CreateTime = oldAccess.CreateTime
-						if err = mgr.saveToStorage(ctx, mgr.getTokenKey(opts.Token), *current); err != nil {
+						if err = mgr.updateStoredValue(ctx, mgr.getTokenKey(opts.Token), encodeTokenRecord(current)); err != nil {
 							t.Fatalf("save current record error = %v", err)
 						}
 						sess, err := mgr.getSession(ctx, opts.LoginID)
@@ -155,7 +155,7 @@ func TestManagerOldRefreshTokenPreservesReusedAccess(t *testing.T) {
 func TestManagerRefreshBindingSurvivesRenewal(t *testing.T) {
 	ctx := context.Background()
 	for _, storageMode := range []string{"atomic", "basic"} {
-		for _, scenario := range []string{"manual renewal", "shared login", "detached access", "missing session", "legacy pair"} {
+		for _, scenario := range []string{"manual renewal", "shared login", "detached access", "missing session", "migrated pair"} {
 			t.Run(storageMode+"/"+scenario, func(t *testing.T) {
 				mgr := newTestManager(t, func(cfg *config.Config) {
 					cfg.Timeout = 60
@@ -190,7 +190,7 @@ func TestManagerRefreshBindingSurvivesRenewal(t *testing.T) {
 					}
 				case "missing session":
 					err = mgr.storage.Delete(ctx, mgr.getSessionKey(pair.LoginID))
-				case "legacy pair":
+				case "migrated pair":
 					var refresh *refreshTokenRecord
 					refresh, err = mgr.getRefreshTokenInfo(ctx, pair.RefreshToken)
 					if err == nil {
@@ -199,15 +199,20 @@ func TestManagerRefreshBindingSurvivesRenewal(t *testing.T) {
 					if err == nil {
 						err = mgr.saveToStorage(ctx, mgr.getTokenKey(pair.AccessToken), before.TokenInfo)
 					}
+					if err == nil {
+						upgradeTestTokenPair(t, mgr, pair)
+						before, err = mgr.getTokenRecord(ctx, pair.AccessToken)
+					}
+					if err == nil {
+						err = mgr.RenewTimeout(ctx, pair.AccessToken, 2*time.Minute)
+					}
 				}
 				if err != nil {
 					t.Fatalf("prepare %s error = %v", scenario, err)
 				}
-				if scenario != "legacy pair" {
-					after, getErr := mgr.getTokenRecord(ctx, pair.AccessToken)
-					if getErr != nil || after.AccessID != before.AccessID {
-						t.Fatalf("binding after %s = %+v, %v, want %q", scenario, after, getErr, before.AccessID)
-					}
+				after, getErr := mgr.getTokenRecord(ctx, pair.AccessToken)
+				if getErr != nil || after.AccessID != before.AccessID {
+					t.Fatalf("binding after %s = %+v, %v, want %q", scenario, after, getErr, before.AccessID)
 				}
 
 				// A renewed access token can outlive its reverse lookup; revocation must still find its lifecycle. 续期后的访问 Token 可比反向索引存活更久，撤销仍须识别其生命周期。

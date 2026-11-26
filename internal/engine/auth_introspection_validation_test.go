@@ -40,12 +40,12 @@ func TestManagerIntrospectionRejectsForeignAuthType(t *testing.T) {
 		t.Fatalf("Login() error = %v", err)
 	}
 
-	tokenInfo, err := mgr.getTokenInfo(ctx, token)
+	tokenInfo, err := mgr.getTokenRecord(ctx, token)
 	if err != nil {
 		t.Fatalf("getTokenInfo() error = %v", err)
 	}
 	tokenInfo.AuthType = "foreign-auth-type:"
-	if err = mgr.saveToStorage(ctx, mgr.getTokenKey(token), *tokenInfo); err != nil {
+	if err = mgr.updateStoredValue(ctx, mgr.getTokenKey(token), encodeTokenRecord(tokenInfo)); err != nil {
 		t.Fatalf("save mismatched token info error = %v", err)
 	}
 	if _, err := mgr.GetTokenInfo(ctx, token); !errors.Is(err, derror.ErrInvalidToken) {

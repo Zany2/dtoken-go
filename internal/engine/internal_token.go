@@ -66,19 +66,25 @@ func (m *Manager) activeTimeoutToSeconds(activeTimeout time.Duration) int64 {
 	return 0
 }
 
-// setTokenState marks token logical state. setTokenState 标记 Token 逻辑状态。
-func (m *Manager) setTokenState(ctx context.Context, tokenValue string, state TokenState, expiration time.Duration) error {
+// setTokenStateWithRecord reuses the extension owner checked by the caller under the account lock. setTokenStateWithRecord 复用调用方在账号锁内核对的扩展数据归属。
+func (m *Manager) setTokenStateWithRecord(ctx context.Context, tokenValue string, record *tokenRecord, state TokenState, expiration time.Duration) error {
 	// Save logical token state 保存 Token 逻辑状态。
 	if err := m.storage.Set(ctx, m.getTokenKey(tokenValue), string(state), expiration); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+
+	if record != nil && record.HasExtra {
+		if err := m.storage.Delete(ctx, m.getTokenExtraKey(record.AccessID)); err != nil {
+			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
 	}
 
 	// Return state save success 返回状态保存成功。
 	return nil
 }
 
-// tokenStateExpiration resolves token state TTL. tokenStateExpiration 计算 Token 状态 TTL。
-func (m *Manager) tokenStateExpiration(ctx context.Context, tokenValue string) time.Duration {
+// tokenStateExpiration prefers current TTL and optionally reuses a checked record; an explicit nil means the mapping is inactive. tokenStateExpiration 优先使用当前 TTL，可复用已核对记录，显式 nil 表示映射已失效。
+func (m *Manager) tokenStateExpiration(ctx context.Context, tokenValue string, knownRecord ...*tokenRecord) time.Duration {
 	// Prefer current token TTL 优先使用当前 Token TTL。
 	if ttl, err := m.storage.TTL(ctx, m.getTokenKey(tokenValue)); err == nil {
 		switch {
@@ -90,30 +96,43 @@ func (m *Manager) tokenStateExpiration(ctx context.Context, tokenValue string) t
 	}
 
 	// Fallback to token info 回退到 Token 信息。
-	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
-	if err != nil {
+	var record *tokenRecord
+	if len(knownRecord) > 0 {
+		record = knownRecord[0]
+	} else {
+		var err error
+		record, err = m.getTokenRecord(ctx, tokenValue)
+		if err != nil {
+			return m.getExpiration()
+		}
+	}
+	if record == nil {
 		return m.getExpiration()
 	}
 
 	// Resolve token expiration 解析 Token 过期时间。
-	return m.resolveTokenExpiration(tokenInfo)
+	return m.resolveTokenExpiration(&record.TokenInfo)
 }
 
-// applyLogoutModeToToken applies logout mode to token mapping. applyLogoutModeToToken 按下线模式处理 Token 映射。
-func (m *Manager) applyLogoutModeToToken(ctx context.Context, tokenValue string, mode config.LogoutMode) error {
+// applyLogoutModeToToken applies a logout mode using ownership checked under the account lock. applyLogoutModeToToken 复用账号锁内已核对的归属，按下线模式处理 Token 映射。
+func (m *Manager) applyLogoutModeToToken(ctx context.Context, tokenValue string, record *tokenRecord, mode config.LogoutMode) error {
 	// Apply mode by logout type 按下线模式处理。
 	switch mode {
 	case config.LogoutModeLogout:
 		// Delete mapping for normal logout 普通登出直接删除映射。
-		if err := m.storage.Delete(ctx, m.getTokenKey(tokenValue)); err != nil {
+		keys := []string{m.getTokenKey(tokenValue)}
+		if record != nil && record.HasExtra {
+			keys = append(keys, m.getTokenExtraKey(record.AccessID))
+		}
+		if err := m.storage.Delete(ctx, keys...); err != nil {
 			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
 	case config.LogoutModeKickout:
 		// Mark token as kicked out 标记 Token 为踢下线。
-		return m.setTokenState(ctx, tokenValue, TokenStateKickOut, m.tokenStateExpiration(ctx, tokenValue))
+		return m.setTokenStateWithRecord(ctx, tokenValue, record, TokenStateKickOut, m.tokenStateExpiration(ctx, tokenValue, record))
 	case config.LogoutModeReplaced:
 		// Mark token as replaced 标记 Token 为顶下线。
-		return m.setTokenState(ctx, tokenValue, TokenStateReplaced, m.tokenStateExpiration(ctx, tokenValue))
+		return m.setTokenStateWithRecord(ctx, tokenValue, record, TokenStateReplaced, m.tokenStateExpiration(ctx, tokenValue, record))
 	default:
 		return derror.ErrInvalidParam
 	}
@@ -122,34 +141,12 @@ func (m *Manager) applyLogoutModeToToken(ctx context.Context, tokenValue string,
 	return nil
 }
 
-// getCheckedTokenSession gets token session after full login validation. getCheckedTokenSession 完整校验登录态后获取 Token 对应 Session。
-func (m *Manager) getCheckedTokenSession(ctx context.Context, tokenValue string) (*Session, *TokenInfo, error) {
-	// Validate login and reuse loaded context 校验登录并复用已加载上下文。
-	return m.checkLoginAndGetContext(ctx, tokenValue)
-}
-
-// ensureTerminalTokenAlive ensures token is still alive without renew side effects. ensureTerminalTokenAlive 无续期副作用地确认 Token 仍有效。
-func (m *Manager) ensureTerminalTokenAlive(ctx context.Context, tokenValue string) error {
-	// Check token alive state 检查 Token 存活状态。
-	alive, err := m.checkTerminalTokenAlive(ctx, tokenValue)
-	if err != nil {
-		return err
-	}
-
-	// Reject dead token 拒绝无效 Token。
-	if !alive {
-		return derror.ErrInvalidToken
-	}
-
-	// Return alive success 返回存活校验成功。
-	return nil
-}
-
 // hasActiveTerminal reports whether a terminal still occupies a login slot, including temporarily disabled devices. hasActiveTerminal 判断是否有终端仍占用登录名额，包括临时封禁设备。
 func (m *Manager) hasActiveTerminal(ctx context.Context, terminals []TerminalInfo, sess *Session) (bool, error) {
 	// Check each terminal 逐个检查终端。
-	for _, terminal := range terminals {
-		alive, err := m.checkTerminalTokenStructurallyAliveWithContext(ctx, terminal.Token, nil, sess)
+	for i := len(terminals) - 1; i >= 0; i-- {
+		terminal := &terminals[i]
+		alive, err := m.checkTerminalTokenAliveWithOptions(ctx, terminal.Token, nil, sess, nil, false, terminal)
 		if err != nil {
 			return false, err
 		}
@@ -160,15 +157,6 @@ func (m *Manager) hasActiveTerminal(ctx context.Context, terminals []TerminalInf
 
 	// Return no active terminal 返回无活跃终端。
 	return false, nil
-}
-
-// isTerminalTokenAlive checks token validity without renew side effects. isTerminalTokenAlive 无续期副作用地检查 Token 是否有效。
-func (m *Manager) isTerminalTokenAlive(ctx context.Context, tokenValue string) bool {
-	// Check token alive state 检查 Token 存活状态。
-	alive, err := m.checkTerminalTokenAlive(ctx, tokenValue)
-
-	// Return boolean result 返回布尔结果。
-	return err == nil && alive
 }
 
 // checkTerminalTokenAlive checks token validity without renew side effects. checkTerminalTokenAlive 无续期副作用地检查 Token 是否有效。
@@ -184,31 +172,21 @@ func (m *Manager) checkTerminalTokenAliveWithContext(ctx context.Context, tokenV
 
 // checkTerminalTokenStructurallyAliveWithContext checks token validity without applying reversible disable rules. checkTerminalTokenStructurallyAliveWithContext 检查 Token 结构性有效性，但不应用可逆封禁规则。
 func (m *Manager) checkTerminalTokenStructurallyAliveWithContext(ctx context.Context, tokenValue string, record *tokenRecord, sess *Session) (bool, error) {
-	return m.checkTerminalTokenAliveWithOptions(ctx, tokenValue, record, sess, nil, false)
+	return m.checkTerminalTokenAliveWithOptions(ctx, tokenValue, record, sess, nil, false, nil)
 }
 
 // checkTerminalEntryAlive validates a queried terminal against its current token lifecycle. checkTerminalEntryAlive 将被查询终端与当前 Token 生命周期核对后判断存活。
 func (m *Manager) checkTerminalEntryAlive(ctx context.Context, terminal TerminalInfo, sess *Session, cache *terminalAliveCheckCache) (bool, error) {
-	record, err := m.getTokenRecord(ctx, terminal.Token)
-	if err != nil {
-		if isTokenInactiveError(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	if record.Revoked || sess == nil || !terminalMatchesTokenRecord(sess.LoginID, terminal, record) {
-		return false, nil
-	}
-	return m.checkTerminalTokenAliveWithCache(ctx, terminal.Token, record, sess, cache)
+	return m.checkTerminalTokenAliveWithOptions(ctx, terminal.Token, nil, sess, cache, true, &terminal)
 }
 
 // checkTerminalTokenAliveWithCache checks token validity and reuses disable-state lookups. checkTerminalTokenAliveWithCache 检查 Token 有效性并复用封禁状态查询。
 func (m *Manager) checkTerminalTokenAliveWithCache(ctx context.Context, tokenValue string, record *tokenRecord, sess *Session, cache *terminalAliveCheckCache) (bool, error) {
-	return m.checkTerminalTokenAliveWithOptions(ctx, tokenValue, record, sess, cache, true)
+	return m.checkTerminalTokenAliveWithOptions(ctx, tokenValue, record, sess, cache, true, nil)
 }
 
 // checkTerminalTokenAliveWithOptions checks token validity with configurable disable-state enforcement. checkTerminalTokenAliveWithOptions 按可配置的封禁状态规则检查 Token 有效性。
-func (m *Manager) checkTerminalTokenAliveWithOptions(ctx context.Context, tokenValue string, record *tokenRecord, sess *Session, cache *terminalAliveCheckCache, checkDisableState bool) (bool, error) {
+func (m *Manager) checkTerminalTokenAliveWithOptions(ctx context.Context, tokenValue string, record *tokenRecord, sess *Session, cache *terminalAliveCheckCache, checkDisableState bool, terminal *TerminalInfo) (bool, error) {
 	var err error
 
 	// Load token info when caller has not provided it 调用方未提供时加载 Token 信息。
@@ -238,6 +216,13 @@ func (m *Manager) checkTerminalTokenAliveWithOptions(ctx context.Context, tokenV
 		return false, nil
 	}
 
+	// A supplied entry avoids rescanning the same session list during aggregate queries. 已提供终端条目时避免聚合查询重复扫描同一会话列表。
+	if terminal != nil {
+		if sess == nil || terminal.Token != tokenValue || !terminalMatchesTokenRecord(sess.LoginID, *terminal, record) {
+			return false, nil
+		}
+	}
+
 	// Reject disabled account or device for ordinary alive checks. 普通存活检查拒绝已封禁账号或设备。
 	if checkDisableState {
 		if err := m.checkLoginDisableStateCached(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID, cache); err != nil {
@@ -257,7 +242,7 @@ func (m *Manager) checkTerminalTokenAliveWithOptions(ctx context.Context, tokenV
 	if sess == nil {
 		sess, err = m.getSession(ctx, tokenInfo.LoginID)
 	}
-	if err != nil || sess == nil || !sessionHasTerminalToken(sess, tokenValue) {
+	if err != nil || sess == nil || (terminal == nil && !sessionHasTerminalToken(sess, tokenValue)) {
 		// Treat missing session as not alive 会话不存在视为不存活。
 		if errors.Is(err, derror.ErrSessionNotFound) {
 			return false, nil

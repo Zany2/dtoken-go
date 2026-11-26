@@ -34,8 +34,8 @@ func (m *Manager) Logout(ctx context.Context, tokenValue string) error {
 	checkBinding := tokenRecordBindingCheck(m, ctx, tokenValue, expected)
 	removeToken := terminalRemovalForTokenRecord(tokenValue, expected)
 
-	// Bind validation to the captured lifecycle before any timeout or activity-marker cleanup. 在超时或活跃标记清理前，将校验绑定到已捕获的生命周期。
-	_, _, err = m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{expectedRecord: expected})
+	// Validate the captured credential; load Session later under the cleanup lock unless inactivity cleanup needs it now. 校验已捕获的凭据，Session 留待清理锁内加载，不活跃超时清理除外。
+	_, _, err = m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{expectedRecord: expected, tokenOnly: true})
 	if err == nil {
 		return m.logoutTerminalsIf(ctx, expected.LoginID, checkBinding, removeToken, terminalInfoFromTokenRecord(tokenValue, expected))
 	}
@@ -146,8 +146,8 @@ func (m *Manager) Kickout(ctx context.Context, tokenValue string) error {
 		return err
 	}
 
-	// Bind validation to the captured lifecycle before any timeout or activity-marker cleanup. 在超时或活跃标记清理前，将校验绑定到已捕获的生命周期。
-	_, _, err = m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{expectedRecord: expected})
+	// Validate the captured credential; load Session later under the cleanup lock unless inactivity cleanup needs it now. 校验已捕获的凭据，Session 留待清理锁内加载，不活跃超时清理除外。
+	_, _, err = m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{expectedRecord: expected, tokenOnly: true})
 	if err != nil {
 		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
 		if isTokenInactiveError(err) && !errors.Is(err, derror.ErrInvalidToken) {
@@ -258,8 +258,8 @@ func (m *Manager) Replace(ctx context.Context, tokenValue string) error {
 		return err
 	}
 
-	// Bind validation to the captured lifecycle before any timeout or activity-marker cleanup. 在超时或活跃标记清理前，将校验绑定到已捕获的生命周期。
-	_, _, err = m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{expectedRecord: expected})
+	// Validate the captured credential; load Session later under the cleanup lock unless inactivity cleanup needs it now. 校验已捕获的凭据，Session 留待清理锁内加载，不活跃超时清理除外。
+	_, _, err = m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{expectedRecord: expected, tokenOnly: true})
 	if err != nil {
 		// Treat inactive token errors as idempotent success 已下线 token 视为幂等成功
 		if isTokenInactiveError(err) && !errors.Is(err, derror.ErrInvalidToken) {
@@ -352,70 +352,71 @@ func (m *Manager) ReplaceByLoginID(ctx context.Context, loginID string) error {
 
 // removeOldestTerminalInfoAndToken removes the oldest terminal and its token. removeOldestTerminalInfoAndToken 移除最旧的终端信息并按模式处理 Token。
 func (m *Manager) removeOldestTerminalInfoAndToken(ctx context.Context, sess *Session, mode config.LogoutMode, device ...string) (TerminalInfo, bool, error) {
-	// Remove oldest terminal 移除最旧终端。
-	terminalInfo, ok := sessionRemoveOldestTerminal(sess, device...)
-	if ok {
-		return m.retireRemovedTerminal(ctx, sess, terminalInfo, mode)
+	// Keep the selected entry until retirement succeeds. 下线成功前保留选中的条目。
+	for _, terminal := range sess.TerminalInfos {
+		if len(device) == 0 || terminal.Device == device[0] {
+			retired, err := m.retireConcurrencyTerminal(ctx, sess.LoginID, terminal, mode)
+			if err != nil {
+				return TerminalInfo{}, false, err
+			}
+			sessionRemoveOldestTerminal(sess, device...)
+			return retired, true, nil
+		}
 	}
 	return TerminalInfo{}, false, nil
 }
 
-// retireRemovedTerminal retires a detached terminal and saves the remaining session. retireRemovedTerminal 处理已移除终端的下线并保存剩余会话。
-func (m *Manager) retireRemovedTerminal(ctx context.Context, sess *Session, terminalInfo TerminalInfo, mode config.LogoutMode) (TerminalInfo, bool, error) {
+// retireConcurrencyTerminal retires credentials before the caller removes the terminal and saves the final session. retireConcurrencyTerminal 先下线凭据，再由调用方移除终端并保存最终会话。
+func (m *Manager) retireConcurrencyTerminal(ctx context.Context, loginID string, terminalInfo TerminalInfo, mode config.LogoutMode) (TerminalInfo, error) {
 	// Skip a token value that now belongs to another lifecycle while still retiring the stale terminal. Token 值已属于其他生命周期时仅移除陈旧终端。
-	cleanupAllowed, err := m.terminalTokenCleanupAllowed(ctx, sess.LoginID, terminalInfo)
+	record, cleanupAllowed, err := m.loadTerminalCleanupRecord(ctx, loginID, terminalInfo)
 	if err != nil {
-		return TerminalInfo{}, false, err
+		return TerminalInfo{}, err
 	}
 	if cleanupAllowed {
 		// Apply overflow mode 应用超限处理模式
-		if err = m.applyLogoutModeToToken(ctx, terminalInfo.Token, mode); err != nil {
-			return TerminalInfo{}, false, err
+		if err = m.applyLogoutModeToToken(ctx, terminalInfo.Token, record, mode); err != nil {
+			return TerminalInfo{}, err
 		}
 
 		// Clean metadata 清理 metadata
 		if err = m.cleanTokenMetadata(ctx, []string{terminalInfo.Token}); err != nil {
-			return TerminalInfo{}, false, err
+			return TerminalInfo{}, err
 		}
 	}
 
-	// Save session data 保存会话数据
-	if err := m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
-		return TerminalInfo{}, false, err
-	}
 	if !cleanupAllowed {
-		return TerminalInfo{}, true, nil
+		return TerminalInfo{}, nil
 	}
-	return terminalInfo, true, nil
+	return terminalInfo, nil
 }
 
-// removeTerminalInfosAndTokens removes terminal information and tokens. removeTerminalInfosAndTokens 移除终端信息和 Token。
+// removeTerminalInfosAndTokens retires scoped tokens and leaves session persistence to the caller. removeTerminalInfosAndTokens 下线作用域内 Token，由调用方持久化会话。
 func (m *Manager) removeTerminalInfosAndTokens(ctx context.Context, sess *Session, mode config.LogoutMode, device ...string) (bool, []TerminalInfo, error) {
-	// Prepare removed terminals 准备被移除终端列表。
-	var terminalInfos []TerminalInfo
-	if len(device) > 0 {
-		// Remove terminals for specified device 移除指定设备类型的终端信。
-		terminalInfos = sessionRemoveTerminalByDevice(sess, device[0])
-	} else {
-		// Remove all terminals 移除所有终端信。
-		terminalInfos = sessionRemoveAllTerminals(sess)
-	}
+	terminalInfos := sess.TerminalInfos
 	if len(terminalInfos) == 0 {
 		return false, nil, nil
 	}
 
+	// Build the remaining list once and publish it after batch retirement completes. 一次构建剩余列表，在批量下线完成后替换。
+	kept := make([]TerminalInfo, 0, len(terminalInfos))
+
 	// Apply mode only to terminal entries that still own their token lifecycle. 仅处理仍属于对应 Token 生命周期的终端条目。
 	processedTerminals := make([]TerminalInfo, 0, len(terminalInfos))
 	for _, terminalInfo := range terminalInfos {
-		cleanupAllowed, err := m.terminalTokenCleanupAllowed(ctx, sess.LoginID, terminalInfo)
+		if len(device) > 0 && terminalInfo.Device != device[0] {
+			kept = append(kept, terminalInfo)
+			continue
+		}
+		record, cleanupAllowed, err := m.loadTerminalCleanupRecord(ctx, sess.LoginID, terminalInfo)
 		if err != nil {
-			return false, nil, err
+			return false, processedTerminals, err
 		}
 		if !cleanupAllowed {
 			continue
 		}
-		if err = m.applyLogoutModeToToken(ctx, terminalInfo.Token, mode); err != nil {
-			return false, nil, err
+		if err = m.applyLogoutModeToToken(ctx, terminalInfo.Token, record, mode); err != nil {
+			return false, processedTerminals, err
 		}
 		processedTerminals = append(processedTerminals, terminalInfo)
 	}
@@ -426,24 +427,12 @@ func (m *Manager) removeTerminalInfosAndTokens(ctx context.Context, sess *Sessio
 		tokens[i] = info.Token
 	}
 	if err := m.cleanTokenMetadata(ctx, tokens); err != nil {
-		return false, nil, err
+		return false, processedTerminals, err
 	}
+	sess.TerminalInfos = kept
 
 	// Preserve the account session during replacement so the incoming login keeps account-level data. 顶替登录时保留账号 Session，使新登录继续持有账号级数据。
-	destroyedSession := false
-	if len(sess.TerminalInfos) == 0 && mode != config.LogoutModeReplaced {
-		if err := m.storage.Delete(ctx, m.getSessionKey(sess.LoginID)); err != nil {
-			return false, nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-		}
-		destroyedSession = true
-	} else {
-		// Save updated session otherwise 否则保存更新后的 session
-		if err := m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
-			return false, nil, err
-		}
-	}
-
-	return destroyedSession, processedTerminals, nil
+	return len(kept) == 0 && mode != config.LogoutModeReplaced, processedTerminals, nil
 }
 
 // logoutTerminals performs common logout logic. logoutTerminals 通用登出逻辑：移除终。+ 删除 token + 清理 metadata。
@@ -497,14 +486,14 @@ func (m *Manager) logoutTerminalsIf(
 	}
 
 	// Exclude stale entries whose token value now represents another active lifecycle. 排除 Token 值已代表其他活跃生命周期的陈旧条目。
-	removed := make([]TerminalInfo, 0, len(removedCandidates))
+	removed := make([]terminalCleanup, 0, len(removedCandidates))
 	for _, terminal := range removedCandidates {
-		cleanupAllowed, checkErr := m.terminalTokenCleanupAllowed(ctx, loginID, terminal)
+		record, cleanupAllowed, checkErr := m.loadTerminalCleanupRecord(ctx, loginID, terminal)
 		if checkErr != nil {
 			return checkErr
 		}
 		if cleanupAllowed {
-			removed = append(removed, terminal)
+			removed = append(removed, terminalCleanup{TerminalInfo: terminal, record: record})
 		}
 	}
 
@@ -521,17 +510,22 @@ func (m *Manager) logoutTerminalsIf(
 		return nil
 	}
 
-	// Extract token list 提取 token 列表
+	// Reuse checked owners to delete credentials and extensions without another read. 复用已核对归属，删除凭据和扩展数据时不再重复读取。
 	tokens := make([]string, len(removed))
-	tokenKeys := make([]string, 0, len(removed))
+	keys := make([]string, 0, len(removed)*2)
 	for i, info := range removed {
 		tokens[i] = info.Token
-		tokenKeys = append(tokenKeys, m.getTokenKey(info.Token))
+		keys = append(keys, m.getTokenKey(info.Token))
+		if info.record != nil && info.record.HasExtra {
+			keys = append(keys, m.getTokenExtraKey(info.record.AccessID))
+		}
 	}
 
 	// Delete token keys 删除 Token 键。
-	if err = m.storage.Delete(ctx, tokenKeys...); err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	if len(keys) > 0 {
+		if err = m.storage.Delete(ctx, keys...); err != nil {
+			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
 	}
 
 	// Clean token metadata 清理附属 metadata
@@ -653,9 +647,15 @@ func tokenRecordBindingCheck(m *Manager, ctx context.Context, tokenValue string,
 	}
 }
 
+// terminalCleanup keeps terminal metadata with its lock-held ownership check. terminalCleanup 保存终端元数据及账号锁内核对过的凭据。
+type terminalCleanup struct {
+	TerminalInfo
+	record *tokenRecord // record is nil for an inactive mapping. record 为 nil 时表示映射已失效。
+}
+
 // resolveDetachedTerminals rechecks detached token mappings under the account lock. resolveDetachedTerminals 在账号锁内重新确认脱离终端列表的 Token 映射。
-func (m *Manager) resolveDetachedTerminals(ctx context.Context, loginID string, terminals []TerminalInfo) ([]TerminalInfo, error) {
-	resolved := make([]TerminalInfo, 0, len(terminals))
+func (m *Manager) resolveDetachedTerminals(ctx context.Context, loginID string, terminals []TerminalInfo) ([]terminalCleanup, error) {
+	resolved := make([]terminalCleanup, 0, len(terminals))
 	for _, terminal := range terminals {
 		if terminal.Token == "" {
 			continue
@@ -674,21 +674,9 @@ func (m *Manager) resolveDetachedTerminals(ctx context.Context, loginID string, 
 		if (terminal.Index > 0 || terminal.CreateTime > 0) && !terminalMatchesTokenRecord(loginID, terminal, record) {
 			continue
 		}
-		resolved = append(resolved, terminalInfoFromTokenRecord(terminal.Token, record))
+		resolved = append(resolved, terminalCleanup{TerminalInfo: terminalInfoFromTokenRecord(terminal.Token, record), record: record})
 	}
 	return resolved, nil
-}
-
-// cloneSessionForAliveCheck copies session slices used by alive checks. cloneSessionForAliveCheck 拷贝存活校验依赖的会话切片。
-func cloneSessionForAliveCheck(sess *Session) Session {
-	if sess == nil {
-		return Session{}
-	}
-	clone := *sess
-	clone.TerminalInfos = append([]TerminalInfo(nil), sess.TerminalInfos...)
-	clone.Permissions = append([]string(nil), sess.Permissions...)
-	clone.Roles = append([]string(nil), sess.Roles...)
-	return clone
 }
 
 // processTerminals performs common terminal processing logic. processTerminals 通用终端处理逻辑。
@@ -736,25 +724,22 @@ func (m *Manager) processTerminalsIf(
 	}
 
 	// Apply the removal strategy only when the account session still exists. 仅在账号 Session 仍存在时执行终端移除策略。
-	var originalSession *Session
 	var removedCandidates []TerminalInfo
 	sessionChanged := false
 	if sess != nil {
-		cloned := cloneSessionForAliveCheck(sess)
-		originalSession = &cloned
 		removedCandidates = removalFunc(sess)
 		sessionChanged = len(removedCandidates) > 0
 	}
 
 	// Exclude stale entries whose token value now represents another active lifecycle. 排除 Token 值已代表其他活跃生命周期的陈旧条目。
-	removedTerminals := make([]TerminalInfo, 0, len(removedCandidates))
+	removedTerminals := make([]terminalCleanup, 0, len(removedCandidates))
 	for _, terminal := range removedCandidates {
-		cleanupAllowed, checkErr := m.terminalTokenCleanupAllowed(ctx, loginID, terminal)
+		record, cleanupAllowed, checkErr := m.loadTerminalCleanupRecord(ctx, loginID, terminal)
 		if checkErr != nil {
 			return checkErr
 		}
 		if cleanupAllowed {
-			removedTerminals = append(removedTerminals, terminal)
+			removedTerminals = append(removedTerminals, terminalCleanup{TerminalInfo: terminal, record: record})
 		}
 	}
 
@@ -770,14 +755,16 @@ func (m *Manager) processTerminalsIf(
 
 	// Clean each removed token 对每个被移除的 token 执行清理
 	transitionedTerminals := make([]TerminalInfo, 0, len(removedTerminals))
+	tokens := make([]string, 0, len(removedTerminals))
 	for _, info := range removedTerminals {
 		// Read removed token 读取被移除 Token。
 		token := info.Token
 
 		// Active-timeout processing must persist its exact cause; other states apply to structurally alive tokens even while temporarily disabled. 不活跃超时必须保留精确原因；其他状态作用于结构性有效的 Token，即使其正处于临时封禁状态。
 		shouldSetState := state == TokenStateActiveTimeout || usedDetachedFallback
-		if !shouldSetState {
-			alive, aliveErr := m.checkTerminalTokenStructurallyAliveWithContext(ctx, token, nil, originalSession)
+		if !shouldSetState && info.record != nil {
+			// The removed entry proves membership without copying or rescanning the Session list. 已移除的条目可证明成员归属，无需复制或重新扫描 Session 列表。
+			alive, aliveErr := m.checkTerminalTokenAliveWithOptions(ctx, token, info.record, sess, nil, false, &info.TerminalInfo)
 			if aliveErr != nil {
 				return aliveErr
 			}
@@ -788,36 +775,26 @@ func (m *Manager) processTerminalsIf(
 		m.cancelLoginMaintenance(token)
 		if shouldSetState {
 			// Set token state 设置 token 状。
-			if err = m.setTokenState(ctx, token, state, m.tokenStateExpiration(ctx, token)); err != nil {
+			if err = m.setTokenStateWithRecord(ctx, token, info.record, state, m.tokenStateExpiration(ctx, token, info.record)); err != nil {
 				return err
 			}
-			transitionedTerminals = append(transitionedTerminals, info)
-		} else {
+			transitionedTerminals = append(transitionedTerminals, info.TerminalInfo)
+		} else if info.record != nil {
 			// Remove unusable mappings so a repeat call cannot treat them as a detached active login. 删除不可用映射，避免重复调用将其视为脱离会话的活跃登录。
-			_, recordErr := m.getTokenRecord(ctx, token)
-			if recordErr == nil {
-				if err = m.storage.Delete(ctx, m.getTokenKey(token)); err != nil {
-					return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-				}
-			} else if !isTokenInactiveError(recordErr) {
-				return recordErr
+			keys := []string{m.getTokenKey(token)}
+			if info.record.HasExtra {
+				keys = append(keys, m.getTokenExtraKey(info.record.AccessID))
+			}
+			if err = m.storage.Delete(ctx, keys...); err != nil {
+				return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 			}
 		}
+		tokens = append(tokens, token)
+	}
 
-		// Delete renew key 删除续期 key
-		if err = m.storage.Delete(ctx, m.getRenewKey(token)); err != nil {
-			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-		}
-
-		// Delete active key 删除活跃时间 key
-		if err = m.storage.Delete(ctx, m.getActiveKey(token)); err != nil {
-			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-		}
-
-		// Clean linked refresh token 清理关联的刷新令。
-		if err = m.cleanRefreshTokenByAccessToken(ctx, token); err != nil {
-			return err
-		}
+	// Batch access metadata removal while preserving refresh ownership checks. 批量删除访问附属数据，同时保留刷新凭据归属检查。
+	if err = m.cleanTokenMetadata(ctx, tokens); err != nil {
+		return err
 	}
 
 	// Track whether session is destroyed 跟踪会话是否被销毁。

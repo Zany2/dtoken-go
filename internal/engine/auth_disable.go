@@ -53,7 +53,7 @@ func (m *Manager) Disable(ctx context.Context, loginID string, duration time.Dur
 	}
 
 	// Save account disable marker 保存账号封禁标记。
-	if err = m.saveDisableMarker(ctx, m.getDisableKey(loginID), m.getLegacyDisableKey(loginID), disableMarker{DisableInfo: disableInfo, LoginID: loginID, Kind: "account"}, duration); err != nil {
+	if err = m.saveDisableMarker(ctx, m.getDisableKey(loginID), disableMarker{DisableInfo: disableInfo, LoginID: loginID, Kind: "account"}, duration); err != nil {
 		return err
 	}
 
@@ -102,18 +102,14 @@ func (m *Manager) Untie(ctx context.Context, loginID string) error {
 	unlock := m.lockLoginWrite(loginID)
 	defer func() { unlock() }()
 
-	// Resolve ownership before deleting current or legacy account markers. 删除新旧账号封禁标记前先核对归属。
-	records, err := m.loadAccountDisableRecords(ctx, loginID, true)
+	// Resolve ownership before deleting the canonical account marker. 删除规范账号封禁标记前先核对归属。
+	record, err := m.loadAccountDisableRecord(ctx, loginID)
 	if err != nil {
 		return err
 	}
-	changed := false
-	for _, record := range records {
-		deleted, deleteErr := m.deleteWithLegacyKey(ctx, record.key, record.key)
-		if deleteErr != nil {
-			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, deleteErr)
-		}
-		changed = changed || deleted
+	changed, err := m.deleteDisableRecord(ctx, record)
+	if err != nil {
+		return err
 	}
 	if !changed {
 		return nil
@@ -155,17 +151,17 @@ func (m *Manager) GetDisableInfo(ctx context.Context, loginID string) (*DisableI
 		return nil, derror.ErrIDIsEmpty
 	}
 
-	// Load only identity-matched account records. 仅加载身份匹配的账号封禁记录。
-	records, err := m.loadAccountDisableRecords(ctx, loginID, false)
+	// Load only an identity-matched account record. 仅加载身份匹配的账号封禁记录。
+	record, err := m.loadAccountDisableRecord(ctx, loginID)
 	if err != nil {
 		return nil, err
 	}
-	if len(records) == 0 {
+	if record == nil {
 		return nil, derror.ErrAccountNotDisabled
 	}
 
 	// Return the unchanged public metadata shape. 返回保持原有结构的公开元数据。
-	disableInfo := records[0].marker.DisableInfo
+	disableInfo := record.marker.DisableInfo
 	return &disableInfo, nil
 }
 
@@ -181,14 +177,14 @@ func (m *Manager) GetDisableTTL(ctx context.Context, loginID string) (int64, err
 	}
 
 	// Resolve ownership before reading the remaining lifetime. 读取剩余有效期前先核对归属。
-	records, err := m.loadAccountDisableRecords(ctx, loginID, false)
+	record, err := m.loadAccountDisableRecord(ctx, loginID)
 	if err != nil {
 		return 0, err
 	}
-	if len(records) == 0 {
+	if record == nil {
 		return -2, nil
 	}
-	return m.getDisableTTL(ctx, records[0].key)
+	return m.getDisableTTL(ctx, record.key)
 }
 
 // DisableService disables a specific service for an account. DisableService 封禁账号的指定服务。
@@ -246,7 +242,7 @@ func (m *Manager) DisableServiceLevel(ctx context.Context, loginID, service stri
 		DisableInfo: DisableInfo{DisableTime: info.DisableTime, DisableReason: info.DisableReason},
 		LoginID:     loginID, Kind: "service", Service: service, Level: level,
 	}
-	if err := m.saveDisableMarker(ctx, m.getDisableServiceKey(loginID, service), m.getLegacyDisableServiceKey(loginID, service), marker, duration); err != nil {
+	if err := m.saveDisableMarker(ctx, m.getDisableServiceKey(loginID, service), marker, duration); err != nil {
 		return err
 	}
 
@@ -289,21 +285,16 @@ func (m *Manager) UntieService(ctx context.Context, loginID, service string) err
 	defer func() { unlock() }()
 
 	// Resolve only markers whose embedded service matches the requested identity. 仅解析内嵌服务与请求身份一致的封禁标记。
-	records, err := m.loadServiceDisableRecords(ctx, loginID, service, true)
+	record, err := m.loadServiceDisableRecord(ctx, loginID, service)
 	if err != nil {
 		return err
 	}
-	if len(records) == 0 {
+	changed, err := m.deleteDisableRecord(ctx, record)
+	if err != nil {
+		return err
+	}
+	if !changed {
 		return nil
-	}
-
-	// Delete all matching current and legacy markers without touching colliding legacy records. 删除所有匹配的新旧标记，但不触碰发生碰撞的旧记录。
-	keys := make([]string, len(records))
-	for i := range records {
-		keys[i] = records[i].key
-	}
-	if err = m.storage.Delete(ctx, keys...); err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
 	// Release the account lock before dispatching lifecycle events. 触发生命周期事件前释放账号锁。
@@ -332,9 +323,9 @@ func (m *Manager) IsDisableService(ctx context.Context, loginID, service string)
 		return false
 	}
 
-	// An escaped key can also contain another identity's legacy marker. 转义键也可能存有其他身份的旧标记。
-	records, err := m.loadServiceDisableRecords(ctx, loginID, service, false)
-	return err == nil && len(records) > 0
+	// Validate the canonical marker's owner and scope. 核对规范标记的账号和作用域。
+	record, err := m.loadServiceDisableRecord(ctx, loginID, service)
+	return err == nil && record != nil
 }
 
 // IsDisableServiceLevel checks if a specific service is disabled at or above the given level. IsDisableServiceLevel 检查账号的指定服务是否达到指定封禁等级。
@@ -450,21 +441,16 @@ func (m *Manager) GetDisableServiceInfo(ctx context.Context, loginID, service st
 	}
 
 	// Load identity-matched service disable data. 加载身份匹配的服务封禁数据。
-	records, err := m.loadServiceDisableRecords(ctx, loginID, service, false)
+	record, err := m.loadServiceDisableRecord(ctx, loginID, service)
 	if err != nil {
 		return nil, err
 	}
-	if len(records) == 0 {
+	if record == nil {
 		return nil, derror.ErrServiceNotDisabled
 	}
-	info := records[0].info
+	marker := record.marker
+	info := ServiceDisableInfo{Service: marker.Service, Level: marker.Level, DisableTime: marker.DisableTime, DisableReason: marker.DisableReason}
 	return &info, nil
-}
-
-// serviceDisableRecord binds decoded service state to its storage key. serviceDisableRecord 将解码后的服务封禁状态绑定到存储键。
-type serviceDisableRecord struct {
-	key  string
-	info ServiceDisableInfo
 }
 
 // loadDisableMarker decodes one marker and reports whether it exists. loadDisableMarker 解码单个封禁标记并报告其是否存在。
@@ -482,7 +468,7 @@ func (m *Manager) loadDisableMarker(ctx context.Context, key string, info *disab
 		return false, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
 	}
 
-	// Decode through a pointer to distinguish encoded null from legacy objects. 通过指针解码，以区分编码空值与旧格式对象。
+	// Decode through a pointer so encoded null cannot become an empty restriction. 通过指针解码，避免编码空值变成空封禁记录。
 	var marker *disableMarker
 	if err = m.serializer.Decode(bytesData, &marker); err != nil {
 		return false, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
@@ -492,39 +478,6 @@ func (m *Manager) loadDisableMarker(ctx context.Context, key string, info *disab
 	}
 	*info = *marker
 	return true, nil
-}
-
-// uniqueStorageKeys removes empty and duplicate storage keys while preserving order. uniqueStorageKeys 按原顺序移除空存储键和重复存储键。
-func uniqueStorageKeys(keys ...string) []string {
-	unique := make([]string, 0, len(keys))
-	seen := make(map[string]struct{}, len(keys))
-	for _, key := range keys {
-		if key == "" {
-			continue
-		}
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		unique = append(unique, key)
-	}
-	return unique
-}
-
-// loadServiceDisableRecords matches stored service fields, returning all matches only for untie operations. loadServiceDisableRecords 核对已存服务字段，仅解封操作需要返回所有匹配记录。
-func (m *Manager) loadServiceDisableRecords(ctx context.Context, loginID, service string, all bool) ([]serviceDisableRecord, error) {
-	matched, err := m.loadDisableRecords(ctx, disableMarker{LoginID: loginID, Kind: "service", Service: service}, m.getDisableServiceKey(loginID, service), m.getLegacyDisableServiceKey(loginID, service), all)
-	if err != nil {
-		return nil, err
-	}
-	records := make([]serviceDisableRecord, 0, len(matched))
-	for _, record := range matched {
-		marker := record.marker
-		records = append(records, serviceDisableRecord{key: record.key, info: ServiceDisableInfo{
-			Service: marker.Service, Level: marker.Level, DisableTime: marker.DisableTime, DisableReason: marker.DisableReason,
-		}})
-	}
-	return records, nil
 }
 
 // GetDisableServiceTTL retrieves the remaining disable time for a specific service in seconds. GetDisableServiceTTL 获取账号指定服务的剩余封禁时间（秒）。
@@ -547,14 +500,14 @@ func (m *Manager) GetDisableServiceTTL(ctx context.Context, loginID, service str
 	}
 
 	// Resolve a metadata-matched record before reading its TTL. 读取 TTL 前先确定字段匹配的记录。
-	records, err := m.loadServiceDisableRecords(ctx, loginID, service, false)
+	record, err := m.loadServiceDisableRecord(ctx, loginID, service)
 	if err != nil {
 		return 0, err
 	}
-	if len(records) == 0 {
+	if record == nil {
 		return -2, nil
 	}
-	return m.getDisableTTL(ctx, records[0].key)
+	return m.getDisableTTL(ctx, record.key)
 }
 
 // getDisableTTL loads and normalizes a disable marker TTL. getDisableTTL 加载并归一化封禁标记的剩余时间。
@@ -611,7 +564,7 @@ func (m *Manager) DisableDevice(ctx context.Context, loginID, device string, dur
 		LoginID:     loginID, Kind: "device", Device: info.Device, DeviceID: info.DeviceID,
 	}
 	key := m.getDisableDeviceKey(loginID, device)
-	if err := m.saveDisableMarker(ctx, key, m.getLegacyDisableDeviceKey(loginID, device), marker, duration); err != nil {
+	if err := m.saveDisableMarker(ctx, key, marker, duration); err != nil {
 		return err
 	}
 
@@ -675,7 +628,7 @@ func (m *Manager) DisableDeviceAndDeviceID(ctx context.Context, loginID, device,
 		LoginID:     loginID, Kind: "device", Device: info.Device, DeviceID: info.DeviceID,
 	}
 	key := m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID)
-	if err := m.saveDisableMarker(ctx, key, m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID), marker, duration); err != nil {
+	if err := m.saveDisableMarker(ctx, key, marker, duration); err != nil {
 		return err
 	}
 
@@ -716,29 +669,16 @@ func (m *Manager) UntieDevice(ctx context.Context, loginID, device string) error
 	defer func() { unlock() }()
 
 	// Resolve only markers whose embedded device identity matches the request. 仅解析内嵌设备身份与请求一致的封禁标记。
-	records, err := m.loadDeviceDisableRecords(
-		ctx,
-		loginID,
-		m.getDisableDeviceKey(loginID, device),
-		m.getLegacyDisableDeviceKey(loginID, device),
-		device,
-		"",
-		true,
-	)
+	record, err := m.loadDeviceDisableRecord(ctx, loginID, device, "")
 	if err != nil {
 		return err
 	}
-	if len(records) == 0 {
+	changed, err := m.deleteDisableRecord(ctx, record)
+	if err != nil {
+		return err
+	}
+	if !changed {
 		return nil
-	}
-
-	// Delete all matching current and legacy markers without touching colliding legacy records. 删除所有匹配的新旧标记，但不触碰发生碰撞的旧记录。
-	keys := make([]string, len(records))
-	for i := range records {
-		keys[i] = records[i].key
-	}
-	if err = m.storage.Delete(ctx, keys...); err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
 	// Release the account lock before dispatching lifecycle events. 触发生命周期事件前释放账号锁。
@@ -776,29 +716,16 @@ func (m *Manager) UntieDeviceAndDeviceID(ctx context.Context, loginID, device, d
 	defer func() { unlock() }()
 
 	// Resolve only markers whose embedded device identity matches the request. 仅解析内嵌设备身份与请求一致的封禁标记。
-	records, err := m.loadDeviceDisableRecords(
-		ctx,
-		loginID,
-		m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID),
-		m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID),
-		device,
-		deviceID,
-		true,
-	)
+	record, err := m.loadDeviceDisableRecord(ctx, loginID, device, deviceID)
 	if err != nil {
 		return err
 	}
-	if len(records) == 0 {
+	changed, err := m.deleteDisableRecord(ctx, record)
+	if err != nil {
+		return err
+	}
+	if !changed {
 		return nil
-	}
-
-	// Delete all matching current and legacy markers without touching colliding legacy records. 删除所有匹配的新旧标记，但不触碰发生碰撞的旧记录。
-	keys := make([]string, len(records))
-	for i := range records {
-		keys[i] = records[i].key
-	}
-	if err = m.storage.Delete(ctx, keys...); err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
 	// Release the account lock before dispatching lifecycle events. 触发生命周期事件前释放账号锁。
@@ -825,20 +752,9 @@ func (m *Manager) IsDisableDevice(ctx context.Context, loginID, device string) b
 		return false
 	}
 
-	currentKey := m.getDisableDeviceKey(loginID, device)
-	legacyKey := m.getLegacyDisableDeviceKey(loginID, device)
-
-	// An escaped key can also contain another identity's legacy marker. 转义键也可能存有其他身份的旧标记。
-	records, err := m.loadDeviceDisableRecords(
-		ctx,
-		loginID,
-		currentKey,
-		legacyKey,
-		device,
-		"",
-		false,
-	)
-	return err == nil && len(records) > 0
+	// Validate the canonical marker's owner and scope. 核对规范标记的账号和作用域。
+	record, err := m.loadDeviceDisableRecord(ctx, loginID, device, "")
+	return err == nil && record != nil
 }
 
 // IsDisableDeviceAndDeviceID checks concrete device disable state. IsDisableDeviceAndDeviceID 检查具体设备封禁状态。
@@ -905,28 +821,6 @@ func (m *Manager) CheckDisableDeviceAndDeviceID(ctx context.Context, loginID, de
 	return m.checkDeviceDisableState(ctx, loginID, device, deviceID)
 }
 
-// deviceDisableRecord binds decoded device state to its storage key. deviceDisableRecord 将解码后的设备封禁状态绑定到存储键。
-type deviceDisableRecord struct {
-	key  string
-	info DeviceDisableInfo
-}
-
-// loadDeviceDisableRecords matches stored device fields, returning all matches only for untie operations. loadDeviceDisableRecords 核对已存设备字段，仅解封操作需要返回所有匹配记录。
-func (m *Manager) loadDeviceDisableRecords(ctx context.Context, loginID, key, legacyKey, device, deviceID string, all bool) ([]deviceDisableRecord, error) {
-	matched, err := m.loadDisableRecords(ctx, disableMarker{LoginID: loginID, Kind: "device", Device: device, DeviceID: deviceID}, key, legacyKey, all)
-	if err != nil {
-		return nil, err
-	}
-	records := make([]deviceDisableRecord, 0, len(matched))
-	for _, record := range matched {
-		marker := record.marker
-		records = append(records, deviceDisableRecord{key: record.key, info: DeviceDisableInfo{
-			Device: marker.Device, DeviceID: marker.DeviceID, DisableTime: marker.DisableTime, DisableReason: marker.DisableReason,
-		}})
-	}
-	return records, nil
-}
-
 // GetDisableDeviceInfo returns device type disable information. GetDisableDeviceInfo 获取设备类型封禁信息。
 func (m *Manager) GetDisableDeviceInfo(ctx context.Context, loginID, device string) (*DeviceDisableInfo, error) {
 	if m.IsClosed() {
@@ -947,22 +841,15 @@ func (m *Manager) GetDisableDeviceInfo(ctx context.Context, loginID, device stri
 	}
 
 	// Load identity-matched device disable info 加载身份匹配的设备封禁信息。
-	records, err := m.loadDeviceDisableRecords(
-		ctx,
-		loginID,
-		m.getDisableDeviceKey(loginID, device),
-		m.getLegacyDisableDeviceKey(loginID, device),
-		device,
-		"",
-		false,
-	)
+	record, err := m.loadDeviceDisableRecord(ctx, loginID, device, "")
 	if err != nil {
 		return nil, err
 	}
-	if len(records) == 0 {
+	if record == nil {
 		return nil, derror.ErrDeviceNotDisabled
 	}
-	info := records[0].info
+	marker := record.marker
+	info := DeviceDisableInfo{Device: marker.Device, DeviceID: marker.DeviceID, DisableTime: marker.DisableTime, DisableReason: marker.DisableReason}
 	return &info, nil
 }
 
@@ -987,22 +874,15 @@ func (m *Manager) GetDisableDeviceAndDeviceIDInfo(ctx context.Context, loginID, 
 	}
 
 	// Load identity-matched concrete device disable info 加载身份匹配的具体设备封禁信息。
-	records, err := m.loadDeviceDisableRecords(
-		ctx,
-		loginID,
-		m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID),
-		m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID),
-		device,
-		deviceID,
-		false,
-	)
+	record, err := m.loadDeviceDisableRecord(ctx, loginID, device, deviceID)
 	if err != nil {
 		return nil, err
 	}
-	if len(records) == 0 {
+	if record == nil {
 		return nil, derror.ErrDeviceNotDisabled
 	}
-	info := records[0].info
+	marker := record.marker
+	info := DeviceDisableInfo{Device: marker.Device, DeviceID: marker.DeviceID, DisableTime: marker.DisableTime, DisableReason: marker.DisableReason}
 	return &info, nil
 }
 
@@ -1025,26 +905,15 @@ func (m *Manager) GetDisableDeviceTTL(ctx context.Context, loginID, device strin
 		return 0, derror.ErrInvalidParam
 	}
 
-	currentKey := m.getDisableDeviceKey(loginID, device)
-	legacyKey := m.getLegacyDisableDeviceKey(loginID, device)
-
 	// Resolve a metadata-matched record before reading its TTL. 读取 TTL 前先确定字段匹配的记录。
-	records, err := m.loadDeviceDisableRecords(
-		ctx,
-		loginID,
-		currentKey,
-		legacyKey,
-		device,
-		"",
-		false,
-	)
+	record, err := m.loadDeviceDisableRecord(ctx, loginID, device, "")
 	if err != nil {
 		return 0, err
 	}
-	if len(records) == 0 {
+	if record == nil {
 		return -2, nil
 	}
-	return m.getDisableTTL(ctx, records[0].key)
+	return m.getDisableTTL(ctx, record.key)
 }
 
 // GetDisableDeviceAndDeviceIDTTL returns concrete device disable TTL in seconds. GetDisableDeviceAndDeviceIDTTL 获取具体设备封禁剩余秒数。
@@ -1067,26 +936,15 @@ func (m *Manager) GetDisableDeviceAndDeviceIDTTL(ctx context.Context, loginID, d
 		return 0, derror.ErrInvalidParam
 	}
 
-	currentKey := m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID)
-	legacyKey := m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID)
-
 	// Resolve a metadata-matched record before reading its TTL. 读取 TTL 前先确定字段匹配的记录。
-	records, err := m.loadDeviceDisableRecords(
-		ctx,
-		loginID,
-		currentKey,
-		legacyKey,
-		device,
-		deviceID,
-		false,
-	)
+	record, err := m.loadDeviceDisableRecord(ctx, loginID, device, deviceID)
 	if err != nil {
 		return 0, err
 	}
-	if len(records) == 0 {
+	if record == nil {
 		return -2, nil
 	}
-	return m.getDisableTTL(ctx, records[0].key)
+	return m.getDisableTTL(ctx, record.key)
 }
 
 // CheckDisable validates account disable state. CheckDisable 校验账号封禁状态。
@@ -1105,11 +963,11 @@ func (m *Manager) checkAccountDisableState(ctx context.Context, loginID string) 
 		return derror.ErrIDIsEmpty
 	}
 
-	records, err := m.loadAccountDisableRecords(ctx, loginID, false)
+	record, err := m.loadAccountDisableRecord(ctx, loginID)
 	if err != nil {
 		return err
 	}
-	if len(records) > 0 {
+	if record != nil {
 		return derror.ErrAccountDisabled
 	}
 	return nil
@@ -1118,22 +976,22 @@ func (m *Manager) checkAccountDisableState(ctx context.Context, loginID string) 
 // checkDeviceDisableState checks normalized device fields for public calls and accepted maintenance. checkDeviceDisableState 为公开调用和已接收的维护任务检查规范化后的设备字段。
 func (m *Manager) checkDeviceDisableState(ctx context.Context, loginID, device, deviceID string) error {
 	// Device-type bans take precedence over concrete-device bans. 设备类型封禁优先于具体设备封禁。
-	records, err := m.loadDeviceDisableRecords(ctx, loginID, m.getDisableDeviceKey(loginID, device), m.getLegacyDisableDeviceKey(loginID, device), device, "", false)
+	record, err := m.loadDeviceDisableRecord(ctx, loginID, device, "")
 	if err != nil {
 		return err
 	}
-	if len(records) > 0 {
+	if record != nil {
 		return derror.ErrDeviceDisabled
 	}
 	if deviceID == "" {
 		return nil
 	}
 
-	records, err = m.loadDeviceDisableRecords(ctx, loginID, m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID), m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID), device, deviceID, false)
+	record, err = m.loadDeviceDisableRecord(ctx, loginID, device, deviceID)
 	if err != nil {
 		return err
 	}
-	if len(records) > 0 {
+	if record != nil {
 		return derror.ErrDeviceDisabled
 	}
 	return nil
@@ -1162,8 +1020,8 @@ func (m *Manager) isDisable(ctx context.Context, loginID string) bool {
 	}
 
 	// Do not treat a colliding service or device marker as an account ban. 不将冲突的服务或设备记录视为账号封禁。
-	_, err := m.GetDisableInfo(ctx, loginID)
-	return err == nil
+	record, err := m.loadAccountDisableRecord(ctx, loginID)
+	return err == nil && record != nil
 }
 
 // isDisableDeviceMatch checks device disable state. isDisableDeviceMatch 检查设备封禁状态。
@@ -1186,18 +1044,8 @@ func (m *Manager) isDisableDeviceMatch(ctx context.Context, loginID, device, dev
 	if deviceID == "" {
 		return false
 	}
-	currentKey := m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID)
-	legacyKey := m.getLegacyDisableDeviceAndDeviceIDKey(loginID, device, deviceID)
 
-	// An escaped key can also contain another identity's legacy marker. 转义键也可能存有其他身份的旧标记。
-	concreteRecords, err := m.loadDeviceDisableRecords(
-		ctx,
-		loginID,
-		currentKey,
-		legacyKey,
-		device,
-		deviceID,
-		false,
-	)
-	return err == nil && len(concreteRecords) > 0
+	// Validate the canonical marker's owner and scope. 核对规范标记的账号和作用域。
+	concreteRecord, err := m.loadDeviceDisableRecord(ctx, loginID, device, deviceID)
+	return err == nil && concreteRecord != nil
 }

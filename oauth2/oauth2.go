@@ -83,8 +83,7 @@ type UserValidator = capability.UserValidator
 
 // OAuth2Server implements an OAuth2 authorization server. OAuth2Server 实现 OAuth2 授权服务器。
 type OAuth2Server struct {
-	authType          string          // Authentication system type 认证体系类型
-	keyPrefix         string          // Configurable prefix 可配置的前缀
+	namespace         string          // namespace stores the immutable encoded storage boundary. namespace 存储固定编码后的存储命名空间。
 	codeExpiration    time.Duration   // Authorization code expiration (10min) 授权码过期时间（10分钟）
 	tokenExpiration   time.Duration   // Access token expiration (2h) 访问令牌过期时间（2小时）
 	refreshExpiration time.Duration   // Refresh token expiration 刷新令牌过期时间
@@ -113,8 +112,7 @@ func NewOAuth2ServerWithConfig(authType, prefix string, storage adapter.Storage,
 	}
 
 	return &OAuth2Server{
-		authType:          authType,
-		keyPrefix:         prefix,
+		namespace:         utils.StorageNamespace(prefix, authType),
 		storage:           storage,
 		serializer:        serializer,
 		codeExpiration:    cfg.CodeExpiration,
@@ -570,10 +568,12 @@ func (s *OAuth2Server) deleteTokenPair(ctx context.Context, token *AccessToken) 
 	if token == nil {
 		return nil
 	}
-	keys := []string{s.getTokenKey(token.Token)}
+	// Put refresh credentials first for sequential backends; batch atomicity remains backend-specific. 为顺序删除的存储优先排列刷新凭据，批量删除是否原子仍由存储决定。
+	keys := make([]string, 0, 2)
 	if token.RefreshToken != "" {
 		keys = append(keys, s.getRefreshKey(token.RefreshToken))
 	}
+	keys = append(keys, s.getTokenKey(token.Token))
 	if err := s.storage.Delete(ctx, keys...); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
@@ -620,41 +620,40 @@ func (s *OAuth2Server) ValidateAccessTokenAndGetInfo(ctx context.Context, access
 
 // RevokeToken Revokes access token and its refresh token 撤销访问令牌及其刷新令牌
 func (s *OAuth2Server) RevokeToken(ctx context.Context, accessToken string) error {
+	_, err := s.revokeToken(ctx, accessToken)
+	return err
+}
+
+// revokeToken reuses the validated record for pair deletion and lifecycle events. revokeToken 复用已校验记录完成令牌对删除和生命周期事件。
+func (s *OAuth2Server) revokeToken(ctx context.Context, accessToken string) (*AccessToken, error) {
 	accessTokenInfo, err := s.ValidateAccessTokenAndGetInfo(ctx, accessToken)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	if accessTokenInfo.RefreshToken != "" {
-		if err = s.storage.Delete(ctx, s.getRefreshKey(accessTokenInfo.RefreshToken)); err != nil {
-			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-		}
+	if err = s.deleteTokenPair(ctx, accessTokenInfo); err != nil {
+		return nil, err
 	}
-	if err = s.storage.Delete(ctx, s.getTokenKey(accessToken)); err != nil {
-		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-	}
-
-	return nil
+	return accessTokenInfo, nil
 }
 
 // getCodeKey Gets storage key for authorization code 获取授权码的存储键
 func (s *OAuth2Server) getCodeKey(code string) string {
-	return utils.StorageNamespace(s.keyPrefix, s.authType) + CodeKeySuffix + code
+	return s.namespace + CodeKeySuffix + code
 }
 
 // getTokenKey Gets storage key for access token 获取访问令牌的存储键
 func (s *OAuth2Server) getTokenKey(token string) string {
-	return utils.StorageNamespace(s.keyPrefix, s.authType) + TokenKeySuffix + token
+	return s.namespace + TokenKeySuffix + token
 }
 
 // getRefreshKey Gets storage key for refresh token 获取刷新令牌的存储键
 func (s *OAuth2Server) getRefreshKey(refreshToken string) string {
-	return utils.StorageNamespace(s.keyPrefix, s.authType) + RefreshKeySuffix + refreshToken
+	return s.namespace + RefreshKeySuffix + refreshToken
 }
 
 // getClientKey gets storage key for OAuth2 client. getClientKey 获取 OAuth2 客户端存储键。
 func (s *OAuth2Server) getClientKey(clientID string) string {
-	return utils.StorageNamespace(s.keyPrefix, s.authType) + ClientKeySuffix + clientID
+	return s.namespace + ClientKeySuffix + clientID
 }
 
 // saveClient saves OAuth2 client through shared storage. saveClient 通过共享存储保存 OAuth2 客户端。

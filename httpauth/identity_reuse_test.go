@@ -57,6 +57,7 @@ func TestCheckReusesValidatedIdentity(t *testing.T) {
 			}
 			storage.tokenReads.Store(0)
 			storage.sessionReads.Store(0)
+			storage.otherReads.Store(0)
 			result, err := Check(ctx, mgr, req)
 			if err != nil || result == nil || result.LoginID != wantID {
 				t.Fatalf("Check() = %v, %v, want login ID %q", result, err, wantID)
@@ -66,6 +67,9 @@ func TestCheckReusesValidatedIdentity(t *testing.T) {
 			}
 			if got := storage.sessionReads.Load(); got != wantSessions {
 				t.Fatalf("session reads = %d, want %d", got, wantSessions)
+			}
+			if got := storage.otherReads.Load(); (got > 0) != req.CheckDisable {
+				t.Fatalf("restriction reads = %d, CheckDisable = %v", got, req.CheckDisable)
 			}
 		})
 	}
@@ -132,6 +136,7 @@ type identityReadStorage struct {
 	sessionKey   string
 	tokenReads   atomic.Int64
 	sessionReads atomic.Int64
+	otherReads   atomic.Int64
 }
 
 // Get counts reads while preserving the wrapped storage behavior. Get 统计读取次数并保持被包装存储的行为。
@@ -141,6 +146,9 @@ func (s *identityReadStorage) Get(ctx context.Context, key string) (any, error) 
 	}
 	if key == s.sessionKey {
 		s.sessionReads.Add(1)
+	}
+	if key != s.tokenKey && key != s.sessionKey {
+		s.otherReads.Add(1)
 	}
 	return s.Storage.Get(ctx, key)
 }

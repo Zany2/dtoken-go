@@ -395,12 +395,12 @@ func TestManagerAccessProviderFunctionContracts(t *testing.T) {
 		},
 	})
 	expectedAuthType = mgr.config.AuthType
-	fallback := []string{"session-value"}
-	permissions, err := mgr.loadPermissions(ctx, fallback, AccessSubject{LoginID: "provider-user"})
+	fallback := &Session{Permissions: []string{"session-value"}, Roles: []string{"session-value"}}
+	permissions, err := mgr.loadPermissions(ctx, &fallback, AccessSubject{LoginID: "provider-user"})
 	if err != nil || !reflect.DeepEqual(permissions, []string{"provider:read"}) {
 		t.Fatalf("loadPermissions(provider) = %v, %v, want normalized provider values", permissions, err)
 	}
-	roles, err := mgr.loadRoles(ctx, fallback, AccessSubject{LoginID: "provider-user"})
+	roles, err := mgr.loadRoles(ctx, &fallback, AccessSubject{LoginID: "provider-user"})
 	if err != nil || !reflect.DeepEqual(roles, []string{"provider-role"}) {
 		t.Fatalf("loadRoles(provider) = %v, %v, want provider values", roles, err)
 	}
@@ -410,10 +410,10 @@ func TestManagerAccessProviderFunctionContracts(t *testing.T) {
 		PermissionFunc: func(context.Context, AccessSubject) ([]string, error) { return nil, providerErr },
 		RoleFunc:       func(context.Context, AccessSubject) ([]string, error) { return nil, providerErr },
 	}
-	if _, err = mgr.loadPermissions(ctx, fallback, AccessSubject{}); !errors.Is(err, providerErr) {
+	if _, err = mgr.loadPermissions(ctx, &fallback, AccessSubject{}); !errors.Is(err, providerErr) {
 		t.Fatalf("loadPermissions(error) = %v, want provider error", err)
 	}
-	if _, err = mgr.loadRoles(ctx, fallback, AccessSubject{}); !errors.Is(err, providerErr) {
+	if _, err = mgr.loadRoles(ctx, &fallback, AccessSubject{}); !errors.Is(err, providerErr) {
 		t.Fatalf("loadRoles(error) = %v, want provider error", err)
 	}
 }

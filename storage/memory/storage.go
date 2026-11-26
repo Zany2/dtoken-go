@@ -28,9 +28,10 @@ type Storage struct {
 
 // Interface assertion keeps storage contract checked at compile time 接口断言在编译期检查存储契约
 var (
-	_ adapter.Storage       = (*Storage)(nil)
-	_ adapter.AtomicStorage = (*Storage)(nil)
-	_ adapter.FullStorage   = (*Storage)(nil)
+	_ adapter.Storage           = (*Storage)(nil)
+	_ adapter.AtomicStorage     = (*Storage)(nil)
+	_ adapter.FullStorage       = (*Storage)(nil)
+	_ adapter.PersistentStorage = (*Storage)(nil)
 )
 
 // NewStorage creates a new memory storage instance 创建一个新的内存存储实例
@@ -231,6 +232,27 @@ func (s *Storage) Expire(ctx context.Context, key string, expiration time.Durati
 		s.c.Set(key, val, expiration)
 	}
 
+	return nil
+}
+
+// Persist removes expiration while keeping the existing value. Persist 移除有效期并保留已有值。
+func (s *Storage) Persist(ctx context.Context, key string) error {
+	if err := s.ensureReady(); err != nil {
+		return err
+	}
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	value, found := s.c.Get(key)
+	if !found {
+		return derror.ErrKeyNotFound
+	}
+	s.c.Set(key, value, cache.NoExpiration)
 	return nil
 }
 

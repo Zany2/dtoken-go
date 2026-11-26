@@ -13,12 +13,14 @@ Build registers and returns each Auth automatically. Use the returned instance, 
 `AuthType` participates in manager registration, Token lookup, Session lookup, permission and role resolution, and storage key generation. A Token can only be recognized by its own auth system.
 
 ```text
-dtoken:user:token:xxx
-dtoken:admin:token:yyy
-dtoken:app:session:client-001
+dtoken:user:v2:token:xxx
+dtoken:admin:v2:token:yyy
+dtoken:app:v2:session:client-001
 ```
 
 `AuthType("user")` is normalized to `user:`. Builders, `dt.AuthType(name)`, and `dt.GetManager(name)` accept either `"user"` or `"user:"`. TokenName selects the HTTP field used to read tokens; KeyPrefix and AuthType determine the storage namespace.
+
+Manager and bundled Nonce, OAuth2, Ticket, and ShortKey instances encode and retain their fixed storage namespace during construction. Key generation reuses it instead of repeatedly escaping KeyPrefix and AuthType. Mutating the supplied configuration or a GetConfig() snapshot does not switch a constructed Manager to another namespace; construct the appropriate instance for another system. This optimization preserves the existing key format and requires no additional migration.
 
 ## Build And Register Multiple Systems
 
@@ -165,10 +167,10 @@ Each group binds its instance through `WithAuth`, independently of registry regi
 Redis keys include both `KeyPrefix` and `AuthType`. If multiple auth systems share Redis, core login-state data remains isolated as long as `AuthType` differs.
 
 ```text
-dtoken:user:token:...
-dtoken:user:session:...
-dtoken:admin:token:...
-dtoken:admin:session:...
+dtoken:user:v2:token:...
+dtoken:user:v2:session:...
+dtoken:admin:v2:token:...
+dtoken:admin:v2:session:...
 ```
 
 If projects, environments, or test runs need stronger isolation, separate `KeyPrefix` too:

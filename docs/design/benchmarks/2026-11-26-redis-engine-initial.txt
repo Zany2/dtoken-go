@@ -1,0 +1,177 @@
+=== RUN   TestPermissionSegmentCompatibility
+--- PASS: TestPermissionSegmentCompatibility (0.00s)
+=== RUN   TestAccessRemovalCompatibility
+--- PASS: TestAccessRemovalCompatibility (0.00s)
+=== RUN   TestAccessRemovalBroadRequests
+--- PASS: TestAccessRemovalBroadRequests (0.00s)
+=== RUN   TestAccessRemovalPublicEvents
+=== RUN   TestAccessRemovalPublicEvents/permissions/token=false
+=== RUN   TestAccessRemovalPublicEvents/permissions/token=true
+=== RUN   TestAccessRemovalPublicEvents/roles/token=false
+=== RUN   TestAccessRemovalPublicEvents/roles/token=true
+--- PASS: TestAccessRemovalPublicEvents (4.70s)
+    --- PASS: TestAccessRemovalPublicEvents/permissions/token=false (1.09s)
+    --- PASS: TestAccessRemovalPublicEvents/permissions/token=true (1.10s)
+    --- PASS: TestAccessRemovalPublicEvents/roles/token=false (1.07s)
+    --- PASS: TestAccessRemovalPublicEvents/roles/token=true (1.43s)
+=== RUN   TestManagerAccessWritesHandleActiveTimeout
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/add_permissions/last_terminal
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/add_permissions/other_terminal_remains
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/add_permissions/detached_terminal
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/remove_permissions/last_terminal
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/remove_permissions/other_terminal_remains
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/remove_permissions/detached_terminal
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/add_roles/last_terminal
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/add_roles/other_terminal_remains
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/add_roles/detached_terminal
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/remove_roles/last_terminal
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/remove_roles/other_terminal_remains
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/remove_roles/detached_terminal
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/set_session_data/last_terminal
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/set_session_data/other_terminal_remains
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/set_session_data/detached_terminal
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/delete_session_data/last_terminal
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/delete_session_data/other_terminal_remains
+=== RUN   TestManagerAccessWritesHandleActiveTimeout/delete_session_data/detached_terminal
+--- PASS: TestManagerAccessWritesHandleActiveTimeout (48.04s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/add_permissions/last_terminal (2.52s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/add_permissions/other_terminal_remains (2.69s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/add_permissions/detached_terminal (2.62s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/remove_permissions/last_terminal (2.10s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/remove_permissions/other_terminal_remains (2.65s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/remove_permissions/detached_terminal (2.36s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/add_roles/last_terminal (2.54s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/add_roles/other_terminal_remains (3.01s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/add_roles/detached_terminal (2.70s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/remove_roles/last_terminal (2.49s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/remove_roles/other_terminal_remains (3.26s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/remove_roles/detached_terminal (2.41s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/set_session_data/last_terminal (2.67s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/set_session_data/other_terminal_remains (2.82s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/set_session_data/detached_terminal (2.82s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/delete_session_data/last_terminal (2.73s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/delete_session_data/other_terminal_remains (3.06s)
+    --- PASS: TestManagerAccessWritesHandleActiveTimeout/delete_session_data/detached_terminal (2.58s)
+=== RUN   TestManagerAccessWritesSubmitMaintenanceAfterUnlock
+=== RUN   TestManagerAccessWritesSubmitMaintenanceAfterUnlock/add_permissions
+=== RUN   TestManagerAccessWritesSubmitMaintenanceAfterUnlock/remove_permissions
+=== RUN   TestManagerAccessWritesSubmitMaintenanceAfterUnlock/add_roles
+=== RUN   TestManagerAccessWritesSubmitMaintenanceAfterUnlock/remove_roles
+--- PASS: TestManagerAccessWritesSubmitMaintenanceAfterUnlock (7.57s)
+    --- PASS: TestManagerAccessWritesSubmitMaintenanceAfterUnlock/add_permissions (1.74s)
+    --- PASS: TestManagerAccessWritesSubmitMaintenanceAfterUnlock/remove_permissions (2.13s)
+    --- PASS: TestManagerAccessWritesSubmitMaintenanceAfterUnlock/add_roles (1.70s)
+    --- PASS: TestManagerAccessWritesSubmitMaintenanceAfterUnlock/remove_roles (1.99s)
+=== RUN   TestManagerAccessMutationsSkipUnchangedSession
+--- PASS: TestManagerAccessMutationsSkipUnchangedSession (1.65s)
+=== RUN   TestManagerAccessMutationEventsReportActualChanges
+--- PASS: TestManagerAccessMutationEventsReportActualChanges (1.81s)
+=== RUN   TestTokenAccessProviderErrorsDoNotEmitCheckEvents
+--- PASS: TestTokenAccessProviderErrorsDoNotEmitCheckEvents (0.94s)
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/login_by_token/different_account/active
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/login_by_token/different_account/active_timeout
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/login_by_token/different_account/corrupt_active_marker
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/login_by_token/same_account/active
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/login_by_token/same_account/active_timeout
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/login_by_token/same_account/corrupt_active_marker
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/renew_timeout/different_account/active
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/renew_timeout/different_account/active_timeout
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/renew_timeout/different_account/corrupt_active_marker
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/renew_timeout/same_account/active
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/renew_timeout/same_account/active_timeout
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/renew_timeout/same_account/corrupt_active_marker
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/add_permissions/different_account/active
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/add_permissions/different_account/active_timeout
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/add_permissions/different_account/corrupt_active_marker
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/add_permissions/same_account/active
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/add_permissions/same_account/active_timeout
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/add_permissions/same_account/corrupt_active_marker
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/remove_permissions/different_account/active
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/remove_permissions/different_account/active_timeout
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/remove_permissions/different_account/corrupt_active_marker
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/remove_permissions/same_account/active
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/remove_permissions/same_account/active_timeout
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/remove_permissions/same_account/corrupt_active_marker
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/add_roles/different_account/active
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/add_roles/different_account/active_timeout
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/add_roles/different_account/corrupt_active_marker
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/add_roles/same_account/active
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/add_roles/same_account/active_timeout
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/add_roles/same_account/corrupt_active_marker
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/remove_roles/different_account/active
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/remove_roles/different_account/active_timeout
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/remove_roles/different_account/corrupt_active_marker
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/remove_roles/same_account/active
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/remove_roles/same_account/active_timeout
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/remove_roles/same_account/corrupt_active_marker
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/set_session_data/different_account/active
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/set_session_data/different_account/active_timeout
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/set_session_data/different_account/corrupt_active_marker
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/set_session_data/same_account/active
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/set_session_data/same_account/active_timeout
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/set_session_data/same_account/corrupt_active_marker
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/delete_session_data/different_account/active
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/delete_session_data/different_account/active_timeout
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/delete_session_data/different_account/corrupt_active_marker
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/delete_session_data/same_account/active
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/delete_session_data/same_account/active_timeout
+=== RUN   TestManagerTokenWritesRejectLifecycleSwap/delete_session_data/same_account/corrupt_active_marker
+--- PASS: TestManagerTokenWritesRejectLifecycleSwap (213.47s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/login_by_token/different_account/active (3.85s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/login_by_token/different_account/active_timeout (4.96s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/login_by_token/different_account/corrupt_active_marker (3.91s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/login_by_token/same_account/active (4.61s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/login_by_token/same_account/active_timeout (3.75s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/login_by_token/same_account/corrupt_active_marker (3.99s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/renew_timeout/different_account/active (4.53s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/renew_timeout/different_account/active_timeout (5.03s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/renew_timeout/different_account/corrupt_active_marker (5.09s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/renew_timeout/same_account/active (3.78s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/renew_timeout/same_account/active_timeout (4.27s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/renew_timeout/same_account/corrupt_active_marker (3.98s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/add_permissions/different_account/active (4.33s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/add_permissions/different_account/active_timeout (4.65s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/add_permissions/different_account/corrupt_active_marker (3.87s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/add_permissions/same_account/active (4.25s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/add_permissions/same_account/active_timeout (4.48s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/add_permissions/same_account/corrupt_active_marker (4.33s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/remove_permissions/different_account/active (4.38s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/remove_permissions/different_account/active_timeout (4.55s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/remove_permissions/different_account/corrupt_active_marker (4.94s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/remove_permissions/same_account/active (4.43s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/remove_permissions/same_account/active_timeout (4.67s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/remove_permissions/same_account/corrupt_active_marker (4.89s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/add_roles/different_account/active (4.47s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/add_roles/different_account/active_timeout (4.05s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/add_roles/different_account/corrupt_active_marker (4.56s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/add_roles/same_account/active (4.61s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/add_roles/same_account/active_timeout (4.40s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/add_roles/same_account/corrupt_active_marker (4.98s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/remove_roles/different_account/active (5.18s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/remove_roles/different_account/active_timeout (3.90s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/remove_roles/different_account/corrupt_active_marker (3.83s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/remove_roles/same_account/active (4.04s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/remove_roles/same_account/active_timeout (4.45s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/remove_roles/same_account/corrupt_active_marker (4.89s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/set_session_data/different_account/active (4.10s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/set_session_data/different_account/active_timeout (4.02s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/set_session_data/different_account/corrupt_active_marker (4.66s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/set_session_data/same_account/active (4.54s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/set_session_data/same_account/active_timeout (4.88s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/set_session_data/same_account/corrupt_active_marker (4.38s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/delete_session_data/different_account/active (4.13s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/delete_session_data/different_account/active_timeout (4.54s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/delete_session_data/different_account/corrupt_active_marker (5.00s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/delete_session_data/same_account/active (4.76s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/delete_session_data/same_account/active_timeout (4.61s)
+    --- PASS: TestManagerTokenWritesRejectLifecycleSwap/delete_session_data/same_account/corrupt_active_marker (4.97s)
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/disable/account/atomic/current
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/disable/account/atomic/legacy
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/disable/account/basic/current
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/disable/account/basic/legacy
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/logout/account/atomic/current
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/logout/account/atomic/legacy
+FAIL	github.com/Zany2/dtoken-go/internal/engine	305.182s
+FAIL

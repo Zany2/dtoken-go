@@ -1,0 +1,30 @@
+goos: windows
+goarch: amd64
+pkg: github.com/Zany2/dtoken-go/tests/gin_core_flow
+cpu: AMD Ryzen 7 7840HS with Radeon 780M Graphics
+BenchmarkAuthParallelValidation/memory/same-account           	 1000000	       309.5 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthParallelValidation/memory/same-account           	  969931	       321.6 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthParallelValidation/memory/same-account           	 1000000	       319.8 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthParallelValidation/memory/same-account-8         	 3735178	        92.42 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthParallelValidation/memory/same-account-8         	 3650089	        91.37 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthParallelValidation/memory/same-account-8         	 4030546	        98.05 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthParallelValidation/memory/many-accounts          	 1000000	       330.3 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthParallelValidation/memory/many-accounts          	 1000000	       320.3 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthParallelValidation/memory/many-accounts          	 1000000	       317.7 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthParallelValidation/memory/many-accounts-8        	 3536911	       172.7 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthParallelValidation/memory/many-accounts-8        	 3805693	        91.01 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthParallelValidation/memory/many-accounts-8        	 3921722	        89.96 ns/op	         0 tasks/op	     224 B/op	       2 allocs/op
+BenchmarkAuthParallelWrites/memory/same-account               	   40623	      8136 ns/op	         0 tasks/op	    3952 B/op	      50 allocs/op
+BenchmarkAuthParallelWrites/memory/same-account               	   32883	     14385 ns/op	         0 tasks/op	    3952 B/op	      50 allocs/op
+BenchmarkAuthParallelWrites/memory/same-account               	   25672	     13981 ns/op	         0 tasks/op	    3952 B/op	      50 allocs/op
+BenchmarkAuthParallelWrites/memory/same-account-8             	   10000	     37441 ns/op	         0 tasks/op	    8143 B/op	      60 allocs/op
+BenchmarkAuthParallelWrites/memory/same-account-8             	   12243	     29102 ns/op	         0 tasks/op	    8389 B/op	      60 allocs/op
+BenchmarkAuthParallelWrites/memory/same-account-8             	   10000	     31086 ns/op	         0 tasks/op	    8292 B/op	      60 allocs/op
+BenchmarkAuthParallelWrites/memory/many-accounts              	   24858	     13938 ns/op	         0 tasks/op	    3952 B/op	      50 allocs/op
+BenchmarkAuthParallelWrites/memory/many-accounts              	   27096	     14680 ns/op	         0 tasks/op	    3952 B/op	      50 allocs/op
+BenchmarkAuthParallelWrites/memory/many-accounts              	   41900	      9983 ns/op	         0 tasks/op	    3952 B/op	      50 allocs/op
+BenchmarkAuthParallelWrites/memory/many-accounts-8            	   21460	     20225 ns/op	         0 tasks/op	    3995 B/op	      50 allocs/op
+BenchmarkAuthParallelWrites/memory/many-accounts-8            	   25344	     14394 ns/op	         0 tasks/op	    3994 B/op	      50 allocs/op
+BenchmarkAuthParallelWrites/memory/many-accounts-8            	   27702	     13525 ns/op	         0 tasks/op	    3991 B/op	      50 allocs/op
+PASS
+ok  	github.com/Zany2/dtoken-go/tests/gin_core_flow	13.337s

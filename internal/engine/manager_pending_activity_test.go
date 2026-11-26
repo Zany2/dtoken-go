@@ -117,7 +117,7 @@ func TestManagerPendingActivityRequiresValidLifecycle(t *testing.T) {
 				mgr.cancelLoginMaintenance(token)
 			case "revoked":
 				record.Revoked = true
-				err = mgr.saveToStorage(ctx, mgr.getTokenKey(token), *record, time.Hour)
+				err = mgr.saveTokenRecord(ctx, token, record, time.Hour)
 			case "missing":
 				err = mgr.storage.Delete(ctx, mgr.getActiveKey(token))
 			case "corrupt":
@@ -128,7 +128,7 @@ func TestManagerPendingActivityRequiresValidLifecycle(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, _, expired, inspectErr := mgr.inspectLoginToken(ctx, token, nil)
+			_, _, expired, inspectErr := mgr.inspectLoginToken(ctx, token, nil, false)
 			switch state {
 			case "missing", "corrupt", "revoked":
 				if !errors.Is(inspectErr, derror.ErrInvalidToken) {
@@ -170,7 +170,7 @@ func TestManagerActivitySnapshotSurvivesWorkerCompletion(t *testing.T) {
 	}
 	storage := &managerCompleteActivityReadStorage{Storage: mgr.storage, key: mgr.getActiveKey(token), complete: pool.runAll}
 	mgr.storage = storage
-	if _, _, expired, err := mgr.inspectLoginToken(ctx, token, nil); err != nil || expired {
+	if _, _, expired, err := mgr.inspectLoginToken(ctx, token, nil, false); err != nil || expired {
 		t.Fatalf("completed activity expired/error = %v/%v", expired, err)
 	}
 	if storage.complete != nil || pool.taskCount() != 0 {

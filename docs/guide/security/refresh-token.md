@@ -77,7 +77,7 @@ New logins have a random lifecycle identity in the internal access record, also 
 
 A fresh login that reuses expired access-token text detaches the old reverse index while preserving the old lifecycle's independently valid refresh credential. Issuing or logging out the new login cannot revoke that credential through the old index; later rotation of the old credential still follows the current login policy.
 
-Legacy pairs without lifecycle identities remain readable and refreshable. Access cleanup between two legacy records uses account, device, and creation-time checks on a best-effort basis; it cannot reliably distinguish token reuse that already happened before this upgrade. A legacy refresh record never matches a new-format access record. All writers sharing the storage should be upgraded: an older writer may drop the identity when rewriting token metadata. This does not introduce distributed transactions or require CAS support from custom storage.
+Legacy pairs must be converted with PrepareAuthUpgrade before switching to the versioned namespace. Offline conversion matches anonymous pairs by account, device, and creation time on a best-effort basis, then assigns lifecycle identities; it cannot reconstruct identities never stored by the old version. Runtime access records require a nonempty lifecycle identity and the current AuthType, and legacy Token payloads are rejected without Codec decoding. Refresh metadata still uses Codec. All writers sharing the logical authentication system must switch together. This does not introduce distributed transactions or require CAS support from custom storage.
 
 ## Revoke Flow
 
@@ -86,6 +86,19 @@ err := auth.RevokeRefreshToken(ctx, nextPair.RefreshToken)
 ```
 
 Revoking a refresh token also logs out its original access token when the lifecycle binding still matches. A later login that reuses the same token value is left untouched.
+
+## Storage Cost and Consumption Boundaries
+
+Refresh metadata contains its independent lifetime, device, and extension data and still uses Codec decoding. This table counts only reads, consumption, and decoding of the **old refresh-token primary key** on successful paths. Restrictions, access tokens, Session, reverse indexes, and replacement issuance have additional costs.
+
+| Operation | Basic Storage | With AtomicStorage | Refresh record decodes (basic / atomic) |
+| --- | --- | --- | --- |
+| Rotate | 2 GET + 1 Delete | 2 GET + 1 GetAndDelete | 2 / 3 |
+| Revoke | 2 GET + 1 Delete | 1 GET + 1 GetAndDelete | 2 / 2 |
+
+The first read locates the account lock. Rotation reloads refresh metadata under that lock, checks current restrictions and the original access state, then consumes the credential. The access check reuses the primary record loaded in that operation instead of fetching it again. Basic consumption reuses the locked refresh snapshot, removing a third GET and decode. Atomic revocation uses the record returned by GetAndDelete without an intermediate reload; the consumed account, access token, lifecycle identity, and creation time must match the expected record before associated data is processed.
+
+Reuse is limited to one operation: there is no cross-request authentication cache, and issuance still rechecks state after login callbacks. Basic storage relies on the account lock within one Manager and cannot guarantee strict single consumption across Managers or processes; use AtomicStorage when that guarantee is required. Subsequent updates across multiple keys remain sequential and do not form a distributed transaction.
 
 ## TTL
 

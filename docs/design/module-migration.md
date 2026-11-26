@@ -4,6 +4,28 @@ English | [中文文档](module-migration_zh.md)
 
 This guide owns old-path and API migration, release ordering, and consumer verification. See [architecture](architecture.md) for system layers, [modular design](modular.md) for package and module boundaries, and [source layout](source-layout.md) for code locations.
 
+Manager and Nonce/OAuth2/Ticket/ShortKey now append a fixed `v2:` segment after the encoded KeyPrefix and AuthType, without reading unversioned storage. Before deployment, use [offline migration](namespace-copy.md) and `PrepareAuthUpgrade` to convert old data into the actual versioned destination; configured prefixes may remain equal. `Prepare` and `PrepareTokenUpgrade` retain unversioned copying/staging semantics and do not replace a full upgrade. Ambiguity and destination conflicts fail preflight. The tool does not start applications or clean old data; compatibility parsing inside the new namespace remains pending cleanup.
+
+## Separating credentials from restrictions
+
+This performance refactor removes implicit restriction reads from `CheckLogin`, `IsLogin`, identity queries, token-based Session operations, and permission/role methods. Temporary device bans can coexist with valid credentials. Credentials already retired by account disabling return `ErrInvalidToken`; explicit checks provide restriction causes. Introspection still enforces restrictions.
+
+For protected routes that relied on implicit bans, replace `AuthMiddleware` with `AccessMiddleware` and set `req.CheckDisable = true` in `WithRouteAccessHandler`. Annotations use `CheckDisable: true`, and direct HTTP checks use `httpauth.Request.CheckDisable`. These checks reuse one token identity read and cover the account, device type, and concrete device. Login-only routes can retain `AuthMiddleware`.
+
+Explicit restrictions are synchronous and run before scheduling login maintenance. Enabled inactivity checks add activity reads; permission fallback, introspection, and background renewal are outside the one-GET base-check budget. Examples now declare restrictions explicitly; upgrading applications must update their declarations as well as dependencies.
+
+## Renewal and activity maintenance
+
+Maintenance also accesses Session only as needed: automatic renewal checks key TTL without validating Session content, and neither renews nor recreates a missing Session. Activity-only updates no longer depend on Session existence. Manual renewal, shared login, and operations requiring Session content retain their preceding checks. Custom storage can optionally implement `contract.PersistentStorage` to avoid full-value reads and writes when removing expiration; the existing `Expire(<=0)` deletion semantics remain unchanged.
+
+Session value updates and activity writes without renewal prefer optional `contract.UpdateStorage`. Redis uses `SET XX KEEPTTL`; Memory and ordinary storage retain the non-atomic TTL + Set fallback. Base Storage and FullStorage do not require new methods.
+
+Absent or rejecting pools no longer cause extra goroutines: automatic renewal is skipped, while activity updates, explicit `LoginByToken`, and event delivery fall back inline. Standalone event managers require `SetAsyncPool` for asynchronous work. `TriggerSync` executes direct listeners inline in priority order. Callbacks must not rely on another goroutine, wait for other callbacks of the same event, or call Close/Wait that would wait for themselves.
+
+## Lazy Provider fallback
+
+Token-based permission/role queries and combined HTTP authorization no longer preload Session. With valid credentials and non-nil provider data, a missing or corrupt Session no longer blocks authorization. Empty lists still explicitly deny access without fallback. Session is read only when the provider is absent or returns nil, and combined checks reuse at most one normal-path read. Applications using Session existence to control access should revoke credentials through logout/kickout APIs or explicitly check the session in business policy; deleting Session is not a substitute for revocation. Full introspection retains its Session validation contract.
+
 ## Error-handling API migration
 
 Construction and required context reads now return errors for the caller to handle:

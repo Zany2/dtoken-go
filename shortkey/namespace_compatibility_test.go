@@ -12,7 +12,7 @@ func TestNamespaceSeparatorCompatibility(t *testing.T) {
 	for _, source := range []string{"test", "test:"} {
 		t.Run(source, func(t *testing.T) {
 			base := newTestShortKeyManager(t, time.Minute)
-			writer, err := NewDefaultManager(source, base.keyPrefix, base.storage, base.serializer)
+			writer, err := NewDefaultManager(source, "dt:", base.storage, base.serializer)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -20,7 +20,7 @@ func TestNamespaceSeparatorCompatibility(t *testing.T) {
 			if source == target {
 				target = "test"
 			}
-			reader, err := NewDefaultManager(target, base.keyPrefix, base.storage, base.serializer)
+			reader, err := NewDefaultManager(target, "dt:", base.storage, base.serializer)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -38,12 +38,16 @@ func TestCheckLoginPreservesFailureCauses(t *testing.T) {
 			{Roles: []string{"reader"}},
 			{CheckDisable: true, Permissions: []string{"read"}, Roles: []string{"reader"}},
 		} {
+			expected := want
+			if errors.Is(want, derror.ErrDeviceDisabled) && !req.CheckDisable {
+				expected = nil
+			}
 			req.TokenValue = token
 			req.CheckLogin = true
 			req.LoginError = customLoginError
 			result, err := Check(ctx, mgr, req)
-			if !errors.Is(err, want) || (result == nil) != (want != nil) {
-				t.Fatalf("Check(%+v)=%v,%v, want %v", req, result, err, want)
+			if !errors.Is(err, expected) || (result == nil) != (expected != nil) {
+				t.Fatalf("Check(%+v)=%v,%v, want %v", req, result, err, expected)
 			}
 		}
 	}

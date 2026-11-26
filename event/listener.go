@@ -3,7 +3,6 @@ package event
 
 import (
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
@@ -92,7 +91,7 @@ func (f ListenerFunc) OnEvent(data *EventData) {
 
 // ListenerConfig defines listener config ListenerConfig 定义监听器配置。
 type ListenerConfig struct {
-	// Async controls async execution; asynchronous completion order is not guaranteed. Async 控制是否异步执行，异步完成顺序不受保证。
+	// Async requests pool execution; absent or rejecting pools fall back synchronously. Async 请求协程池执行，未配置池或池拒绝时同步回退。
 	Async bool
 	// Priority stores dispatch priority; higher values are visited first. Priority 存储分发优先级，数值越高越先遍历。
 	Priority int
@@ -123,6 +122,7 @@ type EventStats struct {
 type Manager struct {
 	mu              sync.RWMutex
 	listeners       map[Event][]listenerEntry
+	dispatch        map[Event][]listenerEntry // dispatch stores immutable merged lists for registered concrete events. dispatch 保存已注册具体事件的不可变合并列表。
 	panicHandler    func(event Event, data *EventData, recovered any)
 	listenerCounter int
 	eventStates     map[Event]bool // eventStates stores explicit event enable overrides. eventStates 存储事件启用状态覆盖值。
@@ -149,6 +149,7 @@ func NewManager(loggers ...adapter.Log) *Manager {
 
 	m := &Manager{
 		listeners:      make(map[Event][]listenerEntry),
+		dispatch:       make(map[Event][]listenerEntry),
 		eventStates:    nil,
 		defaultEnabled: true,
 		filters:        make([]EventFilter, 0),
@@ -173,7 +174,7 @@ func NewManager(loggers ...adapter.Log) *Manager {
 	return m
 }
 
-// SetAsyncPool sets a caller-owned pool separate from renewal before serving; Submit must be concurrency-safe and nonblocking, execute accepted tasks asynchronously exactly once and never execute rejected tasks; nil or rejection uses goroutines, TriggerSync bypasses the pool, and the caller stops it after producers and tasks drain. SetAsyncPool 在服务启动前设置调用方持有且独立于续期的事件池；Submit 必须并发安全、非阻塞，对接受的任务恰好异步执行一次且不执行被拒绝的任务；nil 或拒绝时使用 goroutine，TriggerSync 不使用池，调用方须在生产方及任务排空后关闭池。
+// SetAsyncPool binds a caller-owned nonblocking pool before serving; nil or rejection executes synchronously, TriggerSync bypasses it, and the caller stops it after producers and tasks drain. SetAsyncPool 在服务启动前绑定调用方持有的非阻塞池；nil 或拒绝时同步执行，TriggerSync 绕过池，调用方须在生产方及任务排空后关闭池。
 func (m *Manager) SetAsyncPool(pool adapter.Pool) {
 	m.asyncMu.Lock()
 	defer m.asyncMu.Unlock()
@@ -194,7 +195,10 @@ func (m *Manager) AddFilter(filter EventFilter) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.filters = append(m.filters, filter)
+	filters := make([]EventFilter, len(m.filters)+1)
+	copy(filters, m.filters)
+	filters[len(m.filters)] = filter
+	m.filters = filters
 }
 
 // ClearFilters clears all filters ClearFilters 清除所有事件过滤器
@@ -202,6 +206,23 @@ func (m *Manager) ClearFilters() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.filters = make([]EventFilter, 0)
+}
+
+// NeedsDispatch checks current enablement and observers, including wildcard listeners, filters, statistics and non-noop logging; concurrent configuration may change the result. NeedsDispatch 检查当前启用状态及观察需求，包括通配监听器、过滤器、统计和非空日志；并发配置变更可能改变结果。
+func (m *Manager) NeedsDispatch(event Event) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.needsDispatchLocked(event)
+}
+
+// needsDispatchLocked preserves every observable effect when deciding whether to skip an event. needsDispatchLocked 决定跳过事件时保留所有可观察行为。
+func (m *Manager) needsDispatchLocked(event Event) bool {
+	if !m.isEventEnabledLocked(event) {
+		return false
+	}
+	_, noop := m.logger.(*adapter.NopLogger)
+	return len(m.listeners[event]) > 0 || len(m.listeners[EventAll]) > 0 ||
+		len(m.filters) > 0 || m.enableStats || m.logger != nil && !noop
 }
 
 // EnableStats sets stats switch EnableStats 设置事件统计开关。
@@ -321,19 +342,20 @@ func (m *Manager) RegisterWithConfig(event Event, listener Listener, config List
 		return ""
 	}
 
-	if m.listeners[event] == nil {
-		m.listeners[event] = make([]listenerEntry, 0)
-	}
-
 	entry := listenerEntry{
 		listener: listener,
 		config:   config,
 	}
 
-	m.listeners[event] = append(m.listeners[event], entry)
+	// Publish a new slice so an in-flight dispatch keeps its original listener snapshot. 发布新切片，使进行中的分发保留原监听器快照。
+	entries := make([]listenerEntry, len(m.listeners[event])+1)
+	copy(entries, m.listeners[event])
+	entries[len(entries)-1] = entry
+	m.listeners[event] = entries
 
 	// Sort by priority 排序监听器优先级。
 	m.sortListeners(event)
+	m.rebuildDispatchLocked(event)
 
 	return config.ID
 }
@@ -362,15 +384,15 @@ func (m *Manager) Unregister(listenerID string) bool {
 	for event, entries := range m.listeners {
 		for i, entry := range entries {
 			if entry.config.ID == listenerID {
-				last := len(entries) - 1
-				copy(entries[i:], entries[i+1:])
-				entries[last] = listenerEntry{}
-				entries = entries[:last]
-				if len(entries) == 0 {
+				remaining := make([]listenerEntry, len(entries)-1)
+				copy(remaining, entries[:i])
+				copy(remaining[i:], entries[i+1:])
+				if len(remaining) == 0 {
 					delete(m.listeners, event)
 				} else {
-					m.listeners[event] = entries
+					m.listeners[event] = remaining
 				}
+				m.rebuildDispatchLocked(event)
 				return true
 			}
 		}
@@ -395,6 +417,42 @@ func (m *Manager) sortListeners(event Event) {
 	}
 }
 
+// rebuildDispatchLocked merges sorted listeners only when registration changes; unknown event names never grow the cache. rebuildDispatchLocked 仅在注册变化时合并已排序监听器，未知事件名不会使缓存增长。
+func (m *Manager) rebuildDispatchLocked(event Event) {
+	if event == EventAll {
+		for registered := range m.listeners {
+			if registered != EventAll {
+				m.rebuildDispatchLocked(registered)
+			}
+		}
+		return
+	}
+	entries := m.listeners[event]
+	if len(entries) == 0 {
+		delete(m.dispatch, event)
+		return
+	}
+	wildcard := m.listeners[EventAll]
+	if len(wildcard) == 0 {
+		m.dispatch[event] = entries
+		return
+	}
+	merged := make([]listenerEntry, 0, len(entries)+len(wildcard))
+	i, j := 0, 0
+	for i < len(entries) && j < len(wildcard) {
+		// Equal priorities retain specific listeners before wildcard listeners. 相同优先级保留具体监听器先于通配监听器的顺序。
+		if entries[i].config.Priority >= wildcard[j].config.Priority {
+			merged = append(merged, entries[i])
+			i++
+		} else {
+			merged = append(merged, wildcard[j])
+			j++
+		}
+	}
+	merged = append(merged, entries[i:]...)
+	m.dispatch[event] = append(merged, wildcard[j:]...)
+}
+
 // hasListenerIDLocked checks ID uniqueness while m.mu is held. hasListenerIDLocked 在持有 m.mu 时检查 ID 唯一性。
 func (m *Manager) hasListenerIDLocked(listenerID string) bool {
 	for _, entries := range m.listeners {
@@ -407,13 +465,16 @@ func (m *Manager) hasListenerIDLocked(listenerID string) bool {
 	return false
 }
 
-// Trigger dispatches an event on the current goroutine; asynchronous listeners are started but not awaited. Trigger 在当前 goroutine 分发事件，异步监听器启动后不等待其完成。
+// Trigger dispatches on the caller; accepted pool listeners are not awaited, while rejected listeners execute inline. Trigger 在调用方分发，已被池接收的监听器不等待，拒绝的监听器内联执行。
 func (m *Manager) Trigger(data *EventData) {
-	m.trigger(cloneEventData(data), nil)
+	if data == nil || !m.NeedsDispatch(data.Event) {
+		return
+	}
+	m.trigger(cloneEventData(data), false)
 }
 
-// trigger dispatches one owned event snapshot and optionally tracks this dispatch's listeners. trigger 分发一个独立事件快照，并按需跟踪本次分发的监听器。
-func (m *Manager) trigger(data *EventData, localWaitGroup *sync.WaitGroup) {
+// trigger dispatches one owned snapshot and optionally forces inline listeners. trigger 分发独立快照，并按需强制内联执行监听器。
+func (m *Manager) trigger(data *EventData, synchronous bool) {
 	if data == nil {
 		return
 	}
@@ -450,40 +511,34 @@ func (m *Manager) trigger(data *EventData, localWaitGroup *sync.WaitGroup) {
 	for _, entry := range listenersToCall {
 		listener := entry.listener
 		listenerData := cloneEventData(data)
-		if entry.config.Async {
-			m.startAsync(localWaitGroup, func() {
+		if entry.config.Async && !synchronous {
+			m.startAsync(func() {
 				m.safeCall(listener, listenerData)
-			})
+			}, nil)
 		} else {
 			m.safeCall(listener, listenerData)
 		}
 	}
 }
 
-// snapshot copies listeners and runtime settings for triggering snapshot 复制触发事件所需的监听器和运行时设置。
+// snapshot borrows immutable listener and filter lists while copying scalar runtime settings. snapshot 复用不可变监听器及过滤器列表，并复制运行时标量设置。
 func (m *Manager) snapshot(event Event) ([]listenerEntry, []EventFilter, bool, adapter.Log, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	if !m.isEventEnabledLocked(event) {
-		return nil, nil, false, m.logger, false
+	if !m.needsDispatchLocked(event) {
+		return nil, nil, false, nil, false
 	}
 
-	listenersToCall := make([]listenerEntry, 0, len(m.listeners[event])+len(m.listeners[EventAll]))
-	if listeners, ok := m.listeners[event]; ok {
-		listenersToCall = append(listenersToCall, listeners...)
+	listenersToCall := m.dispatch[event]
+	if len(listenersToCall) == 0 {
+		listenersToCall = m.listeners[EventAll]
 	}
-	if event != EventAll {
-		if listeners, ok := m.listeners[EventAll]; ok {
-			listenersToCall = append(listenersToCall, listeners...)
-		}
+	logger := m.logger
+	if _, noop := logger.(*adapter.NopLogger); noop {
+		logger = nil
 	}
-	sort.SliceStable(listenersToCall, func(i, j int) bool {
-		return listenersToCall[i].config.Priority > listenersToCall[j].config.Priority
-	})
-
-	filters := append([]EventFilter(nil), m.filters...)
-	return listenersToCall, filters, m.enableStats, m.logger, true
+	return listenersToCall, m.filters, m.enableStats, logger, true
 }
 
 // recordStats records one event trigger recordStats 记录一次事件触发统计。
@@ -511,61 +566,57 @@ func (m *Manager) isEventEnabledLocked(event Event) bool {
 
 // TriggerAsync snapshots the payload and default timestamp before asynchronous dispatch tracked by Wait. TriggerAsync 在异步分发前快照载荷及默认时间戳，分发过程由 Wait 跟踪。
 func (m *Manager) TriggerAsync(data *EventData) {
-	snapshot := cloneEventData(data)
-	if snapshot == nil {
+	if data == nil || !m.NeedsDispatch(data.Event) {
 		return
 	}
+	snapshot := cloneEventData(data)
 
 	// Capture submission time instead of the eventual worker execution time. 记录提交时间，而非后台任务实际执行时间。
 	if snapshot.Timestamp == 0 {
 		snapshot.Timestamp = time.Now().Unix()
 	}
 
-	m.startAsync(nil, func() {
-		m.trigger(snapshot, nil)
+	m.startAsync(func() {
+		m.trigger(snapshot, false)
+	}, func() {
+		m.trigger(snapshot, true)
 	})
 }
 
-// TriggerSync dispatches an event and waits for its direct asynchronous listeners, using goroutines to avoid nested pool waits. TriggerSync 分发事件并等待本次直接启动的异步监听器，使用 goroutine 避免嵌套等待池任务。
+// TriggerSync executes direct listeners synchronously in priority order without submitting or waiting on pool workers. TriggerSync 按优先级同步执行直接监听器，不提交或等待池任务。
 func (m *Manager) TriggerSync(data *EventData) {
-	snapshot := cloneEventData(data)
-	if snapshot == nil {
+	if data == nil || !m.NeedsDispatch(data.Event) {
 		return
 	}
+	snapshot := cloneEventData(data)
 
-	var localWaitGroup sync.WaitGroup
-	m.trigger(snapshot, &localWaitGroup)
-	localWaitGroup.Wait()
+	m.trigger(snapshot, true)
 }
 
-// startAsync registers and starts one asynchronous task. startAsync 登记并启动一个异步任务。
-func (m *Manager) startAsync(localWaitGroup *sync.WaitGroup, task func()) {
-	if localWaitGroup != nil {
-		localWaitGroup.Add(1)
-	}
-
+// startAsync tracks pool execution or a synchronous fallback without creating goroutines. startAsync 跟踪池执行或同步回退，不创建 goroutine。
+func (m *Manager) startAsync(task, fallback func()) {
 	m.asyncMu.Lock()
 	m.asyncTasks++
 	pool := m.asyncPool
 	m.asyncMu.Unlock()
 
-	trackedTask := func() {
-		if localWaitGroup != nil {
-			defer localWaitGroup.Done()
-		}
+	run := func(work func()) {
 		defer m.finishAsync()
-		task()
+		work()
 	}
 
-	// Scoped waits must not depend on workers occupied by their calling listeners. 局部等待不能依赖被调用方监听器占用的工作协程。
-	if pool != nil && localWaitGroup == nil {
-		if err := pool.Submit(trackedTask); err == nil {
+	if pool != nil {
+		if err := pool.Submit(func() { run(task) }); err == nil {
 			return
 		}
 	}
 
-	// Preserve delivery when no pool is configured or submission is rejected. 未配置池或提交被拒绝时保持原有投递行为。
-	go trackedTask()
+	// Preserve delivery with bounded caller work when no worker accepts it. 无工作线程接收时由调用方执行，保留投递且限制资源扩张。
+	if fallback != nil {
+		run(fallback)
+	} else {
+		run(task)
+	}
 }
 
 // finishAsync marks one asynchronous task complete. finishAsync 标记一个异步任务完成。
@@ -647,6 +698,7 @@ func (m *Manager) Clear() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.listeners = make(map[Event][]listenerEntry)
+	m.dispatch = make(map[Event][]listenerEntry)
 }
 
 // ClearEvent clears event listeners ClearEvent 清除指定事件的所有监听器
@@ -654,6 +706,7 @@ func (m *Manager) ClearEvent(event Event) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.listeners, event)
+	m.rebuildDispatchLocked(event)
 }
 
 // Count returns listener count Count 返回已注册监听器总数

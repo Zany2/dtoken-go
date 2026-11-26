@@ -12,14 +12,7 @@ func validateVerificationKey(secret, verification, field string) error {
 
 // signingKeys selects one complete trust scope and never merges client and fallback keys. signingKeys 选择完整的信任范围，不合并客户端与默认密钥组。
 func (h *HTTPServer) signingKeys(client *Client) (string, string, error) {
-	secret, verification := h.options.SecretKey, h.options.VerificationKey
-	if client != nil && (client.SecretKey != "" || client.VerificationKey != "") {
-		secret, verification = client.SecretKey, client.VerificationKey
-	}
-	if secret == "" {
-		return "", "", ErrSignSecretRequired
-	}
-	return secret, verification, nil
+	return h.exchangeCore(nil).signingKeys(client)
 }
 
 // verifyProtocolSignature accepts only the selected active key or its optional verification companion. verifyProtocolSignature 仅接受已选择的签名密钥及其可选验签密钥。

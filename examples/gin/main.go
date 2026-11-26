@@ -73,7 +73,9 @@ func registerRoutes(r *gin.Engine, authInstance *dtoken.Auth) error {
 	r.POST("/refresh", handleRefresh)
 
 	auth := r.Group("/")
-	auth.Use(gindt.AuthMiddleware(ctx, options...))
+	auth.Use(gindt.AccessMiddleware(ctx, append(options, gindt.WithRouteAccessHandler(func(_ context.Context, _ *gin.Context, req *gindt.RouteAccessRequest) {
+		req.CheckDisable = true
+	}))...))
 	auth.GET("/me", handleMe)
 	auth.GET("/introspect", handleIntrospect)
 	auth.GET("/admin", gindt.RoleMiddleware(ctx, []string{"admin"}, options...), handleAdmin)

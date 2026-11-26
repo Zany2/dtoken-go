@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Zany2/dtoken-go/config"
-	adapter "github.com/Zany2/dtoken-go/contract"
 	derror "github.com/Zany2/dtoken-go/errors"
 	listener "github.com/Zany2/dtoken-go/event"
 )
@@ -17,20 +16,19 @@ import (
 func TestManagerAccessWritesHandleActiveTimeout(t *testing.T) {
 	ctx := context.Background()
 	for _, operation := range []struct {
-		name        string
-		call        func(*Manager, context.Context, string, []string) error
-		secondCheck bool
+		name string
+		call func(*Manager, context.Context, string, []string) error
 	}{
-		{"add permissions", (*Manager).AddPermissionsByToken, false},
-		{"remove permissions", (*Manager).RemovePermissionsByToken, false},
-		{"add roles", (*Manager).AddRolesByToken, false},
-		{"remove roles", (*Manager).RemoveRolesByToken, false},
+		{"add permissions", (*Manager).AddPermissionsByToken},
+		{"remove permissions", (*Manager).RemovePermissionsByToken},
+		{"add roles", (*Manager).AddRolesByToken},
+		{"remove roles", (*Manager).RemoveRolesByToken},
 		{"set session data", func(m *Manager, ctx context.Context, token string, _ []string) error {
 			return m.SetSessionValueByToken(ctx, token, "key", "changed")
-		}, true},
+		}},
 		{"delete session data", func(m *Manager, ctx context.Context, token string, _ []string) error {
 			return m.DeleteSessionValueByToken(ctx, token, "key")
-		}, true},
+		}},
 	} {
 		for _, sessionMode := range []string{"last terminal", "other terminal remains", "detached terminal"} {
 			keepSession := sessionMode != "last terminal"
@@ -43,6 +41,9 @@ func TestManagerAccessWritesHandleActiveTimeout(t *testing.T) {
 				pair, err := mgr.LoginWithRefreshToken(ctx, "access-lock", "web")
 				if err != nil {
 					t.Fatalf("login error = %v", err)
+				}
+				if err = mgr.SetSessionValue(ctx, pair.LoginID, "key", "original"); err != nil {
+					t.Fatal(err)
 				}
 				for _, setup := range []func(context.Context, string, []string) error{mgr.AddPermissions, mgr.AddRoles} {
 					if err = setup(ctx, pair.LoginID, []string{"existing"}); err != nil {
@@ -64,11 +65,13 @@ func TestManagerAccessWritesHandleActiveTimeout(t *testing.T) {
 						t.Fatalf("save detached session error = %v", err)
 					}
 				}
-				if err = mgr.storage.Set(ctx, mgr.getActiveKey(pair.AccessToken), time.Now().Add(-3*time.Second).Unix(), time.Minute); err != nil {
-					t.Fatalf("expire active marker error = %v", err)
-				}
-				if operation.secondCheck {
-					mgr.storage = &managerFreshActiveOnceStorage{Storage: mgr.storage, key: mgr.getActiveKey(pair.AccessToken)}
+				// Expire activity after identity capture, before validation under the account lock. 身份捕获后、账号锁内校验前使活跃状态过期。
+				storage := mgr.storage
+				mgr.storage = &managerAccountSwapStorage{
+					Storage: storage, key: mgr.getTokenKey(pair.AccessToken),
+					afterRead: func() error {
+						return storage.Set(ctx, mgr.getActiveKey(pair.AccessToken), time.Now().Add(-3*time.Second).Unix(), time.Minute)
+					},
 				}
 				var events []listener.Event
 				mgr.GetEventManager().RegisterFuncWithConfig(listener.EventAll, func(data *listener.EventData) {
@@ -108,29 +111,13 @@ func TestManagerAccessWritesHandleActiveTimeout(t *testing.T) {
 						wantTerminals = 0
 					}
 					sess, getErr := mgr.getSession(ctx, pair.LoginID)
-					if getErr != nil || len(sess.TerminalInfos) != wantTerminals || !reflect.DeepEqual(sess.Permissions, []string{"existing"}) || !reflect.DeepEqual(sess.Roles, []string{"existing"}) {
+					if getErr != nil || len(sess.TerminalInfos) != wantTerminals || sess.Data["key"] != "original" || !reflect.DeepEqual(sess.Permissions, []string{"existing"}) || !reflect.DeepEqual(sess.Roles, []string{"existing"}) {
 						t.Fatalf("remaining session = %+v, %v, want unchanged access values and %d terminals", sess, getErr, wantTerminals)
 					}
 				}
 			})
 		}
 	}
-}
-
-// managerFreshActiveOnceStorage expires activity between the initial and locked checks. managerFreshActiveOnceStorage 使活跃状态在初次检查与锁内复核之间过期。
-type managerFreshActiveOnceStorage struct {
-	adapter.Storage
-	key  string
-	read bool
-}
-
-// Get keeps only the initial activity check fresh. Get 仅使初次活跃检查通过。
-func (s *managerFreshActiveOnceStorage) Get(ctx context.Context, key string) (any, error) {
-	if key == s.key && !s.read {
-		s.read = true
-		return time.Now().Unix(), nil
-	}
-	return s.Storage.Get(ctx, key)
 }
 
 // managerAccessInlinePool detects locked submission without hanging the regression test. managerAccessInlinePool 检测持锁提交，避免回归测试自身挂起。

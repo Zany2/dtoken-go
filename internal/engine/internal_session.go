@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Zany2/dtoken-go/config"
 	derror "github.com/Zany2/dtoken-go/errors"
 	listener "github.com/Zany2/dtoken-go/event"
 	"github.com/Zany2/dtoken-go/internal/utils"
@@ -61,6 +62,9 @@ func (m *Manager) getTokenInfo(ctx context.Context, tokenValue string) (*TokenIn
 	if err != nil {
 		return nil, err
 	}
+	if err = m.loadTokenExtra(ctx, record); err != nil {
+		return nil, err
+	}
 	return &record.TokenInfo, nil
 }
 
@@ -74,9 +78,11 @@ type tokenRecord struct {
 	TerminalIndex int64 `json:"terminalIndex,omitempty" msgpack:",omitempty"`
 	// Revoked keeps account-disabled credentials invalid after untie. Revoked 保证账号封禁废弃的凭证在解封后仍然无效。
 	Revoked bool `json:"revoked,omitempty" msgpack:",omitempty"`
+	// HasExtra identifies extension data stored separately from compact credentials. HasExtra 标识与紧凑凭据分开存储的扩展数据。
+	HasExtra bool `json:"hasExtra,omitempty" msgpack:",omitempty"`
 }
 
-// getTokenRecord loads token metadata together with its optional lifecycle identity. getTokenRecord 加载 Token 元数据及可选的生命周期标识。
+// getTokenRecord loads compact credentials with an explicit namespace and lifecycle identity. getTokenRecord 加载带有明确命名空间和生命周期标识的紧凑凭据。
 func (m *Manager) getTokenRecord(ctx context.Context, tokenValue string) (*tokenRecord, error) {
 	// Validate token value 校验 Token 值。
 	if tokenValue == "" {
@@ -89,39 +95,49 @@ func (m *Manager) getTokenRecord(ctx context.Context, tokenValue string) (*token
 		return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
+	return m.decodeStoredTokenRecord(tokenInfoData)
+}
+
+// decodeStoredTokenRecord interprets an already loaded primary value without accessing storage. decodeStoredTokenRecord 解析已读取的主记录值，不再次访问存储。
+func (m *Manager) decodeStoredTokenRecord(tokenInfoData any) (*tokenRecord, error) {
 	// Return invalid token when missing Token 不存在时返回无效 Token。
 	if tokenInfoData == nil {
 		return nil, derror.ErrInvalidToken
 	}
 
-	// Convert token storage value 转换 Token 存储值。
-	tokenInfoBytes, err := utils.ToBytes(tokenInfoData)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, err)
+	// Redis returns strings; avoid allocating a byte slice for the compact hot path. Redis 返回字符串，紧凑格式热路径避免分配字节切片。
+	var data string
+	switch value := tokenInfoData.(type) {
+	case string:
+		data = value
+	case []byte:
+		data = string(value)
+	default:
+		encoded, convertErr := utils.ToBytes(value)
+		if convertErr != nil {
+			return nil, fmt.Errorf("%w: %v", derror.ErrTypeConvert, convertErr)
+		}
+		data = string(encoded)
 	}
 
 	// Detect logical token state 识别 Token 逻辑状态。
-	if stateErr := tokenStateError(TokenState(tokenInfoBytes)); stateErr != nil {
+	if stateErr := tokenStateError(TokenState(data)); stateErr != nil {
 		return nil, stateErr
 	}
 
-	// Decode token info 解码 Token 信息。
-	var tokenInfo tokenRecord
-	err = m.serializer.Decode(tokenInfoBytes, &tokenInfo)
+	// Legacy payload conversion belongs to offline migration, never request validation. 旧载荷转换由离线迁移完成，不进入请求校验路径。
+	tokenInfo, err := decodeTokenRecord(data)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
+		return nil, err
 	}
 
-	// Reject foreign records left under historically overlapping namespace keys. 拒绝历史重叠命名空间键中遗留的其他认证体系记录。
-	if tokenInfo.AuthType != "" && tokenInfo.AuthType != m.config.AuthType {
+	// Runtime records must identify both their namespace and login lifecycle. 运行时记录必须明确认证命名空间和登录生命周期。
+	if tokenInfo.AuthType != m.config.AuthType || tokenInfo.AccessID == "" {
 		return nil, derror.ErrInvalidToken
 	}
 
-	// Fill the namespace for legacy records without auth metadata. 为缺少认证类型的旧记录补齐命名空间。
-	tokenInfo.AuthType = m.config.AuthType
-
 	// Return token info 返回 Token 信息。
-	return &tokenInfo, nil
+	return tokenInfo, nil
 }
 
 // terminalMatchesTokenRecord reports whether a session terminal owns the current token lifecycle. terminalMatchesTokenRecord 判断 Session 终端是否属于当前 Token 生命周期。
@@ -138,7 +154,7 @@ func terminalMatchesTokenRecord(sessionLoginID string, terminal TerminalInfo, re
 		return terminal.Index == record.TerminalIndex
 	}
 
-	// Legacy records have no terminal sequence and therefore use the original metadata as a best-effort match. 旧记录没有终端序号，因此尽力使用原有元数据匹配。
+	// Migrated records may lack a terminal sequence, so retain their original metadata matching. 迁移后的记录可能没有终端序号，因此保留原有元数据匹配。
 	return true
 }
 
@@ -148,18 +164,7 @@ func tokenRecordsMatchLifecycle(expected, current *tokenRecord) bool {
 		return false
 	}
 
-	// A lifecycle identity must match whenever either side uses the new format. 任一记录使用新格式生命周期标识时都必须精确匹配。
-	if expected.AccessID != "" || current.AccessID != "" {
-		return expected.AccessID != "" && expected.AccessID == current.AccessID
-	}
-	if expected.TerminalIndex > 0 || current.TerminalIndex > 0 {
-		return expected.TerminalIndex > 0 && expected.TerminalIndex == current.TerminalIndex
-	}
-
-	// Legacy-to-legacy comparison remains best effort. 旧格式记录之间保持尽力匹配。
-	return expected.Device == current.Device &&
-		expected.DeviceID == current.DeviceID &&
-		expected.CreateTime == current.CreateTime
+	return expected.AccessID != "" && expected.AccessID == current.AccessID
 }
 
 // tokenRecordStillMatches reloads a token before lifecycle side effects. tokenRecordStillMatches 在产生生命周期副作用前重新加载并核对 Token。
@@ -174,29 +179,35 @@ func (m *Manager) tokenRecordStillMatches(ctx context.Context, tokenValue string
 	return tokenRecordsMatchLifecycle(expected, current), nil
 }
 
-// terminalTokenCleanupAllowed checks access ownership and falls back to refresh ownership for inactive tokens. terminalTokenCleanupAllowed 核对访问凭据归属，Token 失效时继续核对刷新凭据归属。
-func (m *Manager) terminalTokenCleanupAllowed(ctx context.Context, sessionLoginID string, terminal TerminalInfo) (bool, error) {
-	current, err := m.getTokenRecord(ctx, terminal.Token)
+// loadTerminalCleanupRecord returns the checked credential for reuse during the same locked cleanup; nil means an inactive mapping. loadTerminalCleanupRecord 返回可在同次锁内清理中复用的已核对凭据，nil 表示映射已失效。
+func (m *Manager) loadTerminalCleanupRecord(ctx context.Context, sessionLoginID string, terminal TerminalInfo) (*tokenRecord, bool, error) {
+	if terminal.Token == "" {
+		return nil, false, nil
+	}
+	data, err := m.storage.Get(ctx, m.getTokenKey(terminal.Token))
+	if err != nil {
+		return nil, false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	current, err := m.decodeStoredTokenRecord(data)
 	if err == nil {
-		return terminalMatchesTokenRecord(sessionLoginID, terminal, current), nil
+		return current, terminalMatchesTokenRecord(sessionLoginID, terminal, current), nil
 	}
 	if !isTokenInactiveError(err) {
-		return false, err
+		return nil, false, err
 	}
 
 	// Invalid tokens may be foreign namespace records rather than missing mappings. 无效 Token 可能是其他认证命名空间的记录，而非不存在的映射。
-	if errors.Is(err, derror.ErrInvalidToken) {
-		data, readErr := m.storage.Get(ctx, m.getTokenKey(terminal.Token))
-		if readErr != nil {
-			return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, readErr)
-		}
-		if data != nil {
-			return false, nil
-		}
+	if errors.Is(err, derror.ErrInvalidToken) && data != nil {
+		return nil, false, nil
 	}
+	allowed, err := m.inactiveTerminalCleanupAllowed(ctx, sessionLoginID, terminal.Token)
+	return nil, allowed, err
+}
 
+// inactiveTerminalCleanupAllowed checks refresh ownership after the caller has established an inactive primary mapping. inactiveTerminalCleanupAllowed 在调用方已确认主映射失效后核对刷新归属。
+func (m *Manager) inactiveTerminalCleanupAllowed(ctx context.Context, sessionLoginID, token string) (bool, error) {
 	// An expired token value may now index another account's refresh credential. 已过期的 Token 值可能已索引到其他账号的刷新凭据。
-	data, err := m.storage.Get(ctx, m.getTokenRefreshKey(terminal.Token))
+	data, err := m.storage.Get(ctx, m.getTokenRefreshKey(token))
 	if err != nil {
 		return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
@@ -214,12 +225,7 @@ func (m *Manager) terminalTokenCleanupAllowed(ctx context.Context, sessionLoginI
 		}
 		return false, err
 	}
-	return info.LoginID == sessionLoginID && info.AccessToken == terminal.Token, nil
-}
-
-// checkLoginAndGetContext validates login state and returns loaded context. checkLoginAndGetContext 校验登录态并返回已加载上下文。
-func (m *Manager) checkLoginAndGetContext(ctx context.Context, tokenValue string) (*Session, *TokenInfo, error) {
-	return m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{allowRenew: true})
+	return info.LoginID == sessionLoginID && info.AccessToken == token, nil
 }
 
 // checkLoginAndGetTokenInfo validates token identity without loading account data on the normal path. checkLoginAndGetTokenInfo 校验 Token 身份，正常路径不加载账号数据。
@@ -243,18 +249,20 @@ func (m *Manager) checkLoginAndGetContextNoRenewLocked(ctx context.Context, toke
 
 // checkLoginOptions controls login-state validation side effects. checkLoginOptions 控制登录态校验副作用。
 type checkLoginOptions struct {
-	allowRenew bool // allowRenew enables async renew and active refresh tasks. allowRenew 启用异步续期和活跃刷新任务。
-	tokenOnly  bool // tokenOnly skips session reads unless an inactive-timeout transition needs cleanup. tokenOnly 跳过会话读取，除非不活跃超时状态变更需要清理。
+	checkDisable bool // checkDisable enforces account and device restrictions only for explicit access checks. checkDisable 仅为显式访问检查执行账号与设备限制。
+	allowRenew   bool // allowRenew enables async renew and active refresh tasks. allowRenew 启用异步续期和活跃刷新任务。
+	tokenOnly    bool // tokenOnly skips session reads unless an inactive-timeout transition needs cleanup. tokenOnly 跳过会话读取，除非不活跃超时状态变更需要清理。
 	// expectedRecord identifies the lifecycle captured before acquiring its account lock. expectedRecord 标识获取账号锁前捕获的生命周期。
 	expectedRecord *tokenRecord
 	// lockHeld indicates the expected lifecycle's account lock is already held. lockHeld 表示已持有预期生命周期的账号锁。
-	lockHeld bool
+	lockHeld  bool
+	loadExtra bool // loadExtra requests extensions only for complete-detail operations. loadExtra 仅为完整详情操作请求扩展数据。
 }
 
 // checkLoginAndGetContextWithOptions validates login state with optional side effects. checkLoginAndGetContextWithOptions 按选项校验登录态。
 func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenValue string, opts checkLoginOptions) (*Session, *TokenInfo, error) {
 	// Inspect token mapping before loading the account session. 加载账号 Session 前检查 Token 映射。
-	record, activeTimeout, activeExpired, err := m.inspectLoginToken(ctx, tokenValue, opts.expectedRecord)
+	record, activeTimeout, activeExpired, err := m.inspectLoginToken(ctx, tokenValue, opts.expectedRecord, opts.checkDisable)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -298,7 +306,9 @@ func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenV
 		func() {
 			unlock := m.lockLoginWrite(record.LoginID)
 			defer unlock()
-			sess, tokenInfo, err = m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue, record)
+			recheck := opts
+			recheck.expectedRecord, recheck.lockHeld, recheck.allowRenew, recheck.loadExtra = record, true, false, false
+			sess, tokenInfo, err = m.checkLoginAndGetContextWithOptions(ctx, tokenValue, recheck)
 		}()
 		if err != nil {
 			// Publish only a completed timeout transition, after releasing the account lock. 释放账号锁后，仅发布已完成的超时状态变更。
@@ -321,32 +331,45 @@ func (m *Manager) checkLoginAndGetContextWithOptions(ctx context.Context, tokenV
 	}
 
 	// Return checked context 返回已校验上下文。
+	if opts.loadExtra {
+		if err = m.loadTokenExtra(ctx, record); err != nil {
+			return nil, nil, err
+		}
+		tokenInfo.Extra = record.Extra
+	}
 	return sess, tokenInfo, nil
 }
 
 // inspectLoginToken checks token validity and, when provided, its captured lifecycle before any cleanup. inspectLoginToken 校验 Token 有效性，并在提供捕获记录时先核对生命周期，再执行清理。
-func (m *Manager) inspectLoginToken(ctx context.Context, tokenValue string, expectedRecord *tokenRecord) (*tokenRecord, int64, bool, error) {
+func (m *Manager) inspectLoginToken(ctx context.Context, tokenValue string, expectedRecord *tokenRecord, checkDisable bool) (*tokenRecord, int64, bool, error) {
 	// Load token mapping and preserve its logical-state errors. 加载 Token 映射并保留逻辑状态错误。
 	record, err := m.getTokenRecord(ctx, tokenValue)
 	if err != nil {
 		return nil, 0, false, err
-	}
-	tokenInfo := &record.TokenInfo
-	if tokenInfo.LoginID == "" {
-		return nil, 0, false, derror.ErrInvalidToken
 	}
 
 	// Token reuse may replace the lifecycle while the caller waits for its account lock. 调用方等待账号锁时，Token 复用可能替换其生命周期。
 	if expectedRecord != nil && !tokenRecordsMatchLifecycle(expectedRecord, record) {
 		return nil, 0, false, derror.ErrInvalidToken
 	}
+	return m.inspectLoginTokenRecord(ctx, tokenValue, record, checkDisable)
+}
 
-	// Keep reversible disable rules synchronous because they gate the current request. 可解除封禁会限制当前请求，因此保持同步检查。
-	if err = m.checkLoginDisableState(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID); err != nil {
-		return nil, 0, false, err
+// inspectLoginTokenRecord checks a record already loaded in the current validation scope without fetching it again. inspectLoginTokenRecord 校验当前检查范围内已加载的记录，不再重复读取。
+func (m *Manager) inspectLoginTokenRecord(ctx context.Context, tokenValue string, record *tokenRecord, checkDisable bool) (*tokenRecord, int64, bool, error) {
+	if record == nil || record.LoginID == "" {
+		return nil, 0, false, derror.ErrInvalidToken
+	}
+	tokenInfo := &record.TokenInfo
+
+	// Explicit access restrictions run before maintenance and preserve their own errors. 显式访问限制在维护前执行，并保留其错误原因。
+	if checkDisable {
+		if err := m.checkLoginDisableState(ctx, tokenInfo.LoginID, tokenInfo.Device, tokenInfo.DeviceID); err != nil {
+			return nil, 0, false, err
+		}
 	}
 
-	// Keep the disable error while banned, but never revive retired credentials after untie. 封禁期间保留封禁错误，解封后也不能恢复已废弃凭证。
+	// Retired credentials remain invalid even when restriction checks are omitted. 即使省略限制检查，已废弃凭证也保持无效。
 	if record.Revoked {
 		return nil, 0, false, derror.ErrInvalidToken
 	}
@@ -410,10 +433,17 @@ func (m *Manager) prepareLoginMaintenance(ctx context.Context, tokenValue string
 	}
 
 	return func() {
+		var fallback func()
+		if activeTimeout > 0 {
+			fallback = func() {
+				defer m.finishLoginMaintenance(tokenValue, generation)
+				m.runLoginMaintenance(tokenValue, &expectedRecord, generation, false, false, true)
+			}
+		}
 		accepted := m.submitAsync("check login maintenance", func() {
 			defer m.finishLoginMaintenance(tokenValue, generation)
 			m.runLoginMaintenance(tokenValue, &expectedRecord, generation, checkRenew, true, activeTimeout > 0)
-		})
+		}, fallback)
 		if !accepted {
 			m.finishLoginMaintenance(tokenValue, generation)
 		}
@@ -455,16 +485,10 @@ func (m *Manager) runLoginMaintenance(tokenValue string, expectedRecord *tokenRe
 		return
 	}
 
-	// Load the account session once for both maintenance operations. 为两类维护操作只加载一次账号 Session。
-	latestSession, err := m.getSession(bg, loginID)
-	if err != nil || latestSession == nil {
-		return
-	}
-
 	// Renew timeout after applying the caller's automatic or forced policy. 按调用方的自动或强制策略续期超时时间。
 	renewed := false
 	if renew {
-		renewed = m.renewTokenAndSessionLocked(bg, tokenValue, latestTokenInfo, latestSession, false)
+		renewed = m.renewTokenAndSessionLocked(bg, tokenValue, latestRecord, false)
 	}
 
 	// Refresh active state only while the latest token lifecycle still enables it. 仅在最新 Token 生命周期仍启用活跃超时时刷新状态。
@@ -475,7 +499,13 @@ func (m *Manager) runLoginMaintenance(tokenValue string, expectedRecord *tokenRe
 			if !current || latestActiveAt <= 0 {
 				break
 			}
-			if err = m.storage.Set(bg, m.getActiveKey(tokenValue), latestActiveAt, m.resolveTokenExpiration(latestTokenInfo)); err != nil {
+			if renewed {
+				err = m.storage.Set(bg, m.getActiveKey(tokenValue), latestActiveAt, m.resolveTokenExpiration(latestTokenInfo))
+			} else {
+				// Activity changes the value, not the credential's remaining lifetime. 活跃更新只改变值，不延长凭据的剩余有效期。
+				err = m.updateStoredValue(bg, m.getActiveKey(tokenValue), latestActiveAt)
+			}
+			if err != nil {
 				m.logger.Errorf("manager.runLoginMaintenance: failed to set active key, token=%s, error=%v", tokenValue, err)
 				break
 			}
@@ -515,16 +545,23 @@ func (m *Manager) isAutoRenewDue(ctx context.Context, tokenValue string) bool {
 // markActiveTimeoutLocked marks one matching lifecycle inactive while the login lock is already held. markActiveTimeoutLocked 在已持有登录锁时标记匹配的 Token 生命周期不活跃超时。
 func (m *Manager) markActiveTimeoutLocked(ctx context.Context, loginID, tokenValue string, sess *Session, expected *tokenRecord) (bool, bool, error) {
 	// Recheck the captured lifecycle because another account lock cannot serialize reuse of the same token value. 重新核对已捕获生命周期，因为其他账号锁无法串行化同值 Token 复用。
-	matched, err := m.tokenRecordStillMatches(ctx, tokenValue, expected)
-	if err != nil || !matched {
+	current, err := m.getTokenRecord(ctx, tokenValue)
+	if err != nil {
+		if isTokenInactiveError(err) {
+			return false, false, nil
+		}
 		return false, false, err
 	}
+	if !tokenRecordsMatchLifecycle(expected, current) {
+		return false, false, nil
+	}
+
 	// Expired credentials must also retire when their account session is already absent. 账号 Session 已不存在时，超时凭据仍须下线。
 	attached := false
 	if sess != nil {
 		attached = len(terminalRemovalForTokenRecord(tokenValue, expected)(sess)) > 0
 	}
-	if err := m.setTokenState(ctx, tokenValue, TokenStateActiveTimeout, m.tokenStateExpiration(ctx, tokenValue)); err != nil {
+	if err := m.setTokenStateWithRecord(ctx, tokenValue, current, TokenStateActiveTimeout, m.tokenStateExpiration(ctx, tokenValue, current)); err != nil {
 		return false, false, err
 	}
 	if err := m.cleanTokenMetadata(ctx, []string{tokenValue}); err != nil {
@@ -552,8 +589,8 @@ func (m *Manager) checkLoginInternal(ctx context.Context, tokenValue string) err
 	return err
 }
 
-// cleanExpiredTerminals removes structurally inactive tokens without treating temporary disable state as expiration. cleanExpiredTerminals 清理结构性失效 Token，但不把临时封禁状态视为过期。
-func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (bool, []TerminalInfo, error) {
+// pruneExpiredTerminals retires matching inactive entries in memory; the caller persists the final session. pruneExpiredTerminals 下线匹配的失效条目并更新内存列表，由调用方持久化最终会话。
+func (m *Manager) pruneExpiredTerminals(ctx context.Context, sess *Session, matches func(TerminalInfo) bool) (bool, []TerminalInfo, error) {
 	// Skip empty session 跳过空会话。
 	if sess == nil || len(sess.TerminalInfos) == 0 {
 		return false, nil, nil
@@ -566,15 +603,24 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (boo
 
 	// Check each terminal 逐个检查终端。
 	for _, ti := range sess.TerminalInfos {
+		if matches != nil && !matches(ti) {
+			validTerminals = append(validTerminals, ti)
+			continue
+		}
+		if ti.Token == "" {
+			hasExpired = true
+			continue
+		}
+
 		// Load token metadata without applying reversible disable rules. 加载 Token 元数据，但不应用可解除的封禁规则。
-		record, err := m.getTokenRecord(ctx, ti.Token)
+		data, readErr := m.storage.Get(ctx, m.getTokenKey(ti.Token))
+		if readErr != nil {
+			return false, activeTimeoutTerminals, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, readErr)
+		}
+		record, err := m.decodeStoredTokenRecord(data)
 		if err != nil {
 			if isTokenInactiveError(err) {
 				// Natural access expiry must not revoke a longer-lived refresh credential. 访问令牌自然过期不能撤销有效期更长的刷新凭证。
-				data, readErr := m.storage.Get(ctx, m.getTokenKey(ti.Token))
-				if readErr != nil {
-					return false, activeTimeoutTerminals, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, readErr)
-				}
 				if data == nil {
 					if cleanErr := m.cleanTokenActivityMetadata(ctx, []string{ti.Token}); cleanErr != nil {
 						return false, activeTimeoutTerminals, cleanErr
@@ -583,9 +629,26 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (boo
 					continue
 				}
 
-				// Clean metadata for inactive tokens while preserving any logical token state. 清理失效 Token 的元数据，同时保留其逻辑状态。
-				if cleanErr := m.cleanTokenMetadata(ctx, []string{ti.Token}); cleanErr != nil {
-					return false, activeTimeoutTerminals, cleanErr
+				// Logout markers share ErrInvalidToken with unidentified values, so recognize only the exact stored marker. 注销标记与无法识别的值共用 ErrInvalidToken，仅识别精确的已存储注销标记。
+				logoutMarker := false
+				switch value := data.(type) {
+				case string:
+					logoutMarker = value == string(TokenStateLogout)
+				case []byte:
+					logoutMarker = string(value) == string(TokenStateLogout)
+				}
+
+				// Unidentified values may belong to another namespace; detach only their stale Session entry. 无法识别的值可能属于其他命名空间，仅移除陈旧 Session 条目。
+				if logoutMarker || !errors.Is(err, derror.ErrInvalidToken) {
+					allowed, checkErr := m.inactiveTerminalCleanupAllowed(ctx, sess.LoginID, ti.Token)
+					if checkErr != nil {
+						return false, activeTimeoutTerminals, checkErr
+					}
+					if allowed {
+						if cleanErr := m.cleanTokenMetadata(ctx, []string{ti.Token}); cleanErr != nil {
+							return false, activeTimeoutTerminals, cleanErr
+						}
+					}
 				}
 				hasExpired = true
 				continue
@@ -593,19 +656,13 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (boo
 			return false, activeTimeoutTerminals, err
 		}
 		tokenInfo := &record.TokenInfo
-		if tokenInfo.LoginID == "" {
-			// Drop malformed token records that cannot be associated with an account. 删除无法关联账号的畸形 Token 记录。
-			if deleteErr := m.storage.Delete(ctx, m.getTokenKey(ti.Token)); deleteErr != nil {
-				return false, activeTimeoutTerminals, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, deleteErr)
-			}
-			if cleanErr := m.cleanTokenMetadata(ctx, []string{ti.Token}); cleanErr != nil {
-				return false, activeTimeoutTerminals, cleanErr
-			}
+		if !terminalMatchesTokenRecord(sess.LoginID, ti, record) {
+			// Detach mismatched terminal metadata without mutating the canonical token mapping. 移除错位终端元数据，但不改写作为身份真值的 Token 映射。
 			hasExpired = true
 			continue
 		}
-		if !terminalMatchesTokenRecord(sess.LoginID, ti, record) {
-			// Detach mismatched terminal metadata without mutating the canonical token mapping. 移除错位终端元数据，但不改写作为身份真值的 Token 映射。
+
+		if record.Revoked {
 			hasExpired = true
 			continue
 		}
@@ -623,21 +680,14 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (boo
 		if activeErr != nil {
 			return false, activeTimeoutTerminals, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, activeErr)
 		}
-		if activeValue == nil {
-			if deleteErr := m.storage.Delete(ctx, m.getTokenKey(ti.Token)); deleteErr != nil {
-				return false, activeTimeoutTerminals, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, deleteErr)
-			}
-			if cleanErr := m.cleanTokenMetadata(ctx, []string{ti.Token}); cleanErr != nil {
-				return false, activeTimeoutTerminals, cleanErr
-			}
-			hasExpired = true
-			continue
+		var activeAt int64
+		var convertErr error
+		if activeValue != nil {
+			activeAt, convertErr = utils.ToInt64(activeValue)
 		}
-
-		activeAt, convertErr := utils.ToInt64(activeValue)
-		if convertErr != nil || activeAt < 0 {
-			if deleteErr := m.storage.Delete(ctx, m.getTokenKey(ti.Token)); deleteErr != nil {
-				return false, activeTimeoutTerminals, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, deleteErr)
+		if activeValue == nil || convertErr != nil || activeAt < 0 {
+			if deleteErr := m.applyLogoutModeToToken(ctx, ti.Token, record, config.LogoutModeLogout); deleteErr != nil {
+				return false, activeTimeoutTerminals, deleteErr
 			}
 			if cleanErr := m.cleanTokenMetadata(ctx, []string{ti.Token}); cleanErr != nil {
 				return false, activeTimeoutTerminals, cleanErr
@@ -648,7 +698,7 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (boo
 
 		activeAt = max(activeAt, pendingActiveAt)
 		if time.Now().Unix()-activeAt > activeTimeout {
-			if stateErr := m.setTokenState(ctx, ti.Token, TokenStateActiveTimeout, m.tokenStateExpiration(ctx, ti.Token)); stateErr != nil {
+			if stateErr := m.setTokenStateWithRecord(ctx, ti.Token, record, TokenStateActiveTimeout, m.tokenStateExpiration(ctx, ti.Token, record)); stateErr != nil {
 				return false, activeTimeoutTerminals, stateErr
 			}
 			if cleanErr := m.cleanTokenMetadata(ctx, []string{ti.Token}); cleanErr != nil {
@@ -662,22 +712,10 @@ func (m *Manager) cleanExpiredTerminals(ctx context.Context, sess *Session) (boo
 		validTerminals = append(validTerminals, ti)
 	}
 
-	// Update session when expired tokens exist 存在过期 Token 时更新 Session
+	// Leave persistence to the login boundary so pruning and insertion share one write. 持久化交给登录边界，使整理与新增终端共用一次写入。
 	if hasExpired {
-		// Replace terminal list 替换终端列表。
 		sess.TerminalInfos = validTerminals
-
-		// Delete session when all terminals expired 所有终端均已过期时删除整个 session
-		if len(validTerminals) == 0 {
-			if err := m.storage.Delete(ctx, m.getSessionKey(sess.LoginID)); err != nil {
-				return false, activeTimeoutTerminals, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-			}
-			return true, activeTimeoutTerminals, nil
-		} else {
-			if err := m.saveToStorage(ctx, m.getSessionKey(sess.LoginID), *sess); err != nil {
-				return false, activeTimeoutTerminals, err
-			}
-		}
+		return len(validTerminals) == 0, activeTimeoutTerminals, nil
 	}
 
 	return false, activeTimeoutTerminals, nil

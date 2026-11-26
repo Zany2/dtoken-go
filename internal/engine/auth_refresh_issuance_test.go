@@ -163,11 +163,11 @@ func TestManagerRotationFailureCleanupChecksReplacementIdentity(t *testing.T) {
 				}
 			}
 
-			// Fail only old-access decoding so replacement cleanup remains available. 仅令旧访问记录解码失败，使替代登录的清理仍可执行。
-			mgr.storage = &managerFailingStorage{Storage: mgr.storage, getValues: map[string]any{mgr.getTokenKey(old.AccessToken): []byte("{")}}
+			// Fail only the old-access read so replacement cleanup remains available. 仅令旧访问记录读取失败，使替代登录的清理仍可执行。
+			mgr.storage = &managerSessionReadErrorStorage{Storage: mgr.storage, key: mgr.getTokenKey(old.AccessToken)}
 			err = mgr.logoutRotatedAccessToken(ctx, oldInfo, replacement, expected.AccessID)
-			if !errors.Is(err, derror.ErrSerializeFailed) {
-				t.Fatalf("old cleanup error = %v, want ErrSerializeFailed", err)
+			if !errors.Is(err, derror.ErrStorageUnavailable) {
+				t.Fatalf("old cleanup error = %v, want ErrStorageUnavailable", err)
 			}
 			for _, key := range keys {
 				got, getErr := mgr.storage.Get(ctx, key)

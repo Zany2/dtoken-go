@@ -44,7 +44,7 @@ func TestManagerTokenValidationDefersAccountSession(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			before := captureTerminalLifecycle(t, mgr, ctx, []string{mgr.getTokenKey(token), mgr.getActiveKey(token)})
+			before := captureTerminalLifecycle(t, mgr, ctx, []string{mgr.getTokenKey(token)})
 			if err := mgr.CheckLogin(ctx, token); err != nil {
 				t.Fatalf("CheckLogin unexpectedly loaded session: %v", err)
 			}
@@ -93,6 +93,10 @@ func TestManagerTokenValidationDefersAccountSession(t *testing.T) {
 			}
 			pool.runAll()
 			assertTerminalLifecycleUnchanged(t, mgr, ctx, before)
+			// Activity belongs to the valid credential and no longer requires readable Session data. 活跃时间属于有效凭据，不再要求 Session 数据可读。
+			if value, err := mgr.storage.Get(ctx, mgr.getActiveKey(token)); err != nil || value == nil {
+				t.Fatalf("activity maintenance = %v, %v", value, err)
+			}
 
 			// Metadata reads intentionally remain available for diagnostics. 元数据读取仍用于诊断，不代表登录态有效。
 			if info, err := mgr.GetTokenInfo(ctx, token); err != nil || info.LoginID != "session-validation" {
@@ -150,8 +154,9 @@ func TestManagerRejectsNegativeActivityTimestamp(t *testing.T) {
 					if loginErr != nil || fresh == "" || fresh == token {
 						t.Fatalf("shared malformed token: %q, %v", fresh, loginErr)
 					}
-					if mgr.storage.Exists(ctx, mgr.getTokenKey(token)) || mgr.storage.Exists(ctx, mgr.getActiveKey(token)) {
-						t.Fatal("cleanup retained malformed token or activity marker")
+					// Candidate rejection need not eagerly delete its stored lifecycle. 拒绝共享候选不要求立即删除其存储生命周期。
+					if checkErr := mgr.CheckLogin(ctx, token); !errors.Is(checkErr, derror.ErrInvalidToken) {
+						t.Fatalf("malformed candidate remained usable: %v", checkErr)
 					}
 				}
 				if (path == "check" || path == "login by token") && !errors.Is(err, derror.ErrInvalidToken) {

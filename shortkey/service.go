@@ -84,13 +84,14 @@ func (m *Service) RevokeShortKey(ctx context.Context, key string) error {
 	if m.shortKeyManager == nil {
 		return derror.ErrModuleNotEnabled
 	}
-	value, validateErr := m.shortKeyManager.Validate(ctx, key)
-	status, statusErr := m.shortKeyManager.Status(ctx, key)
-	err := m.shortKeyManager.Revoke(ctx, key)
-	if err == nil && validateErr == nil && value != nil {
+	value, err := m.shortKeyManager.revoke(ctx, key)
+	if err != nil || value == nil {
+		return err
+	}
+	if value.Status != StatusPending {
 		value.Status = StatusRevoked
 		m.triggerShortKeyEvent(listener.EventShortKeyRevoke, value, listener.ActionRevoke)
-	} else if err == nil && statusErr == nil && status == StatusPending && key != "" {
+	} else {
 		listener.Emit(m.events, listener.EventShortKeyRevoke, "", "", "", key, map[string]any{
 			listener.ExtraKeyAction: listener.ActionRevoke,
 			listener.ExtraKeyStatus: StatusRevoked,

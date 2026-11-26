@@ -53,8 +53,8 @@ func TestManagerRefreshReverseLifetimeAllowsRevocationAfterRenewal(t *testing.T)
 	}
 }
 
-// TestManagerRefreshAfterAccessExpiryCleansTerminals preserves independent refresh credentials while pruning stale terminals. TestManagerRefreshAfterAccessExpiryCleansTerminals 清理陈旧终端时保留独立有效的刷新凭证。
-func TestManagerRefreshAfterAccessExpiryCleansTerminals(t *testing.T) {
+// TestManagerRefreshAfterAccessExpiryKeepsLazyEntries preserves independent refresh credentials without a global sweep. TestManagerRefreshAfterAccessExpiryKeepsLazyEntries 无全量扫描地保留独立刷新凭据和待整理条目。
+func TestManagerRefreshAfterAccessExpiryKeepsLazyEntries(t *testing.T) {
 	ctx := context.Background()
 	for _, ordinary := range []bool{false, true} {
 		for _, cleanupFirst := range []bool{false, true} {
@@ -109,8 +109,15 @@ func TestManagerRefreshAfterAccessExpiryCleansTerminals(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if sessionHasTerminalToken(sess, old.AccessToken) || sessionHasTerminalToken(sess, other.AccessToken) || !sessionHasTerminalToken(sess, next.AccessToken) || !sessionHasTerminalToken(sess, kept) || sess.Data["theme"] != "dark" {
-					t.Fatalf("rotation left stale terminals or lost session data: %+v", sess)
+				if !sessionHasTerminalToken(sess, old.AccessToken) || !sessionHasTerminalToken(sess, other.AccessToken) || !sessionHasTerminalToken(sess, next.AccessToken) || !sessionHasTerminalToken(sess, kept) || sess.Data["theme"] != "dark" {
+					t.Fatalf("rotation swept lazy entries or lost session data: %+v", sess)
+				}
+				wantOnline := 2
+				if cleanupFirst {
+					wantOnline++
+				}
+				if count, err := mgr.GetOnlineTerminalCount(ctx, id); err != nil || count != wantOnline {
+					t.Fatalf("online count = %d, %v, want %d", count, err, wantOnline)
 				}
 				if _, err := mgr.RefreshToken(ctx, old.RefreshToken); !errors.Is(err, derror.ErrInvalidRefreshToken) {
 					t.Fatalf("replay = %v", err)

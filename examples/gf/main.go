@@ -54,7 +54,7 @@ func registerRoutes(s *ghttp.Server, authInstance *dtoken.Auth) error {
 	})
 
 	s.Group("/", func(group *ghttp.RouterGroup) {
-		group.Middleware(gfdt.AuthMiddleware(ctx, gfdt.WithFailFunc(handleAuthFail)))
+		group.Middleware(gfdt.AccessMiddleware(ctx, gfdt.WithFailFunc(handleAuthFail), gfdt.WithRouteAccessHandler(resolveRouteAccess)))
 		group.GET("/me", handleMe)
 		group.GET("/introspect", handleIntrospect)
 		group.GET("/admin", gfdt.CheckRoleMiddleware(ctx, []string{"admin"}, handleAdmin, handleAuthFail))
@@ -219,6 +219,7 @@ func handleLogout(r *ghttp.Request) {
 
 // resolveRouteAccess uses the matched route so path normalization and overrides cannot skip checks. resolveRouteAccess 根据实际匹配路由鉴权，避免路径规范化或覆盖导致漏检。
 func resolveRouteAccess(_ context.Context, r *ghttp.Request, req *gfdt.RouteAccessRequest) {
+	req.CheckDisable = true
 	handler := r.GetServeHandler()
 	if handler == nil {
 		return

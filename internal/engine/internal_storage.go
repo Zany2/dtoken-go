@@ -3,6 +3,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -105,6 +106,50 @@ func (m *Manager) saveSessionWithMinTTL(
 	return m.saveToStorage(ctx, key, value, finalExpiration)
 }
 
+// renewSessionTTL extends an existing Session without loading or serializing its value. renewSessionTTL 延长已有 Session 的有效期，不加载或序列化其值。
+func (m *Manager) renewSessionTTL(ctx context.Context, key string, expiration time.Duration) error {
+	ttl, err := m.storage.TTL(ctx, key)
+	if err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	return m.extendStoredTTL(ctx, key, ttl, expiration)
+}
+
+// extendStoredTTL preserves longer or unlimited lifetimes and never creates missing data. extendStoredTTL 保留更长或无限有效期，不创建缺失数据。
+func (m *Manager) extendStoredTTL(ctx context.Context, key string, currentTTL, expiration time.Duration) error {
+	if currentTTL != adapter.TTLNoExpire && currentTTL <= 0 {
+		return derror.ErrKeyNotFound
+	}
+	if currentTTL == adapter.TTLNoExpire || expiration > 0 && currentTTL >= expiration {
+		return nil
+	}
+	if expiration <= 0 {
+		return m.persistStoredKey(ctx, key)
+	}
+	return m.expireIfLimited(ctx, key, expiration)
+}
+
+// persistStoredKey prefers native persistence; ordinary storage retains raw bytes with a non-atomic read/write fallback. persistStoredKey 优先使用原生永久化，普通存储通过非原子的读取写回保留原始值。
+func (m *Manager) persistStoredKey(ctx context.Context, key string) error {
+	if storage, ok := m.storage.(adapter.PersistentStorage); ok {
+		if err := storage.Persist(ctx, key); err != nil {
+			return fmt.Errorf("%w: %w", derror.ErrStorageUnavailable, err)
+		}
+		return nil
+	}
+	value, err := m.storage.Get(ctx, key)
+	if err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	if value == nil {
+		return derror.ErrKeyNotFound
+	}
+	if err = m.storage.Set(ctx, key, value, 0); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	return nil
+}
+
 // getDeviceAndDeviceID extracts independent device and device ID filters. getDeviceAndDeviceID 提取相互独立的设备类型和设备 ID 过滤维度。
 func (m *Manager) getDeviceAndDeviceID(deviceAndDeviceID ...string) (string, string) {
 	// Initialize empty device fields 初始化空设备字段。
@@ -138,33 +183,38 @@ func (m *Manager) saveToStorage(
 		return fmt.Errorf("%w: %v", derror.ErrSerializeFailed, err)
 	}
 
-	var duration time.Duration
-
-	// Use explicit expiration when provided 存在显式过期时间时优先使用。
-	if len(expiration) > 0 {
-		duration = expiration[0]
-	} else {
-		// Updates must not recreate expired records or fall back to the configured lifetime. 更新不能重建过期记录，也不能回退到配置有效期。
-		currentTTL, ttlErr := m.storage.TTL(ctx, key)
-		if ttlErr != nil {
-			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, ttlErr)
-		}
-		switch {
-		case currentTTL == adapter.TTLNoExpire:
-			duration = 0
-		case currentTTL > 0:
-			duration = currentTTL
-		default:
-			return derror.ErrKeyNotFound
-		}
+	if len(expiration) == 0 {
+		return m.updateStoredValue(ctx, key, bytesData)
 	}
-
-	// Persist to storage 存储到后。
-	if err = m.storage.Set(ctx, key, bytesData, duration); err != nil {
+	if err = m.storage.Set(ctx, key, bytesData, expiration[0]); err != nil {
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
+	return nil
+}
 
-	// Return save success 返回保存成功。
+// updateStoredValue changes an existing value while retaining TTL; ordinary storage has a non-atomic fallback. updateStoredValue 更新已有值并保留 TTL，普通存储使用非原子回退。
+func (m *Manager) updateStoredValue(ctx context.Context, key string, value any) error {
+	if storage, ok := m.storage.(adapter.UpdateStorage); ok {
+		if err := storage.Update(ctx, key, value); err != nil {
+			if errors.Is(err, derror.ErrKeyNotFound) {
+				return derror.ErrKeyNotFound
+			}
+			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
+		return nil
+	}
+	ttl, err := m.storage.TTL(ctx, key)
+	if err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	if ttl == adapter.TTLNoExpire {
+		ttl = 0
+	} else if ttl <= 0 {
+		return derror.ErrKeyNotFound
+	}
+	if err = m.storage.Set(ctx, key, value, ttl); err != nil {
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
 	return nil
 }
 
@@ -195,46 +245,6 @@ func (m *Manager) saveToStorageIfAbsent(
 		return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
-	return true, nil
-}
-
-// deleteWithLegacyKey removes current and legacy keys and reports whether either existed. deleteWithLegacyKey 删除当前键和旧键，并报告是否存在实际删除。
-func (m *Manager) deleteWithLegacyKey(ctx context.Context, key, legacyKey string) (bool, error) {
-	keys := []string{key}
-	if legacyKey != key {
-		keys = append(keys, legacyKey)
-	}
-
-	// Prefer atomic read-delete when the storage supports it. 存储支持时优先使用原子读取删除。
-	if atomicStorage, ok := m.storage.(adapter.AtomicStorage); ok {
-		deleted := false
-		for _, storageKey := range keys {
-			value, err := atomicStorage.GetAndDelete(ctx, storageKey)
-			if err != nil {
-				return false, err
-			}
-			deleted = deleted || value != nil
-		}
-		return deleted, nil
-	}
-
-	// Discover existing keys before the ordinary-storage fallback delete. 普通存储回退删除前先确定实际存在的键。
-	existingKeys := make([]string, 0, len(keys))
-	for _, storageKey := range keys {
-		value, err := m.storage.Get(ctx, storageKey)
-		if err != nil {
-			return false, err
-		}
-		if value != nil {
-			existingKeys = append(existingKeys, storageKey)
-		}
-	}
-	if len(existingKeys) == 0 {
-		return false, nil
-	}
-	if err := m.storage.Delete(ctx, existingKeys...); err != nil {
-		return false, err
-	}
 	return true, nil
 }
 
@@ -328,10 +338,11 @@ func (m *Manager) expireTokenIfLimited(ctx context.Context, tokenValue string, e
 	key := m.getTokenKey(tokenValue)
 
 	// A token that expired after validation was not successfully renewed. 校验后已过期的 Token 不能被视为续期成功。
-	if !m.storage.Exists(ctx, key) {
-		return derror.ErrInvalidToken
+	if err := m.storage.Expire(ctx, key, expiration); err != nil {
+		if errors.Is(err, derror.ErrKeyNotFound) {
+			return derror.ErrInvalidToken
+		}
+		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
-
-	// Renew token key expiration 续期 Token 键过期时间。
-	return m.expireIfLimited(ctx, key, expiration)
+	return nil
 }

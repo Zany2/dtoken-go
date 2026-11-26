@@ -15,6 +15,10 @@ DToken-Go 支持两种权限来源：
 
 当配置了 `AccessProvider` 时，Provider 返回的非 `nil` 数据优先于 Session 中缓存的数据。Provider 返回 `nil` 时，才会回退到 Session 数据。
 
+按 Token 查询和 HTTP 权限检查先校验凭据、构建完整 `AccessSubject`，再调用所需 Provider。正常路径中，Provider 返回非 `nil`（包括空列表）或错误时不会读取、解码 Session；只有未配置 Provider 或返回 `nil` 才加载回退数据。HTTP 同时检查权限和角色时，共用一次按需 Session 读取，权限拒绝后不再查询角色。这里的复用只作用于单次操作，不缓存跨请求的权限结果。
+
+因此，凭据有效且 Provider 接管查询时，Session 缺失或损坏不会阻止授权；需要 Session 回退时仍返回相应错误。活跃超时清理、后台维护及完整自省仍有独立的 Session 需求，不属于这个读取预算。角色权限查询不隐式执行封禁检查，访问入口需要按规则显式开启 `CheckDisable`。
+
 ## AccessSubject
 
 Provider 会收到一个 `AccessSubject`：

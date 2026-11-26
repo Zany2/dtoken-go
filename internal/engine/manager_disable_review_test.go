@@ -45,7 +45,7 @@ func TestManagerAccountDisableRetiresCredentials(t *testing.T) {
 					if pool.taskCount() != 0 {
 						t.Fatal("account retirement still depends on an asynchronous worker")
 					}
-					if err := mgr.CheckLogin(ctx, pair.AccessToken); !errors.Is(err, derror.ErrAccountDisabled) {
+					if err := mgr.CheckLogin(ctx, pair.AccessToken); !errors.Is(err, derror.ErrInvalidToken) {
 						t.Fatalf("disabled access error = %v", err)
 					}
 					for _, key := range []string{mgr.getSessionKey(id), mgr.getActiveKey(pair.AccessToken), mgr.getRenewKey(pair.AccessToken), mgr.getRefreshTokenKey(pair.RefreshToken), mgr.getTokenRefreshKey(pair.AccessToken)} {
@@ -181,8 +181,8 @@ func TestManagerDisableReportsCleanupFailure(t *testing.T) {
 	}
 }
 
-// TestManagerDisableReplacesLegacyRestriction verifies new expiry cannot reveal the previous ban. TestManagerDisableReplacesLegacyRestriction 验证新封禁到期不会恢复旧封禁。
-func TestManagerDisableReplacesLegacyRestriction(t *testing.T) {
+// TestManagerDisableIgnoresLegacyRestriction verifies old keys cannot block updates or reappear after canonical expiry. TestManagerDisableIgnoresLegacyRestriction 验证旧键不能阻止更新，也不会在规范键到期后重新生效。
+func TestManagerDisableIgnoresLegacyRestriction(t *testing.T) {
 	ctx := context.Background()
 	id := "legacy:account"
 	for _, kind := range []string{"account", "service", "device", "concrete device"} {
@@ -229,25 +229,13 @@ func TestManagerDisableReplacesLegacyRestriction(t *testing.T) {
 				}
 				before := captureTerminalLifecycle(t, mgr, ctx, []string{legacy})
 				err := write()
-				if legacyMode == "corrupt" {
-					if !errors.Is(err, derror.ErrSerializeFailed) || mgr.storage.Exists(ctx, current) {
-						t.Fatalf("unverifiable legacy write = %v, want rejection before writing", err)
-					}
-					assertTerminalLifecycleUnchanged(t, mgr, ctx, before)
-					return
-				}
 				if err != nil {
 					t.Fatal(err)
 				}
 				if got, err := ttl(); err != nil || got <= 0 || got > 60 {
 					t.Fatalf("updated TTL = %d, %v", got, err)
 				}
-				if legacyMode == "matching" && mgr.storage.Exists(ctx, legacy) {
-					t.Fatal("obsolete legacy restriction retained")
-				}
-				if legacyMode == "foreign" {
-					assertTerminalLifecycleUnchanged(t, mgr, ctx, before)
-				}
+				assertTerminalLifecycleUnchanged(t, mgr, ctx, before)
 
 				// Simulate expiry of the new marker; the previous restriction must not reappear. 模拟新标记到期，旧限制不能再次生效。
 				if err := mgr.storage.Delete(ctx, current); err != nil {

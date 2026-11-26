@@ -27,7 +27,7 @@ Using `integrations/gin` as the example, the current `Annotation` struct support
 | `CheckLogin` | whether login is required |
 | `CheckRole` | required roles |
 | `CheckPermission` | required permissions |
-| `CheckDisable` | whether account disable should be checked |
+| `CheckDisable` | whether account, device type, and concrete device restrictions should be checked |
 | `Ignore` | skip auth entirely |
 | `LogicType` | `OR` or `AND` for multi-role and multi-permission checks |
 

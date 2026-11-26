@@ -35,7 +35,7 @@ func TestNonceManagerConstructorsAndStorageKey(t *testing.T) {
 		t.Fatalf("generated nonce is not hexadecimal: %v", err)
 	}
 
-	key := "prefix:auth:" + NonceKeySuffix + value
+	key := "prefix:auth:v2:" + NonceKeySuffix + value
 	stored, ok := storage.values[key]
 	if !ok {
 		t.Fatalf("generated nonce key %q was not stored", key)

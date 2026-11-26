@@ -17,8 +17,8 @@ func (m *Manager) triggerEvent(event listener.Event, loginID, device, deviceID, 
 
 // triggerEventWithDispatch lets an already tracked worker deliver its event without another pool submission. triggerEventWithDispatch 允许已跟踪的工作任务直接分发事件，避免再次提交协程池。
 func (m *Manager) triggerEventWithDispatch(event listener.Event, loginID, device, deviceID, token string, extra map[string]any, async bool) {
-	// Skip when event manager is absent 事件管理器不存在时跳过。
-	if m.eventManager == nil {
+	// Skip payload cloning and scheduling when no enabled observer needs this event. 没有启用的观察需求时跳过载荷复制及调度。
+	if m.eventManager == nil || !m.eventManager.NeedsDispatch(event) {
 		return
 	}
 
@@ -39,6 +39,8 @@ func (m *Manager) triggerEventWithDispatch(event listener.Event, loginID, device
 		m.submitAsync("triggerEvent", func() {
 			// Trigger event in async task 在异步任务中触发事件。
 			m.eventManager.Trigger(eventData)
+		}, func() {
+			m.eventManager.TriggerSync(eventData)
 		})
 		return
 	}

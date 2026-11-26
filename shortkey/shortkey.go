@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
-	"sync"
 	"time"
 
 	adapter "github.com/Zany2/dtoken-go/contract"
@@ -95,13 +94,13 @@ type ConsumeResult = capability.ConsumeResult
 // Manager handles short key operations. Manager 处理短 Key 操作。
 type Manager struct {
 	authType           string
-	keyPrefix          string
+	namespace          string // namespace stores the immutable encoded storage boundary. namespace 存储固定编码后的存储命名空间。
 	ttl                time.Duration
 	length             int
 	maxGenerateRetries int
 	storage            adapter.Storage
 	serializer         adapter.Codec
-	mu                 sync.Mutex // Serializes creation writes and state transitions within this manager. 在当前管理器内串行化创建写入与状态流转。
+	stateLocks         utils.KeyedMutex // stateLocks coordinates creation and state transitions per credential. stateLocks 按凭据协调创建与状态流转。
 }
 
 // NewDefaultManager creates a validated Manager or returns a configuration/component error. NewDefaultManager 创建已校验实例，配置或组件无效时返回错误。
@@ -126,7 +125,7 @@ func NewManagerWithConfig(authType, prefix string, storage adapter.Storage, seri
 
 	return &Manager{
 		authType:           authType,
-		keyPrefix:          prefix,
+		namespace:          utils.StorageNamespace(prefix, authType),
 		storage:            storage,
 		serializer:         serializer,
 		ttl:                cfg.TTL,
@@ -185,8 +184,8 @@ func (m *Manager) CreateWithTimeout(ctx context.Context, opts CreateOptions, tim
 
 // Confirm confirms a pending short key. Confirm 确认待处理短 Key。
 func (m *Manager) Confirm(ctx context.Context, key string, opts ConfirmOptions) (*ShortKey, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	unlock := m.stateLocks.Lock(key)
+	defer unlock()
 
 	shortKey, err := m.get(ctx, key)
 	if err != nil {
@@ -247,8 +246,8 @@ func (m *Manager) Validate(ctx context.Context, key string, opts ...ValidateOpti
 
 // Consume validates and consumes a confirmed short key; plain Storage serializes consumption only within this manager instance. Consume 校验并消费已确认的短 Key，普通 Storage 仅在当前管理器实例内串行消费。
 func (m *Manager) Consume(ctx context.Context, key string, opts ...ValidateOptions) (*ConsumeResult, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	unlock := m.stateLocks.Lock(key)
+	defer unlock()
 
 	shortKey, err := m.Validate(ctx, key, opts...)
 	if err != nil {
@@ -306,37 +305,47 @@ func (m *Manager) Consume(ctx context.Context, key string, opts ...ValidateOptio
 
 // Revoke revokes a short key. Revoke 撤销短 Key。
 func (m *Manager) Revoke(ctx context.Context, key string) error {
+	_, err := m.revoke(ctx, key)
+	return err
+}
+
+// revoke returns the prior state only after a successful transition, for event delivery without another read. revoke 仅在状态成功变更后返回原状态，供事件投递复用而无需再次读取。
+func (m *Manager) revoke(ctx context.Context, key string) (*ShortKey, error) {
 	if key == "" {
-		return nil
+		return nil, nil
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	unlock := m.stateLocks.Lock(key)
+	defer unlock()
 
 	shortKey, err := m.get(ctx, key)
 	if err != nil {
 		if errors.Is(err, ErrInvalidShortKey) {
-			return nil
+			return nil, nil
 		}
-		return err
+		return nil, err
 	}
 	if err = m.checkUsable(shortKey, time.Now()); err != nil {
 		switch {
 		case errors.Is(err, ErrShortKeyConsumed), errors.Is(err, ErrShortKeyRevoked), errors.Is(err, ErrShortKeyExpired):
-			return nil
+			return nil, nil
 		default:
-			return err
+			return nil, err
 		}
 	}
+	prior := *shortKey
 	shortKey.Status = StatusRevoked
 	shortKey.UpdateTime = time.Now().Unix()
 	ttl := remainingDuration(shortKey)
 	if ttl <= 0 {
 		if err = m.storage.Delete(ctx, m.getKey(key)); err != nil {
-			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+			return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
-		return nil
+		return nil, nil
 	}
-	return m.save(ctx, shortKey, ttl)
+	if err = m.save(ctx, shortKey, ttl); err != nil {
+		return nil, err
+	}
+	return &prior, nil
 }
 
 // Status returns short key lifecycle status. Status 返回短 Key 生命周期状态。
@@ -411,8 +420,8 @@ func (m *Manager) saveIfAbsent(ctx context.Context, shortKey *ShortKey, timeout 
 	}
 
 	// Serialize creation with state transitions, including the consumption removal window. 将创建与状态流转串行化，覆盖消费读删期间的空键窗口。
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	unlock := m.stateLocks.Lock(shortKey.Key)
+	defer unlock()
 
 	key := m.getKey(shortKey.Key)
 	if atomicStorage, ok := m.storage.(adapter.AtomicStorage); ok {
@@ -501,7 +510,7 @@ func (m *Manager) checkUsable(shortKey *ShortKey, now time.Time) error {
 
 // getKey builds the storage key for a short key. getKey 构建短 Key 存储键。
 func (m *Manager) getKey(key string) string {
-	return utils.StorageNamespace(m.keyPrefix, m.authType) + KeySuffix + key
+	return m.namespace + KeySuffix + key
 }
 
 // checkConstraints validates short key binding constraints. checkConstraints 校验短 Key 绑定约束。

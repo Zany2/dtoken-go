@@ -145,7 +145,7 @@ func TestManagerTimeoutRecheckPropagatesCurrentState(t *testing.T) {
 					mgr.storage = &managerSessionReadErrorStorage{Storage: storage, key: mgr.getActiveKey(pair.AccessToken)}
 				}
 			}
-			sess, info, err := mgr.checkLoginAndGetContextNoRenew(ctx, pair.AccessToken)
+			sess, info, err := mgr.checkLoginAndGetContextWithOptions(ctx, pair.AccessToken, checkLoginOptions{checkDisable: true})
 			if !errors.Is(err, state.err) || sess != nil || info != nil {
 				t.Fatalf("rechecked context = %+v, %+v, %v, want nil context and %v", sess, info, err, state.err)
 			}

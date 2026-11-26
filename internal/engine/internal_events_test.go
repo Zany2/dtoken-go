@@ -81,6 +81,70 @@ type managerDeferredEventPool struct {
 	task func()
 }
 
+// TestManagerUnobservedEventsSkipPayloadAndTasks checks the engine admission boundary with prepared extension data. TestManagerUnobservedEventsSkipPayloadAndTasks 使用已准备的扩展数据检查引擎事件接收边界。
+func TestManagerUnobservedEventsSkipPayloadAndTasks(t *testing.T) {
+	mgr := newTestManager(t, func(cfg *config.Config) { cfg.AsyncEvent = true })
+	pool := &managerQueuedMaintenancePool{}
+	mgr.pool = pool
+	t.Cleanup(pool.runAll)
+	extra := map[string]any{listener.ExtraKeyPermissions: []string{"read", "write"}}
+	if allocations := testing.AllocsPerRun(100, func() {
+		mgr.Emit(listener.EventPermissionCheck, "user", "web", "", "token", extra)
+	}); allocations != 0 {
+		t.Fatalf("unobserved engine event allocations = %v, want 0", allocations)
+	}
+	if pool.taskCount() != 0 {
+		t.Fatal("unobserved event submitted an engine task")
+	}
+}
+
+// TestManagerEventAdmissionPreservesObservers checks every reason an event still needs dispatch. TestManagerEventAdmissionPreservesObservers 检查事件仍需分发的各种观察需求。
+func TestManagerEventAdmissionPreservesObservers(t *testing.T) {
+	for _, observer := range []string{"statistics", "filter", "logger", "wildcard", "specific", "disabled"} {
+		t.Run(observer, func(t *testing.T) {
+			mgr := newTestManager(t, func(cfg *config.Config) { cfg.AsyncEvent = true })
+			pool := &managerQueuedMaintenancePool{}
+			mgr.pool = pool
+			t.Cleanup(pool.runAll)
+			calls := 0
+			switch observer {
+			case "statistics":
+				mgr.eventManager.EnableStats(true)
+			case "filter":
+				mgr.eventManager.AddFilter(func(*listener.EventData) bool { calls++; return false })
+			case "logger":
+				mgr.eventManager = listener.NewManager(&managerLifecycleTestLogger{})
+			case "wildcard", "disabled":
+				mgr.eventManager.RegisterFuncWithConfig(listener.EventAll, func(*listener.EventData) { calls++ }, listener.ListenerConfig{Async: false})
+				if observer == "disabled" {
+					mgr.eventManager.DisableEvent(listener.EventLogin)
+				}
+			case "specific":
+				mgr.eventManager.RegisterFuncWithConfig(listener.EventLogin, func(*listener.EventData) { calls++ }, listener.ListenerConfig{Async: false})
+			}
+			mgr.Emit(listener.EventLogin, "observed-user", "web", "", "token", nil)
+			wantTasks := 1
+			if observer == "disabled" {
+				wantTasks = 0
+			}
+			if pool.taskCount() != wantTasks {
+				t.Fatalf("queued event tasks = %d, want %d", pool.taskCount(), wantTasks)
+			}
+			pool.runAll()
+			if observer == "statistics" && mgr.eventManager.GetStats().TotalTriggered != 1 {
+				t.Fatal("engine dropped statistics-only event")
+			}
+			wantCalls := 0
+			if observer == "filter" || observer == "wildcard" || observer == "specific" {
+				wantCalls = 1
+			}
+			if calls != wantCalls {
+				t.Fatalf("observer calls = %d, want %d", calls, wantCalls)
+			}
+		})
+	}
+}
+
 func (p *managerDeferredEventPool) Submit(task func()) error {
 	p.task = task
 	return nil

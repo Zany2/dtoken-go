@@ -1,0 +1,95 @@
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/logout/account/atomic
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/logout/account/basic
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/logout/device/atomic
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/logout/device/basic
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/logout/concrete_device/atomic
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/logout/concrete_device/basic
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/kickout/account/atomic
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/kickout/account/basic
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/kickout/device/atomic
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/kickout/device/basic
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/kickout/concrete_device/atomic
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/kickout/concrete_device/basic
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/replace/account/atomic
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/replace/account/basic
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/replace/device/atomic
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/replace/device/basic
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/replace/concrete_device/atomic
+=== RUN   TestScopedRetirementRevokesOwnExpiredRefresh/replace/concrete_device/basic
+--- PASS: TestScopedRetirementRevokesOwnExpiredRefresh (35.33s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/logout/account/atomic (1.96s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/logout/account/basic (2.09s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/logout/device/atomic (2.15s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/logout/device/basic (1.81s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/logout/concrete_device/atomic (1.98s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/logout/concrete_device/basic (2.04s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/kickout/account/atomic (1.91s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/kickout/account/basic (1.88s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/kickout/device/atomic (2.14s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/kickout/device/basic (1.92s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/kickout/concrete_device/atomic (1.89s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/kickout/concrete_device/basic (2.20s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/replace/account/atomic (1.63s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/replace/account/basic (2.19s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/replace/device/atomic (1.90s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/replace/device/basic (1.77s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/replace/concrete_device/atomic (1.83s)
+    --- PASS: TestScopedRetirementRevokesOwnExpiredRefresh/replace/concrete_device/basic (2.05s)
+=== RUN   TestUntieFallbackReportsDeleteFailureBeforeEvent
+--- PASS: TestUntieFallbackReportsDeleteFailureBeforeEvent (0.59s)
+=== RUN   TestManagerRefreshIssuanceRejectsReplacedLogin
+=== RUN   TestManagerRefreshIssuanceRejectsReplacedLogin/atomic/login/same_plain
+=== RUN   TestManagerRefreshIssuanceRejectsReplacedLogin/atomic/login/same_pair
+=== RUN   TestManagerRefreshIssuanceRejectsReplacedLogin/atomic/login/foreign_pair
+=== RUN   TestManagerRefreshIssuanceRejectsReplacedLogin/atomic/createSession/same_plain
+=== RUN   TestManagerRefreshIssuanceRejectsReplacedLogin/atomic/createSession/same_pair
+=== RUN   TestManagerRefreshIssuanceRejectsReplacedLogin/atomic/createSession/foreign_pair
+=== RUN   TestManagerRefreshIssuanceRejectsReplacedLogin/basic/login/same_plain
+=== RUN   TestManagerRefreshIssuanceRejectsReplacedLogin/basic/login/same_pair
+=== RUN   TestManagerRefreshIssuanceRejectsReplacedLogin/basic/login/foreign_pair
+=== RUN   TestManagerRefreshIssuanceRejectsReplacedLogin/basic/createSession/same_plain
+=== RUN   TestManagerRefreshIssuanceRejectsReplacedLogin/basic/createSession/same_pair
+=== RUN   TestManagerRefreshIssuanceRejectsReplacedLogin/basic/createSession/foreign_pair
+--- PASS: TestManagerRefreshIssuanceRejectsReplacedLogin (34.05s)
+    --- PASS: TestManagerRefreshIssuanceRejectsReplacedLogin/atomic/login/same_plain (2.54s)
+    --- PASS: TestManagerRefreshIssuanceRejectsReplacedLogin/atomic/login/same_pair (2.93s)
+    --- PASS: TestManagerRefreshIssuanceRejectsReplacedLogin/atomic/login/foreign_pair (2.95s)
+    --- PASS: TestManagerRefreshIssuanceRejectsReplacedLogin/atomic/createSession/same_plain (2.13s)
+    --- PASS: TestManagerRefreshIssuanceRejectsReplacedLogin/atomic/createSession/same_pair (3.24s)
+    --- PASS: TestManagerRefreshIssuanceRejectsReplacedLogin/atomic/createSession/foreign_pair (3.14s)
+    --- PASS: TestManagerRefreshIssuanceRejectsReplacedLogin/basic/login/same_plain (2.80s)
+    --- PASS: TestManagerRefreshIssuanceRejectsReplacedLogin/basic/login/same_pair (2.82s)
+    --- PASS: TestManagerRefreshIssuanceRejectsReplacedLogin/basic/login/foreign_pair (3.04s)
+    --- PASS: TestManagerRefreshIssuanceRejectsReplacedLogin/basic/createSession/same_plain (2.56s)
+    --- PASS: TestManagerRefreshIssuanceRejectsReplacedLogin/basic/createSession/same_pair (3.10s)
+    --- PASS: TestManagerRefreshIssuanceRejectsReplacedLogin/basic/createSession/foreign_pair (2.80s)
+=== RUN   TestManagerRefreshBindingSurvivesRenewal
+=== RUN   TestManagerRefreshBindingSurvivesRenewal/atomic/manual_renewal
+=== RUN   TestManagerRefreshBindingSurvivesRenewal/atomic/shared_login
+=== RUN   TestManagerRefreshBindingSurvivesRenewal/atomic/detached_access
+=== RUN   TestManagerRefreshBindingSurvivesRenewal/atomic/missing_session
+=== RUN   TestManagerRefreshBindingSurvivesRenewal/atomic/migrated_pair
+=== RUN   TestManagerRefreshBindingSurvivesRenewal/basic/manual_renewal
+=== RUN   TestManagerRefreshBindingSurvivesRenewal/basic/shared_login
+=== RUN   TestManagerRefreshBindingSurvivesRenewal/basic/detached_access
+=== RUN   TestManagerRefreshBindingSurvivesRenewal/basic/missing_session
+=== RUN   TestManagerRefreshBindingSurvivesRenewal/basic/migrated_pair
+--- PASS: TestManagerRefreshBindingSurvivesRenewal (23.28s)
+    --- PASS: TestManagerRefreshBindingSurvivesRenewal/atomic/manual_renewal (2.07s)
+    --- PASS: TestManagerRefreshBindingSurvivesRenewal/atomic/shared_login (2.24s)
+    --- PASS: TestManagerRefreshBindingSurvivesRenewal/atomic/detached_access (2.10s)
+    --- PASS: TestManagerRefreshBindingSurvivesRenewal/atomic/missing_session (1.84s)
+    --- PASS: TestManagerRefreshBindingSurvivesRenewal/atomic/migrated_pair (2.59s)
+    --- PASS: TestManagerRefreshBindingSurvivesRenewal/basic/manual_renewal (2.58s)
+    --- PASS: TestManagerRefreshBindingSurvivesRenewal/basic/shared_login (2.56s)
+    --- PASS: TestManagerRefreshBindingSurvivesRenewal/basic/detached_access (2.16s)
+    --- PASS: TestManagerRefreshBindingSurvivesRenewal/basic/missing_session (2.06s)
+    --- PASS: TestManagerRefreshBindingSurvivesRenewal/basic/migrated_pair (3.07s)
+=== RUN   TestManagerRefreshRetiresInactiveLifecycle
+=== RUN   TestManagerRefreshRetiresInactiveLifecycle/atomic/last_terminal
+=== RUN   TestManagerRefreshRetiresInactiveLifecycle/atomic/other_terminal
+=== RUN   TestManagerRefreshRetiresInactiveLifecycle/atomic/missing_session
+=== RUN   TestManagerRefreshRetiresInactiveLifecycle/atomic/missing_reverse
+FAIL	github.com/Zany2/dtoken-go/internal/engine	103.197s
+FAIL

@@ -23,7 +23,7 @@ go get github.com/redis/go-redis/v9
 
 ## Usage
 
-Examples use dt for the root package, redis for storage/redis, goredis for github.com/redis/go-redis/v9, and time from the standard library. URL and config constructors issue PING; existing-client injection does not. Atomic read/delete uses GETDEL and requires Redis 6.2+. Caller-supplied storage remains caller-owned if Build fails; after success, Auth owns it by default.
+Examples use dt for the root package, redis for storage/redis, goredis for github.com/redis/go-redis/v9, and time from the standard library. URL and config constructors issue PING; existing-client injection does not. Atomic read/delete uses GETDEL and requires Redis 6.2+. Optional UpdateStorage uses SET XX KEEPTTL to replace existing values without changing expiration or creating missing keys. Caller-supplied storage remains caller-owned if Build fails; after success, Auth owns it by default.
 
 ### Option 1: Redis URL
 
@@ -151,7 +151,7 @@ Login state, session data, permissions, and roles use Redis. Nonce, OAuth2, Tick
 Core storage keys use a unified format. Namespace components are escaped independently; see [Namespace Rules](../reference/configuration.md#namespace-rules).
 
 ```text
-encoded KeyPrefix + encoded AuthType + businessPrefix + businessID
+encoded KeyPrefix + encoded AuthType + v2: + businessPrefix + businessID
 ```
 
 With default configuration:
@@ -164,14 +164,14 @@ AuthType  = auth:
 Common key examples:
 
 ```text
-dtoken:auth:token:{token}                         -> token info
-dtoken:auth:session:{loginID}                     -> session info
-dtoken:auth:renew:{token}                         -> renew interval marker
-dtoken:auth:active:{token}                        -> active-timeout marker
-dtoken:auth:disable:{loginID}                     -> account disable info
-dtoken:auth:disable:service:{loginID}:{service}   -> service disable info
-dtoken:auth:disable:device:{loginID}:{device}     -> device disable info
-dtoken:auth:oauth2:client:{clientID}              -> OAuth2 client
+dtoken:auth:v2:token:{token}                         -> token info
+dtoken:auth:v2:session:{loginID}                     -> session info
+dtoken:auth:v2:renew:{token}                         -> renew interval marker
+dtoken:auth:v2:active:{token}                        -> active-timeout marker
+dtoken:auth:v2:disable:{loginID}                     -> account disable info
+dtoken:auth:v2:disable:service:{loginID}:{service}   -> service disable info
+dtoken:auth:v2:disable:device:{loginID}:{device}     -> device disable info
+dtoken:auth:v2:oauth2:client:{clientID}              -> OAuth2 client
 ```
 
 ### Multiple Auth Systems
@@ -179,11 +179,11 @@ dtoken:auth:oauth2:client:{clientID}              -> OAuth2 client
 Multiple auth systems are isolated by `AuthType`. The same Redis DB may contain:
 
 ```text
-dtoken:user-auth:token:{token}
-dtoken:user-auth:session:{loginID}
+dtoken:user-auth:v2:token:{token}
+dtoken:user-auth:v2:session:{loginID}
 
-dtoken:admin-auth:token:{token}
-dtoken:admin-auth:session:{loginID}
+dtoken:admin-auth:v2:token:{token}
+dtoken:admin-auth:v2:session:{loginID}
 ```
 
 The same `loginID` under different `AuthType` values is independent. Tokens, sessions, permissions, roles, disable data, and OAuth2 data are all separated by auth type.

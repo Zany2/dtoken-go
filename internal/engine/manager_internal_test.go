@@ -51,16 +51,16 @@ func TestManagerKeyAndDeviceHelpers(t *testing.T) {
 		got  string
 		want string
 	}{
-		{name: "token", got: manager.getTokenKey("t1"), want: "prefix:custom:token:t1"},
-		{name: "session", got: manager.getSessionKey("u1"), want: "prefix:custom:session:u1"},
-		{name: "renew", got: manager.getRenewKey("t1"), want: "prefix:custom:renew:t1"},
-		{name: "active", got: manager.getActiveKey("t1"), want: "prefix:custom:active:t1"},
-		{name: "refresh", got: manager.getRefreshTokenKey("r1"), want: "prefix:custom:refresh:r1"},
-		{name: "token refresh", got: manager.getTokenRefreshKey("t1"), want: "prefix:custom:refresh:token:t1"},
-		{name: "account disable", got: manager.getDisableKey("u1"), want: "prefix:custom:disable:u1"},
-		{name: "service disable", got: manager.getDisableServiceKey("u1", "pay"), want: "prefix:custom:disable:service:u1:pay"},
-		{name: "device disable", got: manager.getDisableDeviceKey("u1", "web"), want: "prefix:custom:disable:device:u1:web"},
-		{name: "device id disable", got: manager.getDisableDeviceAndDeviceIDKey("u1", "web", "a"), want: "prefix:custom:disable:device:id:u1:web:a"},
+		{name: "token", got: manager.getTokenKey("t1"), want: "prefix:custom:v2:token:t1"},
+		{name: "session", got: manager.getSessionKey("u1"), want: "prefix:custom:v2:session:u1"},
+		{name: "renew", got: manager.getRenewKey("t1"), want: "prefix:custom:v2:renew:t1"},
+		{name: "active", got: manager.getActiveKey("t1"), want: "prefix:custom:v2:active:t1"},
+		{name: "refresh", got: manager.getRefreshTokenKey("r1"), want: "prefix:custom:v2:refresh:r1"},
+		{name: "token refresh", got: manager.getTokenRefreshKey("t1"), want: "prefix:custom:v2:refresh:token:t1"},
+		{name: "account disable", got: manager.getDisableKey("u1"), want: "prefix:custom:v2:disable:u1"},
+		{name: "service disable", got: manager.getDisableServiceKey("u1", "pay"), want: "prefix:custom:v2:disable:service:u1:pay"},
+		{name: "device disable", got: manager.getDisableDeviceKey("u1", "web"), want: "prefix:custom:v2:disable:device:u1:web"},
+		{name: "device id disable", got: manager.getDisableDeviceAndDeviceIDKey("u1", "web", "a"), want: "prefix:custom:v2:disable:device:id:u1:web:a"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -279,7 +279,11 @@ func TestManagerTokenStateHelpers(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Login() error = %v", err)
 			}
-			if err = manager.applyLogoutModeToToken(ctx, token, tt.mode); err != nil {
+			record, err := manager.getTokenRecord(ctx, token)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = manager.applyLogoutModeToToken(ctx, token, record, tt.mode); err != nil {
 				t.Fatalf("applyLogoutModeToToken() error = %v", err)
 			}
 			if err = manager.CheckLogin(ctx, token); !errors.Is(err, tt.want) {
@@ -289,11 +293,11 @@ func TestManagerTokenStateHelpers(t *testing.T) {
 	}
 
 	manager := newTestManager(t, nil)
-	if err := manager.applyLogoutModeToToken(ctx, "missing", config.LogoutMode("invalid")); !errors.Is(err, derror.ErrInvalidParam) {
+	if err := manager.applyLogoutModeToToken(ctx, "missing", nil, config.LogoutMode("invalid")); !errors.Is(err, derror.ErrInvalidParam) {
 		t.Fatalf("applyLogoutModeToToken(invalid) error = %v, want ErrInvalidParam", err)
 	}
-	if err := manager.setTokenState(ctx, "state-only", TokenStateKickOut, time.Minute); err != nil {
-		t.Fatalf("setTokenState() error = %v", err)
+	if err := manager.setTokenStateWithRecord(ctx, "state-only", nil, TokenStateKickOut, time.Minute); err != nil {
+		t.Fatalf("setTokenStateWithRecord() error = %v", err)
 	}
 	value, err := requireManagerTestStorage(t, manager).Get(ctx, manager.getTokenKey("state-only"))
 	if err != nil {
@@ -415,9 +419,6 @@ func TestManagerSessionCollectionHelpers(t *testing.T) {
 	if got := sessionGetTerminalsByDevice(session, "web"); !reflect.DeepEqual([]string{got[0].Token, got[1].Token}, []string{"t1", "t3"}) {
 		t.Fatalf("getTerminalsByDevice(web) = %+v, want t1/t3", got)
 	}
-	if got := sessionGetTerminalsByDeviceAndDeviceID(session, "web", "a"); len(got) != 2 {
-		t.Fatalf("getTerminalsByDeviceAndDeviceID(web/a) count = %d, want 2", len(got))
-	}
 	if latest, ok := sessionGetLatestTerminalByDevice(session, "web"); !ok || latest.Token != "t3" {
 		t.Fatalf("getLatestTerminalByDevice(web) = %+v, %v, want t3, true", latest, ok)
 	}
@@ -479,8 +480,8 @@ func TestManagerSessionCollectionHelpers(t *testing.T) {
 	if got := normalizeAccessValues([]string{}); got == nil || len(got) != 0 {
 		t.Fatalf("normalizeAccessValues(empty) = %#v, want non-nil empty", got)
 	}
-	if got := removeStrings([]string{"a", "b", "a"}, "", "a"); !reflect.DeepEqual(got, []string{"b"}) {
-		t.Fatalf("removeStrings() = %v, want [b]", got)
+	if got, removed := removeAccessValues([]string{"a", "b", "a"}, []string{"", "a"}); !reflect.DeepEqual(got, []string{"b"}) || !reflect.DeepEqual(removed, []string{"a"}) {
+		t.Fatalf("removeAccessValues() = %v, %v; want [b], [a]", got, removed)
 	}
 
 	sessionAddPermissions(session, "read", "read", "write", "")
@@ -570,7 +571,7 @@ func TestManagerLoginWriteLockSerializesAndCleans(t *testing.T) {
 	})
 }
 
-// TestManagerSubmitAsyncFallbacks verifies goroutine fallback when no pool or submission fails. TestManagerSubmitAsyncFallbacks 验证无协程池及提交失败时的 Goroutine 回退。
+// TestManagerSubmitAsyncFallbacks verifies optional work is rejected and explicit fallback runs inline. TestManagerSubmitAsyncFallbacks 验证可选任务被拒绝且显式回退内联执行。
 func TestManagerSubmitAsyncFallbacks(t *testing.T) {
 	for _, tt := range []struct {
 		name string
@@ -583,11 +584,16 @@ func TestManagerSubmitAsyncFallbacks(t *testing.T) {
 			manager := newTestManager(t, nil)
 			manager.pool = tt.pool
 			done := make(chan struct{})
-			manager.submitAsync(tt.name, func() { close(done) })
+			if manager.submitAsync(tt.name, func() { t.Error("rejected task ran") }) {
+				t.Fatal("optional task accepted without a worker")
+			}
+			if !manager.submitAsync(tt.name, func() { t.Error("rejected task ran") }, func() { close(done) }) {
+				t.Fatal("fallback rejected")
+			}
 			select {
 			case <-done:
-			case <-time.After(time.Second):
-				t.Fatal("fallback async task did not run")
+			default:
+				t.Fatal("fallback did not complete synchronously")
 			}
 		})
 	}

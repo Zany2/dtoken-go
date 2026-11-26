@@ -12,6 +12,7 @@ import (
 	adapter "github.com/Zany2/dtoken-go/contract"
 	derror "github.com/Zany2/dtoken-go/errors"
 	manager "github.com/Zany2/dtoken-go/internal/engine"
+	"github.com/Zany2/dtoken-go/internal/utils"
 )
 
 // TestMsgPackManagerDisableOwnership verifies flat disable fields and private ownership survive encoding. TestMsgPackManagerDisableOwnership 验证平铺封禁字段及内部归属经过编码后保持有效。
@@ -54,7 +55,7 @@ func TestMsgPackManagerDisableOwnership(t *testing.T) {
 	}
 }
 
-// TestMsgPackManagerRefreshRecords verifies actual manager records survive codec round trips and legacy decoding. TestMsgPackManagerRefreshRecords 验证实际 Manager 记录经过编解码及旧格式读取后仍可完成刷新。
+// TestMsgPackManagerRefreshRecords verifies current and migrated records support refresh with MsgPack details. TestMsgPackManagerRefreshRecords 验证当前及迁移后的记录支持携带 MsgPack 详情的刷新操作。
 func TestMsgPackManagerRefreshRecords(t *testing.T) {
 	ctx := context.Background()
 	for _, legacy := range []bool{false, true} {
@@ -84,32 +85,36 @@ func TestMsgPackManagerRefreshRecords(t *testing.T) {
 			}
 			wantTerminalExtra := terminalExtra
 			if legacy {
-				// Re-encode real records through the unchanged public types to simulate old storage payloads. 通过未改变的公开类型重编码真实记录，模拟旧存储载荷。
-				accessConverted, refreshConverted := false, false
-				for key, entry := range storage.items {
-					raw, ok := entry.value.([]byte)
-					if !ok {
-						continue
-					}
-					var refresh manager.RefreshTokenInfo
-					if codec.Decode(raw, &refresh) == nil && refresh.AccessToken == pair.AccessToken {
-						entry.value, err = codec.Encode(refresh)
-						refreshConverted = true
-					} else {
-						var access manager.TokenInfo
-						if codec.Decode(raw, &access) != nil || access.LoginID != pair.LoginID || access.Timeout <= 0 {
-							continue
-						}
-						entry.value, err = codec.Encode(access)
-						accessConverted = true
-					}
-					if err != nil {
-						t.Fatalf("legacy encode error = %v", err)
-					}
-					storage.items[key] = entry
+				// Convert a legacy snapshot before publishing credentials to the current namespace. 将旧快照转换后再向当前命名空间发布凭据。
+				currentConfig := mgr.GetConfig()
+				namespace := utils.StorageNamespace(currentConfig.KeyPrefix, currentConfig.AuthType)
+				accessKey := config.TokenKeyPrefix + pair.AccessToken
+				refreshKey := manager.RefreshTokenKeyPrefix + pair.RefreshToken
+				access, err := mgr.GetTokenInfo(ctx, pair.AccessToken)
+				if err != nil {
+					t.Fatal(err)
 				}
-				if !accessConverted || !refreshConverted {
-					t.Fatal("current records did not decode through the public legacy types")
+				var refresh manager.RefreshTokenInfo
+				raw, err := utils.ToBytes(storage.items[namespace+refreshKey].value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = codec.Decode(raw, &refresh); err != nil {
+					t.Fatal(err)
+				}
+				values := make(map[string]any)
+				for key, value := range map[string]any{accessKey: access, refreshKey: refresh} {
+					values[key], err = codec.Encode(value)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				changes, err := manager.UpgradeTokenSnapshot(ctx, codec, currentConfig.AuthType, values)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for key, change := range changes {
+					storage.items[namespace+key] = codecManagerEntry{value: change.Value, expires: storage.items[namespace+change.TTLSource].expires}
 				}
 				wantTerminalExtra = nil
 			}

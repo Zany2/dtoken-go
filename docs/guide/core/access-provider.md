@@ -15,6 +15,10 @@ DToken-Go supports two access sources:
 
 When `AccessProvider` is configured, non-`nil` data returned by the provider takes priority over Session data. If the provider returns `nil`, DToken-Go falls back to Session data.
 
+Token queries and HTTP authorization validate credentials and build the full `AccessSubject` before calling the required provider. On the normal path, a non-nil result (including an empty slice) or an error avoids Session reads and decoding. Session data is loaded only when the provider is absent or returns nil. Combined HTTP permission and role checks reuse one lazy Session read, and permission rejection skips the role query. Reuse is limited to one operation; permission results are not cached across requests.
+
+With valid credentials and provider-owned authorization, a missing or corrupt Session does not block the decision. Session fallback still reports the corresponding errors. Inactivity cleanup, background maintenance, and full introspection retain their own Session requirements outside this read budget. Authorization queries do not implicitly check restrictions; access points must explicitly enable `CheckDisable` when needed.
+
 ## AccessSubject
 
 The provider receives an `AccessSubject`:

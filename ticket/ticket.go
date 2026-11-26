@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	adapter "github.com/Zany2/dtoken-go/contract"
@@ -76,12 +75,11 @@ type ConsumeResult = capability.ConsumeResult
 // Manager handles temporary ticket operations. Manager 处理临时 Ticket 操作。
 type Manager struct {
 	authType   string
-	keyPrefix  string
+	namespace  string // namespace stores the immutable encoded storage boundary. namespace 存储固定编码后的存储命名空间。
 	ttl        time.Duration
 	storage    adapter.Storage
 	serializer adapter.Codec
-	// stateMu serializes fallback consumption and revocation within this manager. stateMu 在当前管理器内串行化回退消费与撤销。
-	stateMu sync.Mutex
+	stateLocks utils.KeyedMutex // stateLocks serializes fallback writes per credential. stateLocks 按凭据串行化回退写操作。
 }
 
 // NewDefaultManager creates a validated Manager or returns a configuration/component error. NewDefaultManager 创建已校验实例，配置或组件无效时返回错误。
@@ -106,7 +104,7 @@ func NewManagerWithConfig(authType, prefix string, storage adapter.Storage, seri
 
 	return &Manager{
 		authType:   authType,
-		keyPrefix:  prefix,
+		namespace:  utils.StorageNamespace(prefix, authType),
 		storage:    storage,
 		serializer: serializer,
 		ttl:        cfg.TTL,
@@ -171,8 +169,8 @@ func (m *Manager) Validate(ctx context.Context, ticketValue string, opts ...Vali
 func (m *Manager) Consume(ctx context.Context, ticketValue string, opts ...ValidateOptions) (*ConsumeResult, error) {
 	atomicStorage, ok := m.storage.(adapter.AtomicStorage)
 	if !ok {
-		m.stateMu.Lock()
-		defer m.stateMu.Unlock()
+		unlock := m.stateLocks.Lock(ticketValue)
+		defer unlock()
 	}
 
 	ticket, err := m.Validate(ctx, ticketValue, opts...)
@@ -224,41 +222,47 @@ func (m *Manager) Consume(ctx context.Context, ticketValue string, opts ...Valid
 
 // Revoke revokes a ticket. Revoke 撤销 Ticket。
 func (m *Manager) Revoke(ctx context.Context, ticketValue string) error {
+	_, err := m.revoke(ctx, ticketValue)
+	return err
+}
+
+// revoke returns the changed record for event delivery without another read. revoke 返回已变更记录供事件投递复用，无需再次读取。
+func (m *Manager) revoke(ctx context.Context, ticketValue string) (*Ticket, error) {
 	if ticketValue == "" {
-		return nil
+		return nil, nil
 	}
 	if _, ok := m.storage.(adapter.AtomicStorage); !ok {
-		m.stateMu.Lock()
-		defer m.stateMu.Unlock()
+		unlock := m.stateLocks.Lock(ticketValue)
+		defer unlock()
 	}
 
 	ticket, err := m.get(ctx, ticketValue)
 	if err != nil {
 		if errors.Is(err, ErrInvalidTicket) {
-			return nil
+			return nil, nil
 		}
-		return err
+		return nil, err
 	}
 	if err = m.checkAlive(ticket, time.Now()); err != nil {
 		switch {
 		case errors.Is(err, ErrTicketConsumed), errors.Is(err, ErrTicketRevoked), errors.Is(err, ErrTicketExpired):
-			return nil
+			return nil, nil
 		default:
-			return err
+			return nil, err
 		}
 	}
 	ticket.Status = StatusRevoked
 	ttl := remainingDuration(ticket)
 	if ttl <= 0 {
 		if err = m.storage.Delete(ctx, m.getTicketKey(ticketValue)); err != nil {
-			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+			return nil, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 		}
-		return nil
+		return nil, nil
 	}
 	if err = m.save(ctx, ticket, ttl); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return ticket, nil
 }
 
 // Status returns ticket status. Status 返回 Ticket 状态。
@@ -386,7 +390,7 @@ func (m *Manager) checkAlive(ticket *Ticket, now time.Time) error {
 
 // getTicketKey builds the storage key for a ticket. getTicketKey 构建 Ticket 存储键。
 func (m *Manager) getTicketKey(ticketValue string) string {
-	return utils.StorageNamespace(m.keyPrefix, m.authType) + TicketKeySuffix + ticketValue
+	return m.namespace + TicketKeySuffix + ticketValue
 }
 
 // checkConstraints validates ticket binding constraints. checkConstraints 校验 Ticket 绑定约束。

@@ -3,9 +3,6 @@ package sso
 import (
 	"context"
 	"errors"
-	"net/http"
-	"net/url"
-	"slices"
 )
 
 var (
@@ -68,75 +65,5 @@ func (e *authorizationPolicyError) Unwrap() []error { return []error{e.kind, e.c
 
 // evaluateAuthorization copies policy inputs and accepts only a subset of the original scopes. evaluateAuthorization 复制策略输入且仅接受原始范围的子集。
 func (h *HTTPServer) evaluateAuthorization(ctx context.Context, request AuthorizationRequest) ([]string, error) {
-	if h.options.AuthorizationPolicy == nil {
-		return slices.Clone(request.Scopes), nil
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, &authorizationPolicyError{ErrAuthorizationPolicyUnavailable, err}
-	}
-	original := slices.Clone(request.Scopes)
-	request.Scopes = slices.Clone(original)
-	decision, err := h.options.AuthorizationPolicy(ctx, request)
-	if ctx.Err() != nil {
-		return nil, &authorizationPolicyError{ErrAuthorizationPolicyUnavailable, ctx.Err()}
-	}
-	if err != nil {
-		return nil, &authorizationPolicyError{ErrAuthorizationPolicyUnavailable, err}
-	}
-	if !decision.Allowed {
-		return nil, ErrAuthorizationDenied
-	}
-	if decision.Scopes == nil {
-		return original, nil
-	}
-	for _, scope := range decision.Scopes {
-		if !slices.Contains(original, scope) {
-			return nil, ErrAuthorizationDecision
-		}
-	}
-
-	// Retain original order and avoid introducing duplicates through policy output. 保留原始顺序，避免通过策略输出引入重复范围。
-	granted := make([]string, 0, len(original))
-	for _, scope := range original {
-		if slices.Contains(decision.Scopes, scope) && !slices.Contains(granted, scope) {
-			granted = append(granted, scope)
-		}
-	}
-	return granted, nil
-}
-
-// exchangeAuthorization validates authentication, mode, bindings, and proof before exposing identity to policy or callback registration. exchangeAuthorization 在向策略或回调登记提供身份前校验认证、模式、绑定和证明。
-func (h *HTTPServer) exchangeAuthorization(r *http.Request, values url.Values, mode Mode) (AuthorizationRequest, error) {
-	params := h.options.Params
-	request := AuthorizationRequest{Phase: AuthorizationExchange, ClientID: values.Get(params.Client), Mode: mode}
-	if err := h.authenticateClient(r.Context(), values); err != nil {
-		return request, err
-	}
-	client, err := h.server.getClient(r.Context(), request.ClientID)
-	if err != nil {
-		return request, err
-	}
-	if !h.server.isModeAllowed(client, mode) {
-		return request, ErrModeUnsupported
-	}
-	if mode == ModeOAuth2 {
-		code, err := h.server.getOAuth2Code(r.Context(), values.Get(params.Code))
-		if err != nil {
-			return request, err
-		}
-		if err := h.server.validateOAuth2CodeExchange(code, request.ClientID, values.Get(params.Redirect), values.Get(params.CodeVerifier), client.RequirePKCE); err != nil {
-			return request, err
-		}
-		request.LoginID, request.Scopes = code.LoginID, slices.Clone(code.Scopes)
-	} else {
-		ticket, err := h.server.getTicket(r.Context(), values.Get(params.Ticket))
-		if err != nil {
-			return request, err
-		}
-		if err := h.server.validateTicketExchange(ticket, request.ClientID, values.Get(params.Redirect), values.Get(params.CodeVerifier), client.RequirePKCE); err != nil {
-			return request, err
-		}
-		request.LoginID, request.Scopes = ticket.LoginID, slices.Clone(ticket.Scopes)
-	}
-	return request, nil
+	return h.exchangeCore(nil).evaluateAuthorization(ctx, request)
 }

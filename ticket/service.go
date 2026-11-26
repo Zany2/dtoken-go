@@ -71,10 +71,8 @@ func (m *Service) RevokeTicket(ctx context.Context, ticketValue string) error {
 	if m.ticketManager == nil {
 		return derror.ErrModuleNotEnabled
 	}
-	value, validateErr := m.ticketManager.Validate(ctx, ticketValue)
-	err := m.ticketManager.Revoke(ctx, ticketValue)
-	if err == nil && validateErr == nil && value != nil {
-		value.Status = StatusRevoked
+	value, err := m.ticketManager.revoke(ctx, ticketValue)
+	if err == nil && value != nil {
 		m.triggerTicketEvent(listener.EventTicketRevoke, value, listener.ActionRevoke)
 	}
 	return err

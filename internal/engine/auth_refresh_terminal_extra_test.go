@@ -19,7 +19,7 @@ func TestManagerRefreshTokenPreservesTerminalExtra(t *testing.T) {
 	ctx := context.Background()
 	for _, storageMode := range []string{"atomic", "basic"} {
 		t.Run(storageMode, func(t *testing.T) {
-			for _, scenario := range []string{"live access", "expired access and session", "legacy record"} {
+			for _, scenario := range []string{"live access", "expired access and session", "migrated record"} {
 				t.Run(scenario, func(t *testing.T) {
 					mgr := newTestManager(t, func(cfg *config.Config) {
 						cfg.Timeout = 60
@@ -61,7 +61,7 @@ func TestManagerRefreshTokenPreservesTerminalExtra(t *testing.T) {
 					if err = mgr.serializer.Decode(raw, &legacy); err != nil || legacy.LoginID != pair.LoginID || legacy.AccessToken != pair.AccessToken || !reflect.DeepEqual(legacy.Extra, tokenExtra) {
 						t.Fatalf("public metadata decode = %+v, %v, want existing flat fields", legacy, err)
 					}
-					if scenario == "legacy record" {
+					if scenario == "migrated record" {
 						if err = mgr.saveToStorage(ctx, mgr.getRefreshTokenKey(pair.RefreshToken), legacy, 2*time.Minute); err != nil {
 							t.Fatalf("save legacy record error = %v", err)
 						}
@@ -74,6 +74,7 @@ func TestManagerRefreshTokenPreservesTerminalExtra(t *testing.T) {
 						if err = mgr.saveToStorage(ctx, mgr.getTokenKey(pair.AccessToken), *access); err != nil {
 							t.Fatalf("save legacy access metadata error = %v", err)
 						}
+						upgradeTestTokenPair(t, mgr, pair)
 						wantExtra = nil
 					}
 

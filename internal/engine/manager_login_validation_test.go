@@ -258,6 +258,7 @@ func TestManagerConcurrentChecksCollapseAutoRenew(t *testing.T) {
 		cfg.RenewInterval = 4
 		cfg.ActiveTimeout = config.NoLimit
 	})
+	mgr.pool = &managerCountingMaintenancePool{}
 	storage := requireManagerTestStorage(t, mgr)
 
 	token, err := mgr.Login(ctx, "concurrent-auto-renew", "web", "browser")

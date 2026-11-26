@@ -71,7 +71,7 @@ func (m *Manager) LoginWithOptions(ctx context.Context, opts LoginOptions) (stri
 }
 
 // loginWithOptionsInternal performs login with internal control flags. loginWithOptionsInternal 使用内部控制参数执行登录。
-func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOptions, internal loginInternalOptions) (string, error) {
+func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOptions, internal loginInternalOptions) (_ string, resultErr error) {
 	// Validate login ID 校验登录 ID。
 	if opts.LoginID == "" {
 		return "", derror.ErrIDIsEmpty
@@ -85,9 +85,30 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 	// Lock account writes 锁定账号写操作。
 	unlock := m.lockLoginWrite(opts.LoginID)
 	var concurrencyEvents []terminalLifecycleEvent
+	var pendingSession *Session
+	resetSession := false
+
+	// Flush completed cleanup on early return; successful new logins include it in their final save. 提前返回时保存已完成的清理；新登录成功时将其合并到最终保存。
+	flushCleanup := func() error {
+		if pendingSession == nil {
+			return nil
+		}
+		cleaned := pendingSession
+		pendingSession = nil
+		if resetSession {
+			if err := m.storage.Delete(ctx, m.getSessionKey(opts.LoginID)); err != nil {
+				return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+			}
+			return nil
+		}
+		return m.saveToStorage(ctx, m.getSessionKey(opts.LoginID), *cleaned)
+	}
 
 	// Release lock and publish completed concurrency events on function exit. 函数退出时释放锁并发布已完成的并发终端事件。
 	defer func() {
+		if err := flushCleanup(); err != nil {
+			resultErr = errors.Join(resultErr, err)
+		}
 		unlock()
 		m.triggerTerminalLifecycleEvents(opts.LoginID, concurrencyEvents)
 	}()
@@ -141,31 +162,25 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 				return "", shareErr
 			}
 			if sharedToken != "" {
-				// Clean inactive terminals before the shared fast path returns. 共享快速路径返回前清理失效终端。
-				destroyedByClean, activeTimeoutTerminals, cleanErr := m.cleanExpiredTerminals(ctx, sess)
-				for _, terminal := range activeTimeoutTerminals {
-					concurrencyEvents = append(concurrencyEvents, terminalLifecycleEvent{terminal: terminal, state: TokenStateActiveTimeout})
+				previousCount := len(sess.TerminalInfos)
+				result, limitErr := m.enforceSharedLoginLimit(ctx, sess, sharedToken, policy)
+				concurrencyEvents = append(concurrencyEvents, result.terminalEvents...)
+				if len(sess.TerminalInfos) != previousCount {
+					pendingSession, resetSession = sess, result.destroyedSession
 				}
-				if cleanErr != nil {
-					return "", cleanErr
+				if limitErr != nil {
+					return "", limitErr
+				}
+				if err := flushCleanup(); err != nil {
+					return "", err
 				}
 
-				// A valid shared token normally keeps the session alive; fall back to a fresh login if concurrent storage changes removed it. 有效共享 Token 通常会保留 Session；并发存储变更导致其消失时回退为新登录。
-				if !destroyedByClean {
-					result, limitErr := m.enforceSharedLoginLimit(ctx, sess, sharedToken, policy)
-					concurrencyEvents = append(concurrencyEvents, result.terminalEvents...)
-					if limitErr != nil {
-						return "", limitErr
-					}
-
-					unlock()
-					unlock = func() {}
-					m.triggerTerminalLifecycleEvents(opts.LoginID, concurrencyEvents)
-					concurrencyEvents = nil
-					m.triggerSharedLoginEvent(sess, sharedToken)
-					return sharedToken, nil
-				}
-				sess = nil
+				unlock()
+				unlock = func() {}
+				m.triggerTerminalLifecycleEvents(opts.LoginID, concurrencyEvents)
+				concurrencyEvents = nil
+				m.triggerSharedLoginEvent(sess, sharedToken)
+				return sharedToken, nil
 			}
 		}
 	}
@@ -196,16 +211,6 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 	// Handle concurrency strategy 处理并发策略
 	skipConcurrencyControl := false
 	if sess != nil && internal.rotation != nil {
-		// Prune expired terminals before deciding whether rotation still owns a login slot. 判断轮换是否仍占有登录名额前，先清理过期终端。
-		var expired []TerminalInfo
-		destroyedSession, expired, err = m.cleanExpiredTerminals(ctx, sess)
-		for _, terminal := range expired {
-			concurrencyEvents = append(concurrencyEvents, terminalLifecycleEvent{terminal: terminal, state: TokenStateActiveTimeout})
-		}
-		if err != nil {
-			return "", err
-		}
-
 		// Only replacing an attached original lifecycle may bypass ordinary login policy. 只有替换仍挂载的原生命周期时，才能跳过普通登录策略。
 		current, readErr := m.getTokenRecord(ctx, internal.rotation.AccessToken)
 		if readErr != nil && !isTokenInactiveError(readErr) {
@@ -214,7 +219,10 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 		if readErr == nil && refreshMatchesAccessRecord(internal.rotation, current) {
 			for _, terminal := range sess.TerminalInfos {
 				if terminal.Token == internal.rotation.AccessToken && terminalMatchesTokenRecord(sess.LoginID, terminal, current) {
-					skipConcurrencyControl = true
+					skipConcurrencyControl, err = m.checkTerminalTokenAliveWithOptions(ctx, internal.rotation.AccessToken, current, sess, nil, false, &terminal)
+					if err != nil {
+						return "", err
+					}
 					break
 				}
 			}
@@ -224,8 +232,12 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 	if sess != nil && !destroyedSession && !skipConcurrencyControl {
 		// Sharing was attempted before candidate generation; do not repeat it after the candidate is validated. 共享已在候选 Token 生成前尝试，候选校验后不再重复执行。
 		policy.isShare = false
+		previousCount := len(sess.TerminalInfos)
 		result, err := m.handleConcurrency(ctx, sess, opts.LoginID, device, deviceID, policy)
 		concurrencyEvents = append(concurrencyEvents, result.terminalEvents...)
+		if len(sess.TerminalInfos) != previousCount {
+			pendingSession, resetSession = sess, result.destroyedSession
+		}
 		if err != nil {
 			return "", err
 		}
@@ -235,6 +247,9 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 		if result.handled {
 			// Return shared token when reused 复用时直接返回共享 Token。
 			if result.reuseToken != "" {
+				if err := flushCleanup(); err != nil {
+					return "", err
+				}
 				// Release lock before events 触发事件前释放锁。
 				unlock()
 				unlock = func() {}
@@ -271,6 +286,11 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 		sess.LoginID = opts.LoginID
 	}
 
+	// Reused token text replaces its stale index entry without probing unrelated credentials. 复用 Token 文本时替换其陈旧索引条目，不探测无关凭据。
+	if sessionHasTerminalToken(sess, token) {
+		sessionRemoveTerminals(sess, func(terminal TerminalInfo) bool { return terminal.Token == token })
+	}
+
 	// Increase history terminal count 递增历史终端计数
 	sess.HistoryTerminalCount++
 
@@ -295,10 +315,19 @@ func (m *Manager) loginWithOptionsInternal(ctx context.Context, opts LoginOption
 		expiration = opts.Timeout
 	}
 
-	// Save session without shortening existing TTL 保存 session，避免缩短已有 TTL
-	if err = m.saveSessionWithMinTTL(ctx, m.getSessionKey(opts.LoginID), *sess, expiration); err != nil {
+	// A reset starts a fresh lifetime; otherwise preserve a longer existing TTL in the single final save. 重建会话使用新生命周期；其他情况在唯一最终保存中保留更长的已有 TTL。
+	if destroyedSession {
+		err = m.saveToStorage(ctx, m.getSessionKey(opts.LoginID), *sess, expiration)
+	} else {
+		err = m.saveSessionWithMinTTL(ctx, m.getSessionKey(opts.LoginID), *sess, expiration)
+	}
+	if err != nil {
+		// Do not include the unissued candidate when flushing completed cleanup. 保存已完成的清理时，不包含尚未签发的候选终端。
+		sessionRemoveLatestTerminalByToken(sess, token)
+		sess.HistoryTerminalCount--
 		return "", err
 	}
+	pendingSession = nil
 
 	// Build persisted token metadata from normalized login inputs. 根据规范化后的登录输入构建持久化 Token 元数据。
 	tokenInfo := TokenInfo{
@@ -366,7 +395,7 @@ func (m *Manager) persistLoginToken(
 		accessID = rand.Text()
 	}
 	record := tokenRecord{TokenInfo: tokenInfo, AccessID: accessID, TerminalIndex: terminalIndex}
-	saved, err := m.saveToStorageIfAbsent(ctx, m.getTokenKey(token), record, expiration)
+	saved, err := m.createTokenRecord(ctx, token, &record, expiration)
 	if err != nil {
 		return err
 	}
@@ -376,7 +405,7 @@ func (m *Manager) persistLoginToken(
 
 	// Detach an earlier lifecycle's reverse index without revoking its independent refresh credential. 解除旧生命周期的反向索引，不撤销其独立有效的刷新凭据。
 	if err = m.storage.Delete(ctx, m.getTokenRefreshKey(token)); err != nil {
-		_ = m.storage.Delete(ctx, m.getTokenKey(token))
+		_ = m.deleteTokenRecords(ctx, token)
 		return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
@@ -413,7 +442,7 @@ func (m *Manager) persistLoginToken(
 func (m *Manager) rollbackPersistedLoginToken(ctx context.Context, token string) error {
 	// Delete the primary token mapping first. 先删除 Token 主映射。
 	var rollbackErr error
-	if err := m.storage.Delete(ctx, m.getTokenKey(token)); err != nil {
+	if err := m.deleteTokenRecords(ctx, token); err != nil {
 		rollbackErr = fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
 	}
 
@@ -428,7 +457,7 @@ func (m *Manager) rollbackPersistedLoginToken(ctx context.Context, token string)
 	return rollbackErr
 }
 
-// LoginByToken validates an existing token and schedules asynchronous renewal. LoginByToken 校验已有 Token 并调度异步续期。
+// LoginByToken schedules forced renewal, falling back inline when the pool rejects it. LoginByToken 调度强制续期，池拒绝时内联回退。
 func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 	if m.IsClosed() {
 		return derror.ErrManagerNotFound
@@ -477,17 +506,18 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 	// Atomically replace queued automatic maintenance with one forced renewal for this checked lifecycle. 用本次已校验生命周期的强制续期原子替换排队中的自动维护。
 	generation, reserved := m.beginLoginMaintenance(tokenValue, expectedRecord, activeAt, true)
 
-	// Release the account lock before submitting because a pool may execute tasks inline. 提交前释放账号锁，因为协程池可能内联执行任务。
+	// Release the account lock before submission because rejection runs the fallback inline. 提交前释放账号锁，因为拒绝时会内联执行回退任务。
 	unlock()
 	unlock = func() {}
 	if !reserved {
 		return nil
 	}
 
-	accepted := m.submitAsync("LoginByToken", func() {
+	task := func() {
 		defer m.finishLoginMaintenance(tokenValue, generation)
 		m.runLoginMaintenance(tokenValue, expectedRecord, generation, true, false, activeTimeout > 0)
-	})
+	}
+	accepted := m.submitAsync("LoginByToken", task, task)
 	if !accepted {
 		m.finishLoginMaintenance(tokenValue, generation)
 	}
@@ -495,7 +525,7 @@ func (m *Manager) LoginByToken(ctx context.Context, tokenValue string) error {
 	return nil
 }
 
-// IsLogin checks if a user is logged in. IsLogin 检查用户是否登录。
+// IsLogin validates credentials without implicit account or device restriction checks. IsLogin 校验凭据有效性，不隐式检查账号或设备封禁。
 func (m *Manager) IsLogin(ctx context.Context, tokenValue string) bool {
 	if m.IsClosed() {
 		return false
@@ -505,7 +535,7 @@ func (m *Manager) IsLogin(ctx context.Context, tokenValue string) bool {
 	return m.checkLoginInternal(ctx, tokenValue) == nil
 }
 
-// CheckLogin checks if a user is logged in and returns an error if not. CheckLogin 检查用户是否登录，如果未登录则返回错误。
+// CheckLogin validates credentials and returns their failure cause; access restrictions require explicit checks. CheckLogin 校验凭据并返回失效原因；访问封禁需要显式检查。
 func (m *Manager) CheckLogin(ctx context.Context, tokenValue string) error {
 	if m.IsClosed() {
 		return derror.ErrManagerNotFound
@@ -707,12 +737,12 @@ func (m *Manager) RenewTimeout(ctx context.Context, tokenValue string, timeout t
 
 	// Preserve lifecycle identity while updating the timeout. 更新有效期时保留生命周期标识。
 	record.TokenInfo = *tokenInfo
-	if err = m.saveToStorage(ctx, m.getTokenKey(tokenValue), *record, expiration); err != nil {
+	if err = m.saveTokenRecord(ctx, tokenValue, record, expiration); err != nil {
 		return err
 	}
 
 	// Renew session without shortening existing TTL 续期 Session，避免缩短已有 TTL
-	if err = m.saveSessionWithMinTTL(ctx, m.getSessionKey(tokenInfo.LoginID), *sess, expiration); err != nil {
+	if err = m.renewSessionTTL(ctx, m.getSessionKey(tokenInfo.LoginID), expiration); err != nil {
 		return err
 	}
 
@@ -722,20 +752,15 @@ func (m *Manager) RenewTimeout(ctx context.Context, tokenValue string, timeout t
 	}
 
 	if m.resolveActiveTimeoutFromSeconds(tokenInfo.ActiveTimeout) > 0 {
-		// Load current active marker 加载当前活跃标记。
-		activeValue, activeErr := m.storage.Get(ctx, m.getActiveKey(tokenValue))
-		if activeErr != nil {
-			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, activeErr)
+		// Change only the lifetime; manual renewal must not refresh activity or recreate a missing marker. 仅修改有效期，手动续期不得刷新活跃时间或重建缺失标记。
+		activeKey := m.getActiveKey(tokenValue)
+		if expiration > 0 {
+			err = m.expireIfLimited(ctx, activeKey, expiration)
+		} else {
+			err = m.persistStoredKey(ctx, activeKey)
 		}
-
-		// Initialize active marker if missing 缺失时初始化活跃标记。
-		if activeValue == nil {
-			activeValue = time.Now().Unix()
-		}
-
-		// Persist active marker TTL 持久化活跃标记 TTL。
-		if err = m.storage.Set(ctx, m.getActiveKey(tokenValue), activeValue, expiration); err != nil {
-			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -761,33 +786,37 @@ func (m *Manager) renewFunc(ctx context.Context, tokenValue, loginID string, rec
 	unlock := m.lockLoginWrite(loginID)
 	defer func() { unlock() }()
 
-	// Reload token identity and session under the account lock. 在账号锁内重新加载 Token 身份与 Session。
-	tokenInfo, err := m.getTokenInfo(ctx, tokenValue)
-	if err != nil || tokenInfo.LoginID != loginID {
+	// Reload token identity under the account lock; renewal only needs Session TTL. 在账号锁内重新加载 Token 身份，续期仅需要 Session TTL。
+	record, err := m.getTokenRecord(ctx, tokenValue)
+	if err != nil || record.LoginID != loginID {
 		return
 	}
-	sess, err := m.getSession(ctx, loginID)
-	if err != nil || sess == nil {
-		return
-	}
-	if !m.renewTokenAndSessionLocked(ctx, tokenValue, tokenInfo, sess, recheckDue) {
+	if !m.renewTokenAndSessionLocked(ctx, tokenValue, record, recheckDue) {
 		return
 	}
 
 	// Publish the event without holding the account lock. 不持有账号锁发布续期事件。
 	unlock()
 	unlock = func() {}
-	m.triggerEvent(listener.EventRenew, loginID, tokenInfo.Device, tokenInfo.DeviceID, tokenValue, nil)
+	m.triggerEvent(listener.EventRenew, loginID, record.Device, record.DeviceID, tokenValue, nil)
 }
 
 // renewTokenAndSessionLocked renews one checked token while the account lock is held. renewTokenAndSessionLocked 在持有账号锁时续期已校验 Token。
-func (m *Manager) renewTokenAndSessionLocked(ctx context.Context, tokenValue string, tokenInfo *TokenInfo, sess *Session, recheckDue bool) bool {
-	if tokenInfo == nil || sess == nil {
+func (m *Manager) renewTokenAndSessionLocked(ctx context.Context, tokenValue string, record *tokenRecord, recheckDue bool) bool {
+	if record == nil || record.Revoked {
 		return false
 	}
+	tokenInfo := &record.TokenInfo
 
 	// Collapse queued checks after an earlier task has already renewed the token. 前序任务已完成续期时合并后续排队检查。
 	if recheckDue && !m.isAutoRenewDue(ctx, tokenValue) {
+		return false
+	}
+
+	// Inspect only the Session lifetime before renewing credentials. 续期凭据前只查询 Session 有效期。
+	sessionKey := m.getSessionKey(tokenInfo.LoginID)
+	sessionTTL, err := m.storage.TTL(ctx, sessionKey)
+	if err != nil || sessionTTL != adapter.TTLNoExpire && sessionTTL <= 0 {
 		return false
 	}
 
@@ -798,9 +827,15 @@ func (m *Manager) renewTokenAndSessionLocked(ctx context.Context, tokenValue str
 		return false
 	}
 
+	// Extensions follow the renewed credential lifetime without joining ordinary login reads. 扩展数据跟随凭据续期，但不进入普通登录读取路径。
+	if err := m.renewTokenExtra(ctx, record, expiration); err != nil {
+		m.logger.Errorf("manager.renewTokenAndSessionLocked: failed to renew token extra, error=%v", err)
+		return false
+	}
+
 	// Renew session without shortening existing TTL. 续期 Session，避免缩短已有 TTL。
-	if err := m.saveSessionWithMinTTL(ctx, m.getSessionKey(tokenInfo.LoginID), *sess, expiration); err != nil {
-		m.logger.Errorf("manager.renewTokenAndSessionLocked: failed to save session, loginID=%s, error=%v", tokenInfo.LoginID, err)
+	if err := m.extendStoredTTL(ctx, sessionKey, sessionTTL, expiration); err != nil {
+		m.logger.Errorf("manager.renewTokenAndSessionLocked: failed to extend session TTL, loginID=%s, error=%v", tokenInfo.LoginID, err)
 		return false
 	}
 

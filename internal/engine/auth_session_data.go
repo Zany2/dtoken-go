@@ -118,14 +118,10 @@ func (m *Manager) SetSessionValueByToken(ctx context.Context, tokenValue, key st
 		return err
 	}
 
-	// Preserve the existing full pre-lock validation without allowing a replacement lifecycle to be cleaned. 保留原有锁前完整校验，同时避免清理替代生命周期。
-	if _, _, err = m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{expectedRecord: expectedRecord}); err != nil {
-		return err
-	}
 	unlock := m.lockLoginWrite(expectedRecord.LoginID)
 	defer func() { unlock() }()
 
-	// Revalidate under the lock to prevent writes after logout. 锁内重新校验，避免登出后继续写入。
+	// Validate the captured lifecycle and load Session once under its account lock. 在账号锁内校验捕获的生命周期，并仅加载一次 Session。
 	sess, checkedInfo, err := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue, expectedRecord)
 	if err != nil {
 		// Publish a timeout discovered during locked revalidation only after unlocking. 锁内复核发现超时时，仅在解锁后发布事件。
@@ -194,14 +190,10 @@ func (m *Manager) DeleteSessionValueByToken(ctx context.Context, tokenValue, key
 		return err
 	}
 
-	// Preserve the existing full pre-lock validation without allowing a replacement lifecycle to be cleaned. 保留原有锁前完整校验，同时避免清理替代生命周期。
-	if _, _, err = m.checkLoginAndGetContextWithOptions(ctx, tokenValue, checkLoginOptions{expectedRecord: expectedRecord}); err != nil {
-		return err
-	}
 	unlock := m.lockLoginWrite(expectedRecord.LoginID)
 	defer func() { unlock() }()
 
-	// Revalidate under the lock to prevent writes after logout. 锁内重新校验，避免登出后继续写入。
+	// Validate the captured lifecycle and load Session once under its account lock. 在账号锁内校验捕获的生命周期，并仅加载一次 Session。
 	sess, checkedInfo, err := m.checkLoginAndGetContextNoRenewLocked(ctx, tokenValue, expectedRecord)
 	if err != nil {
 		// Publish a timeout discovered during locked revalidation only after unlocking. 锁内复核发现超时时，仅在解锁后发布事件。

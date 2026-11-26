@@ -19,9 +19,9 @@ type AccessSubject struct {
 
 // AccessProvider resolves permissions and roles for a subject. AccessProvider 为主体解析权限和角色。
 type AccessProvider interface {
-	// Permissions resolves subject permissions. Permissions 解析主体权限。
+	// Permissions resolves permissions; nil falls back to Session, an empty slice does not, and errors abort resolution. Permissions 解析权限；nil 回退 Session，空切片不回退，错误中止解析。
 	Permissions(ctx context.Context, subject AccessSubject) ([]string, error)
-	// Roles resolves subject roles. Roles 解析主体角色。
+	// Roles resolves roles; nil falls back to Session, an empty slice does not, and errors abort resolution. Roles 解析角色；nil 回退 Session，空切片不回退，错误中止解析。
 	Roles(ctx context.Context, subject AccessSubject) ([]string, error)
 }
 

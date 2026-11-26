@@ -100,21 +100,21 @@ KeyPrefix = "dtoken:"
 存储 key 通常会组合为：
 
 ```text
-{编码后的 KeyPrefix}{编码后的 AuthType}{业务前缀}{业务值}
+{编码后的 KeyPrefix}{编码后的 AuthType}v2:{业务前缀}{业务值}
 ```
 
 例如：
 
 ```text
-dtoken:admin:token:xxx
-dtoken:admin:session:10001
+dtoken:admin:v2:token:xxx
+dtoken:admin:v2:session:10001
 ```
 
-两个命名空间分别编码：移除一个末尾分隔符，将内部 `\` 转为 `\\`、内部 `:` 转为 `\:`，再补上末尾 `:`。例如 `AuthType = "admin:token:"` 的存储片段为 `admin\:token:`，不会与 `admin:` 下的 Token 键混淆。普通名称的键格式不变；Manager、Nonce、OAuth2、Ticket、ShortKey 共用此规则。命名空间编码由各组件的内部实现统一处理。
+两个命名空间分别编码：移除一个末尾分隔符，将内部 `\` 转为 `\\`、内部 `:` 转为 `\:`，再补上末尾 `:`。例如 `AuthType = "admin:token:"` 的存储片段为 `admin\:token:`，不会与 `admin:` 下的 Token 键混淆。随后统一追加固定 `v2:` 段；Manager、Nonce、OAuth2、Ticket、ShortKey 共用此规则。应用不需要把版本段写入 KeyPrefix 或 AuthType，命名空间编码由组件内部统一处理。
 
-升级已有部署时，含内部冒号或反斜杠的命名空间，以及直接使用未带末尾分隔符的旧扩展模块构造器所产生的键，需要显式迁移；不会自动回退读取有歧义的旧命名空间。应先停止旧版本写入，核对数据归属后迁移相关键并保留剩余 TTL，再启用新版本。不要只迁移 Token 而遗漏 Session、封禁及刷新凭证；若重新建立登录态，也仍须保留原封禁策略。
+所有无版本空间均需显式迁移，即使 AuthType 和 KeyPrefix 没有特殊字符。先停止旧版本写入，再使用 [PrepareAuthUpgrade](../../design/namespace-copy_zh.md) 转换数据并保留剩余 TTL；源与目标可使用相同 KeyPrefix。原先未按当前组件边界编码的历史键仍需先核对和整理归属。新运行时不回退读取旧空间；不要只迁移 Token 而遗漏 Session、封禁及刷新凭证，重新建立登录态也仍须保留原封禁策略。
 
-封禁记录新增内部 `loginId`、`kind`（`account`、`service`、`device`）字段，公开返回结构不变。账号封禁的 `loginID` 同样转义。归属明确的旧标记继续兼容；业务键中含反斜杠且没有账号归属的旧标记无法可靠区分原始和转义账号，`Check`、读取详情、TTL 和解封操作会返回 `ErrInvalidParam`，不会覆盖或删除该记录。此类数据需依据可信账号资料确认归属，补齐内部字段并迁移到对应键；不能仅凭旧键猜测账号。布尔查询仍沿用出错返回 `false` 的约定，需要错误信息时使用对应的 `Check` 或 `Get` 方法。
+封禁记录包含内部 `loginId`、`kind`（`account`、`service`、`device`）字段，公开返回结构不变。账号封禁的 `loginID` 同样转义。运行时只访问规范键，并要求这两个字段齐全。缺少 loginId 或 kind 时，返回错误的接口报告 ErrInvalidParam；即使键后缀未变，旧记录也须离线转换。含反斜杠且缺少归属的旧标记无法可靠区分原始和转义账号，须依据可信资料补齐归属后迁移；不能仅凭旧键猜测账号。布尔查询仍沿用出错返回 `false` 的约定，需要错误信息时使用对应的 `Check` 或 `Get` 方法。
 
 `AuthType`、`KeyPrefix`、`TokenName` 不能包含空白字符，并且长度不能超过 `64` 个字符。
 

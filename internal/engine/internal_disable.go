@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	adapter "github.com/Zany2/dtoken-go/contract"
@@ -18,26 +17,16 @@ func (m *Manager) retireDisabledTerminals(ctx context.Context, sess *Session) er
 			continue
 		}
 
-		record, err := m.getTokenRecord(ctx, terminal.Token)
+		record, allowed, err := m.loadTerminalCleanupRecord(ctx, sess.LoginID, terminal)
 		if err != nil {
-			if !isTokenInactiveError(err) {
-				return err
-			}
+			return err
+		}
+		if !allowed {
+			continue
+		}
 
-			// Share inactive-credential ownership checks with logout, kickout, and replacement. 与退出、踢人和顶替共用失效凭据归属校验。
-			allowed, checkErr := m.terminalTokenCleanupAllowed(ctx, sess.LoginID, terminal)
-			if checkErr != nil {
-				return checkErr
-			}
-			if !allowed {
-				continue
-			}
-		} else {
-			// Stale session entries must not retire a replacement lifecycle. 陈旧 Session 条目不能废弃替换后的生命周期。
-			if !terminalMatchesTokenRecord(sess.LoginID, terminal, record) {
-				continue
-			}
-
+		// Preserve inspectable credential details while revoking only the checked lifecycle. 保留可查询的凭据详情，只废弃已核对的生命周期。
+		if record != nil {
 			ttl, ttlErr := m.storage.TTL(ctx, m.getTokenKey(terminal.Token))
 			if ttlErr != nil {
 				return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, ttlErr)
@@ -47,7 +36,7 @@ func (m *Manager) retireDisabledTerminals(ctx context.Context, sess *Session) er
 				if ttl == adapter.TTLNoExpire {
 					ttl = 0
 				}
-				if err := m.saveToStorage(ctx, m.getTokenKey(terminal.Token), *record, ttl); err != nil {
+				if err := m.saveTokenRecord(ctx, terminal.Token, record, ttl); err != nil {
 					return err
 				}
 			}
@@ -83,32 +72,24 @@ type storedDisableRecord struct {
 	marker disableMarker
 }
 
-// matchesDisableIdentity rejects foreign owners and ambiguous ownerless legacy keys. matchesDisableIdentity 拒绝其他账号记录及无法确定归属的旧键。
-func (m *Manager) matchesDisableIdentity(key string, actual, expected disableMarker) (bool, error) {
-	if actual.Kind != "" && actual.Kind != expected.Kind ||
-		actual.Service != expected.Service || actual.Device != expected.Device || actual.DeviceID != expected.DeviceID {
-		return false, nil
+// matchesDisableIdentity requires explicit ownership and rejects records from another scope. matchesDisableIdentity 要求明确归属，并拒绝其他作用域的记录。
+func matchesDisableIdentity(actual, expected disableMarker) (bool, error) {
+	if actual.LoginID == "" || actual.Kind == "" {
+		return false, fmt.Errorf("%w: disable marker requires explicit loginId and kind; migrate legacy data offline", derror.ErrInvalidParam)
 	}
-	if actual.LoginID != "" {
-		return actual.LoginID == expected.LoginID, nil
-	}
-
-	// Escaped and raw legacy keys overlap; field checks alone cannot recover the owner. 转义键与原始旧键重叠，仅检查业务字段无法恢复账号归属。
-	if actual.Kind != "" || strings.Contains(strings.TrimPrefix(key, m.storageNamespace()), "\\") {
-		return false, fmt.Errorf("%w: disable marker has ambiguous legacy ownership; migrate it with an explicit loginId and kind", derror.ErrInvalidParam)
-	}
-	return true, nil
+	return actual.LoginID == expected.LoginID && actual.Kind == expected.Kind &&
+		actual.Service == expected.Service && actual.Device == expected.Device && actual.DeviceID == expected.DeviceID, nil
 }
 
-// saveDisableMarker refuses to overwrite records belonging to another identity. saveDisableMarker 拒绝覆盖其他身份的封禁记录。
-func (m *Manager) saveDisableMarker(ctx context.Context, key, legacyKey string, marker disableMarker, expiration time.Duration) error {
+// saveDisableMarker validates the canonical key before replacing its restriction. saveDisableMarker 替换封禁前校验规范键中记录的归属。
+func (m *Manager) saveDisableMarker(ctx context.Context, key string, marker disableMarker, expiration time.Duration) error {
 	var existing disableMarker
 	exists, err := m.loadDisableMarker(ctx, key, &existing)
 	if err != nil {
 		return err
 	}
 	if exists {
-		matches, err := m.matchesDisableIdentity(key, existing, marker)
+		matches, err := matchesDisableIdentity(existing, marker)
 		if err != nil {
 			return err
 		}
@@ -116,55 +97,58 @@ func (m *Manager) saveDisableMarker(ctx context.Context, key, legacyKey string, 
 			return fmt.Errorf("%w: disable key is occupied by a different identity", derror.ErrInvalidParam)
 		}
 	}
-
-	// Resolve legacy ownership before replacing a restriction, so expiry cannot reveal an older ban. 重设封禁前核对旧记录归属，避免新记录到期后旧封禁重新生效。
-	var legacyRecords []storedDisableRecord
-	if legacyKey != key {
-		legacyRecords, err = m.loadDisableRecords(ctx, marker, legacyKey, legacyKey, true)
-		if err != nil {
-			return err
-		}
-	}
-	if err := m.saveToStorage(ctx, key, marker, expiration); err != nil {
-		return err
-	}
-	for _, record := range legacyRecords {
-		if err := m.storage.Delete(ctx, record.key); err != nil {
-			return fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
-		}
-	}
-	return nil
+	return m.saveToStorage(ctx, key, marker, expiration)
 }
 
-// loadDisableRecords keeps current-key precedence and validates every legacy candidate. loadDisableRecords 保持当前键优先，并核对每个旧键候选记录。
-func (m *Manager) loadDisableRecords(ctx context.Context, expected disableMarker, key, legacyKey string, all bool) ([]storedDisableRecord, error) {
-	keys := uniqueStorageKeys(key, legacyKey)
-	records := make([]storedDisableRecord, 0, len(keys))
-	for _, candidate := range keys {
-		var marker disableMarker
-		exists, err := m.loadDisableMarker(ctx, candidate, &marker)
-		if err != nil {
-			return nil, err
-		}
-		if !exists {
-			continue
-		}
-		matches, err := m.matchesDisableIdentity(candidate, marker, expected)
-		if err != nil {
-			return nil, err
-		}
-		if !matches {
-			continue
-		}
-		records = append(records, storedDisableRecord{key: candidate, marker: marker})
-		if !all {
-			break
-		}
+// loadDisableRecord reads one canonical key without probing legacy candidates. loadDisableRecord 只读取一个规范键，不探测旧键候选。
+func (m *Manager) loadDisableRecord(ctx context.Context, key string, expected disableMarker) (*storedDisableRecord, error) {
+	var marker disableMarker
+	exists, err := m.loadDisableMarker(ctx, key, &marker)
+	if err != nil || !exists {
+		return nil, err
 	}
-	return records, nil
+	matches, err := matchesDisableIdentity(marker, expected)
+	if err != nil || !matches {
+		return nil, err
+	}
+	return &storedDisableRecord{key: key, marker: marker}, nil
 }
 
-// loadAccountDisableRecords validates current and legacy account markers. loadAccountDisableRecords 核对新旧账号封禁记录。
-func (m *Manager) loadAccountDisableRecords(ctx context.Context, loginID string, all bool) ([]storedDisableRecord, error) {
-	return m.loadDisableRecords(ctx, disableMarker{LoginID: loginID, Kind: "account"}, m.getDisableKey(loginID), m.getLegacyDisableKey(loginID), all)
+// deleteDisableRecord reuses validated ownership and avoids a second read on ordinary storage. deleteDisableRecord 复用已核对的归属，避免普通存储再次读取。
+func (m *Manager) deleteDisableRecord(ctx context.Context, record *storedDisableRecord) (bool, error) {
+	if record == nil {
+		return false, nil
+	}
+	if storage, ok := m.storage.(adapter.AtomicStorage); ok {
+		value, err := storage.GetAndDelete(ctx, record.key)
+		if err != nil {
+			return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+		}
+		return value != nil, nil
+	}
+	if err := m.storage.Delete(ctx, record.key); err != nil {
+		return false, fmt.Errorf("%w: %v", derror.ErrStorageUnavailable, err)
+	}
+	return true, nil
+}
+
+// loadAccountDisableRecord loads the canonical account restriction. loadAccountDisableRecord 加载规范键中的账号封禁。
+func (m *Manager) loadAccountDisableRecord(ctx context.Context, loginID string) (*storedDisableRecord, error) {
+	return m.loadDisableRecord(ctx, m.getDisableKey(loginID), disableMarker{LoginID: loginID, Kind: "account"})
+}
+
+// loadServiceDisableRecord loads the canonical service restriction. loadServiceDisableRecord 加载规范键中的服务封禁。
+func (m *Manager) loadServiceDisableRecord(ctx context.Context, loginID, service string) (*storedDisableRecord, error) {
+	return m.loadDisableRecord(ctx, m.getDisableServiceKey(loginID, service), disableMarker{LoginID: loginID, Kind: "service", Service: service})
+}
+
+// loadDeviceDisableRecord loads an exact device scope without applying parent rules. loadDeviceDisableRecord 加载精确设备作用域，不合并设备类型规则。
+func (m *Manager) loadDeviceDisableRecord(ctx context.Context, loginID, device, deviceID string) (*storedDisableRecord, error) {
+	var key string
+	if deviceID == "" {
+		key = m.getDisableDeviceKey(loginID, device)
+	} else {
+		key = m.getDisableDeviceAndDeviceIDKey(loginID, device, deviceID)
+	}
+	return m.loadDisableRecord(ctx, key, disableMarker{LoginID: loginID, Kind: "device", Device: device, DeviceID: deviceID})
 }

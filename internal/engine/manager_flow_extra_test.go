@@ -23,6 +23,7 @@ func TestManagerAutoRenewHonorsThresholdAndInterval(t *testing.T) {
 		cfg.RenewMaxRefresh = 5
 		cfg.RenewInterval = 4
 	})
+	mgr.pool = &managerCountingMaintenancePool{}
 	storage := requireManagerTestStorage(t, mgr)
 
 	token, err := mgr.Login(ctx, "auto-renew", "web")
@@ -1302,7 +1303,7 @@ func TestManagerRefreshTokenRejectsDisabledAccountAndDevice(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LoginWithRefreshToken() error = %v", err)
 		}
-		if err = mgr.saveToStorage(ctx, mgr.getDisableKey("refresh-disabled-account"), DisableInfo{DisableTime: time.Now().Unix()}, time.Minute); err != nil {
+		if err = mgr.saveToStorage(ctx, mgr.getDisableKey("refresh-disabled-account"), disableMarker{LoginID: "refresh-disabled-account", Kind: "account", DisableInfo: DisableInfo{DisableTime: time.Now().Unix()}}, time.Minute); err != nil {
 			t.Fatalf("save disable marker error = %v", err)
 		}
 		if _, err = mgr.RefreshToken(ctx, pair.RefreshToken); !errors.Is(err, derror.ErrAccountDisabled) {
@@ -1318,7 +1319,7 @@ func TestManagerRefreshTokenRejectsDisabledAccountAndDevice(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LoginWithRefreshToken() error = %v", err)
 		}
-		info := DeviceDisableInfo{Device: "web", DeviceID: "browser", DisableTime: time.Now().Unix()}
+		info := disableMarker{LoginID: "refresh-disabled-device", Kind: "device", Device: "web", DeviceID: "browser", DisableInfo: DisableInfo{DisableTime: time.Now().Unix()}}
 		if err = mgr.saveToStorage(ctx, mgr.getDisableDeviceAndDeviceIDKey("refresh-disabled-device", "web", "browser"), info, time.Minute); err != nil {
 			t.Fatalf("save device disable marker error = %v", err)
 		}

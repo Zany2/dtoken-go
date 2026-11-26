@@ -154,8 +154,8 @@ func (m *Manager) CloseManager() {
 	})
 }
 
-// submitAsync submits async work with a goroutine fallback and reports admission. submitAsync 提交异步任务并在池不可用时回退到 goroutine，同时返回是否已接收。
-func (m *Manager) submitAsync(name string, task func()) bool {
+// submitAsync tracks accepted work and optionally runs a synchronous fallback after pool rejection. submitAsync 跟踪已接收任务，并可在池拒绝后同步执行回退任务。
+func (m *Manager) submitAsync(name string, task func(), fallback ...func()) bool {
 	// Register the task unless manager shutdown has started. Manager 开始关闭后不再接收新任务。
 	m.asyncMu.Lock()
 	if m.closed.Load() {
@@ -167,30 +167,30 @@ func (m *Manager) submitAsync(name string, task func()) bool {
 	m.asyncMu.Unlock()
 
 	// Track task completion independently from pool ownership. 独立于协程池所有权跟踪任务完成状态。
-	trackedTask := func() {
+	run := func(work func()) {
 		defer m.asyncWG.Done()
 
-		// Keep goroutine fallback as safe as pool execution when a component panics. 组件发生 panic 时，确保 goroutine 回退与协程池执行一样不会终止进程。
+		// Contain component panics in both pool execution and synchronous fallback. 协程池与同步回退均隔离组件 panic。
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				m.logger.Errorf("manager.submitAsync: task panic recovered, task=%s, panic=%v", name, recovered)
 			}
 		}()
-		task()
+		work()
 	}
 
-	// Fallback when pool is absent 协程池不存在时回退。
-	if pool == nil {
-		go trackedTask()
+	if pool != nil {
+		if err := pool.Submit(func() { run(task) }); err == nil {
+			return true
+		} else {
+			m.logger.Errorf("manager.submitAsync: failed to submit async task, task=%s, error=%v", name, err)
+		}
+	}
+	// Bound overload by using the caller or declining optional work, never creating a goroutine. 过载时使用调用方执行或拒绝可选任务，不另建 goroutine。
+	if len(fallback) > 0 && fallback[0] != nil {
+		run(fallback[0])
 		return true
 	}
-
-	// Submit task to pool 提交任务到协程池。
-	if err := pool.Submit(trackedTask); err != nil {
-		m.logger.Errorf("manager.submitAsync: failed to submit async task, task=%s, error=%v", name, err)
-
-		// Fallback when submit fails 提交失败时回退。
-		go trackedTask()
-	}
-	return true
+	m.asyncWG.Done()
+	return false
 }

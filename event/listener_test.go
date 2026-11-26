@@ -169,6 +169,7 @@ func TestTriggerSyncWaitsForAsyncListeners(t *testing.T) {
 // TestTriggerAsyncWaitTracksDispatchAndSnapshotsInput verifies asynchronous dispatch is tracked and owns its caller snapshot. TestTriggerAsyncWaitTracksDispatchAndSnapshotsInput 验证异步分发被 Wait 跟踪并持有调用时快照。
 func TestTriggerAsyncWaitTracksDispatchAndSnapshotsInput(t *testing.T) {
 	manager := NewManager()
+	manager.SetAsyncPool(&listenerTestPool{submit: func(task func()) error { go task(); return nil }})
 	listenerStarted := make(chan struct{})
 	listenerRelease := make(chan struct{})
 	observed := make(chan listenerEventObservation, 1)
@@ -518,6 +519,7 @@ func TestPanicHandlerPanicIsContained(t *testing.T) {
 // TestTriggerSyncDoesNotWaitForUnrelatedAsyncWork verifies scoped synchronous dispatch does not wait for an earlier asynchronous listener. TestTriggerSyncDoesNotWaitForUnrelatedAsyncWork 验证同步分发不会等待更早启动的无关异步监听器。
 func TestTriggerSyncDoesNotWaitForUnrelatedAsyncWork(t *testing.T) {
 	manager := NewManager()
+	manager.SetAsyncPool(&listenerTestPool{submit: func(task func()) error { go task(); return nil }})
 	unrelatedStarted := make(chan struct{})
 	unrelatedRelease := make(chan struct{})
 	triggerDone := make(chan struct{})
@@ -550,6 +552,7 @@ func TestTriggerSyncDoesNotWaitForUnrelatedAsyncWork(t *testing.T) {
 // TestWaitReleasesAllConcurrentWaiters verifies every lifecycle waiter is notified after asynchronous work drains. TestWaitReleasesAllConcurrentWaiters 验证异步任务排空后所有生命周期等待方都会被唤醒。
 func TestWaitReleasesAllConcurrentWaiters(t *testing.T) {
 	manager := NewManager()
+	manager.SetAsyncPool(&listenerTestPool{submit: func(task func()) error { go task(); return nil }})
 	dispatchStarted := make(chan struct{})
 	dispatchRelease := make(chan struct{})
 	waitDone := make(chan struct{}, 3)
@@ -651,8 +654,8 @@ func TestManagerRegistrationAndCleanupAPIs(t *testing.T) {
 	if got := manager.GetListenerIDs(EventLogin); !reflect.DeepEqual(got, []string{"first"}) {
 		t.Fatalf("GetListenerIDs(login) after unregister = %v, want [first]", got)
 	}
-	if loginEntries[1].listener != nil || loginEntries[1].config != (ListenerConfig{}) {
-		t.Fatal("Unregister retained the removed listener in the slice tail")
+	if loginEntries[1].listener == nil || loginEntries[1].config.ID != secondID {
+		t.Fatal("Unregister mutated an existing dispatch snapshot")
 	}
 	if !manager.Unregister(firstID) {
 		t.Fatal("Unregister did not remove the last login listener")

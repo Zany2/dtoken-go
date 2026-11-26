@@ -100,21 +100,21 @@ KeyPrefix = "dtoken:"
 Storage keys usually follow this structure:
 
 ```text
-{encoded KeyPrefix}{encoded AuthType}{business-prefix}{business-value}
+{encoded KeyPrefix}{encoded AuthType}v2:{business-prefix}{business-value}
 ```
 
 For example:
 
 ```text
-dtoken:admin:token:xxx
-dtoken:admin:session:10001
+dtoken:admin:v2:token:xxx
+dtoken:admin:v2:session:10001
 ```
 
-Each namespace component is encoded independently: remove one trailing separator, escape internal `\` as `\\` and `:` as `\:`, then append `:`. For example, `AuthType = "admin:token:"` becomes the storage component `admin\:token:`, distinct from Token keys under `admin:`. Ordinary names retain their key format. Manager, Nonce, OAuth2, Ticket, and ShortKey share this rule; custom storage integrations can call `utils.StorageNamespace(keyPrefix, authType)`.
+Each namespace component is encoded independently: remove one trailing separator, escape internal `\` as `\\` and `:` as `\:`, then append `:`. For example, `AuthType = "admin:token:"` becomes the storage component `admin\:token:`, distinct from Token keys under `admin:`. A fixed `v2:` segment is then appended. Manager, Nonce, OAuth2, Ticket, and ShortKey share this rule. Applications must not add the version to KeyPrefix or AuthType; components handle namespace encoding internally.
 
-Existing deployments using internal colons or backslashes in namespaces, or extension constructors previously called without trailing separators, require an explicit key migration. Ambiguous old namespaces are not read through a fallback. Stop old writers, verify ownership, migrate the related keys while preserving remaining TTLs, then start the new version. Include sessions, disable markers, and refresh credentials alongside tokens; requiring a fresh login does not remove the need to preserve existing disable policies.
+Every unversioned deployment requires explicit migration, even with ordinary AuthType and KeyPrefix names. Stop old writers, then use [PrepareAuthUpgrade](../../design/namespace-copy.md) to convert records while preserving remaining TTLs; source and target may retain the same KeyPrefix. Historical keys that did not use the current component-boundary encoding require ownership verification and preparation first. The new runtime does not fall back to unversioned storage. Include sessions, disable markers, and refresh credentials alongside tokens; requiring fresh login does not remove the need to preserve restrictions.
 
-Disable records now store internal `loginId` and `kind` fields (`account`, `service`, or `device`), without changing public return types. Account disable keys also escape the account ID. Unambiguous legacy markers remain supported. Legacy business keys containing backslashes without stored ownership cannot reliably distinguish raw and escaped account IDs: checks, metadata reads, TTL reads, and untie operations return `ErrInvalidParam`, without overwriting or deleting the marker. Verify ownership against trusted account records before adding these internal fields and moving the marker to its proper key; never infer ownership solely from the ambiguous key. Boolean queries retain their existing `false`-on-error convention; use the corresponding `Check` or `Get` method when errors must be handled.
+Disable records store internal `loginId` and `kind` fields (`account`, `service`, or `device`), without changing public return types. Account disable keys also escape the account ID. Runtime checks use only canonical keys and require both fields. Missing loginId or kind returns ErrInvalidParam from error-returning APIs; legacy records must be converted offline even when their key suffix is unchanged. Backslash-containing ownerless records cannot distinguish raw and escaped account IDs reliably. Verify ownership against trusted data before migration; never infer it solely from an ambiguous key. Boolean queries retain their existing `false`-on-error convention; use the corresponding `Check` or `Get` method when errors must be handled.
 
 `AuthType`, `KeyPrefix`, and `TokenName` must not contain whitespace and must not exceed `64` characters.
 

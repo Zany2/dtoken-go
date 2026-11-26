@@ -20,6 +20,77 @@ type StorageFactory func(t *testing.T) adapter.FullStorage
 func RunStorageContract(t *testing.T, factory StorageFactory) {
 	t.Helper()
 
+	t.Run("optional update retaining TTL", func(t *testing.T) {
+		ctx := context.Background()
+		storage := factory(t)
+		updater, ok := storage.(adapter.UpdateStorage)
+		if !ok {
+			t.Skip("update capability not provided")
+		}
+		key := "contract:update"
+		for _, lifetime := range []time.Duration{time.Minute, 0} {
+			if err := storage.Set(ctx, key, "before", lifetime); err != nil {
+				t.Fatal(err)
+			}
+			before, err := storage.TTL(ctx, key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = updater.Update(ctx, key, "after"); err != nil {
+				t.Fatal(err)
+			}
+			after, err := storage.TTL(ctx, key)
+			if err != nil || (lifetime == 0 && after != adapter.TTLNoExpire) || (lifetime > 0 && (after <= 0 || after > before)) {
+				t.Fatalf("TTL changed: %v -> %v, %v", before, after, err)
+			}
+			if value, err := storage.Get(ctx, key); err != nil || value != "after" {
+				t.Fatalf("updated value = %v, %v", value, err)
+			}
+		}
+		if err := storage.Expire(ctx, key, 0); err != nil {
+			t.Fatal(err)
+		}
+		if err := updater.Update(ctx, key, "revived"); !errors.Is(err, derror.ErrKeyNotFound) {
+			t.Fatalf("missing update = %v", err)
+		}
+		if value, err := storage.Get(ctx, key); err != nil || value != nil {
+			t.Fatalf("expired value recreated: %v, %v", value, err)
+		}
+	})
+
+	t.Run("optional persistence", func(t *testing.T) {
+		ctx := context.Background()
+		storage := factory(t)
+		persistent, ok := storage.(adapter.PersistentStorage)
+		if !ok {
+			t.Skip("persistence capability not provided")
+		}
+		key := "contract:persist"
+		if err := storage.Set(ctx, key, "value", time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < 2; i++ {
+			if err := persistent.Persist(ctx, key); err != nil {
+				t.Fatal(err)
+			}
+			if ttl, err := storage.TTL(ctx, key); err != nil || ttl != adapter.TTLNoExpire {
+				t.Fatalf("persistent TTL = %v, %v", ttl, err)
+			}
+		}
+		if value, err := storage.Get(ctx, key); err != nil || value != "value" {
+			t.Fatalf("persisted value = %v, %v", value, err)
+		}
+		if err := storage.Delete(ctx, key); err != nil {
+			t.Fatal(err)
+		}
+		if err := persistent.Persist(ctx, key); !errors.Is(err, derror.ErrKeyNotFound) {
+			t.Fatalf("missing persistence = %v", err)
+		}
+		if value, err := storage.Get(ctx, key); err != nil || value != nil {
+			t.Fatalf("missing key recreated: %v, %v", value, err)
+		}
+	})
+
 	t.Run("basic operations", func(t *testing.T) {
 		ctx := context.Background()
 		storage := factory(t)

@@ -48,6 +48,18 @@ type AtomicStorage interface {
 	SetIfAbsent(ctx context.Context, key string, value any, expiration time.Duration) (bool, error)
 }
 
+// UpdateStorage optionally replaces an existing value atomically without changing its expiration. UpdateStorage 可选地原子替换已有值且不改变有效期。
+type UpdateStorage interface {
+	// Update preserves the existing deadline or unlimited lifetime; missing or expired keys return errors.ErrKeyNotFound without creation. Update 保留已有截止时间或永久有效期；缺失或过期键返回 errors.ErrKeyNotFound，不创建键。
+	Update(ctx context.Context, key string, value any) error
+}
+
+// PersistentStorage optionally removes expiration without reading or replacing the stored value. PersistentStorage 可选地移除有效期，不读取或替换存储值。
+type PersistentStorage interface {
+	// Persist keeps an existing key indefinitely; already persistent keys succeed and missing keys return an error. Persist 将已有键改为永久有效；已永久有效的键成功，缺失键返回错误。
+	Persist(ctx context.Context, key string) error
+}
+
 // ScannerStorage defines optional key scanning capability. ScannerStorage 定义可选的键扫描能力。
 type ScannerStorage interface {
 	// Keys gets all keys matching pattern. Keys 获取匹配模式的全部键。
@@ -60,7 +72,7 @@ type AdminStorage interface {
 	Clear(ctx context.Context) error
 }
 
-// FullStorage groups all built-in storage capabilities. FullStorage 组合全部内置存储能力。
+// FullStorage groups base, atomic, scan and administrative operations; UpdateStorage and PersistentStorage remain independent extensions. FullStorage 组合基础、原子、扫描及管理操作；UpdateStorage 和 PersistentStorage 仍是独立扩展。
 type FullStorage interface {
 	// Storage provides the base key-value operations Storage 提供基础键值操作
 	Storage

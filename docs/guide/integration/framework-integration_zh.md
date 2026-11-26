@@ -15,6 +15,23 @@
 WithAuth 返回 (AuthOption, error)，Context 返回 (中间件, error)。启动服务前应检查绑定错误；下文初始化片段放在返回 error 的函数中使用。
 
 
+## 登录校验与封禁检查
+
+`AuthMiddleware` 只检查凭据有效性，不隐式读取账号或设备封禁。需要这些访问限制时，使用 `AccessMiddleware` 显式设置 `CheckDisable`；该选项同时检查账号、设备类型与具体设备，并复用已读取的 Token 身份。服务封禁仍由业务入口按服务名称检查。
+
+下面的 Gin 示例假定已通过 `RegisterDTokenContextMiddleware` 绑定实例：
+
+```go
+protected := r.Group("/protected")
+protected.Use(gindt.AccessMiddleware(ctx,
+    gindt.WithRouteAccessHandler(func(_ context.Context, _ *gin.Context, req *gindt.RouteAccessRequest) {
+        req.CheckDisable = true
+    }),
+))
+```
+
+`AccessMiddleware` 默认要求登录，回调追加封禁规则；其他框架使用各自的回调签名。注解设置 `CheckDisable: true`，直接调用公共检查则设置 `httpauth.Request.CheckDisable`。从隐式封禁行为升级时，请按[迁移说明](../../design/module-migration_zh.md)同步修改路由声明。
+
 ## 安装
 
 ```bash

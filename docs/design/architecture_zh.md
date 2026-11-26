@@ -71,6 +71,22 @@ flowchart TD
 
 Manager 在同一实现包中组织账号协调、Token 维护和运行时关闭状态。文件职责见[引擎文件索引](source-layout_zh.md#核心引擎文件索引)。并发控制、存储操作和业务流程的正确性由后续功能校验单独确认。
 
+## Token 存储与校验
+
+权限与角色按需解析：Token 授权先校验凭据、形成 `AccessSubject`，Provider 接管时不预读 Session。仅未配置 Provider 或返回 nil 时读取 Session 作为回退；组合检查共享这次读取，权限拒绝后跳过角色查询。完整自省仍保留独立的 Session 校验。
+
+新签发的 Token 主记录使用引擎私有的 `dtk:2:` 固定格式，保存身份、状态、生命周期 ID、超时参数和终端关联，不包含完整 Extra。存储 TTL 决定绝对过期；基础校验读取主记录并解析小字段，不经过通用 Codec，也不读取 Extra 或正常路径中的 Session。未启用活跃超时时，基础登录校验的前台存储读取只有一次 Token GET。封禁由显式访问检查同步执行，活跃超时、权限查询和后台维护另计开销。
+
+只有 Extra 非 nil 时才创建 `token-extra:<accessID>`，内容由配置的 Codec 编解码；空 map 也会保存。`GetTokenInfo`、自省及刷新签发按需读取扩展。续期同步维护其有效期，显式退出、踢出、顶替和刷新撤销清理对应扩展。扩展缺失或损坏会使详情读取失败，但不会单独使主凭据失效或阻止退出。账号封禁保持原有废弃凭据和保留元数据的行为。
+
+Session、刷新凭据和独立能力对象仍使用 Codec。Manager、Nonce、OAuth2、Ticket、ShortKey 统一使用 `{编码后的 KeyPrefix}{编码后的 AuthType}v2:`，不回退读取无版本空间。升级通过 [PrepareAuthUpgrade](namespace-copy_zh.md) 在停写窗口转换数据；运行时访问凭据只接受含明确 AuthType 和 AccessID 的紧凑记录，已移除旧 Token 的 Codec 解码与匿名写回；封禁只读取规范键并要求明确归属和类型，旧键解释仅保留在离线迁移中。终端整理按策略作用域及数量阈值触发，普通登录不再全量探测已有 Token；仍需读取及保存 Session。完整进度见[实施方案](performance-refactor-plan_zh.md)。
+
+## 独立能力操作
+
+独立能力的写协调只覆盖需要关联的凭据：ShortKey 的创建、确认、消费、撤销按 key 串行；Ticket 普通存储的消费与撤销也按 key 串行，锁条目在持锁者和等待者全部离开后回收。这些是单个 Manager 的本地协调，不替代存储的跨实例原子能力。
+
+Ticket、ShortKey 和 OAuth2 的 Service 撤销入口复用内部撤销实际处理的记录生成事件，不为事件再次读取、解码凭据。正常撤销各读取一次；ShortKey 保留待确认状态的原事件字段约定。OAuth2 将访问令牌和刷新令牌合并到一次 Delete 调用，不要求基础存储提供多键事务。公开 API 和一次性消费校验保持不变。
+
 ## 公开 API 与生命周期边界
 
 应用首选 Auth，Manager 是受支持的高级 API。根包暴露的引擎类型别名仍属于公开 API；实现路径位于 internal 并不会取消其兼容性要求。TokenInfo、Session、TerminalInfo 等共享模型以 contract 为声明来源。
@@ -87,4 +103,4 @@ Auth 门面、全局注册和框架绑定可以共享同一引擎。能力服务
 | [API 与生命周期](api-lifecycle_zh.md) | 公开 API、组件所有权、实例共享和关闭 |
 | [迁移指南](module-migration_zh.md) | 旧路径迁移、发布顺序及消费者验证步骤 |
 
-功能细节分别维护在[登录认证](../guide/core/authentication_zh.md)、[Session 与终端](../guide/core/session-terminal_zh.md)、[权限与角色](../guide/core/permission_zh.md)、[刷新令牌](../guide/security/refresh-token_zh.md)和[自动续签设计](auto-renew_zh.md)中。持久化共享模型以 [contract/model.go](../../contract/model.go) 为准，存储命名空间见[配置指南](../guide/reference/configuration_zh.md)。
+功能细节分别维护在[登录认证](../guide/core/authentication_zh.md)、[Session 与终端](../guide/core/session-terminal_zh.md)、[权限与角色](../guide/core/permission_zh.md)、[刷新令牌](../guide/security/refresh-token_zh.md)和[自动续签设计](auto-renew_zh.md)中。公开共享模型以 [contract/model.go](../../contract/model.go) 为准；Token 主记录格式位于 [internal_token_record.go](../../internal/engine/internal_token_record.go)，存储命名空间见[配置指南](../guide/reference/configuration_zh.md)。

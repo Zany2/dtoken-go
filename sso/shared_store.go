@@ -49,6 +49,9 @@ func (c *ClientApp) exchangeSharedStore(ctx context.Context, values url.Values) 
 	if err != nil {
 		return nil, err
 	}
+	if c.config.ExchangeService != nil {
+		return c.config.ExchangeService.Exchange(ctx, values)
+	}
 	target, err := joinURL(c.config.ServerURL, c.config.Endpoints.Token)
 	if err != nil {
 		return nil, err
@@ -62,4 +65,31 @@ func (c *ClientApp) exchangeSharedStore(ctx context.Context, values url.Values) 
 	defer request.Body.Close()
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	return c.config.SharedStoreServer.exchangeRequest(request)
+}
+
+// exchangeCore binds shared protocol rules and adapts only the legacy HTTP hook. exchangeCore 绑定共用协议规则，仅适配旧 HTTP 钩子。
+func (h *HTTPServer) exchangeCore(r *http.Request) *ExchangeService {
+	enrich := h.options.ExchangeEnricher
+	if h.options.EnrichExchangeResult != nil && r != nil {
+		enrich = func(_ context.Context, clientID string, result *TicketExchangeResult) error {
+			return h.options.EnrichExchangeResult(r, clientID, result)
+		}
+	}
+	return &ExchangeService{
+		server:          h.server,
+		clientSessionMu: &h.clientSessionMu,
+		options: ExchangeOptions{
+			Params:               h.options.Params,
+			CheckSign:            h.options.CheckSign,
+			SecretKey:            h.options.SecretKey,
+			VerificationKey:      h.options.VerificationKey,
+			AllowAnonymousClient: h.options.AllowAnonymousClient,
+			EnableSLO:            h.options.EnableSLO,
+			MaxRegisteredClient:  h.options.MaxRegisteredClient,
+			RequestLimits:        h.options.RequestLimits,
+			ReplayProtection:     h.options.ReplayProtection,
+			AuthorizationPolicy:  h.options.AuthorizationPolicy,
+			EnrichExchangeResult: enrich,
+		},
+	}
 }

@@ -99,8 +99,8 @@ func TestManagerLoginWithOptionsMetadataOverridesDisableSharing(t *testing.T) {
 	}
 }
 
-// TestManagerSharedLoginCleansInactiveTerminals verifies the shared fast path removes stale terminal records. TestManagerSharedLoginCleansInactiveTerminals 验证共享快速路径会移除失效终端记录。
-func TestManagerSharedLoginCleansInactiveTerminals(t *testing.T) {
+// TestManagerSharedLoginKeepsLazyTerminalEntries verifies sharing below the limit leaves stale index entries. TestManagerSharedLoginKeepsLazyTerminalEntries 验证未超限共享保留待整理的陈旧索引。
+func TestManagerSharedLoginKeepsLazyTerminalEntries(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
 		cfg.IsConcurrent = true
@@ -131,8 +131,11 @@ func TestManagerSharedLoginCleansInactiveTerminals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTerminalListByLoginID() error = %v", err)
 	}
-	if len(terminals) != 1 || terminals[0].Token != aliveToken {
-		t.Fatalf("terminals after shared cleanup = %+v, want only %q", terminals, aliveToken)
+	if len(terminals) != 2 || terminals[0].Token != aliveToken || terminals[1].Token != staleToken {
+		t.Fatalf("shared login unexpectedly changed index: %+v", terminals)
+	}
+	if count, err := mgr.GetOnlineTerminalCount(ctx, "shared-cleanup-user"); err != nil || count != 1 {
+		t.Fatalf("online count = %d, %v, want 1", count, err)
 	}
 }
 
@@ -220,8 +223,8 @@ func TestManagerLoginWithOptionsRejectsDuplicateTokenBeforeConcurrency(t *testin
 	}
 }
 
-// TestManagerLoginWithOptionsCreatesFreshSessionAfterExpiredTerminals verifies expired terminals lead to a new session. TestManagerLoginWithOptionsCreatesFreshSessionAfterExpiredTerminals 验证终端全部过期后会创建新 Session。
-func TestManagerLoginWithOptionsCreatesFreshSessionAfterExpiredTerminals(t *testing.T) {
+// TestManagerLoginRetainsUnexpiredSessionData verifies lazy terminal expiry does not reset an existing account session. TestManagerLoginRetainsUnexpiredSessionData 验证终端懒过期不会重置仍存在的账号会话。
+func TestManagerLoginRetainsUnexpiredSessionData(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, func(cfg *config.Config) {
 		cfg.IsConcurrent = true
@@ -250,15 +253,18 @@ func TestManagerLoginWithOptionsCreatesFreshSessionAfterExpiredTerminals(t *test
 	if err != nil {
 		t.Fatalf("GetSessionValue() error = %v", err)
 	}
-	if ok || value != nil {
-		t.Fatalf("GetSessionValue() = %v, %v, want fresh session without old data", value, ok)
+	if !ok || value != "dark" {
+		t.Fatalf("GetSessionValue() = %v, %v, want retained account data", value, ok)
 	}
 	terminals, err := mgr.GetTerminalListByLoginID(ctx, "expired-session-user")
 	if err != nil {
 		t.Fatalf("GetTerminalListByLoginID() error = %v", err)
 	}
-	if len(terminals) != 1 || terminals[0].Token != second {
-		t.Fatalf("terminals = %+v, want only new token %q", terminals, second)
+	if len(terminals) != 2 || terminals[0].Token != first || terminals[1].Token != second {
+		t.Fatalf("terminals = %+v, want stale and new entries", terminals)
+	}
+	if count, err := mgr.GetOnlineTerminalCount(ctx, "expired-session-user"); err != nil || count != 1 {
+		t.Fatalf("online count = %d, %v, want 1", count, err)
 	}
 }
 
@@ -359,8 +365,13 @@ func TestManagerLoginWithOptionsDoesNotShareForeignSessionToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTerminalListByLoginID() error = %v", err)
 	}
-	if len(terminals) != 1 || terminals[0].Token != newToken {
-		t.Fatalf("stale owner terminals = %+v, want only new token %q", terminals, newToken)
+	// Unbounded login retains stale indexes, while precise queries reject the foreign lifecycle. 无数量上限的登录保留残留索引，精确查询拒绝其他账号的生命周期。
+	if len(terminals) != 2 || terminals[0].Token != foreignToken || terminals[1].Token != newToken {
+		t.Fatalf("recorded terminals = %+v, want stale entry followed by %q", terminals, newToken)
+	}
+	live, err := mgr.GetTokenValueListByLoginID(ctx, "stale-session-owner", true)
+	if err != nil || len(live) != 1 || live[0] != newToken {
+		t.Fatalf("live terminals = %v, %v; want only %q", live, err, newToken)
 	}
 }
 

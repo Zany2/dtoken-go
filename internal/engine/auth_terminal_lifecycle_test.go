@@ -116,15 +116,14 @@ func TestManagerTerminalIndexProtectsSameMetadataReuse(t *testing.T) {
 			t.Fatalf("save duplicate terminal fixture error = %v", err)
 		}
 
-		before := captureTerminalLifecycle(t, mgr, ctx, terminalLifecycleKeys(mgr, pair.AccessToken, pair.RefreshToken))
-		destroyed, timedOut, err := mgr.cleanExpiredTerminals(ctx, sess)
+		before := captureTerminalLifecycle(t, mgr, ctx, terminalLifecycleKeys(mgr, pair.AccessToken, pair.RefreshToken, mgr.getSessionKey(pair.LoginID)))
+		destroyed, timedOut, err := mgr.pruneExpiredTerminals(ctx, sess, nil)
 		if err != nil || destroyed || len(timedOut) != 0 {
-			t.Fatalf("cleanExpiredTerminals() = %v, %+v, %v", destroyed, timedOut, err)
+			t.Fatalf("pruneExpiredTerminals() = %v, %+v, %v", destroyed, timedOut, err)
 		}
 		assertTerminalLifecycleUnchanged(t, mgr, ctx, before)
-		stored, err := mgr.getSession(ctx, pair.LoginID)
-		if err != nil || len(stored.TerminalInfos) != 1 || !reflect.DeepEqual(stored.TerminalInfos[0], current) {
-			t.Fatalf("stored terminals = %+v, %v, want only current terminal %+v", stored, err, current)
+		if len(sess.TerminalInfos) != 1 || !reflect.DeepEqual(sess.TerminalInfos[0], current) {
+			t.Fatalf("pruned terminals = %+v, want only current terminal %+v", sess.TerminalInfos, current)
 		}
 
 		shared, err := mgr.getTokenAndShare(ctx, &Session{LoginID: pair.LoginID, TerminalInfos: []TerminalInfo{stale}}, current.Device, current.DeviceID)
@@ -216,7 +215,8 @@ func TestManagerDirectRetirementRejectsLifecycleSwap(t *testing.T) {
 			var before terminalLifecycleSnapshot
 			var events func() []*listener.EventData
 			swapped := false
-			storage := &managerTerminalLifecycleSwapStorage{Storage: mgr.storage, key: mgr.getSessionKey(loginID)}
+			// Interleave at the final preliminary activity read, before the account lock is acquired. 在获取账号锁前的最后一次活跃校验读取处插入交错。
+			storage := &managerTerminalLifecycleSwapStorage{Storage: mgr.storage, key: mgr.getActiveKey(token)}
 			storage.afterRead = func() error {
 				if err := mgr.Logout(ctx, token); err != nil {
 					return err
@@ -232,7 +232,7 @@ func TestManagerDirectRetirementRejectsLifecycleSwap(t *testing.T) {
 					return err
 				}
 				current.CreateTime = expected.CreateTime
-				if err = mgr.saveToStorage(ctx, mgr.getTokenKey(token), *current); err != nil {
+				if err = mgr.updateStoredValue(ctx, mgr.getTokenKey(token), encodeTokenRecord(current)); err != nil {
 					return err
 				}
 				sess, err := mgr.getSession(ctx, loginID)
@@ -338,8 +338,8 @@ func TestManagerDirectRetirementRejectsSwapBeforeValidation(t *testing.T) {
 	}
 }
 
-// TestManagerLegacyTerminalLifecycleFallback verifies old token records remain compatible with terminal cleanup. TestManagerLegacyTerminalLifecycleFallback 验证旧格式 Token 记录仍兼容终端清理。
-func TestManagerLegacyTerminalLifecycleFallback(t *testing.T) {
+// TestManagerMigratedTerminalLifecycleFallback verifies migrated records without terminal indexes support cleanup. TestManagerMigratedTerminalLifecycleFallback 验证迁移后无终端序号的记录支持终端清理。
+func TestManagerMigratedTerminalLifecycleFallback(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTerminalLifecycleTestManager(t, nil)
 	token, err := mgr.LoginWithOptions(ctx, LoginOptions{LoginID: "legacy-terminal", Token: "legacy-terminal-token", Device: "web", DeviceID: "browser"})
@@ -350,14 +350,15 @@ func TestManagerLegacyTerminalLifecycleFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get current token record error = %v", err)
 	}
-	if err = mgr.saveToStorage(ctx, mgr.getTokenKey(token), record.TokenInfo); err != nil {
+	record.TerminalIndex = 0
+	if err = mgr.updateStoredValue(ctx, mgr.getTokenKey(token), encodeTokenRecord(record)); err != nil {
 		t.Fatalf("save legacy token record error = %v", err)
 	}
 	sess, err := mgr.getSession(ctx, record.LoginID)
 	if err != nil {
 		t.Fatalf("get session error = %v", err)
 	}
-	destroyed, timedOut, err := mgr.cleanExpiredTerminals(ctx, sess)
+	destroyed, timedOut, err := mgr.pruneExpiredTerminals(ctx, sess, nil)
 	if err != nil || destroyed || len(timedOut) != 0 || len(sess.TerminalInfos) != 1 {
 		t.Fatalf("legacy cleanup = %v, %+v, %+v, %v", destroyed, timedOut, sess.TerminalInfos, err)
 	}

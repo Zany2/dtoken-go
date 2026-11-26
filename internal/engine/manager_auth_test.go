@@ -121,8 +121,8 @@ func TestManagerLogoutBypassesDisableState(t *testing.T) {
 		if err = mgr.DisableDeviceAndDeviceID(ctx, "logout-disabled-device", "web", "browser", time.Minute, "risk"); err != nil {
 			t.Fatalf("DisableDeviceAndDeviceID() error = %v", err)
 		}
-		if err = mgr.CheckLogin(ctx, pair.AccessToken); !errors.Is(err, derror.ErrDeviceDisabled) {
-			t.Fatalf("CheckLogin(disabled device) error = %v, want ErrDeviceDisabled", err)
+		if err = mgr.CheckLogin(ctx, pair.AccessToken); err != nil {
+			t.Fatalf("CheckLogin(disabled device) error = %v, want valid credential", err)
 		}
 
 		if err = mgr.Logout(ctx, pair.AccessToken); err != nil {
@@ -343,8 +343,8 @@ func TestManagerDisableAccountAndDevice(t *testing.T) {
 		if !mgr.IsDisable(ctx, "u8") {
 			t.Fatal("IsDisable() = false, want true")
 		}
-		if err = mgr.CheckLogin(ctx, token); !errors.Is(err, derror.ErrAccountDisabled) {
-			t.Fatalf("CheckLogin() error = %v, want ErrAccountDisabled", err)
+		if err = mgr.CheckLogin(ctx, token); !errors.Is(err, derror.ErrInvalidToken) {
+			t.Fatalf("CheckLogin() error = %v, want ErrInvalidToken", err)
 		}
 		if _, err = mgr.GetSession(ctx, "u8"); !errors.Is(err, derror.ErrSessionNotFound) {
 			t.Fatalf("GetSession() error = %v, want ErrSessionNotFound", err)
@@ -531,8 +531,8 @@ func TestManagerActiveTimeoutMarksTokenState(t *testing.T) {
 	}
 }
 
-// TestManagerGetSessionByTokenUsesFullTokenValidation verifies session lookup by token applies normal login checks. TestManagerGetSessionByTokenUsesFullTokenValidation 验证无 Token 获取会话会执行完整登录校验。
-func TestManagerGetSessionByTokenUsesFullTokenValidation(t *testing.T) {
+// TestManagerSessionLookupDoesNotImplyRestrictionCheck verifies metadata access only requires a valid credential. TestManagerSessionLookupDoesNotImplyRestrictionCheck 验证元数据访问只要求有效凭据。
+func TestManagerSessionLookupDoesNotImplyRestrictionCheck(t *testing.T) {
 	ctx := context.Background()
 	mgr := newTestManager(t, nil)
 
@@ -540,12 +540,12 @@ func TestManagerGetSessionByTokenUsesFullTokenValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
-	if err = mgr.saveToStorage(ctx, mgr.getDisableKey("session-by-token-disabled"), DisableInfo{DisableTime: time.Now().Unix()}, time.Minute); err != nil {
+	if err = mgr.saveToStorage(ctx, mgr.getDisableKey("session-by-token-disabled"), disableMarker{LoginID: "session-by-token-disabled", Kind: "account", DisableInfo: DisableInfo{DisableTime: time.Now().Unix()}}, time.Minute); err != nil {
 		t.Fatalf("save disable marker error = %v", err)
 	}
 
-	if _, err = mgr.GetSessionByToken(ctx, token); !errors.Is(err, derror.ErrAccountDisabled) {
-		t.Fatalf("GetSessionByToken(disabled account) error = %v, want ErrAccountDisabled", err)
+	if _, err = mgr.GetSessionByToken(ctx, token); err != nil {
+		t.Fatalf("GetSessionByToken(marker-only account ban) error = %v, want metadata access", err)
 	}
 }
 
@@ -1071,7 +1071,7 @@ func (s *managerTestStorage) Expire(_ context.Context, key string, expiration ti
 	item, ok := s.items[key]
 	if !ok || item.expired() {
 		delete(s.items, key)
-		return derror.ErrInvalidToken
+		return derror.ErrKeyNotFound
 	}
 	if expiration > 0 {
 		item.expireAt = time.Now().Add(expiration)

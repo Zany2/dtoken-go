@@ -14,6 +14,8 @@ DToken-Go 将核心认证逻辑和组件实现解耦。核心只依赖接口，�
 | --- | --- | --- | --- |
 | 存储 | `adapter.Storage` | Memory、Redis | 保存 Token、Session、封禁、Nonce、OAuth2 数据 |
 | 原子存储 | `adapter.AtomicStorage` | Redis、Memory | Nonce 一次性消费等需要原子读删的场景 |
+| 保留 TTL 更新 | `adapter.UpdateStorage` | Redis | Update 仅替换已有值；Redis 使用 SET XX KEEPTTL，Memory 与普通存储使用非原子 TTL + Set 回退 |
+| 永久化存储 | `adapter.PersistentStorage` | Redis、Memory | 使用 Persist 移除已有键有效期；基础 Storage 不强制实现，普通实现通过原始值读取写回回退 |
 | 扫描存储 | `adapter.ScannerStorage` | Redis、Memory | 搜索 Token、Session ID |
 | 管理存储 | `adapter.AdminStorage` | Redis、Memory | 测试清理或管理性清空 |
 | 编解码 | `adapter.Codec` | JSON、MessagePack、Base64 | 序列化存储结构 |
@@ -165,7 +167,7 @@ func main() {
 - 自定义组件时先满足核心接口，再考虑额外接口能力。
 - 生产环境建议使用 Redis Storage，并设置清晰的 `KeyPrefix`。
 - 自定义 Token 生成器要保证足够随机性和不可预测性。
-- 编解码组件应保持版本稳定，避免历史数据无法反序列化。
+- 编解码组件应保持版本稳定，避免历史数据无法反序列化。新 Token 主记录使用引擎固定格式，绕过 Codec；Session、Token Extra、刷新凭据和独立能力对象仍使用 Codec。自定义 Codec 的压缩或加密不会覆盖新 Token 主记录中的身份字段。
 
 ## 相关文档
 

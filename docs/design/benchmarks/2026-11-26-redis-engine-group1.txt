@@ -1,0 +1,24 @@
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/disable/account/atomic/current
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/disable/account/atomic/legacy
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/disable/account/basic/current
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/disable/account/basic/legacy
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/logout/account/atomic/current
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/logout/account/atomic/legacy
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/logout/account/basic/current
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/logout/account/basic/legacy
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/logout/device/atomic/current
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/logout/device/atomic/legacy
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/logout/device/basic/current
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/logout/device/basic/legacy
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/logout/concrete_device/atomic/current
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/logout/concrete_device/atomic/legacy
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/logout/concrete_device/basic/current
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/logout/concrete_device/basic/legacy
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/kickout/account/atomic/current
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/kickout/account/atomic/legacy
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/kickout/account/basic/current
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/kickout/account/basic/legacy
+=== RUN   TestAccountRetirementPreservesReusedExpiredTokenOwner/kickout/device/atomic/current
+FAIL	github.com/Zany2/dtoken-go/internal/engine	101.296s
+FAIL

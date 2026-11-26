@@ -117,7 +117,7 @@ func TestManagerTokenWritesRejectLifecycleSwap(t *testing.T) {
 							return errors.New("replacement token did not reuse the original terminal index")
 						}
 						replacementRecord.CreateTime = originalRecord.CreateTime
-						if err = mgr.saveToStorage(ctx, mgr.getTokenKey(token), *replacementRecord); err != nil {
+						if err = mgr.updateStoredValue(ctx, mgr.getTokenKey(token), encodeTokenRecord(replacementRecord)); err != nil {
 							return err
 						}
 						sess, err := mgr.getSession(ctx, replacement.loginID)

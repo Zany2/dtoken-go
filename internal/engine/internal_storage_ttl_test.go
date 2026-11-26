@@ -214,3 +214,43 @@ func (s *managerSaveTTLStorage) Set(ctx context.Context, key string, value any, 
 	}
 	return s.Storage.Set(ctx, key, value, expiration)
 }
+
+// TestManagerValueUpdatePrefersCapability checks native update errors never fall back to unconditional writes. TestManagerValueUpdatePrefersCapability 验证原生更新错误不会回退到无条件写入。
+func TestManagerValueUpdatePrefersCapability(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		err, want error
+	}{
+		{"success", nil, nil},
+		{"expired", derror.ErrKeyNotFound, derror.ErrKeyNotFound},
+		{"unavailable", errors.New("update unavailable"), derror.ErrStorageUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mgr := newTestManager(t, nil)
+			storage := &managerNativeUpdateStorage{
+				managerSaveTTLStorage: &managerSaveTTLStorage{Storage: mgr.storage, key: "update"},
+				err:                   tc.err,
+			}
+			mgr.storage = storage
+			if err := mgr.saveToStorage(context.Background(), "update", "value"); !errors.Is(err, tc.want) {
+				t.Fatalf("update error = %v, want %v", err, tc.want)
+			}
+			if storage.updates != 1 || storage.ttlReads != 0 || storage.writes != 0 {
+				t.Fatalf("updates/TTL/Set = %d/%d/%d, want 1/0/0", storage.updates, storage.ttlReads, storage.writes)
+			}
+		})
+	}
+}
+
+// managerNativeUpdateStorage observes native update dispatch independently of its ordinary storage fallback. managerNativeUpdateStorage 独立于普通存储回退观察原生更新分发。
+type managerNativeUpdateStorage struct {
+	*managerSaveTTLStorage
+	updates int
+	err     error
+}
+
+// Update records the capability call and simulates its result. Update 记录能力调用并模拟其结果。
+func (s *managerNativeUpdateStorage) Update(context.Context, string, any) error {
+	s.updates++
+	return s.err
+}

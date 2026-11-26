@@ -66,7 +66,9 @@ func registerRoutes(app *gofiber.App, authInstance *dtoken.Auth) error {
 	app.Post("/login", handleLogin)
 
 	auth := app.Group("")
-	auth.Use(fiberdt.AuthMiddleware(ctx, fiberdt.WithFailFunc(fail)))
+	auth.Use(fiberdt.AccessMiddleware(ctx, fiberdt.WithFailFunc(fail), fiberdt.WithRouteAccessHandler(func(_ context.Context, _ *gofiber.Ctx, req *fiberdt.RouteAccessRequest) {
+		req.CheckDisable = true
+	})))
 	auth.Get("/me", handleMe)
 	auth.Get("/admin", fiberdt.RoleMiddleware(ctx, []string{"admin"}, fiberdt.WithFailFunc(fail)), handleAdmin)
 	auth.Get("/articles", fiberdt.PermissionMiddleware(ctx, []string{"article:read"}, fiberdt.WithFailFunc(fail)), handleArticles)

@@ -121,6 +121,9 @@ func (c *Client) Validate() error {
 
 // Validate checks HTTP configuration before registration, preserving existing nonpositive default rules. Validate 在注册前检查 HTTP 配置，保留已有非正值默认规则。
 func (o HTTPOptions) Validate() error {
+	if o.ExchangeEnricher != nil && o.EnrichExchangeResult != nil {
+		return configError("ExchangeEnricher", "cannot combine with EnrichExchangeResult", nil)
+	}
 	if err := validateVerificationKey(o.SecretKey, o.VerificationKey, "VerificationKey"); err != nil {
 		return err
 	}
@@ -215,6 +218,20 @@ func (c ClientConfig) Validate() error {
 	}
 	if !validSSOMode(c.Mode) {
 		return configError("Mode", "unsupported client mode", ErrModeUnsupported)
+	}
+	if c.ExchangeService != nil {
+		if c.SharedStoreServer != nil || c.UseHTTPCheck {
+			return configError("ExchangeService", "cannot combine with SharedStoreServer or UseHTTPCheck", nil)
+		}
+		if c.Mode != ModeTicket && c.Mode != ModeOAuth2 {
+			return configError("ExchangeService", "requires Ticket or OAuth2 code mode", ErrModeUnsupported)
+		}
+		if err := c.ExchangeService.initializationError(); err != nil {
+			return configError("ExchangeService", "local protocol service is not initialized", err)
+		}
+		if c.Params != c.ExchangeService.options.Params {
+			return configError("ExchangeService", "protocol parameter names must match", ErrInvalidRequest)
+		}
 	}
 	if c.SharedStoreServer != nil && !c.UseHTTPCheck {
 		if c.Mode != ModeTicket && c.Mode != ModeOAuth2 {

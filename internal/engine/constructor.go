@@ -5,6 +5,7 @@ import (
 	"github.com/Zany2/dtoken-go/config"
 	adapter "github.com/Zany2/dtoken-go/contract"
 	listener "github.com/Zany2/dtoken-go/event"
+	"github.com/Zany2/dtoken-go/internal/utils"
 )
 
 // Option configures optional manager modules. Option 配置 Manager 的可选模块。
@@ -80,6 +81,9 @@ func NewManager(
 		}
 	}
 	mgr.strategy = mgr.strategy.normalize()
+
+	// Encode the fixed namespace once after construction options have been applied. 应用构造选项后，仅编码一次固定命名空间。
+	mgr.namespace = utils.StorageNamespace(mgr.config.KeyPrefix, mgr.config.AuthType)
 
 	return mgr
 }

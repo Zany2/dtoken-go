@@ -140,7 +140,8 @@ func TestManagerSearchTreatsNamespacesAndKeywordsLiterally(t *testing.T) {
 					t.Fatalf("Validate() error = %v", err)
 				}
 				storage := &managerGlobScannerStorage{Storage: newManagerTestStorage()}
-				mgr := &Manager{config: cfg, storage: storage}
+				mgr := NewManager(cfg, nil, storage, nil, nil, nil, nil)
+				t.Cleanup(mgr.CloseManager)
 				queries := []struct {
 					name   string
 					prefix string

@@ -40,7 +40,7 @@ type AuthHandleRequest struct {
 	AuthType string
 	// CheckLogin describes login-state validation. CheckLogin 描述登录状态校验。
 	CheckLogin bool
-	// CheckDisable describes account-disable validation. CheckDisable 描述账号封禁校验。
+	// CheckDisable requires account, device type and concrete device restriction checks. CheckDisable 要求校验账号、设备类型与具体设备封禁。
 	CheckDisable bool
 	// Permissions snapshots the required permissions. Permissions 保存所需权限的快照。
 	Permissions []string
@@ -87,7 +87,7 @@ type RouteAccessRequest struct {
 	AuthType string
 	// LogicType controls permission and role matching. LogicType 控制权限和角色的匹配逻辑。
 	LogicType LogicType
-	// CheckDisable requires account-disable validation. CheckDisable 要求校验账号封禁状态。
+	// CheckDisable requires account, device type and concrete device restriction checks. CheckDisable 要求校验账号、设备类型与具体设备封禁。
 	CheckDisable bool
 	// Permissions lists route-required permissions. Permissions 保存路由所需权限列表。
 	Permissions []string

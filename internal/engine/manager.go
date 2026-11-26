@@ -10,6 +10,7 @@ import (
 // Manager is the core auth facade; business methods return ErrManagerNotFound or false once shutdown starts. Manager 是鉴权核心门面；开始关闭后业务方法返回 ErrManagerNotFound 或 false。
 type Manager struct {
 	config             *config.Config    // config stores runtime configuration. config 存储运行时配置。
+	namespace          string            // namespace stores the immutable encoded storage boundary. namespace 存储固定编码后的存储命名空间。
 	generator          adapter.Generator // generator creates token values. generator 负责生成 Token 值。
 	storage            adapter.Storage   // storage persists auth data. storage 持久化鉴权数据。
 	serializer         adapter.Codec     // serializer encodes and decodes storage payloads. serializer 编解码存储数据。

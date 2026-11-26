@@ -32,6 +32,8 @@ type ClientConfig struct {
 	UseHTTPCheck bool
 	// SharedStoreServer borrows a local protocol service over the center's shared storage for Ticket/code exchange; nil preserves HTTP exchange. SharedStoreServer 借用连接中心共享存储的本地协议服务兑换 Ticket 或授权码，nil 保持 HTTP 兑换。
 	SharedStoreServer *HTTPServer
+	// ExchangeService borrows a local exchange core without HTTP adapters; conflicts with SharedStoreServer and UseHTTPCheck. ExchangeService 借用无需 HTTP 适配的本地兑换核心，与 SharedStoreServer 及 UseHTTPCheck 互斥。
+	ExchangeService *ExchangeService
 	// EnableSLO enables single logout. EnableSLO 启用单点注销。
 	EnableSLO bool
 	// RegisterCallback sends the logout callback URL during authorization and credential exchange. RegisterCallback 在授权和凭证兑换时发送注销回调地址。
@@ -242,7 +244,7 @@ func (c *ClientApp) ExchangeCredential(ctx context.Context, req CredentialReques
 		values.Set(c.config.Params.Callback, c.config.LogoutCallbackURL)
 	}
 	var result TicketExchangeResult
-	if c.config.SharedStoreServer != nil && !c.config.UseHTTPCheck {
+	if c.config.ExchangeService != nil || c.config.SharedStoreServer != nil && !c.config.UseHTTPCheck {
 		shared, err := c.exchangeSharedStore(ctx, values)
 		if err != nil {
 			return nil, err

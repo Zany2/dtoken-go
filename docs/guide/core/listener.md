@@ -177,12 +177,24 @@ _ = ok
 
 ### Trigger Events
 
-- `Trigger` dispatches on the current goroutine. Synchronous listeners run inline; asynchronous listeners are started without being awaited.
-- `TriggerAsync` snapshots the payload before returning, fills a zero `Timestamp` with the submission time, and schedules the whole dispatch asynchronously. Explicit timestamps are preserved and the caller's payload is not modified.
-- `TriggerSync` dispatches on the current goroutine and waits for the listeners started directly by that dispatch. It does not wait for unrelated asynchronous work or background descendants started through `Trigger` or `TriggerAsync`; a nested `TriggerSync` remains part of the calling listener's completion.
+- `Trigger` dispatches on the current goroutine. Synchronous listeners run inline; accepted pool listeners are not awaited; absent or rejecting pools execute them inline.
+- `TriggerAsync` snapshots the payload before returning, fills a zero `Timestamp` with the submission time, and submits the whole dispatch to the event pool. Without a pool or after rejection, direct listeners complete synchronously. Explicit timestamps are preserved and the caller's payload is not modified.
+- `TriggerSync` executes direct listeners in priority order on the caller, ignoring their Async setting. It does not wait for unrelated asynchronous work or background descendants started through `Trigger` or `TriggerAsync`; a nested `TriggerSync` remains part of the calling listener's completion.
 - `Wait` waits until the manager has no accepted asynchronous dispatch or listener tasks remaining.
 
 Listeners for a concrete event and `EventAll` are merged and sorted by descending priority. For asynchronous listeners, priority controls the start traversal order only; goroutine scheduling does not guarantee callback completion order.
+
+Sorting and merging happen when registrations change. Dispatch reuses immutable lists instead of copying, merging, and sorting them on every event. Equal priorities preserve registration order within each group, with concrete-event listeners before `EventAll`. Registering, unregistering, or clearing listeners inside a callback does not change an already captured dispatch snapshot; subsequent snapshots see the new configuration. Filter lists follow the same rule, and callbacks still run outside the manager lock.
+
+### Skipping Events Without Observers
+
+Disabled events are skipped. An enabled event skips payload copying and asynchronous submission only when it has no concrete or wildcard listeners, no filters, statistics are disabled, and no logging is needed. Filter-only, statistics-only, and logging-only events still run. The built-in `contract.NopLogger` is recognized as a no-op; custom loggers are always treated as observers.
+
+Use `eventMgr.NeedsDispatch(event)` before constructing expensive payloads to check all these conditions. `HasListeners` continues to check direct registrations for the specified event only. The engine uses the new check before constructing EventData, copying Extra, and submitting event work. Payloads prepared by callers before invocation still incur their own construction cost.
+
+This check reflects current configuration and does not reserve listeners. Events skipped at invocation are not replayed when listeners or statistics are enabled later. Accepted asynchronous dispatch still captures configuration when the worker runs, while payloads and default timestamps are captured at submission. Configure observers before accepting requests.
+
+Merged lists are maintained only for events with registered concrete listeners; triggering arbitrary custom event names does not grow the cache. Registration changes pay the copying and merging cost so frequent dispatches can read prepared lists. Per-listener payload isolation is retained.
 
 ```go
 eventMgr.Trigger(data)
@@ -194,7 +206,7 @@ eventMgr.TriggerSync(data)
 
 ### Optional Independent Event Pool
 
-By default, event tasks use goroutines. `SetAsyncPool(pool contract.Pool)` optionally reuses the existing pool contract and implementations. Create a separate instance for events; do not pass the engine's renewal pool. Configure it before accepting requests:
+Without an event pool, event tasks run synchronously. `SetAsyncPool(pool contract.Pool)` optionally reuses the existing pool contract and implementations. Create a separate instance for events; do not pass the engine's renewal pool. Configure it before accepting requests:
 
 ```go
 import eventpool "github.com/Zany2/dtoken-go/pool/ants"
@@ -212,9 +224,9 @@ The existing constructor name includes `Renew`, but its implementation accepts g
 
 - `Trigger` submits asynchronous listeners to the event pool; synchronous listeners still run inline.
 - `TriggerAsync` submits its dispatch to the event pool, and its asynchronous listeners also use that pool.
-- `TriggerSync` always uses goroutines for its asynchronous listeners and waits for them, avoiding deadlocks when invoked by a callback already occupying a pool worker, including pools with a task queue.
-- A rejected submission falls back to a goroutine. This preserves delivery but does **not** impose a strict concurrency limit.
-- `SetAsyncPool(nil)` restores goroutines for subsequent submissions; already accepted tasks stay with their original pool and remain tracked by `Wait`.
+- `TriggerSync` executes direct listeners inline without submitting or waiting for pool tasks, avoiding nested waits on its own worker.
+- A rejected submission runs inline, preserving delivery without spawning extra goroutines. Callback time adds to caller latency; multiple callers may still execute fallbacks concurrently.
+- `SetAsyncPool(nil)` switches subsequent submissions to synchronous execution; already accepted tasks stay with their original pool and remain tracked by `Wait`.
 
 The injected pool must provide concurrency-safe, nonblocking submission: accept a task for asynchronous execution exactly once, or return an error without executing it. Do not use blocking submission, silently discard accepted tasks, or run tasks inline. Nested dispatch can submit more work from a pool worker, so waiting for capacity can deadlock. The bundled ants pool requires `NonBlocking: true`; setting it to false returns a configuration error during construction.
 
@@ -286,7 +298,7 @@ The public `Auth.Emit` and `Manager.Emit` entry points ignore new events once th
 
 Before calling `Manager.CloseManager`, stop and drain application requests, then call it from outside tasks and listeners. It rejects new asynchronous tasks, stops background status logging, drains accepted tasks and asynchronous listeners, and finally releases its owned Pool, Storage, and Logger. Caller-owned components remain open. Accepted renewal tasks dispatch their renewal event within the same task, avoiding both nested pool submission and event loss from rejected submissions during shutdown. Each listener's own `Async` setting still applies.
 
-Manager recovers and logs task panics, including the goroutine fallback used when no pool is available or submission fails. Recovery isolates the failure; it does not retry the task or roll back completed storage operations.
+Manager recovers and logs task panics, including the synchronous fallback used when no pool is available or submission fails. Recovery isolates the failure; it does not retry the task or roll back completed storage operations.
 
 ## Related Documentation
 
