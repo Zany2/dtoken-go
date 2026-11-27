@@ -12,7 +12,7 @@ func TestLoggerConfigDefaults(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Filename != "DTOKEN.log" || cfg.MaxSize != 10 || cfg.MaxBackups != 0 || cfg.MaxAge != 15 || !cfg.Compress || !cfg.LocalTime {
+	if cfg.Prefix != "[DTOKEN] " || cfg.Filename != "DTOKEN.log" || cfg.MaxSize != 10 || cfg.MaxBackups != 15 || cfg.MaxAge != 15 || !cfg.Compress || !cfg.LocalTime {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
 	clone := cfg.Clone()
@@ -21,7 +21,7 @@ func TestLoggerConfigDefaults(t *testing.T) {
 		t.Fatal("Clone changed the source")
 	}
 	partial := normalizeConfig(&LoggerConfig{Path: t.TempDir(), MaxBackups: 0, MaxAge: 0})
-	if partial.MaxSize != DefaultMaxSize || partial.MaxBackups != 0 || partial.MaxAge != 0 || partial.Compress || partial.LocalTime {
+	if partial.Prefix != DefaultPrefix || partial.MaxSize != DefaultMaxSize || partial.MaxBackups != 0 || partial.MaxAge != 0 || partial.Compress || partial.LocalTime {
 		t.Fatalf("explicit zero or false settings were overridden: %+v", partial)
 	}
 	if defaults := normalizeConfig(nil); *defaults != *cfg {

@@ -649,6 +649,7 @@ func (l *registryTestLogger) Close() {
 
 func (l *registryTestLogger) Flush()                    {}
 func (l *registryTestLogger) SetLevel(adapter.LogLevel) {}
+func (l *registryTestLogger) SetPrefix(string)          {}
 func (l *registryTestLogger) SetStdout(bool)            {}
 func (l *registryTestLogger) LogPath() string           { return "" }
 func (l *registryTestLogger) DropCount() uint64         { return 0 }

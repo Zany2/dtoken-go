@@ -13,6 +13,8 @@ type LoggerConfig struct {
 	Path string
 	// Filename selects a fixed basename without directory separators or date templates. Filename 指定不含目录分隔符和日期模板的固定文件名。
 	Filename string
+	// Prefix precedes the level label and message. Prefix 添加在级别标签和消息之前。
+	Prefix string
 	// Level selects the minimum severity. Level 指定最低日志级别。
 	Level LogLevel
 	// TimeFormat uses Go's timestamp layout syntax. TimeFormat 使用 Go 时间布局语法。
@@ -37,7 +39,7 @@ type LoggerConfig struct {
 func DefaultLoggerConfig() *LoggerConfig {
 	return &LoggerConfig{
 		Path: DefaultDirName, Filename: DefaultFilename,
-		Level:      LevelInfo,
+		Prefix: DefaultPrefix, Level: LevelInfo,
 		TimeFormat: DefaultTimeFormat, Stdout: true,
 		MaxSize: DefaultMaxSize, MaxBackups: DefaultMaxBackups, MaxAge: DefaultMaxAge,
 		Compress: true, LocalTime: true,
@@ -61,6 +63,9 @@ func normalizeConfig(cfg *LoggerConfig) *LoggerConfig {
 	}
 	if c.Filename == "" {
 		c.Filename = DefaultFilename
+	}
+	if c.Prefix == "" {
+		c.Prefix = DefaultPrefix
 	}
 	if c.Level == 0 {
 		c.Level = LevelInfo

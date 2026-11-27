@@ -55,7 +55,7 @@ func TestBuilderCloneCopiesMutableState(t *testing.T) {
 	clone := original.Clone()
 
 	clone.AuthType("clone").CookiePath("/clone")
-	clone.LoggerFilename("clone.log").RenewPoolMaxSize(original.GetRenewPoolConfig().MaxSize + 1)
+	clone.LoggerPrefix("clone").RenewPoolMaxSize(original.GetRenewPoolConfig().MaxSize + 1)
 	clone.UseManagerOption(func(_ *manager.Manager) {})
 
 	if original.GetConfig().AuthType != "original:" || original.GetConfig().CookieConfig.Path != "/original" {
@@ -67,7 +67,7 @@ func TestBuilderCloneCopiesMutableState(t *testing.T) {
 	if len(original.managerOptions) != 1 || len(clone.managerOptions) != 2 {
 		t.Fatalf("manager option lengths = %d %d, want 1 2", len(original.managerOptions), len(clone.managerOptions))
 	}
-	if original.GetLoggerConfig().Filename == "clone.log" || original.GetRenewPoolConfig().MaxSize == clone.GetRenewPoolConfig().MaxSize {
+	if original.GetLoggerConfig().Prefix == "clone" || original.GetRenewPoolConfig().MaxSize == clone.GetRenewPoolConfig().MaxSize {
 		t.Fatal("clone mutated the original component configuration")
 	}
 }
@@ -355,6 +355,8 @@ func (l *builderClosableLogger) Flush() {
 }
 
 func (l *builderClosableLogger) SetLevel(adapter.LogLevel) {}
+
+func (l *builderClosableLogger) SetPrefix(string) {}
 
 func (l *builderClosableLogger) SetStdout(bool) {}
 

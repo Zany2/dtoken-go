@@ -89,6 +89,7 @@ func TestLoggerConcurrentLifecycle(t *testing.T) {
 			}
 			logger.SetConfig(&LoggerConfig{Path: path, Filename: "race.log"})
 			logger.SetLevel(LevelDebug)
+			logger.SetPrefix("[LIVE] ")
 			logger.SetStdout(false)
 		}
 	}()
@@ -130,7 +131,7 @@ func TestLoggerConcurrentLifecycle(t *testing.T) {
 type reconfiguringMessage struct{ logger *Logger }
 
 // String exercises reentrant formatting outside logger locks. String 验证格式化发生在日志锁外，允许重入控制方法。
-func (m reconfiguringMessage) String() string { m.logger.SetLevel(LevelDebug); return "message" }
+func (m reconfiguringMessage) String() string { m.logger.SetPrefix("[REENTRANT] "); return "message" }
 
 // TestLoggerFormattingAllowsRuntimeControls verifies user formatting cannot deadlock the logger. TestLoggerFormattingAllowsRuntimeControls 验证用户格式化不会导致日志器死锁。
 func TestLoggerFormattingAllowsRuntimeControls(t *testing.T) {
@@ -151,7 +152,7 @@ func TestLoggerFormattingAllowsRuntimeControls(t *testing.T) {
 		t.Fatal("formatting deadlocked")
 	}
 	defer logger.Close()
-	if strings.Count(readLog(t, filepath.Join(dir, "format.log")), "[DTOKEN] [INFO] message") != 2 {
+	if strings.Count(readLog(t, filepath.Join(dir, "format.log")), "[REENTRANT] [INFO] message") != 2 {
 		t.Fatal("reentrant formatting did not reach both outputs")
 	}
 }
@@ -196,6 +197,7 @@ func TestNilAndZeroLoggerMethods(t *testing.T) {
 		logger.Error("error")
 		logger.Errorf("%s", "error")
 		logger.SetLevel(LevelDebug)
+		logger.SetPrefix("prefix")
 		logger.SetStdout(false)
 		logger.Flush()
 		logger.Close()

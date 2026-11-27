@@ -406,6 +406,13 @@ func (b *Builder) LoggerFilename(filename string) *Builder {
 	return b
 }
 
+// LoggerPrefix sets the prefix before the level label and message. LoggerPrefix 设置级别标签和消息之前的前缀。
+func (b *Builder) LoggerPrefix(prefix string) *Builder {
+	b.ensureBuilder()
+	b.loggerConfig.Prefix = prefix
+	return b
+}
+
 // LoggerLevel sets log level LoggerLevel 设置日志级别
 func (b *Builder) LoggerLevel(level dlog.LogLevel) *Builder {
 	b.ensureBuilder()

@@ -14,7 +14,7 @@ func TestBuilderConfiguresZapLogging(t *testing.T) {
 	dir := t.TempDir()
 	auth, err := NewBuilder().IsLog(true).IsPrintBanner(false).AutoRenew(false).
 		LoggerPath(dir).LoggerFilename("auth.log").LoggerStdout(false).
-		LoggerLevel(dlog.LevelWarn).
+		LoggerPrefix("[AUTH] ").LoggerLevel(dlog.LevelWarn).
 		LoggerMaxSize(1).LoggerMaxBackups(2).LoggerMaxAge(3).
 		LoggerCompress(true).LoggerLocalTime(true).BuildInstance()
 	if err != nil {
@@ -29,7 +29,7 @@ func TestBuilderConfiguresZapLogging(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "[DTOKEN] [WARN] visible-warning") || strings.Contains(string(data), "filtered-info") {
+	if !strings.Contains(string(data), "[AUTH] [WARN] visible-warning") || strings.Contains(string(data), "filtered-info") {
 		t.Fatalf("builder logger output = %q", data)
 	}
 }
