@@ -406,7 +406,7 @@ func (b *Builder) LoggerFilename(filename string) *Builder {
 	return b
 }
 
-// LoggerPrefix sets log prefix LoggerPrefix 设置日志前缀
+// LoggerPrefix sets the prefix before the level label and message. LoggerPrefix 设置级别标签和消息之前的前缀。
 func (b *Builder) LoggerPrefix(prefix string) *Builder {
 	b.ensureBuilder()
 	b.loggerConfig.Prefix = prefix
@@ -451,14 +451,14 @@ func (b *Builder) LoggerMaxSize(size int) *Builder {
 	return b
 }
 
-// LoggerMaxBackups limits retained backups; zero disables the count limit. LoggerMaxBackups 限制保留的备份数量，零值表示不按数量限制。
+// LoggerMaxBackups limits historical backups excluding the active file; zero disables the count limit. LoggerMaxBackups 限制历史备份数量，不包含活动文件；零值表示不按数量限制。
 func (b *Builder) LoggerMaxBackups(count int) *Builder {
 	b.ensureBuilder()
 	b.loggerConfig.MaxBackups = count
 	return b
 }
 
-// LoggerMaxAge limits backup retention in days; zero disables age-based deletion. LoggerMaxAge 以天限制备份保留时间，零值表示不按时间删除。
+// LoggerMaxAge limits backup retention in 24-hour days since rotation; zero disables age-based deletion. LoggerMaxAge 从轮转时间起以 24 小时为一天限制备份保留时间，零值表示不按时间删除。
 func (b *Builder) LoggerMaxAge(days int) *Builder {
 	b.ensureBuilder()
 	b.loggerConfig.MaxAge = days

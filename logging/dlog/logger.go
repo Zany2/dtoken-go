@@ -107,18 +107,14 @@ func (l *Logger) configureOutputs() {
 	}
 	sink := zapcore.NewMultiWriteSyncer(outputs...)
 	encoder := zapcore.EncoderConfig{
-		TimeKey: "time", LevelKey: "level", MessageKey: "message",
+		TimeKey: "time", MessageKey: "message",
 		LineEnding:       zapcore.DefaultLineEnding,
 		ConsoleSeparator: " ",
 		EncodeTime: func(value time.Time, out zapcore.PrimitiveArrayEncoder) {
 			out.AppendString(value.Format(l.cfg.TimeFormat))
 		},
-		EncodeLevel: func(value zapcore.Level, out zapcore.PrimitiveArrayEncoder) {
-			out.AppendString("[" + value.CapitalString() + "]")
-		},
 	}
 	l.backend = zap.New(zapcore.NewCore(zapcore.NewConsoleEncoder(encoder), sink, l.level))
-	encoder.LevelKey = ""
 	l.plain = zap.New(zapcore.NewCore(zapcore.NewConsoleEncoder(encoder), sink, zapcore.DebugLevel))
 }
 
@@ -157,7 +153,9 @@ func (l *Logger) log(level LogLevel, message string) {
 		l.plain.Info(l.cfg.Prefix + message)
 		return
 	}
-	l.backend.Log(zapLevel(level), l.cfg.Prefix+message)
+	// Keep the source prefix before the level label while preserving Zap filtering. 将来源前缀放在级别标签前，保留 Zap 级别过滤。
+	zapSeverity := zapLevel(level)
+	l.backend.Log(zapSeverity, l.cfg.Prefix+"["+zapSeverity.CapitalString()+"] "+message)
 }
 
 // SetLevel changes the Zap level threshold without rebuilding outputs. SetLevel 调整 Zap 日志级别阈值，不重建输出目标。

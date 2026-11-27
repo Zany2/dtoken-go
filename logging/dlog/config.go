@@ -13,7 +13,7 @@ type LoggerConfig struct {
 	Path string
 	// Filename selects a fixed basename without directory separators or date templates. Filename 指定不含目录分隔符和日期模板的固定文件名。
 	Filename string
-	// Prefix is prepended to each message. Prefix 添加在每条消息之前。
+	// Prefix precedes the level label and message. Prefix 添加在级别标签和消息之前。
 	Prefix string
 	// Level selects the minimum severity. Level 指定最低日志级别。
 	Level LogLevel
@@ -25,9 +25,9 @@ type LoggerConfig struct {
 	StdoutOnly bool
 	// MaxSize limits each file in MiB; zero selects the framework default. MaxSize 以 MiB 限制单个文件大小，零值使用框架默认值。
 	MaxSize int
-	// MaxBackups limits retained backups; zero disables the count limit. MaxBackups 限制保留的备份数量，零值表示不按数量限制。
+	// MaxBackups limits retained backups excluding the active file; zero disables the count limit. MaxBackups 限制历史备份数量，不包含活动文件；零值表示不按数量限制。
 	MaxBackups int
-	// MaxAge limits backup age to 0–106751 days; zero disables age-based deletion. MaxAge 以天限制备份保留时间，范围为 0–106751，零值表示不按时间删除。
+	// MaxAge limits backup age since rotation in 24-hour days to 0–106751; zero disables age-based deletion. MaxAge 从轮转时间起以 24 小时为一天限制备份保留时间，范围为 0–106751，零值表示不按时间删除。
 	MaxAge int
 	// Compress enables gzip compression of rotated files. Compress 启用轮转文件的 gzip 压缩。
 	Compress bool
@@ -42,6 +42,7 @@ func DefaultLoggerConfig() *LoggerConfig {
 		Prefix: DefaultPrefix, Level: LevelInfo,
 		TimeFormat: DefaultTimeFormat, Stdout: true,
 		MaxSize: DefaultMaxSize, MaxBackups: DefaultMaxBackups, MaxAge: DefaultMaxAge,
+		Compress: true, LocalTime: true,
 	}
 }
 

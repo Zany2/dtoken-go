@@ -29,7 +29,7 @@ func TestBuilderConfiguresZapLogging(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "[WARN] [AUTH] visible-warning") || strings.Contains(string(data), "filtered-info") {
+	if !strings.Contains(string(data), "[AUTH] [WARN] visible-warning") || strings.Contains(string(data), "filtered-info") {
 		t.Fatalf("builder logger output = %q", data)
 	}
 }

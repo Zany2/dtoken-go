@@ -29,8 +29,8 @@ const (
 	DefaultTimeFormat = "2006-01-02 15:04:05"
 	// DefaultMaxSize limits each file to ten MiB. DefaultMaxSize 将单个文件限制为十 MiB。
 	DefaultMaxSize = 10
-	// DefaultMaxBackups retains ten rotated files. DefaultMaxBackups 保留十个轮转文件。
-	DefaultMaxBackups = 10
-	// DefaultMaxAge retains backups for seven days. DefaultMaxAge 将备份保留七天。
-	DefaultMaxAge = 7
+	// DefaultMaxBackups retains at most fifteen historical files, excluding the active file. DefaultMaxBackups 最多保留十五个历史文件，不包含活动文件。
+	DefaultMaxBackups = 15
+	// DefaultMaxAge retains backups for fifteen days. DefaultMaxAge 将备份保留十五天。
+	DefaultMaxAge = 15
 )

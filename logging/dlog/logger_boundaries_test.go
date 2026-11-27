@@ -152,7 +152,7 @@ func TestLoggerFormattingAllowsRuntimeControls(t *testing.T) {
 		t.Fatal("formatting deadlocked")
 	}
 	defer logger.Close()
-	if strings.Count(readLog(t, filepath.Join(dir, "format.log")), "[REENTRANT] message") != 2 {
+	if strings.Count(readLog(t, filepath.Join(dir, "format.log")), "[REENTRANT] [INFO] message") != 2 {
 		t.Fatal("reentrant formatting did not reach both outputs")
 	}
 }

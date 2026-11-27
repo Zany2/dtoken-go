@@ -127,6 +127,8 @@ For all built-in styles, see [Token Styles](../core/token-style.md).
 
 The default `dlog` writes synchronously through Zap. Lumberjack manages size-based rotation, retention, and optional gzip compression. The core continues to use `contract.Log` / `contract.LogControl`.
 
+Leveled messages use `2026-11-27 15:30:00 [DTOKEN] [INFO] message` by default, with the prefix before the level label. Customize it through `LoggerConfig.Prefix`, Builder `LoggerPrefix("[APP] ")`, or runtime `SetPrefix`. An empty prefix at construction selects the default `[DTOKEN] `. The timestamp format remains configurable; `Print` / `Printf` omit the level label.
+
 <!-- dtoken-compile: logging -->
 ```go
 package main
@@ -138,10 +140,12 @@ func main() {
 		IsLog(true).
 		LoggerPath("logs").
 		LoggerFilename("dtoken.log").
+		LoggerPrefix("[DTOKEN] ").
 		LoggerMaxSize(10).
-		LoggerMaxBackups(10).
-		LoggerMaxAge(7).
+		LoggerMaxBackups(15).
+		LoggerMaxAge(15).
 		LoggerCompress(true).
+		LoggerLocalTime(true).
 		Build()
 	if err != nil {
 		panic(err)
@@ -150,11 +154,23 @@ func main() {
 }
 ```
 
-`MaxSize` is measured in MiB (1024 × 1024 bytes), and `MaxAge` in days. A zero `MaxBackups` or `MaxAge` disables that retention limit. `dlog.DefaultLoggerConfig()` supplies the complete defaults of 10 MiB, 10 backups, and 7 days; zero retention limits in a partial configuration remain zero. The default active file is `dtoken_logs/DTOKEN.log`, with a fixed basename and Lumberjack-generated backup names. Lumberjack rejects an individual entry larger than `MaxSize`; Zap reports write errors to stderr.
+The default Builder and `dlog.DefaultLoggerConfig()` use these policies directly through Lumberjack, without custom scheduling, naming, or cleanup logic:
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `MaxSize` | `10` | Per-file limit in MiB (1024 × 1024 bytes) |
+| `MaxAge` | `15` | Retain backups for 15 × 24 hours from the rotation timestamp in their names |
+| `MaxBackups` | `15` | At most 15 historical backups plus one active file; `0` disables the count limit |
+| `Compress` | `true` | gzip historical files |
+| `LocalTime` | `true` | Local time in backup names; `false` uses UTC and does not change the log message timestamp format |
+
+The active file defaults to `dtoken_logs/DTOKEN.log`. When the next write would exceed the size limit, Lumberjack archives it as `DTOKEN-2026-11-27T15-30-00.123.log` (`.log.gz` after compression) and writes to a new active file. The name records rotation time, not a guarantee that all entries belong to one day. Daily automatic rotation and date templates are not provided. Lumberjack rejects an individual entry larger than `MaxSize`; Zap reports write errors to stderr.
+
+A zero `MaxBackups` or `MaxAge` disables that limit. With both configured, either age or count can remove older backups, so a count cap may retain less than 15 days. Cleanup is triggered by Lumberjack opening or rotating files, not by a daily timer, and does not cap total directory size. `MaxAge` does not limit the active file's lifetime. A nil configuration selects all defaults; explicit zero retention limits and false switches in partial configurations remain unchanged. Start from `dlog.DefaultLoggerConfig()` to retain defaults while changing selected fields.
 
 This refactor removes the custom async queue and timed rotation. `QueueSize`, `RotateExpire`, and their Builder methods are removed. `FileFormat` becomes `Filename`, without date templates. Byte-based `RotateSize` becomes MiB-based `MaxSize`. `RotateBackupLimit` and `RotateBackupDays` become `MaxBackups` and `MaxAge`; the Builder methods use the corresponding new names.
 
-Logging and runtime-control methods remain compatible. `Print` / `Printf` bypass level filtering. `DropCount()` always returns zero because there is no async queue overflow; it does not count file-write failures. With file output enabled, initialization and `SetConfig` first create or open the target in append mode, then close it without modifying existing content; a failed check preserves active outputs. `MaxAge` is limited to 106751 days to prevent overflow in the underlying duration calculation. Each active log file should have a single logger instance managing its rotation. `Close` waits for active synchronous writes and closes the owned file without closing stdout. `Flush` calls Zap's sync interface; Lumberjack exposes no file `fsync` operation, and stdout skips `fsync` to avoid blocking Windows pipes. Lumberjack compresses and cleans backups asynchronously, and `Flush` / `Close` do not wait for that housekeeping.
+The default identifier is `[DTOKEN]`; `Prefix`, `SetPrefix`, and `LoggerPrefix` remain available for customization. `Print` / `Printf` bypass level filtering. `DropCount()` always returns zero because there is no async queue overflow; it does not count file-write failures. With file output enabled, initialization and `SetConfig` first create or open the target in append mode, then close it without modifying existing content; a failed check preserves active outputs. `MaxAge` is limited to 106751 days to prevent overflow in the underlying duration calculation. Each active log file should have a single logger instance managing its rotation. `Close` waits for active synchronous writes and closes the owned file without closing stdout. `Flush` calls Zap's sync interface; Lumberjack exposes no file `fsync` operation, and stdout skips `fsync` to avoid blocking Windows pipes. Lumberjack compresses and cleans backups asynchronously, and `Flush` / `Close` do not wait for that housekeeping.
 
 - When `IsLog(false)` is used, a no-op logger is used automatically.
 - When `IsLog(true)` is used, a logger component or logger factory must be available.
