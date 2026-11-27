@@ -82,9 +82,6 @@ type LogControl interface {
 	// SetLevel updates log level SetLevel 动态更新日志级别
 	SetLevel(level LogLevel)
 
-	// SetPrefix updates log prefix SetPrefix 动态更新日志前缀
-	SetPrefix(prefix string)
-
 	// SetStdout toggles stdout output SetStdout 开关控制台输出
 	SetStdout(enable bool)
 

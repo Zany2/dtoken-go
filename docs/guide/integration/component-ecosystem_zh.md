@@ -127,6 +127,8 @@ func (MyGenerator) Generate(loginID, device, deviceID string) (string, error) {
 
 默认 `dlog` 基于 Zap 同步输出日志，由 Lumberjack 负责按文件大小轮转、备份保留和可选 gzip 压缩。核心继续通过 `contract.Log` / `contract.LogControl` 使用日志组件。
 
+带级别日志默认格式为 `2026-11-27 15:30:00 [DTOKEN] [INFO] 日志内容`，`[DTOKEN]` 为固定标识，不提供 Prefix 配置。时间格式仍可配置；`Print` / `Printf` 不带级别标签。
+
 <!-- dtoken-compile: logging -->
 ```go
 package main
@@ -139,9 +141,10 @@ func main() {
 		LoggerPath("logs").
 		LoggerFilename("dtoken.log").
 		LoggerMaxSize(10).
-		LoggerMaxBackups(10).
-		LoggerMaxAge(7).
+		LoggerMaxBackups(0).
+		LoggerMaxAge(15).
 		LoggerCompress(true).
+		LoggerLocalTime(true).
 		Build()
 	if err != nil {
 		panic(err)
@@ -150,11 +153,23 @@ func main() {
 }
 ```
 
-`MaxSize` 的单位是 MiB（1024 × 1024 字节），`MaxAge` 的单位是天；`MaxBackups` 或 `MaxAge` 为零时，不启用对应的保留限制。使用 `dlog.DefaultLoggerConfig()` 可获得 10 MiB、10 个备份、7 天的完整默认配置，部分配置结构体中的零值保留限制不会被默认值覆盖。活动文件默认为 `dtoken_logs/DTOKEN.log`，文件名固定，备份名称由 Lumberjack 生成。单条日志超过 `MaxSize` 时，Lumberjack 拒绝该次文件写入，Zap 将写入错误报告到标准错误输出。
+默认 Builder 与 `dlog.DefaultLoggerConfig()` 使用以下策略，直接复用 Lumberjack，不增加自定义定时任务、文件命名或清理逻辑：
+
+| 参数 | 默认值 | 含义 |
+| --- | --- | --- |
+| `MaxSize` | `10` | 单文件上限，单位 MiB（1024 × 1024 字节） |
+| `MaxAge` | `15` | 历史备份从文件名中的轮转时间起保留 15 × 24 小时 |
+| `MaxBackups` | `0` | 不限制历史备份数量；设置为 `20` 时最多保留 20 个备份，另有 1 个活动文件 |
+| `Compress` | `true` | gzip 压缩历史文件 |
+| `LocalTime` | `true` | 备份文件名使用本地时间，设为 `false` 使用 UTC；不改变日志内容的时间格式 |
+
+活动文件默认为 `dtoken_logs/DTOKEN.log`。下一次写入会超过大小上限时，Lumberjack 将其归档为 `DTOKEN-2026-11-27T15-30-00.123.log`（压缩后为 `.log.gz`），再写入新的活动文件。文件名时间表示轮转时间，不保证文件内容只属于某一天；不提供每日自动切分或日期模板。单条日志超过 `MaxSize` 时，Lumberjack 拒绝该次文件写入，Zap 将错误报告到标准错误输出。
+
+`MaxBackups` 或 `MaxAge` 为零时，不启用对应限制；两者都配置时，超龄或超数量任一条件满足即清理较旧备份，因此设置数量上限后可能不足 15 天。清理随 Lumberjack 打开或轮转文件触发，不是固定时间清理，也不是整个目录的容量限制。`MaxAge` 不限制活动文件的存活时间。传入 `nil` 配置使用完整默认值；自定义部分配置中的零值保留限制及 `false` 开关不会被覆盖。要保留其余默认值，先获取 `dlog.DefaultLoggerConfig()` 再修改需要的字段。
 
 本次重构移除自研异步队列和时间切分：`QueueSize`、`RotateExpire` 及对应 Builder 方法不再提供；`FileFormat` 改为 `Filename`，不再支持日期模板；原字节单位的 `RotateSize` 改为 MiB 单位的 `MaxSize`；`RotateBackupLimit`、`RotateBackupDays` 分别改为 `MaxBackups`、`MaxAge`，Builder 方法也使用对应新名称。
 
-日志调用与运行时控制方法保持兼容。`Print` / `Printf` 不受级别阈值过滤；`DropCount()` 固定返回零，表示没有异步队列溢出丢弃，不代表所有文件写入均成功。启用文件输出时，初始化与 `SetConfig` 会预先创建或以追加方式打开目标文件，检查后关闭，不修改已有内容；检查失败时保留当前输出。`MaxAge` 最大为 106751 天，超过此值会导致底层时长计算溢出，因此会拒绝该配置。每个活动日志文件应由单个日志器实例管理轮转。`Close` 等待正在进行的同步写入并关闭自有文件，不关闭标准输出。`Flush` 调用 Zap 的同步接口；Lumberjack 不提供文件 `fsync` 接口，标准输出也不执行 `fsync`，以避免 Windows 管道同步阻塞。备份压缩与清理由 Lumberjack 异步执行，`Flush` 和 `Close` 不等待这些维护任务。
+`Prefix`、`SetPrefix` 和 `LoggerPrefix` 已移除，统一使用固定的 `[DTOKEN]` 标识。`Print` / `Printf` 不受级别阈值过滤；`DropCount()` 固定返回零，表示没有异步队列溢出丢弃，不代表所有文件写入均成功。启用文件输出时，初始化与 `SetConfig` 会预先创建或以追加方式打开目标文件，检查后关闭，不修改已有内容；检查失败时保留当前输出。`MaxAge` 最大为 106751 天，超过此值会导致底层时长计算溢出，因此会拒绝该配置。每个活动日志文件应由单个日志器实例管理轮转。`Close` 等待正在进行的同步写入并关闭自有文件，不关闭标准输出。`Flush` 调用 Zap 的同步接口；Lumberjack 不提供文件 `fsync` 接口，标准输出也不执行 `fsync`，以避免 Windows 管道同步阻塞。备份压缩与清理由 Lumberjack 异步执行，`Flush` 和 `Close` 不等待这些维护任务。
 
 - `IsLog(false)` 时会使用空日志实现，不需要额外注入日志组件。
 - `IsLog(true)` 时应确保存在可用日志组件或日志工厂。

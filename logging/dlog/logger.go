@@ -16,6 +16,8 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
+const logPrefix = "[DTOKEN] " // logPrefix identifies framework log messages. logPrefix 标识框架日志来源。
+
 // Logger writes synchronously through Zap and delegates file rotation to Lumberjack. Logger 通过 Zap 同步输出日志，并将文件轮转交给 Lumberjack。
 type Logger struct {
 	mu      sync.RWMutex       // mu coordinates writes, reconfiguration, and shutdown. mu 协调写入、配置变更与关闭。
@@ -107,18 +109,14 @@ func (l *Logger) configureOutputs() {
 	}
 	sink := zapcore.NewMultiWriteSyncer(outputs...)
 	encoder := zapcore.EncoderConfig{
-		TimeKey: "time", LevelKey: "level", MessageKey: "message",
+		TimeKey: "time", MessageKey: "message",
 		LineEnding:       zapcore.DefaultLineEnding,
 		ConsoleSeparator: " ",
 		EncodeTime: func(value time.Time, out zapcore.PrimitiveArrayEncoder) {
 			out.AppendString(value.Format(l.cfg.TimeFormat))
 		},
-		EncodeLevel: func(value zapcore.Level, out zapcore.PrimitiveArrayEncoder) {
-			out.AppendString("[" + value.CapitalString() + "]")
-		},
 	}
 	l.backend = zap.New(zapcore.NewCore(zapcore.NewConsoleEncoder(encoder), sink, l.level))
-	encoder.LevelKey = ""
 	l.plain = zap.New(zapcore.NewCore(zapcore.NewConsoleEncoder(encoder), sink, zapcore.DebugLevel))
 }
 
@@ -154,10 +152,12 @@ func (l *Logger) log(level LogLevel, message string) {
 		return
 	}
 	if level == 0 {
-		l.plain.Info(l.cfg.Prefix + message)
+		l.plain.Info(logPrefix + message)
 		return
 	}
-	l.backend.Log(zapLevel(level), l.cfg.Prefix+message)
+	// Keep the source prefix before the level label while preserving Zap filtering. 将来源前缀放在级别标签前，保留 Zap 级别过滤。
+	zapSeverity := zapLevel(level)
+	l.backend.Log(zapSeverity, logPrefix+"["+zapSeverity.CapitalString()+"] "+message)
 }
 
 // SetLevel changes the Zap level threshold without rebuilding outputs. SetLevel 调整 Zap 日志级别阈值，不重建输出目标。
@@ -170,18 +170,6 @@ func (l *Logger) SetLevel(level LogLevel) {
 	if !l.closed && l.backend != nil {
 		l.cfg.Level = level
 		l.level.SetLevel(zapLevel(level))
-	}
-}
-
-// SetPrefix changes the prefix used by subsequent messages. SetPrefix 修改后续日志使用的前缀。
-func (l *Logger) SetPrefix(prefix string) {
-	if l == nil {
-		return
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if !l.closed {
-		l.cfg.Prefix = prefix
 	}
 }
 

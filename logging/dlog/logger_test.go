@@ -13,7 +13,7 @@ import (
 // TestLoggerSynchronousOutput verifies every logging method is visible before Flush or Close. TestLoggerSynchronousOutput 验证所有日志方法在 Flush 或 Close 之前即可读取输出。
 func TestLoggerSynchronousOutput(t *testing.T) {
 	dir := t.TempDir()
-	logger, err := NewLoggerWithConfig(&LoggerConfig{Path: dir, Filename: "app.log", Prefix: "[TEST] ", Level: LevelDebug, TimeFormat: time.RFC3339Nano})
+	logger, err := NewLoggerWithConfig(&LoggerConfig{Path: dir, Filename: "app.log", Level: LevelDebug, TimeFormat: time.RFC3339Nano})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestLoggerSynchronousOutput(t *testing.T) {
 			t.Fatalf("invalid timestamp in %q: %v", line, err)
 		}
 	}
-	for _, want := range []string{"[TEST] plain 7", "[TEST] plain-8", "[DEBUG] [TEST] debug", "[DEBUG] [TEST] debug-1", "[INFO] [TEST] info", "[INFO] [TEST] info-2", "[WARN] [TEST] warn", "[WARN] [TEST] warn-3", "[ERROR] [TEST] error", "[ERROR] [TEST] error-4"} {
+	for _, want := range []string{"[DTOKEN] plain 7", "[DTOKEN] plain-8", "[DTOKEN] [DEBUG] debug", "[DTOKEN] [DEBUG] debug-1", "[DTOKEN] [INFO] info", "[DTOKEN] [INFO] info-2", "[DTOKEN] [WARN] warn", "[DTOKEN] [WARN] warn-3", "[DTOKEN] [ERROR] error", "[DTOKEN] [ERROR] error-4"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in %q", want, text)
 		}
@@ -49,8 +49,8 @@ func TestLoggerSynchronousOutput(t *testing.T) {
 	}
 }
 
-// TestLoggerLevelAndPrefix verifies dynamic controls and unfiltered plain output. TestLoggerLevelAndPrefix 验证动态控制与不受级别过滤的普通输出。
-func TestLoggerLevelAndPrefix(t *testing.T) {
+// TestLoggerLevel verifies dynamic level controls and unfiltered plain output. TestLoggerLevel 验证动态级别控制与不受级别过滤的普通输出。
+func TestLoggerLevel(t *testing.T) {
 	dir := t.TempDir()
 	logger, err := NewLoggerWithConfig(&LoggerConfig{Path: dir, Filename: "level.log", Level: LevelError})
 	if err != nil {
@@ -61,7 +61,6 @@ func TestLoggerLevelAndPrefix(t *testing.T) {
 	logger.Print("unfiltered-plain")
 	logger.Error("visible-error")
 	logger.SetLevel(LevelDebug)
-	logger.SetPrefix("[NEW] ")
 	logger.Debug("visible-debug")
 	for _, level := range []LogLevel{0, -1, 99} {
 		logger.SetLevel(level)
@@ -69,7 +68,7 @@ func TestLoggerLevelAndPrefix(t *testing.T) {
 	logger.Debug("still-debug")
 	logger.Flush()
 	text := readLog(t, filepath.Join(dir, "level.log"))
-	for _, want := range []string{"unfiltered-plain", "visible-error", "[DEBUG] [NEW] visible-debug", "still-debug"} {
+	for _, want := range []string{"unfiltered-plain", "visible-error", "[DTOKEN] [DEBUG] visible-debug", "still-debug"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in %q", want, text)
 		}
@@ -108,7 +107,7 @@ func TestLoggerStdoutRouting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(console), "both-targets") || !strings.Contains(string(console), "stdout-still-open") || strings.Contains(string(console), "file-only") || strings.Contains(string(console), "file-after-toggle") {
+	if !strings.Contains(string(console), "[DTOKEN] [INFO] both-targets") || !strings.Contains(string(console), "stdout-still-open") || strings.Contains(string(console), "file-only") || strings.Contains(string(console), "file-after-toggle") {
 		t.Fatalf("unexpected console routing: %q", console)
 	}
 	file := readLog(t, filepath.Join(dir, "routing.log"))
@@ -210,7 +209,7 @@ func TestLoggerReconfiguration(t *testing.T) {
 	}
 	logger.SetConfig(&LoggerConfig{Path: badPath})
 	logger.Info("after-invalid-directory")
-	logger.SetConfig(&LoggerConfig{Path: second, Filename: "second.log", Prefix: "[SECOND] "})
+	logger.SetConfig(&LoggerConfig{Path: second, Filename: "second.log"})
 	logger.Info("second-output")
 	logger.Close()
 	firstText := readLog(t, filepath.Join(first, "first.log"))
@@ -220,7 +219,7 @@ func TestLoggerReconfiguration(t *testing.T) {
 		}
 	}
 	secondText := readLog(t, filepath.Join(second, "second.log"))
-	if !strings.Contains(secondText, "[SECOND] second-output") || strings.Contains(firstText, "second-output") || logger.LogPath() != second {
+	if !strings.Contains(secondText, "[DTOKEN] [INFO] second-output") || strings.Contains(firstText, "second-output") || logger.LogPath() != second {
 		t.Fatal("reconfiguration used the wrong output")
 	}
 	if err := os.Rename(filepath.Join(first, "first.log"), filepath.Join(first, "closed.log")); err != nil {
@@ -236,7 +235,10 @@ func TestLoggerRotationAndCompression(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
 		t.Fatal(err)
 	}
-	logger, err := NewLoggerWithConfig(&LoggerConfig{Path: dir, Filename: "rotate.log", MaxSize: 1, MaxBackups: 1, Compress: true})
+	cfg := DefaultLoggerConfig()
+	cfg.Path, cfg.Filename = dir, "rotate.log"
+	cfg.MaxSize, cfg.MaxBackups, cfg.Stdout = 1, 1, false
+	logger, err := NewLoggerWithConfig(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,6 +280,7 @@ func TestLoggerRetention(t *testing.T) {
 		count, days, want int
 	}{
 		{"count", 1, 0, 1}, {"age", 0, 1, 2}, {"unlimited", 0, 0, 3},
+		{"count-before-age", 1, 1, 1}, {"age-before-count", 3, 1, 2},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

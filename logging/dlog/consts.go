@@ -19,8 +19,6 @@ const (
 
 // Bundled logging defaults 内置日志默认值。
 const (
-	// DefaultPrefix identifies framework log messages. DefaultPrefix 标识框架日志消息。
-	DefaultPrefix = "[DTOKEN] "
 	// DefaultFilename is the active filename managed by Lumberjack. DefaultFilename 是 Lumberjack 管理的活动文件名。
 	DefaultFilename = "DTOKEN.log"
 	// DefaultDirName is the default output directory. DefaultDirName 是默认输出目录。
@@ -29,8 +27,8 @@ const (
 	DefaultTimeFormat = "2006-01-02 15:04:05"
 	// DefaultMaxSize limits each file to ten MiB. DefaultMaxSize 将单个文件限制为十 MiB。
 	DefaultMaxSize = 10
-	// DefaultMaxBackups retains ten rotated files. DefaultMaxBackups 保留十个轮转文件。
-	DefaultMaxBackups = 10
-	// DefaultMaxAge retains backups for seven days. DefaultMaxAge 将备份保留七天。
-	DefaultMaxAge = 7
+	// DefaultMaxBackups disables count-based deletion of rotated files. DefaultMaxBackups 默认不按数量删除轮转文件。
+	DefaultMaxBackups = 0
+	// DefaultMaxAge retains backups for fifteen days. DefaultMaxAge 将备份保留十五天。
+	DefaultMaxAge = 15
 )

@@ -1000,7 +1000,6 @@ func (l *managerLifecycleTestLogger) Flush() {
 }
 
 func (l *managerLifecycleTestLogger) SetLevel(adapter.LogLevel) {}
-func (l *managerLifecycleTestLogger) SetPrefix(string)          {}
 func (l *managerLifecycleTestLogger) SetStdout(bool)            {}
 func (l *managerLifecycleTestLogger) LogPath() string           { return "" }
 func (l *managerLifecycleTestLogger) DropCount() uint64         { return 0 }
